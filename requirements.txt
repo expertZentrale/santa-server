@@ -3,10 +3,10 @@ Django>=6.0.8,<6.1
 django-prometheus==2.5.0
 django-redis==7.0.0
 gunicorn==26.2.0
-hiredis==3.4.1
+hiredis==3.4.2
 mssql-django==2.0
 mozilla-django-oidc==5.0.2
 redis==8.1.0
 requests==2.34.2
-tzdata==2026.3
+tzdata==2026.4
 whitenoise==6.12.0
