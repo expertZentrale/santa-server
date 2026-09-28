@@ -22,7 +22,7 @@ jobs:
       # the same containers as the devcontainer: SQL Server 2022, Redis and the development image
       COMPOSE_FILE: .devcontainer/docker-compose.yml
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Start SQL Server and Redis
         run: docker compose up -d mssql redis
