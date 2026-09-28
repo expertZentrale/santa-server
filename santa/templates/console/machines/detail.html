@@ -1,0 +1,80 @@
+{% extends "console/base.html" %}{% load console i18n %}
+{% block title %}{{ machine.hostname|default:machine.serial_number }}{% endblock %}
+{% block content %}
+<p><a href="{% url 'console:machines' %}">‹ {% translate "Macs" %}</a></p>
+<div class="page-head">
+  <h1>{{ machine.hostname|default:machine.serial_number }}</h1>
+  {% if perms.santa.change_machine %}
+  <div class="actions">
+    <form method="post" action="{% url 'console:machine_clean_sync' machine.pk %}" data-confirm="{% translate 'The Mac drops all its rules and downloads them again at its next sync. Continue?' %}">
+      {% csrf_token %}<button class="button"{% if machine.clean_sync_requested %} disabled{% endif %}>{% if machine.clean_sync_requested %}{% translate "Clean sync pending" %}{% else %}{% translate "Clean sync" %}{% endif %}</button></form>
+    {% if perms.santa.add_rule %}<a class="button primary" href="{% url 'console:rule_add' %}">{% translate "New rule" %}</a>{% endif %}
+  </div>
+  {% endif %}
+</div>
+<div class="grid-2">
+  <section class="card">
+    <h2>{% translate "Mac" %}</h2>
+    <dl class="facts">
+      <dt>{% translate "Serial number" %}</dt><dd class="mono">{{ machine.serial_number }} {% include "console/_copy.html" with value=machine.serial_number %}</dd>
+      <dt>{% translate "Machine ID" %}</dt><dd class="mono small">{{ machine.machine_id }} {% include "console/_copy.html" with value=machine.machine_id %}</dd>
+      <dt>{% translate "User" %}</dt><dd>{{ machine.primary_user|default:"–" }}</dd>
+      <dt>{% translate "Group" %}</dt><dd><a href="{% url 'console:group' machine.group_id %}">{{ machine.group.name }}</a></dd>
+      <dt>{% translate "Model" %}</dt><dd>{{ machine.model_identifier|default:"–" }}</dd>
+      <dt>macOS</dt><dd>{{ machine.os_version|default:"–" }} {% if machine.os_build %}<span class="muted">({{ machine.os_build }})</span>{% endif %}</dd>
+      <dt>Santa</dt><dd>{{ machine.santa_version|default:"–" }}</dd>
+      <dt>IP</dt><dd class="mono">{{ machine.last_ip|default:"–" }}</dd>
+    </dl>
+  </section>
+  <section class="card">
+    <h2>{% translate "Sync" %}</h2>
+    <dl class="facts">
+      <dt>{% translate "Mode" %}</dt><dd>{% if machine.client_mode %}<span class="badge {% if machine.client_mode == 'LOCKDOWN' %}bad{% else %}info{% endif %}">{{ machine.get_client_mode_display }}</span>{% else %}–{% endif %}
+        <span class="muted">{% blocktranslate with mode=machine.group.get_client_mode_display %}group: {{ mode }}{% endblocktranslate %}</span></dd>
+      <dt>{% translate "Last sync" %}</dt><dd>{% if is_stale %}<span class="badge bad">{{ machine.last_postflight_at|date:"d.m.Y H:i"|default:_("never") }}</span>
+        {% else %}{{ machine.last_postflight_at|date:"d.m.Y H:i" }}{% endif %}
+        <small class="muted">{% blocktranslate with date=machine.last_preflight_at|date:"d.m.Y H:i"|default:"–" %}last preflight {{ date }}{% endblocktranslate %}</small></dd>
+      <dt>{% translate "Rules" %}</dt><dd>{% blocktranslate %}{{ expected_count }} should be on the Mac, {{ synced_count }} confirmed by it{% endblocktranslate %}
+        {% if missing_count or extra_count %}<br><span class="badge info">{% blocktranslate %}{{ missing_count }} to add, {{ extra_count }} to remove at the next sync{% endblocktranslate %}</span>
+        {% else %} <span class="badge ok">{% translate "in sync" %}</span>{% endif %}</dd>
+      <dt>{% translate "Reported" %}</dt><dd class="small">{% blocktranslate with total=machine.reported_rule_count binary=machine.binary_rule_count signing=machine.signingid_rule_count team=machine.teamid_rule_count cert=machine.certificate_rule_count cdhash=machine.cdhash_rule_count compiler=machine.compiler_rule_count transitive=machine.transitive_rule_count %}{{ total }} rules: {{ binary }} binary, {{ signing }} signing ID, {{ team }} team ID, {{ cert }} certificate, {{ cdhash }} CDHash, {{ compiler }} compiler, {{ transitive }} transitive{% endblocktranslate %}</dd>
+      <dt>{% translate "Open blocks" %}</dt><dd><a href="{% url 'console:events' %}?machine={{ machine.pk }}">{{ open_blocks }}</a></dd>
+    </dl>
+  </section>
+</div>
+<section class="card">
+  <h2>{% translate "Rules only for this Mac" %}</h2>
+  {% if rules %}
+  <table class="table compact">
+    <thead><tr><th>{% translate "Identifier" %}</th><th>{% translate "Type" %}</th><th>{% translate "Policy" %}</th><th>{% translate "Tags" %}</th><th>{% translate "Enabled" %}</th></tr></thead>
+    <tbody>{% for rule in rules %}
+      <tr{% if not rule.is_enabled %} class="disabled"{% endif %}>
+        <td><a class="mono" href="{% url 'console:rule' rule.pk %}">{{ rule.identifier|short_hash:28 }}</a><small class="muted">{{ rule.description|truncatechars:70 }}</small></td>
+        <td>{{ rule.get_rule_type_display }}</td>
+        <td><span class="badge {{ rule.policy|policy_class }}">{{ rule.get_policy_display }}</span></td>
+        <td>{% for tag in rule.tags.all %}<span class="tag">{{ tag.name }}</span>{% endfor %}</td>
+        <td>{{ rule.is_enabled|yesno:_("yes,no") }}</td>
+      </tr>{% endfor %}</tbody>
+  </table>
+  {% else %}<p class="muted">{% blocktranslate with group=machine.group.name %}None. The Mac gets the global rules and the rules of {{ group }}.{% endblocktranslate %}</p>{% endif %}
+</section>
+<section class="card">
+  <h2>{% translate "Recent events" %} <a class="small" href="{% url 'console:events' %}?view=all&amp;machine={{ machine.pk }}&amp;days=&amp;resolved=all">{% translate "all" %}</a></h2>
+  {% if events %}
+  <table class="table compact">
+    <thead><tr><th>{% translate "Time" %}</th><th>{% translate "Decision" %}</th><th>{% translate "File" %}</th><th>{% translate "User" %}</th><th></th></tr></thead>
+    <tbody>{% for event in events %}
+      <tr><td class="nowrap">{{ event.execution_time|date:"d.m.Y H:i" }}</td>
+        <td><span class="badge {{ event.decision|decision_class }}">{{ event.decision }}</span></td>
+        <td><a href="{% url 'console:event' event.pk %}" hx-get="{% url 'console:event' event.pk %}" hx-target="#drawer">{{ event.file_name|default:_("(no name)") }}</a></td>
+        <td>{{ event.executing_user|default:"–" }}</td>
+        <td>{% if event.resolved_at %}<span class="badge ok">{% translate "resolved" %}</span>{% endif %}</td></tr>{% endfor %}</tbody>
+  </table>
+  {% else %}<p class="muted">{% translate "No events." %}</p>{% endif %}
+</section>
+{% if requests %}
+<section class="card"><h2>{% translate "Requests" %}</h2><ul class="plain">
+  {% for r in requests %}<li><a href="{% url 'console:request' r.pk %}">{{ r.title }}</a> · {{ r.requester }} · <span class="badge">{{ r.get_status_display }}</span></li>{% endfor %}
+</ul></section>
+{% endif %}
+{% endblock %}

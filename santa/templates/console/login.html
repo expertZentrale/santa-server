@@ -1,0 +1,22 @@
+{% extends "console/base.html" %}{% load i18n %}
+{% block title %}{% translate "Sign in" %}{% endblock %}
+{% block main_class %}narrow{% endblock %}
+{% block content %}
+<section class="card login">
+  <h1>{% translate "Sign in" %}</h1>
+  {% if failed %}<p class="error">{% translate "The sign-in failed. Try again, or ask your IT team." %}</p>{% endif %}
+  {% if oidc_enabled %}
+    <a class="button primary wide" href="{% url 'oidc_authentication_init' %}{% if next %}?next={{ next|urlencode }}{% endif %}">{% blocktranslate %}Sign in with {{ provider_name }}{% endblocktranslate %}</a>
+    <details><summary>{% translate "Local account" %}</summary>
+  {% endif %}
+  <form method="post" class="stack">
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+    <label>{% translate "User name" %} {{ form.username }}</label>
+    <label>{% translate "Password" %} {{ form.password }}</label>
+    <input type="hidden" name="next" value="{{ next }}">
+    <button class="button{% if not oidc_enabled %} primary{% endif %}">{% translate "Sign in" %}</button>
+  </form>
+  {% if oidc_enabled %}</details>{% endif %}
+</section>
+{% endblock %}

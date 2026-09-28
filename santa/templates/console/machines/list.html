@@ -1,0 +1,40 @@
+{% extends "console/base.html" %}{% load console i18n %}
+{% block title %}{% translate "Macs" %}{% endblock %}
+{% block content %}
+<div class="page-head"><h1>{% translate "Macs" %}</h1></div>
+<p class="muted">{% translate "Macs enroll themselves at their first sync with the profile of their group." %}</p>
+<form class="filters" method="get">
+  {% if params.sort %}<input type="hidden" name="sort" value="{{ params.sort }}">{% endif %}
+  <input type="search" name="q" value="{{ params.q }}" placeholder="{% translate 'Hostname, serial number, user…' %}" aria-label="{% translate 'Search' %}">
+  <select name="group" aria-label="{% translate 'Group' %}"><option value="">{% translate "All groups" %}</option>
+    {% for group in groups %}<option value="{{ group.pk }}" {% if params.group == group.pk|stringformat:"s" %}selected{% endif %}>{{ group.name }}</option>{% endfor %}</select>
+  <select name="mode" aria-label="{% translate 'Mode' %}"><option value="">{% translate "Any mode" %}</option>
+    {% for value, label in modes %}<option value="{{ value }}" {% if params.mode == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+  <select name="status" aria-label="{% translate 'Status' %}"><option value="">{% translate "Any status" %}</option>
+    <option value="stale" {% if params.status == "stale" %}selected{% endif %}>{% translate "Not synced for 2 days" %}</option>
+    <option value="clean" {% if params.status == "clean" %}selected{% endif %}>{% translate "Clean sync pending" %}</option></select>
+  <button class="button">{% translate "Filter" %}</button>
+</form>
+<table class="table">
+  <thead><tr>{% sort_th _("Mac") "mac" %}{% sort_th _("User") "user" %}{% sort_th _("Group") "group" %}{% sort_th _("Mode") "mode" %}{% sort_th _("Santa / macOS") "santa" %}<th class="num">{% translate "Rules" %}</th>{% sort_th _("Last sync") "sync" %}</tr></thead>
+  <tbody>
+  {% for machine in page %}
+    <tr>
+      <td><a class="strong" href="{% url 'console:machine' machine.pk %}">{{ machine.hostname|default:machine.serial_number }}</a>
+        <small class="muted mono">{{ machine.serial_number }}</small></td>
+      <td>{{ machine.primary_user|default:"–" }}</td>
+      <td><a href="{% url 'console:group' machine.group_id %}">{{ machine.group.name }}</a></td>
+      <td>{% if machine.client_mode %}<span class="badge {% if machine.client_mode == 'LOCKDOWN' %}bad{% else %}info{% endif %}">{{ machine.get_client_mode_display }}</span>{% else %}–{% endif %}</td>
+      <td class="small">{{ machine.santa_version|default:"–" }}<br><span class="muted">{{ machine.os_version }}</span></td>
+      <td class="num">{{ machine.reported_rule_count }}</td>
+      <td>{% if machine.last_postflight_at %}{% blocktranslate with since=machine.last_postflight_at|timesince asvar last_sync %}{{ since }} ago{% endblocktranslate %}{% else %}{% translate "never" as last_sync %}{% endif %}
+        {% if machine.is_stale %}<span class="badge bad">{{ last_sync }}</span>{% else %}{{ last_sync }}{% endif %}
+        {% if machine.clean_sync_requested %}<span class="badge info">{% translate "clean sync" %}</span>{% endif %}</td>
+    </tr>
+  {% empty %}
+    <tr class="empty"><td colspan="7">{% translate "No Macs for these filters." %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% include "console/_pagination.html" %}
+{% endblock %}

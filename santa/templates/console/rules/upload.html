@@ -1,0 +1,25 @@
+{% extends "console/base.html" %}{% load i18n %}
+{% block title %}{% translate "Upload binary" %}{% endblock %}
+{% block main_class %}narrow{% endblock %}
+{% block content %}
+<p><a href="{% url 'console:rules' %}">‹ {% translate "Execution rules" %}</a></p>
+<h1>{% translate "Allow or block a binary by upload" %}</h1>
+<form method="post" enctype="multipart/form-data" class="stack">
+  {% csrf_token %}
+  <section class="card">
+    {% include "console/_field.html" with field=form.file %}
+    {% include "console/_field.html" with field=form.binary_pattern %}
+    {% include "console/_field.html" with field=form.rule_type %}
+    {% include "console/_field.html" with field=form.policy %}
+  </section>
+  <section class="card"><h2>{% translate "Scope" %}</h2>
+    {% include "console/_field.html" with field=form.is_global %}
+    <div data-hide-when="is_global">{% include "console/_field.html" with field=form.groups %}</div>
+    {% include "console/_field.html" with field=form.tags %}
+    {% include "console/_field.html" with field=form.new_tags %}
+    {% include "console/_field.html" with field=form.description %}
+  </section>
+  {% if found %}<section class="card"><h2>{% translate "Executables found" %}</h2><ul class="plain mono small">{% for path, info in found %}<li>{{ path }} · {{ info.sha256 }}</li>{% endfor %}</ul></section>{% endif %}
+  <div class="actions"><button class="button primary">{% translate "Create rules" %}</button></div>
+</form>
+{% endblock %}

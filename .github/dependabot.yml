@@ -1,0 +1,21 @@
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      python:
+        patterns: ["*"]
+    ignore:
+      # Django 6.1 needs django-prometheus and mssql-django support first (see AGENTS.md)
+      - dependency-name: django
+        versions: [">=6.1"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directories: ["/", "/.devcontainer"]
+    schedule:
+      interval: weekly

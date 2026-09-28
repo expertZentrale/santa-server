@@ -1,0 +1,13 @@
+{% extends "admin/change_list.html" %}
+{% block object-tools-items %}
+  <li><a href="{% url 'admin:santa_group_base_mobileconfig' %}">Download base profile</a></li>
+  <li><a href="{% url 'admin:santa_config_export' %}">Export configuration</a></li>
+  <li><a href="{% url 'admin:santa_config_import' %}">Import configuration</a></li>
+  {{ block.super }}
+{% endblock %}
+{% block content %}
+  <p>Every Mac needs two configuration profiles from your MDM: the <strong>base profile</strong> (system extension,
+     full disk access, background item, notifications – the same for every Mac) and the <strong>profile of its
+     group</strong> (sync URL). Download them here and upload them to your MDM as custom profiles.</p>
+  {{ block.super }}
+{% endblock %}

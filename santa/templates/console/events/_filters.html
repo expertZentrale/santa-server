@@ -1,0 +1,25 @@
+{% load i18n %}<form class="filters" method="get">
+  <input type="hidden" name="view" value="{{ view }}">
+  {% if params.sort %}<input type="hidden" name="sort" value="{{ params.sort }}">{% endif %}
+  <input type="search" name="q" value="{{ params.q }}" placeholder="{% translate 'File, signing ID, SHA-256, Mac, user…' %}" aria-label="{% translate 'Search' %}">
+  <select name="group" aria-label="{% translate 'Group' %}"><option value="">{% translate "All groups" %}</option>
+    {% for group in groups %}<option value="{{ group.pk }}" {% if params.group == group.pk|stringformat:"s" %}selected{% endif %}>{{ group.name }}</option>{% endfor %}
+  </select>
+  {% if view == "all" %}
+  <select name="decision" aria-label="{% translate 'Decision' %}"><option value="">{% translate "All decisions" %}</option>
+    {% for decision in decisions %}<option {% if params.decision == decision %}selected{% endif %}>{{ decision }}</option>{% endfor %}
+  </select>
+  {% endif %}
+  <select name="days" aria-label="{% translate 'Time range' %}">
+    {% for value, label in days_choices %}<option value="{{ value }}" {% if params.days|default:"7" == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+  </select>
+  <select name="resolved" aria-label="{% translate 'Resolved' %}">
+    <option value="open" {% if params.resolved|default:"open" == "open" %}selected{% endif %}>{% translate "Open" %}</option>
+    <option value="resolved" {% if params.resolved == "resolved" %}selected{% endif %}>{% translate "Resolved" %}</option>
+    <option value="all" {% if params.resolved == "all" %}selected{% endif %}>{% translate "Open and resolved" %}</option>
+  </select>
+  {% if params.sha256 %}<input type="hidden" name="sha256" value="{{ params.sha256 }}">{% endif %}
+  {% if params.machine %}<input type="hidden" name="machine" value="{{ params.machine }}">{% endif %}
+  <button class="button">{% translate "Filter" %}</button>
+  {% if params.q or params.group or params.decision or params.sha256 or params.machine %}<a href="?view={{ view }}">{% translate "Reset" %}</a>{% endif %}
+</form>

@@ -1,0 +1,10 @@
+<div class="field{% if field.errors %} has-error{% endif %}{% if field.field.widget.input_type == 'checkbox' and not field.field.widget.allow_multiple_selected %} check{% endif %}" data-field="{{ field.name }}">
+  {% if field.field.widget.input_type == "checkbox" and not field.field.widget.allow_multiple_selected %}
+    <label>{{ field }} {{ field.label }}</label>
+  {% else %}
+    <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+    {{ field }}
+  {% endif %}
+  {% if field.help_text %}<small class="help">{{ field.help_text|safe }}</small>{% endif %}
+  {% for error in field.errors %}<small class="error">{{ error }}</small>{% endfor %}
+</div>

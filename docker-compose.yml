@@ -1,0 +1,57 @@
+# Try Santa Server locally: the image with SQL Server and Redis.
+#
+#   docker compose up --build
+#   docker compose exec web python manage.py createsuperuser
+#   open http://localhost:8000/   (another port: SANTA_PORT=8010 docker compose up)
+#
+# The passwords and the secret key here are examples: never use them in production.
+name: santa-server-example
+
+x-app-environment: &app-environment
+  SECRET_KEY: change-me-this-is-only-an-example
+  DEBUG: "false"
+  SECURE_COOKIES: "false"
+  ALLOWED_HOSTS: "*"
+  DB_HOST: mssql
+  DB_USER: sa
+  DB_PASSWORD: Example!Passw0rd
+  DB_NAME: santa
+  DB_EXTRA_PARAMS: TrustServerCertificate=yes;
+  REDIS_URL: redis://redis:6379/0
+  SANTA_PUBLIC_BASE_URL: http://localhost:8000
+
+services:
+  # creates the database, the image expects an existing one
+  init-db:
+    build: .
+    environment: *app-environment
+    command: ["python", "scripts/create_database.py"]
+    depends_on:
+      - mssql
+
+  web:
+    build: .
+    environment: *app-environment
+    ports:
+      - "${SANTA_PORT:-8000}:8000"
+    depends_on:
+      init-db:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+
+  redis:
+    image: redis:7-alpine
+
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: Example!Passw0rd
+      MSSQL_PID: Developer
+    volumes:
+      - mssql_data:/var/opt/mssql
+
+volumes:
+  mssql_data:

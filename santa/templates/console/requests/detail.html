@@ -1,0 +1,79 @@
+{% extends "console/base.html" %}{% load console i18n %}
+{% block title %}{{ access_request.title }}{% endblock %}
+{% block main_class %}narrow{% endblock %}
+{% block content %}
+<p><a href="{% url 'console:requests' %}">‹ {% translate "Requests" %}</a></p>
+<h1>{{ access_request.title }}</h1>
+<section class="card">
+  <dl class="facts">
+    <dt>{% translate "Requester" %}</dt><dd>{{ access_request.requester.get_full_name }} <span class="muted">{{ access_request.requester.get_username }}</span></dd>
+    <dt>{% translate "Kind" %}</dt><dd>{{ access_request.get_kind_display }}</dd>
+    <dt>{% translate "Status" %}</dt><dd><span class="badge">{{ access_request.get_status_display }}</span>{% if access_request.decided_by %} {% blocktranslate with by=access_request.decided_by date=access_request.decided_at|date:"d.m.Y H:i" %}by {{ by }} on {{ date }}{% endblocktranslate %}{% endif %}</dd>
+    <dt>{% translate "Why" %}</dt><dd class="prewrap">{{ access_request.justification }}</dd>
+    {% if access_request.link %}<dt>{% translate "Link" %}</dt><dd><a href="{{ access_request.link }}" rel="noopener noreferrer" target="_blank">{{ access_request.link }}</a></dd>{% endif %}
+    {% if access_request.kind == "PACKAGE" %}<dt>{% translate "Packages" %}</dt><dd>{% include "request/_packages.html" with packages=access_request.packages.all %}</dd>{% endif %}
+    <dt>{% translate "Macs" %}</dt><dd>{% for machine in requester_machines %}{{ machine.hostname|default:machine.serial_number }} ({{ machine.group.name }}){% if not forloop.last %}, {% endif %}{% empty %}<span class="muted">{% translate "none found for this user" %}</span>{% endfor %}</dd>
+    {% if access_request.decision_note %}<dt>{% translate "Note" %}</dt><dd class="prewrap">{{ access_request.decision_note }}</dd>{% endif %}
+    {% if access_request.result_rule %}<dt>{% translate "Rule" %}</dt><dd><a href="{% url 'console:rule' access_request.result_rule.pk %}">{{ access_request.result_rule }}</a></dd>{% endif %}
+    {% if access_request.result_source %}<dt>{% translate "Package rule" %}</dt><dd><a href="{% url 'console:source' access_request.result_source.pk %}">{{ access_request.result_source }}</a></dd>{% endif %}
+  </dl>
+</section>
+{% if event %}
+<section class="card"><h2>{% translate "Blocked binary" %}</h2>
+  <dl class="facts">
+    <dt>{% translate "File" %}</dt><dd class="mono">{{ event.file_path }}</dd>
+    <dt>{% translate "Decision" %}</dt><dd><span class="badge {{ event.decision|decision_class }}">{{ event.decision }}</span> {% blocktranslate with date=event.execution_time|date:"d.m.Y H:i" mac=event.machine.hostname %}{{ date }} on {{ mac }}{% endblocktranslate %}</dd>
+    <dt>{% translate "Signing ID" %}</dt><dd class="mono">{{ event.signing_id|default:_("– (unsigned)") }}</dd>
+    <dt>{% translate "Team ID" %}</dt><dd class="mono">{{ event.team_id|default:"–" }}</dd>
+    <dt>{% translate "Certificate" %}</dt><dd>{{ event.cert_cn|default:"–" }}</dd>
+    <dt>SHA-256</dt><dd class="mono">{{ event.file_sha256 }} {% include "console/_copy.html" with value=event.file_sha256 %}</dd>
+  </dl>
+  <a href="{% url 'console:events' %}?view=all&amp;sha256={{ event.file_sha256 }}&amp;days=&amp;resolved=all">{% translate "All events of this binary" %}</a>
+</section>
+{% endif %}
+{% if others %}
+<section class="card"><h2>{% translate "Other requests for the same thing" %}</h2><ul class="plain">
+  {% for other in others %}<li><a href="{% url 'console:request' other.pk %}">{{ other.requester }}</a> · {{ other.created_at|date:"d.m.Y" }} · <span class="badge">{{ other.get_status_display }}</span></li>{% endfor %}
+</ul></section>
+{% endif %}
+{% if access_request.is_pending and perms.santa.change_accessrequest %}
+<section class="card"><h2>{% translate "Approve" %}</h2>
+  <form method="post" action="{% url 'console:request_approve' access_request.pk %}" class="stack">
+    {% csrf_token %}
+    {% if approve_form.non_field_errors %}<div class="error">{{ approve_form.non_field_errors }}</div>{% endif %}
+    {% if access_request.kind == "PACKAGE" %}
+    <table class="table compact packages-approve">
+      <thead><tr><th>{% translate "Approve" %}</th><th>{% translate "Package" %}</th><th>{% translate "Into" %}</th></tr></thead>
+      <tbody>{% for package, approve, target in approve_form.rows %}
+        <tr><td>{{ approve }}</td>
+          <td><span class="with-icon">{% if package.icon_url %}<img src="{{ package.icon_url }}" alt="" referrerpolicy="no-referrer">{% else %}<span class="icon-space" aria-hidden="true"></span>{% endif %}
+            <span class="package-text"><strong>{{ package.name|default:package.identifier }}</strong> <code>{{ package.identifier }}</code><small class="muted">{{ package.get_kind_display }}</small></span></span></td>
+          <td>{{ target }}</td></tr>{% endfor %}</tbody>
+    </table>
+    <p class="help small">{% translate "Unticked packages are not approved. The packages going into a new package rule become one new package rule per catalog." %}</p>
+    <div data-new-rule-fields>
+      {% include "console/_field.html" with field=approve_form.new_name %}
+      {% include "console/_field.html" with field=approve_form.rule_type %}
+      {% include "console/_field.html" with field=approve_form.is_global %}
+      <div data-hide-when="is_global">{% include "console/_field.html" with field=approve_form.groups %}</div>
+    </div>
+    {% include "console/_field.html" with field=approve_form.note %}
+    {% else %}
+    {% for field in approve_form.visible_fields %}
+      {% if field.name == "groups" %}<div data-show-when="scope=groups">{% include "console/_field.html" %}</div>
+      {% else %}{% include "console/_field.html" %}{% endif %}
+    {% endfor %}
+    {% endif %}
+    {% for field in approve_form.hidden_fields %}{{ field }}{% endfor %}
+    <button class="button primary">{% translate "Approve" %}</button>
+  </form>
+</section>
+<section class="card"><h2>{% translate "Deny" %}</h2>
+  <form method="post" action="{% url 'console:request_deny' access_request.pk %}" class="stack">
+    {% csrf_token %}
+    {% include "console/_field.html" with field=deny_form.note %}
+    <button class="button danger">{% translate "Deny" %}</button>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

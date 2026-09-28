@@ -1,0 +1,41 @@
+{% extends "admin/base_site.html" %}
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Home</a> &rsaquo;
+  <a href="{% url 'admin:santa_event_changelist' %}">Events</a> &rsaquo; {{ title }}
+</div>
+{% endblock %}
+{% block content %}
+<h2>Selected events</h2>
+<table>
+  <thead><tr><th>Time</th><th>Decision</th><th>File</th><th>Machine</th><th>Group</th>
+    <th>Signing ID</th><th>Team ID</th><th>SHA-256</th></tr></thead>
+  <tbody>
+  {% for event in events %}
+    <tr><td>{{ event.execution_time }}</td><td>{{ event.decision }}</td><td>{{ event.file_path }}</td>
+      <td>{{ event.machine }}</td><td>{{ event.group }}</td><td>{{ event.signing_id|default:"–" }}</td>
+      <td>{{ event.team_id|default:"–" }}</td><td><code>{{ event.file_sha256 }}</code></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+<form method="post">
+  {% csrf_token %}
+  {% for event in events %}<input type="hidden" name="{{ action_checkbox_name }}" value="{{ event.pk }}">{% endfor %}
+  <input type="hidden" name="action" value="allow_events">
+  <input type="hidden" name="apply" value="1">
+  <fieldset class="module aligned">
+    {% for field in form %}
+      <div class="form-row">
+        {{ field.errors }}
+        <div class="flex-container">{{ field.label_tag }} {{ field }}</div>
+        {% if field.help_text %}<div class="help">{{ field.help_text }}</div>{% endif %}
+      </div>
+    {% endfor %}
+    {{ form.non_field_errors }}
+  </fieldset>
+  <p><strong>Signing ID</strong> (default) allows every version of this app signed by the same developer.
+     Unsigned or ad-hoc signed tools (e.g. colima) have none: they are skipped, use <strong>Binary</strong> for them,
+     which allows only this exact file (a new version is blocked again).</p>
+  <div class="submit-row"><input type="submit" class="default" value="Create the rules"></div>
+</form>
+{% endblock %}

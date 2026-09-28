@@ -1,0 +1,41 @@
+{% load console i18n %}<div class="drawer-panel">
+  <header class="drawer-head">
+    <div><h2>{{ event.file_name|default:_("(no name)") }}</h2>
+      <span class="badge {{ event.decision|decision_class }}">{{ event.decision }}</span>
+      <span class="muted">{{ event.execution_time|date:"d.m.Y H:i:s" }}</span></div>
+    <button type="button" class="link" data-drawer-close aria-label="{% translate 'Close' %}">×</button>
+  </header>
+  <dl class="facts">
+    <dt>{% translate "Path" %}</dt><dd class="mono">{{ event.file_path }}</dd>
+    <dt>{% translate "Mac" %}</dt><dd><a href="{% url 'console:machine' event.machine_id %}">{{ event.machine.hostname|default:event.machine.serial_number }}</a> · {{ event.machine.serial_number }} · <a href="{% url 'console:group' event.group_id %}">{{ event.group.name }}</a></dd>
+    <dt>{% translate "User" %}</dt><dd>{{ event.executing_user|default:"–" }}{% if event.parent_name %} · {% blocktranslate with parent=event.parent_name %}started by {{ parent }}{% endblocktranslate %}{% endif %}</dd>
+    {% if event.bundle_id %}<dt>{% translate "Bundle" %}</dt><dd>{{ event.bundle_name }} {{ event.bundle_version }} <span class="mono muted">{{ event.bundle_id }}</span></dd>{% endif %}
+    <dt>SHA-256</dt><dd class="mono">{{ event.file_sha256 }} {% if event.file_sha256 %}{% include "console/_copy.html" with value=event.file_sha256 %}{% endif %}</dd>
+    <dt>CDHash</dt><dd class="mono">{{ event.cdhash|default:"–" }} {% if event.cdhash %}{% include "console/_copy.html" with value=event.cdhash %}{% endif %}</dd>
+    <dt>{% translate "Signing ID" %}</dt><dd class="mono">{{ event.signing_id|default:"–" }} {% if event.signing_id %}{% include "console/_copy.html" with value=event.signing_id %}{% endif %}</dd>
+    <dt>{% translate "Team ID" %}</dt><dd class="mono">{{ event.team_id|default:"–" }} {% if event.team_id %}{% include "console/_copy.html" with value=event.team_id %}{% endif %}</dd>
+    <dt>{% translate "Certificate" %}</dt><dd>{{ event.cert_cn|default:"–" }}{% if event.cert_sha256 %}<br><span class="mono small">{{ event.cert_sha256 }}</span>{% include "console/_copy.html" with value=event.cert_sha256 %}{% endif %}</dd>
+    {% if event.resolved_at %}<dt>{% translate "Resolved" %}</dt><dd>{% blocktranslate with date=event.resolved_at|date:"d.m.Y H:i" by=event.resolved_by|default:"–" %}{{ date }} by {{ by }}{% endblocktranslate %}{% if event.resolution_rule %} · <a href="{% url 'console:rule' event.resolution_rule.pk %}">{% translate "rule" %}</a>{% endif %}</dd>{% endif %}
+  </dl>
+  {% if requests %}<h3>{% translate "Requests" %}</h3><ul class="plain">{% for r in requests %}<li><a href="{% url 'console:request' r.pk %}">{{ r.requester }}</a> · <span class="badge">{{ r.get_status_display }}</span></li>{% endfor %}</ul>{% endif %}
+  {% if perms.santa.add_rule %}
+  <h3>{% translate "Create rule" %}</h3>
+  <form method="post" action="{% url 'console:event_allow' event.pk %}" class="stack compact">
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ request.META.HTTP_HX_CURRENT_URL|default:request.get_full_path }}">
+    {% include "console/_field.html" with field=form.rule_type %}
+    {% include "console/_field.html" with field=form.policy %}
+    {% include "console/_field.html" with field=form.scope %}
+    <div data-show-when="scope=groups">{% include "console/_field.html" with field=form.groups %}</div>
+    {% include "console/_field.html" with field=form.tags %}
+    {% include "console/_field.html" with field=form.new_tags %}
+    <button class="button primary">{% translate "Create rule" %}</button>
+  </form>
+  {% endif %}
+  {% if same_binary %}
+  <h3>{% translate "Same binary elsewhere" %}</h3>
+  <ul class="plain small">{% for other in same_binary %}
+    <li>{{ other.execution_time|date:"d.m.Y H:i" }} · {{ other.machine.hostname|default:other.machine.serial_number }} · {{ other.executing_user|default:"–" }} · {{ other.decision }}</li>
+  {% endfor %}</ul>
+  {% endif %}
+</div>

@@ -1,0 +1,22 @@
+{% extends "console/base.html" %}{% load i18n %}
+{% block title %}{% translate "My requests" %}{% endblock %}
+{% block main_class %}narrow{% endblock %}
+{% block content %}
+<div class="page-head"><h1>{% translate "My requests" %}</h1>
+  <div class="actions"><a class="button primary" href="{% url 'requests:new' %}">{% translate "Request software" %}</a></div></div>
+<p class="muted">{% translate "Ask your IT team to allow a program that Santa blocked on your Mac, a package, or anything else." %}</p>
+{% for r in page %}
+<section class="card request">
+  <div class="request-head"><strong>{{ r.title }}</strong>
+    <span class="badge {% if r.status == 'APPROVED' %}ok{% elif r.status == 'DENIED' %}bad{% elif r.status == 'PENDING' %}info{% endif %}">{{ r.get_status_display }}</span></div>
+  <small class="muted">{{ r.get_kind_display }} · {{ r.created_at|date:"d.m.Y H:i" }}{% if r.machine %} · {{ r.machine.hostname }}{% endif %}</small>
+  {% if r.kind == "PACKAGE" %}{% include "request/_packages.html" with packages=r.packages.all %}{% endif %}
+  {% if r.decision_note %}<p class="prewrap note">{{ r.decision_note }}</p>{% endif %}
+  {% if r.status == "APPROVED" and r.kind != "OTHER" %}<p class="small">{% translate "Your Mac gets the change at its next sync (usually within 10 minutes)." %}</p>{% endif %}
+  {% if r.is_pending %}<form method="post" action="{% url 'requests:cancel' r.pk %}">{% csrf_token %}<button class="link small">{% translate "Cancel request" %}</button></form>{% endif %}
+</section>
+{% empty %}
+<section class="card empty">{% translate "You haven't requested anything yet." %}</section>
+{% endfor %}
+{% include "console/_pagination.html" %}
+{% endblock %}

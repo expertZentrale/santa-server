@@ -1,0 +1,3 @@
+{% for event in events %}{% include "console/events/_row.html" with new=True %}{% endfor %}
+<div id="poller" hx-swap-oob="true" hx-get="{% url 'console:event_rows' %}{% querystring after=max_pk %}"
+     hx-trigger="every 5s [!document.getElementById('live-pause').checked]" hx-target="#event-rows" hx-swap="afterbegin"></div>

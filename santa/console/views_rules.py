@@ -1,0 +1,214 @@
+from django.contrib import messages
+from django.db.models import Q
+from django.shortcuts import get_object_or_404, redirect, render
+from django.utils.translation import gettext, ngettext
+from django.views.decorators.http import require_POST
+
+from ..models import Group, Policy, Rule, RuleType, Tag
+from ..releases import ReleaseError, find_binaries
+from ..services import allow_identifier, binary_identifiers, set_rules_enabled
+from .forms import RuleBulkForm, RuleForm, UploadBinaryForm
+from .utils import (
+    is_htmx,
+    log_addition,
+    log_change,
+    log_deletion,
+    paginate,
+    require_perms,
+    safe_next,
+    sort_by,
+    staff_required,
+)
+
+RULE_COLUMNS = {"identifier": "identifier", "type": "rule_type", "policy": "policy", "created": "created_at",
+                "enabled": "is_enabled"}
+
+
+def filter_rules(request, rules):
+    params = request.GET
+    if params.get("type") in RuleType.values:
+        rules = rules.filter(rule_type=params["type"])
+    if params.get("policy") in Policy.values:
+        rules = rules.filter(policy=params["policy"])
+    scope = params.get("scope", "")
+    if scope == "global":
+        rules = rules.filter(is_global=True)
+    elif scope.isdigit():
+        rules = rules.filter(groups__id=scope)
+    elif scope == "machines":
+        rules = rules.filter(is_global=False, machines__isnull=False)
+    if params.get("tag", "").isdigit():
+        rules = rules.filter(tags__id=params["tag"])
+    if params.get("enabled") == "yes":
+        rules = rules.filter(is_enabled=True)
+    elif params.get("enabled") == "no":
+        rules = rules.filter(is_enabled=False)
+    if params.get("origin") == "manual":
+        rules = rules.filter(release_source__isnull=True)
+    elif params.get("origin") == "package":
+        rules = rules.filter(release_source__isnull=False)
+    if params.get("version", "").isdigit():
+        rules = rules.filter(release_version_id=params["version"])
+    q = params.get("q", "").strip()
+    if q:
+        rules = rules.filter(Q(identifier__icontains=q) | Q(description__icontains=q) | Q(tags__name__iexact=q))
+    return rules.distinct()
+
+
+@staff_required
+def rules(request):
+    require_perms(request, "view_rule")
+    queryset, sort = sort_by(request, filter_rules(request, Rule.objects.all()), RULE_COLUMNS, "-created")
+    page = paginate(request, queryset.select_related("release_source")
+                                     .prefetch_related("groups", "tags", "machines"))
+    return render(request, "console/rules/list.html", {
+        "page": page, "sort": sort, "params": request.GET, "rule_types": RuleType.choices, "policies": Policy.choices,
+        "groups": Group.objects.order_by("name"), "tags": Tag.objects.order_by("name"),
+    })
+
+
+@staff_required
+@require_POST
+def rules_bulk(request):
+    require_perms(request, "view_rule", "change_rule")
+    form = RuleBulkForm(request.POST)
+    if not form.is_valid():
+        for errors in form.errors.values():
+            messages.error(request, " ".join(errors))
+        return redirect(safe_next(request, "console:rules"))
+    action = form.cleaned_data["action"]
+    rule_ids = [rule.pk for rule in form.cleaned_data["rules"]]
+    queryset = Rule.objects.filter(pk__in=rule_ids)
+    rules_list = list(queryset)
+    if action in ("enable", "disable"):
+        count, cancelled = set_rules_enabled(queryset, action == "enable")
+        log_change(request.user, rules_list, "Enabled" if action == "enable" else "Disabled")
+        for release_version in cancelled:
+            messages.warning(request, gettext("%(version)s: automatic approval cancelled.") % {
+                "version": release_version})
+        if action == "enable":
+            message = ngettext("%(count)s rule enabled.", "%(count)s rules enabled.", count)
+        else:
+            message = ngettext("%(count)s rule disabled.", "%(count)s rules disabled.", count)
+        messages.success(request, message % {"count": count})
+    elif action in ("add_tag", "remove_tag"):
+        name = form.cleaned_data["tag"].strip()
+        if action == "add_tag":
+            tag, _ = Tag.objects.get_or_create(name=name[:100])
+            tag.rules.add(*rules_list)
+            messages.success(request, ngettext("Tag “%(tag)s” added to %(count)s rule.",
+                                               "Tag “%(tag)s” added to %(count)s rules.", len(rules_list))
+                             % {"tag": tag, "count": len(rules_list)})
+        else:
+            tag = Tag.objects.filter(name=name).first()
+            if tag:
+                tag.rules.remove(*rules_list)
+            messages.success(request, ngettext("Tag “%(tag)s” removed from %(count)s rule.",
+                                               "Tag “%(tag)s” removed from %(count)s rules.", len(rules_list))
+                             % {"tag": name, "count": len(rules_list)})
+        log_change(request.user, rules_list, f"Tag {name} {'added' if action == 'add_tag' else 'removed'}")
+    elif action == "add_groups":
+        groups = list(form.cleaned_data["groups"])
+        changed = [rule for rule in rules_list if not rule.is_global]
+        for rule in changed:
+            rule.groups.add(*groups)
+        log_change(request.user, changed, f"Groups added: {', '.join(g.name for g in groups)}")
+        message = ngettext("%(groups)s added to %(count)s rule.", "%(groups)s added to %(count)s rules.", len(changed))
+        messages.success(request, message % {"groups": ", ".join(g.name for g in groups), "count": len(changed)})
+    elif action == "delete":
+        require_perms(request, "delete_rule")
+        manual = [rule for rule in rules_list if rule.release_source_id is None]
+        for rule in manual:
+            log_deletion(request.user, rule)
+            rule.delete()
+        messages.success(request, ngettext("%(count)s rule deleted. The Macs remove it at their next sync.",
+                                           "%(count)s rules deleted. The Macs remove them at their next sync.",
+                                           len(manual)) % {"count": len(manual)})
+        if len(manual) < len(rules_list):
+            messages.warning(request, gettext("The rules of package rules are managed by their package rule, "
+                                              "disable them instead."))
+    return redirect(safe_next(request, "console:rules"))
+
+
+@staff_required
+@require_POST
+def rule_toggle(request, pk):
+    require_perms(request, "view_rule", "change_rule")
+    rule = get_object_or_404(Rule, pk=pk)
+    set_rules_enabled(Rule.objects.filter(pk=pk), not rule.is_enabled)
+    rule.refresh_from_db()
+    log_change(request.user, rule, "Enabled" if rule.is_enabled else "Disabled")
+    if is_htmx(request):
+        return render(request, "console/rules/_row.html", {"rule": rule})
+    return redirect(safe_next(request, "console:rules"))
+
+
+@staff_required
+def rule_form(request, pk=None):
+    rule = get_object_or_404(Rule.objects.select_related("release_source", "release_version"), pk=pk) if pk else None
+    require_perms(request, "view_rule", "change_rule" if rule else "add_rule")
+    if rule and rule.release_source_id:
+        # the package rule owns them, only enable / disable here
+        return render(request, "console/rules/package_rule.html", {"rule": rule})
+    form = RuleForm(request.POST or None, instance=rule)
+    if request.method == "POST" and form.is_valid():
+        created = rule is None
+        rule = form.save(commit=False)
+        if created:
+            rule.created_by = request.user
+        rule.save()
+        form.save_m2m()
+        rule.tags.add(*form.all_tags())
+        if created:
+            log_addition(request.user, rule)
+        else:
+            log_change(request.user, rule, f"Changed in the console: {', '.join(form.changed_data)}")
+        messages.success(request, gettext("Rule saved: %(rule)s. The Macs get it at their next sync.")
+                         % {"rule": rule})
+        return redirect("console:rules")
+    return render(request, "console/rules/form.html", {"form": form, "rule": rule})
+
+
+@staff_required
+def rule_upload(request):
+    require_perms(request, "view_rule", "add_rule", "change_rule")
+    form = UploadBinaryForm(request.POST or None, request.FILES or None)
+    found = None
+    if request.method == "POST" and form.is_valid():
+        upload = form.cleaned_data["file"]
+        try:
+            found = list(find_binaries(upload, upload.name, form.cleaned_data["binary_pattern"]))
+        except ReleaseError as e:
+            form.add_error("file", str(e))
+        else:
+            if not found:
+                form.add_error("file", gettext("No Mach-O executable found in this file."))
+            elif _rules_from_upload(request, form, found):
+                return redirect("console:rules")
+    return render(request, "console/rules/upload.html", {"form": form, "found": found})
+
+
+def _rules_from_upload(request, form, found):
+    data = form.cleaned_data
+    identifiers = {}
+    for path_in_file, info in found:
+        for identifier in binary_identifiers(data["rule_type"], info):
+            identifiers.setdefault(identifier, path_in_file)
+    if not identifiers:
+        form.add_error("rule_type", gettext("The file has no %(rule_type)s (unsigned or ad-hoc signed?). "
+                                            "Use a binary rule instead.") % {"rule_type": data["rule_type"]})
+        return 0
+    created_count = 0
+    for identifier, path_in_file in identifiers.items():
+        rule, created = allow_identifier(
+            data["rule_type"], identifier, data["policy"], data["is_global"], data["groups"], request.user,
+            data["description"] or f"Upload {data['file'].name}: {path_in_file}", form.all_tags(),
+        )
+        if created:
+            created_count += 1
+            log_addition(request.user, rule, "Created from an uploaded file")
+        else:
+            log_change(request.user, rule, "Scope extended from an uploaded file")
+    messages.success(request, ngettext("%(count)s rule saved (%(new)s new).", "%(count)s rules saved (%(new)s new).",
+                                       len(identifiers)) % {"count": len(identifiers), "new": created_count})
+    return len(identifiers)

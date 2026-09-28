@@ -1,0 +1,38 @@
+{% extends "admin/base_site.html" %}
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Home</a> &rsaquo;
+  <a href="{% url 'admin:santa_rule_changelist' %}">Rules</a> &rsaquo; {{ title }}
+</div>
+{% endblock %}
+{% block content %}
+<form method="post" enctype="multipart/form-data">
+  {% csrf_token %}
+  <fieldset class="module aligned">
+    {% for field in form %}
+      <div class="form-row">
+        {{ field.errors }}
+        <div class="flex-container">{{ field.label_tag }} {{ field }}</div>
+        {% if field.help_text %}<div class="help">{{ field.help_text }}</div>{% endif %}
+      </div>
+    {% endfor %}
+    {{ form.non_field_errors }}
+  </fieldset>
+  <div class="submit-row"><input type="submit" class="default" value="Upload and create the rules"></div>
+</form>
+{% if found %}
+<h2>Executables found in the file</h2>
+<table>
+  <thead><tr><th>Path</th><th>SHA-256</th><th>Team ID</th><th>Signing ID</th><th>CDHashes</th><th>Certificate</th></tr></thead>
+  <tbody>
+  {% for path, info in found %}
+    <tr><td>{{ path }}</td><td><code>{{ info.sha256 }}</code></td><td>{{ info.team_id|default:"–" }}</td>
+      <td>{{ info.signing_id|default:"–" }}</td><td>{% for cdhash in info.cdhashes %}<code>{{ cdhash }}</code><br>{% empty %}–{% endfor %}</td>
+      <td>{{ info.cert_cn|default:"–" }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+<p>To enter the identifier by hand (e.g. from <code>santactl fileinfo</code>), use
+   <a href="{% url 'admin:santa_rule_add' %}">Add rule</a>.</p>
+{% endblock %}

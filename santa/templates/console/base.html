@@ -1,0 +1,69 @@
+{% load static console i18n %}{% get_current_language as LANGUAGE_CODE %}<!doctype html>
+<html lang="{{ LANGUAGE_CODE }}" data-theme="{{ ui_theme }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Santa{% endblock %} · Santa Server</title>
+  <link rel="stylesheet" href="{% static 'santa/console.css' %}">
+  <script src="{% static 'santa/htmx.min.js' %}" defer></script>
+  <script src="{% static 'santa/console.js' %}" defer></script>
+</head>
+<body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+<header class="topbar" data-topbar>
+  {% if user.is_authenticated %}
+  <button type="button" class="burger" data-burger aria-expanded="false" aria-controls="main-nav" aria-label="{% translate 'Menu' %}">{% include "console/icons/menu.svg" %}</button>
+  {% endif %}
+  <a class="brand" href="{% url 'home' %}">Santa Server</a>
+  {% if user.is_authenticated %}
+  <nav id="main-nav" aria-label="{% translate 'Main' %}">
+    {% if user.is_staff %}
+      <a href="{% url 'console:events' %}" {% if request.path|slice:":16" == "/console/events/" %}class="active" aria-current="page"{% endif %}>{% translate "Events" %}</a>
+      <a href="{% url 'console:rules' %}" {% if request.path|slice:":15" == "/console/rules/" %}class="active" aria-current="page"{% endif %}>{% translate "Execution rules" %}</a>
+      <a href="{% url 'console:sources' %}" {% if request.path|slice:":18" == "/console/packages/" %}class="active" aria-current="page"{% endif %}>{% translate "Package rules" %}</a>
+      {% pending_requests as pending %}
+      <a href="{% url 'console:requests' %}" {% if request.path|slice:":18" == "/console/requests/" %}class="active" aria-current="page"{% endif %}>{% translate "Requests" %}{% if pending %} <span class="count">{{ pending }}</span>{% endif %}</a>
+      <a href="{% url 'console:machines' %}" {% if request.path|slice:":13" == "/console/macs" %}class="active" aria-current="page"{% endif %}>{% translate "Macs" %}</a>
+      <a href="{% url 'console:groups' %}" {% if request.path|slice:":15" == "/console/groups" %}class="active" aria-current="page"{% endif %}>{% translate "Groups" %}</a>
+    {% endif %}
+    <a href="{% url 'requests:list' %}" {% if request.path|slice:":9" == "/request/" %}class="active" aria-current="page"{% endif %}>{% translate "My requests" %}</a>
+  </nav>
+  <details class="user-menu" data-user-menu>
+    <summary aria-label="{% translate 'Account' %}: {{ user.get_full_name|default:user.get_username }}">
+      <img class="avatar" src="{{ avatar_url }}" alt="" width="32" height="32" referrerpolicy="no-referrer">
+    </summary>
+    <div class="menu" role="menu">
+      <div class="menu-head"><strong>{{ user.get_full_name|default:user.get_username }}</strong><small class="muted">{{ user.get_username }}</small></div>
+      <a href="{% url 'profile' %}" role="menuitem">{% translate "Profile and preferences" %}</a>
+      {% if user.is_staff %}<a href="{% url 'admin:index' %}" role="menuitem">{% translate "Django admin" %}</a>{% endif %}
+      <form method="post" action="{% url 'set_preference' %}" class="menu-row">
+        {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <span class="muted small">{% translate "Theme" %}</span>
+        <span class="segmented" role="group" aria-label="{% translate 'Theme' %}">
+          <button name="theme" value="auto" title="{% translate 'System' %}" aria-pressed="{% if ui_theme == 'auto' %}true{% else %}false{% endif %}">{% include "console/icons/monitor.svg" %}<span class="sr-only">{% translate "System" %}</span></button>
+          <button name="theme" value="light" title="{% translate 'Light' %}" aria-pressed="{% if ui_theme == 'light' %}true{% else %}false{% endif %}">{% include "console/icons/sun.svg" %}<span class="sr-only">{% translate "Light" %}</span></button>
+          <button name="theme" value="dark" title="{% translate 'Dark' %}" aria-pressed="{% if ui_theme == 'dark' %}true{% else %}false{% endif %}">{% include "console/icons/moon.svg" %}<span class="sr-only">{% translate "Dark" %}</span></button>
+        </span>
+      </form>
+      <form method="post" action="{% url 'set_preference' %}" class="menu-row">
+        {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <span class="muted small">{% translate "Language" %}</span>
+        <span class="segmented" role="group" aria-label="{% translate 'Language' %}">
+          {% get_available_languages as languages %}
+          {% for code, name in languages %}<button name="language" value="{{ code }}" aria-pressed="{% if code == LANGUAGE_CODE %}true{% else %}false{% endif %}" title="{{ name }}">{{ code|upper }}</button>{% endfor %}
+        </span>
+      </form>
+      <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="menu-item" role="menuitem">{% translate "Sign out" %}</button></form>
+    </div>
+  </details>
+  {% endif %}
+</header>
+<main class="{% block main_class %}{% endblock %}">
+  {% if messages %}
+  <ul class="messages">{% for message in messages %}<li class="{{ message.tags }}">{{ message }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% block content %}{% endblock %}
+</main>
+<aside id="drawer" class="drawer" aria-live="polite"></aside>
+{% if user.is_staff %}{% tag_names as names %}{{ names|json_script:"tag-names" }}{% endif %}
+</body>
+</html>

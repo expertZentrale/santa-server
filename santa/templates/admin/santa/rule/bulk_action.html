@@ -1,0 +1,27 @@
+{% extends "admin/base_site.html" %}
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Home</a> &rsaquo;
+  <a href="{% url 'admin:santa_rule_changelist' %}">Rules</a> &rsaquo; {{ title }}
+</div>
+{% endblock %}
+{% block content %}
+<p>{{ rules|length }} rule(s) selected.</p>
+<form method="post">
+  {% csrf_token %}
+  {% for rule in rules %}<input type="hidden" name="{{ action_checkbox_name }}" value="{{ rule.pk }}">{% endfor %}
+  <input type="hidden" name="action" value="{{ action }}">
+  <input type="hidden" name="apply" value="1">
+  <fieldset class="module aligned">
+    {% for field in form %}
+      <div class="form-row">
+        {{ field.errors }}
+        <div class="flex-container">{{ field.label_tag }} {{ field }}</div>
+        {% if field.help_text %}<div class="help">{{ field.help_text }}</div>{% endif %}
+      </div>
+    {% endfor %}
+    {{ form.non_field_errors }}
+  </fieldset>
+  <div class="submit-row"><input type="submit" class="default" value="{{ title }}"></div>
+</form>
+{% endblock %}

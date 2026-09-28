@@ -1,0 +1,27 @@
+{% extends "console/base.html" %}{% load console i18n %}
+{% block title %}{% translate "Requests" %}{% endblock %}
+{% block content %}
+<div class="page-head"><h1>{% translate "Access requests" %}</h1></div>
+<div class="tabs" role="tablist">
+  {% for value, label in statuses %}<a href="?status={{ value }}" {% if status == value %}class="active"{% endif %}>{{ label }}</a>{% endfor %}
+  <a href="?status=all" {% if status == "all" %}class="active"{% endif %}>{% translate "All" %}</a>
+</div>
+<table class="table">
+  <thead><tr>{% sort_th _("Request") "request" %}{% sort_th _("Kind") "kind" %}{% sort_th _("Requester") "requester" %}<th>{% translate "Mac" %}</th>{% sort_th _("Created") "created" %}{% sort_th _("Status") "status" %}</tr></thead>
+  <tbody>
+  {% for r in page %}
+    <tr>
+      <td><a class="strong" href="{% url 'console:request' r.pk %}">{{ r.title }}</a><small class="muted">{{ r.justification|truncatechars:90 }}</small></td>
+      <td>{{ r.get_kind_display }}</td>
+      <td>{{ r.requester.get_full_name|default:r.requester.get_username }}</td>
+      <td>{{ r.machine.hostname|default:"–" }}</td>
+      <td>{{ r.created_at|date:"d.m.Y H:i" }}</td>
+      <td><span class="badge {% if r.status == 'APPROVED' %}ok{% elif r.status == 'DENIED' %}bad{% elif r.status == 'PENDING' %}info{% endif %}">{{ r.get_status_display }}</span></td>
+    </tr>
+  {% empty %}
+    <tr class="empty"><td colspan="6">{% translate "No requests." %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% include "console/_pagination.html" %}
+{% endblock %}

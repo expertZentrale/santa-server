@@ -1,0 +1,7 @@
+{% extends "admin/change_list.html" %}
+{% block object-tools-items %}
+  {% if has_add_permission %}
+    <li><a href="{% url 'admin:santa_rule_upload' %}" class="addlink">Upload binary</a></li>
+  {% endif %}
+  {{ block.super }}
+{% endblock %}

@@ -1,0 +1,26 @@
+{
+	"name": "Santa Server",
+	"dockerComposeFile": "docker-compose.yml",
+	"service": "web",
+	"workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+	"containerEnv": {
+		"DJANGO_SETTINGS_MODULE": "santa_server.settings_dev",
+		"DB_HOST": "mssql",
+		"DB_PORT": "1433",
+		"DB_NAME": "santa",
+		"DB_USER": "sa",
+		"DB_PASSWORD": "SantaDev!Passw0rd",
+		"REDIS_URL": "redis://redis:6379/1"
+	},
+	"forwardPorts": [8000],
+	"postCreateCommand": ".devcontainer/setup.sh",
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"ms-python.python",
+				"charliermarsh.ruff",
+				"batisteo.vscode-django"
+			]
+		}
+	}
+}

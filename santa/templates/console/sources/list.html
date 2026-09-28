@@ -1,0 +1,40 @@
+{% extends "console/base.html" %}{% load console i18n %}
+{% block title %}{% translate "Package rules" %}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{% translate "Package rules" %}</h1>
+  <div class="actions">{% if perms.santa.add_releasesource %}<a class="button primary" href="{% url 'console:source_add' %}">{% translate "New package rule" %}</a>{% endif %}</div>
+</div>
+<p class="muted">{% translate "Watch packages in a catalog. Every new version is downloaded, its executables become execution rules." %}</p>
+<form class="filters" method="get">
+  {% if params.sort %}<input type="hidden" name="sort" value="{{ params.sort }}">{% endif %}
+  <input type="search" name="q" value="{{ params.q }}" placeholder="{% translate 'Name or package…' %}" aria-label="{% translate 'Search' %}">
+  <select name="kind" aria-label="{% translate 'Catalog' %}"><option value="">{% translate "All catalogs" %}</option>{% for value, label in kinds %}<option value="{{ value }}" {% if params.kind == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+  <select name="status" aria-label="{% translate 'Status' %}"><option value="">{% translate "Any status" %}</option><option value="error" {% if params.status == "error" %}selected{% endif %}>{% translate "With errors" %}</option><option value="disabled" {% if params.status == "disabled" %}selected{% endif %}>{% translate "Disabled" %}</option></select>
+  <button class="button">{% translate "Filter" %}</button>
+</form>
+<table class="table">
+  <thead><tr>{% sort_th _("Package rule") "name" %}{% sort_th _("Catalog") "kind" %}<th>{% translate "Latest versions" %}</th><th>{% translate "Rules" %}</th><th>{% translate "Scope" %}</th>{% sort_th _("Status") "checked" %}<th></th></tr></thead>
+  <tbody>
+  {% for source in page %}
+    <tr{% if not source.is_enabled %} class="disabled"{% endif %}>
+      <td><a class="strong" href="{% url 'console:source' source.pk %}">{{ source.name }}</a>
+        <small class="muted">{% blocktranslate count count=source.identifiers|length %}{{ count }} package{% plural %}{{ count }} packages{% endblocktranslate %}</small></td>
+      <td>{{ source.get_kind_display }}</td>
+      <td class="small">{% for identifier, version in source.latest|slice:":4" %}
+        <div><span class="mono">{{ identifier|truncatechars:32 }}</span> {% if version %}<strong>{{ version.version|truncatechars:20 }}</strong>
+          {% if version.auto_enable_pending %}<span class="badge info">{% blocktranslate with date=version.auto_enable_at|date:"d.m." %}on {{ date }}{% endblocktranslate %}</span>{% endif %}{% else %}<span class="muted">{% translate "not checked" %}</span>{% endif %}</div>
+        {% endfor %}{% if source.latest|length > 4 %}<span class="muted">{% blocktranslate with count=source.latest|length|add:"-4" %}+{{ count }} more{% endblocktranslate %}</span>{% endif %}</td>
+      <td class="small">{{ source.get_rule_type_display }}<br><span class="badge {{ source.policy|policy_class }}">{{ source.get_policy_display }}</span></td>
+      <td>{% if source.is_global %}<span class="chip small">{% translate "All Macs" %}</span>{% else %}{% for group in source.groups.all %}<span class="chip small">{{ group.name }}</span>{% empty %}<span class="badge bad">{% translate "no scope" %}</span>{% endfor %}{% endif %}</td>
+      <td>{% if not source.last_checked_at %}<span class="muted">{% translate "never checked" %}</span>{% elif source.last_error %}<span class="badge bad" title="{{ source.last_error }}">{% translate "error" %}</span>{% else %}<span class="badge ok">ok</span>{% endif %}
+        {% if source.last_checked_at %}<small class="muted">{% blocktranslate with since=source.last_checked_at|timesince %}{{ since }} ago{% endblocktranslate %}</small>{% endif %}</td>
+      <td>{% if perms.santa.change_releasesource %}<form method="post" action="{% url 'console:source_check' source.pk %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="button small">{% translate "Check now" %}</button></form>{% endif %}</td>
+    </tr>
+  {% empty %}
+    <tr class="empty"><td colspan="7">{% translate "No package rules yet." %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% include "console/_pagination.html" %}
+{% endblock %}

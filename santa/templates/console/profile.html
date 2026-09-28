@@ -1,0 +1,25 @@
+{% extends "console/base.html" %}{% load i18n %}
+{% block title %}{% translate "Profile" %}{% endblock %}
+{% block main_class %}narrow{% endblock %}
+{% block content %}
+<h1>{% translate "Profile" %}</h1>
+<section class="card profile-card">
+  <img class="avatar large" src="{{ avatar_large }}" alt="" width="96" height="96" referrerpolicy="no-referrer">
+  <div>
+    <h2>{{ user.get_full_name|default:user.get_username }}</h2>
+    <dl class="facts">
+      <dt>{% translate "User name" %}</dt><dd>{{ user.get_username }}</dd>
+      <dt>{% translate "E-mail" %}</dt><dd>{{ user.email|default:"–" }}</dd>
+      <dt>{% translate "Role" %}</dt><dd>{% if user.is_staff %}{% translate "Administrator" %}{% else %}{% translate "User" %}{% endif %}{% for group in groups %} · {{ group.name }}{% endfor %}</dd>
+    </dl>
+    <small class="help">{% blocktranslate %}The picture comes from <a href="https://gravatar.com" rel="noopener noreferrer" target="_blank">Gravatar</a>, for your e-mail address. Change it there.{% endblocktranslate %}</small>
+  </div>
+</section>
+<form method="post" class="card stack">
+  {% csrf_token %}
+  <h2>{% translate "Preferences" %}</h2>
+  {% include "console/_field.html" with field=form.theme %}
+  {% include "console/_field.html" with field=form.language %}
+  <div class="actions"><button class="button primary">{% translate "Save" %}</button></div>
+</form>
+{% endblock %}

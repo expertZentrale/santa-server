@@ -1,0 +1,11 @@
+santa_server/settings_local.py
+.devcontainer/.env
+
+### Django ###
+*.log
+*.pot
+*.pyc
+__pycache__/
+staticfiles/
+.ruff_cache/
+.venv/

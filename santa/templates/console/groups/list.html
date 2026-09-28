@@ -1,0 +1,31 @@
+{% extends "console/base.html" %}{% load console i18n %}
+{% block title %}{% translate "Groups" %}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{% translate "Groups" %}</h1>
+  <div class="actions">
+    <a class="button" href="{% url 'console:base_profile' %}">{% translate "Base profile (.mobileconfig)" %}</a>
+    {% if perms.santa.view_rule %}<a class="button" href="{% url 'admin:santa_config_export' %}">{% translate "Export configuration" %}</a>{% endif %}
+    {% if perms.santa.add_group %}<a class="button primary" href="{% url 'console:group_add' %}">{% translate "New group" %}</a>{% endif %}
+  </div>
+</div>
+<p class="muted">{% translate "A group is a set of Macs with one Santa configuration and one sync URL. Every Mac gets the base profile (same for all) and the profile of its group from your MDM." %}</p>
+<table class="table">
+  <thead><tr>{% sort_th _("Group") "name" %}<th>{% translate "Mode" %}</th>{% sort_th _("Macs") "macs" "num" %}{% sort_th _("Rules") "rules" "num" %}{% sort_th _("Last sync") "sync" %}<th></th></tr></thead>
+  <tbody>
+  {% for group in groups %}
+    <tr>
+      <td><a class="strong" href="{% url 'console:group' group.pk %}">{{ group.name }}</a>
+        {% if group.description %}<small class="muted">{{ group.description|truncatechars:90 }}</small>{% endif %}</td>
+      <td><span class="badge {% if group.client_mode == 'LOCKDOWN' %}bad{% else %}info{% endif %}">{{ group.get_client_mode_display }}</span></td>
+      <td class="num"><a href="{% url 'console:machines' %}?group={{ group.pk }}">{{ group.machine_count }}</a></td>
+      <td class="num"><a href="{% url 'console:rules' %}?scope={{ group.pk }}">{{ group.rule_count }}</a></td>
+      <td>{% if group.last_sync %}{% blocktranslate with since=group.last_sync|timesince %}{{ since }} ago{% endblocktranslate %}{% else %}–{% endif %}</td>
+      <td><a class="button small" href="{% url 'console:group_profile' group.pk %}">{% translate "Profile" %}</a></td>
+    </tr>
+  {% empty %}
+    <tr class="empty"><td colspan="6">{% translate "No groups yet." %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

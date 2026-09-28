@@ -1,0 +1,39 @@
+# Development only: the app container with the tools, SQL Server and Redis. In production they run separately.
+# The project name keeps the containers and the SQL Server volume stable across rebuilds.
+name: santa-server
+
+services:
+  web:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    volumes:
+      - ..:/workspaces/santa-server:cached
+    command: sleep infinity
+    # personal settings such as GITHUB_TOKEN, not in git (see .devcontainer/.env.example)
+    env_file:
+      - path: .env
+        required: false
+    depends_on:
+      - mssql
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    # SQL Server only exists for amd64, on Apple silicon it runs with Rosetta (Docker Desktop setting)
+    platform: linux/amd64
+    environment:
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=SantaDev!Passw0rd
+      - MSSQL_PID=Developer
+    # not published on the host (no conflict with another local SQL Server), the app reaches it as mssql:1433
+    volumes:
+      - mssql_data:/var/opt/mssql
+    restart: unless-stopped
+
+volumes:
+  mssql_data:

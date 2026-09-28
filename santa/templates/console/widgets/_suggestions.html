@@ -1,0 +1,16 @@
+{% load i18n %}{% if error %}
+  <div class="suggestion-note error">{{ error }}</div>
+{% elif not searchable %}
+  {% if query %}<div class="suggestion-note">{% blocktranslate %}No catalog search for this kind, press Enter to add “{{ query }}”.{% endblocktranslate %}</div>{% endif %}
+{% elif suggestions %}
+  {% for s in suggestions %}
+  <button type="button" class="suggestion" role="option" data-identifier="{{ s.identifier }}" data-name="{{ s.name }}" data-icon="{{ s.icon_url }}">
+    {% if s.icon_url %}<img src="{{ s.icon_url }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% else %}<span class="icon-space" aria-hidden="true"></span>{% endif %}
+    <span><span class="suggestion-title"><strong>{{ s.name|default:s.identifier }}</strong>{% if s.verified %}<span class="badge ok" title="{% translate 'Verified publisher' %}">✓ {% translate "verified" %}</span>{% endif %}</span>
+      <code>{{ s.identifier }}</code>
+      {% if s.description %}<small>{{ s.description|truncatechars:110 }}</small>{% endif %}</span>
+  </button>
+  {% endfor %}
+{% elif query|length >= 2 %}
+  <div class="suggestion-note">{% blocktranslate %}Nothing found. Press Enter to add “{{ query }}” anyway.{% endblocktranslate %}</div>
+{% endif %}

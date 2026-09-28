@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    # the name of the required status check
+    name: CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # the same containers as the devcontainer: SQL Server 2022, Redis and the development image
+      COMPOSE_FILE: .devcontainer/docker-compose.yml
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start SQL Server and Redis
+        run: docker compose up -d mssql redis
+
+      - name: Build the development image
+        run: docker compose build web
+
+      - name: Lint, migrations and tests (against SQL Server)
+        run: |
+          docker compose run --rm -T -w /workspaces/santa-server \
+            -e DJANGO_SETTINGS_MODULE=santa_server.settings_dev \
+            -e DB_HOST=mssql -e DB_PORT=1433 -e DB_NAME=santa -e DB_USER=sa -e 'DB_PASSWORD=SantaDev!Passw0rd' \
+            -e REDIS_URL=redis://redis:6379/1 \
+            web sh -c '
+              set -e
+              ruff check .
+              python scripts/create_database.py
+              python manage.py makemigrations --check --dry-run
+              python manage.py test
+            '
+
+      - name: Logs of SQL Server
+        if: failure()
+        run: docker compose logs mssql | tail -50

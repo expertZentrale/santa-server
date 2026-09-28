@@ -1,0 +1,43 @@
+{% extends "admin/base_site.html" %}
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Home</a> &rsaquo;
+  <a href="{% url 'admin:santa_group_changelist' %}">Groups</a> &rsaquo; {{ title }}
+</div>
+{% endblock %}
+{% block content %}
+<p>Imports groups, release sources and manual rules from an export, e.g. from the dev server.
+   Everything is matched by name (groups, release sources) or by rule type + identifier + policy (rules).
+   The sync tokens are not part of the file: existing groups keep their configuration profile, new groups get a new
+   token. The rules of the release sources are built by checking the sources.</p>
+<form method="post" enctype="multipart/form-data">
+  {% csrf_token %}
+  <fieldset class="module aligned">
+    {% for field in form %}
+      <div class="form-row">
+        {{ field.errors }}
+        <div class="flex-container">{{ field.label_tag }} {{ field }}</div>
+        {% if field.help_text %}<div class="help">{{ field.help_text }}</div>{% endif %}
+      </div>
+    {% endfor %}
+  </fieldset>
+  <div class="submit-row"><input type="submit" class="default" value="Import"></div>
+</form>
+{% if errors %}
+  <h2>Nothing imported, the file has errors</h2>
+  <ul class="errorlist">{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul>
+{% endif %}
+{% if report %}
+  <h2>{% if form.cleaned_data.dry_run %}Dry run: nothing saved{% else %}Imported{% endif %} – {{ report.changes|length }} change(s)</h2>
+  {% if report.warnings %}
+    <ul class="messagelist">{% for warning in report.warnings %}<li class="warning">{{ warning }}</li>{% endfor %}</ul>
+  {% endif %}
+  <table>
+    <thead><tr><th>Action</th><th>Type</th><th>Object</th></tr></thead>
+    <tbody>
+    {% for action, model, obj in report.changes %}<tr><td>{{ action }}</td><td>{{ model }}</td><td>{{ obj }}</td></tr>
+    {% empty %}<tr><td colspan="3">Already identical.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+{% endif %}
+{% endblock %}

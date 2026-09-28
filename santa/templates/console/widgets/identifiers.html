@@ -1,0 +1,20 @@
+{% load console i18n %}<div class="identifiers" data-identifiers-widget>
+  <ul class="chips" data-chips>
+    {% for identifier in widget.value.splitlines %}{% if identifier.strip %}{% with item=widget.icons|get_item:identifier %}
+    <li class="chip" data-identifier="{{ identifier }}">
+      {% if item.icon_url %}<img src="{{ item.icon_url }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% endif %}
+      <span class="chip-text"><strong>{{ item.name|default:identifier }}</strong>{% if item.name and item.name != identifier %}<code>{{ identifier }}</code>{% endif %}</span>
+      <button type="button" class="chip-remove" aria-label="{% translate 'Remove' %} {{ identifier }}">×</button>
+    </li>
+    {% endwith %}{% endif %}{% endfor %}
+  </ul>
+  <div class="combobox">
+    <input type="search" data-search autocomplete="off" aria-label="{% translate 'Add a package' %}"
+           placeholder="{% translate 'Search the catalog, or type an identifier and press Enter' %}"
+           data-placeholder-search="{% translate 'Search the catalog, or type an identifier and press Enter' %}"
+           data-placeholder-plain="{% translate 'Type an identifier and press Enter' %}"
+           data-remove-label="{% translate 'Remove' %}">
+    <div class="suggestions" data-suggestions role="listbox"></div>
+  </div>
+  <textarea name="{{ widget.name }}" hidden{% include "django/forms/widgets/attrs.html" %}>{% if widget.value %}{{ widget.value }}{% endif %}</textarea>
+</div>

@@ -1,0 +1,16 @@
+{% extends "console/base.html" %}{% load console i18n %}
+{% block title %}{% translate "Rule" %}{% endblock %}
+{% block main_class %}narrow{% endblock %}
+{% block content %}
+<p><a href="{% url 'console:rules' %}">‹ {% translate "Execution rules" %}</a></p>
+<h1>{% blocktranslate with type=rule.get_rule_type_display %}{{ type }} rule{% endblocktranslate %}</h1>
+<section class="card">
+  <p>{% url 'console:source' rule.release_source_id as source_url %}{% blocktranslate with name=rule.release_source.name version=rule.release_version.version %}Created by the package rule <a href="{{ source_url }}">{{ name }}</a> for version {{ version }}. Change the package rule to change it.{% endblocktranslate %}</p>
+  <dl class="facts">
+    <dt>{% translate "Identifier" %}</dt><dd class="mono">{{ rule.identifier }} {% include "console/_copy.html" with value=rule.identifier %}</dd>
+    <dt>{% translate "Policy" %}</dt><dd><span class="badge {{ rule.policy|policy_class }}">{{ rule.get_policy_display }}</span></dd>
+    <dt>{% translate "Description" %}</dt><dd>{{ rule.description }}</dd>
+    <dt>{% translate "Enabled" %}</dt><dd>{% if rule.is_enabled %}{% translate "yes" %}{% else %}{% translate "no – waiting for approval" %}{% endif %}</dd>
+  </dl>
+</section>
+{% endblock %}
