@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from django.contrib.admin.models import LogEntry
+from django.contrib.auth.models import Permission, User
 from django.urls import reverse
 from django.utils import timezone
 
@@ -48,6 +49,26 @@ class ConsoleGroupsTestCase(ConsoleBase):
         empty = Group.objects.create(name="Empty")
         self.client.post(reverse("console:group_delete", args=(empty.pk,)))
         self.assertFalse(Group.objects.filter(pk=empty.pk).exists())
+
+    def test_read_only_staff_cannot_see_the_sync_token(self):
+        viewer = User.objects.create_user("viewer", is_staff=True)
+        viewer.user_permissions.set(Permission.objects.filter(codename="view_group"))
+        self.client.force_login(viewer)
+        response = self.client.get(reverse("console:group", args=(self.dev.pk,)))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, self.dev.sync_token)
+        self.assertNotContains(response, reverse("console:group_profile", args=(self.dev.pk,)))
+        self.assertNotContains(self.client.get(reverse("console:groups")), self.dev.sync_token)
+        self.assertEqual(self.client.get(reverse("console:group_profile", args=(self.dev.pk,))).status_code, 403)
+        # the base profile has no secret
+        self.assertEqual(self.client.get(reverse("console:base_profile")).status_code, 200)
+        # the admin: no SyncBaseURL, no profile download
+        response = self.client.get(reverse("admin:santa_group_change", args=(self.dev.pk,)))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, self.dev.sync_token)
+        self.assertNotContains(self.client.get(reverse("admin:santa_group_changelist")), self.dev.sync_token)
+        self.assertEqual(self.client.get(reverse("admin:santa_group_mobileconfig", args=(self.dev.pk,))).status_code,
+                         403)
 
     def test_non_staff_cannot_see_the_sync_url(self):
         self.client.force_login(self.user)

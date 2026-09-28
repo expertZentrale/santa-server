@@ -12,6 +12,7 @@ from django.views.decorators.http import require_POST
 from ..models import AccessRequest, ClientMode, Event, Group, Machine, Rule, generate_sync_token
 from ..profiles import base_profile, group_profile
 from ..rules import effective_rules
+from ..services import can_see_sync_token
 from .forms import GroupForm
 from .utils import log_addition, log_change, log_deletion, paginate, require_perms, sort_by, staff_required
 
@@ -64,7 +65,8 @@ def group_form(request, pk=None):
                     message += gettext("The Macs get the changes at their next sync.")
                 messages.success(request, message)
             return redirect("console:group", pk=group.pk)
-    context = {"form": form, "group": group, "can_change": can_change}
+    context = {"form": form, "group": group, "can_change": can_change,
+               "can_see_sync_token": can_see_sync_token(request.user)}
     if group:
         machines = group.machines.all()
         context.update({
@@ -110,7 +112,8 @@ def group_delete(request, pk):
 
 @staff_required
 def group_profile_download(request, pk):
-    require_perms(request, "view_group")
+    # the profile contains the sync token
+    require_perms(request, "view_group", "change_group")
     group = get_object_or_404(Group, pk=pk)
     return mobileconfig_response(group_profile(group), f"santa-{slugify(group.name) or group.pk}.mobileconfig")
 

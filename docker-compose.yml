@@ -11,7 +11,6 @@ x-app-environment: &app-environment
   SECRET_KEY: change-me-this-is-only-an-example
   DEBUG: "false"
   SECURE_COOKIES: "false"
-  ALLOWED_HOSTS: "*"
   DB_HOST: mssql
   DB_USER: sa
   DB_PASSWORD: Example!Passw0rd

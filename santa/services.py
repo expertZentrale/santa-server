@@ -67,6 +67,12 @@ def binary_identifiers(rule_type, info):
     }[rule_type] if identifier]
 
 
+def can_see_sync_token(user):
+    """The sync token (in the SyncBaseURL and the group profile) is the credential of the sync API: only for the
+    users who may change the groups, never for read-only viewers."""
+    return user.has_perm("santa.change_group")
+
+
 def machines_for_user(user):
     """The Macs of a signed-in user.
 

@@ -31,7 +31,7 @@ from .models import (
 )
 from .profiles import base_profile, group_profile
 from .releases import ReleaseError, find_binaries, sync_release_source
-from .services import allow_identifier, set_rules_enabled
+from .services import allow_identifier, can_see_sync_token, set_rules_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +95,20 @@ class GroupAdmin(admin.ModelAdmin):
     def rule_count(self, obj):
         return obj._rule_count
 
+    # the sync token (in the URL and the profile) is the credential of the sync API: not for read-only viewers
+    SECRET_FIELDS = ("sync_url", "mdm_profile")
+
+    def get_list_display(self, request):
+        fields = super().get_list_display(request)
+        return fields if can_see_sync_token(request.user) else [f for f in fields if f not in self.SECRET_FIELDS]
+
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = super().get_fieldsets(request, obj)
+        if can_see_sync_token(request.user):
+            return fieldsets
+        return [(name, {**options, "fields": [f for f in options["fields"] if f not in self.SECRET_FIELDS]})
+                for name, options in fieldsets]
+
     @admin.display(description="SyncBaseURL (configuration profile)")
     def sync_url(self, obj):
         if not obj.pk:
@@ -156,7 +170,7 @@ class GroupAdmin(admin.ModelAdmin):
 
     def mobileconfig_view(self, request, pk):
         group = self.get_object(request, str(pk))
-        if group is None or not self.has_view_permission(request, group):
+        if group is None or not self.has_change_permission(request, group):
             raise PermissionDenied
         return _mobileconfig_response(group_profile(group), f"santa-{slugify(group.name) or group.pk}.mobileconfig")
 

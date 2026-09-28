@@ -4,6 +4,7 @@ To set more (e.g. from a file rendered by a secret store), create santa_server/s
 `from .settings import *` and your overrides, and set DJANGO_SETTINGS_MODULE=santa_server.settings_local.
 """
 import os
+from urllib.parse import urlsplit
 
 from django.core.exceptions import ImproperlyConfigured
 
@@ -31,8 +32,14 @@ def env_list(name, default=()):
 
 SECRET_KEY = env("SECRET_KEY", required=True)
 DEBUG = env_bool("DEBUG")
-ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", ["*"])
-CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS")
+# the URL the Macs use for the sync, e.g. https://santa.example.com; also the default host and CSRF origin
+SANTA_PUBLIC_BASE_URL = env("SANTA_PUBLIC_BASE_URL", required=True).rstrip("/")
+_public_url = urlsplit(SANTA_PUBLIC_BASE_URL)
+if _public_url.scheme not in ("http", "https") or not _public_url.hostname:
+    raise ImproperlyConfigured("SANTA_PUBLIC_BASE_URL must be an http(s) URL, e.g. https://santa.example.com")
+# /health, /ready and /metrics answer before the host check (santa.middleware), for probes and scrapers
+ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", [_public_url.hostname])
+CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS", [f"{_public_url.scheme}://{_public_url.netloc}"])
 # behind a TLS terminating proxy / ingress that sets X-Forwarded-Proto
 if env_bool("TRUST_X_FORWARDED_PROTO"):
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
@@ -69,8 +76,6 @@ CACHES = {
 LANGUAGE_CODE = env("LANGUAGE_CODE", LANGUAGE_CODE)  # noqa: F405
 TIME_ZONE = env("TIME_ZONE", TIME_ZONE)  # noqa: F405
 
-# the URL the Macs use for the sync, e.g. https://santa.example.com
-SANTA_PUBLIC_BASE_URL = env("SANTA_PUBLIC_BASE_URL", SANTA_PUBLIC_BASE_URL)  # noqa: F405
 GITHUB_TOKEN = env("GITHUB_TOKEN")
 SANTA_PROFILE_ORGANIZATION = env("SANTA_PROFILE_ORGANIZATION", SANTA_PROFILE_ORGANIZATION)  # noqa: F405
 SANTA_PROFILE_IDENTIFIER_PREFIX = env("SANTA_PROFILE_IDENTIFIER_PREFIX", SANTA_PROFILE_IDENTIFIER_PREFIX)  # noqa: F405

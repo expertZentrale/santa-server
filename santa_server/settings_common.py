@@ -117,6 +117,8 @@ SESSION_CACHE_ALIAS = "default"
 # Uploaded binaries are only hashed, never stored. Big ones are spooled to a temp file.
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
 DATA_UPLOAD_MAX_MEMORY_SIZE = 20 * 1024 * 1024
+# a compressed sync body may not expand to more than this (DATA_UPLOAD_MAX_MEMORY_SIZE limits the compressed size)
+SYNC_MAX_DECOMPRESSED_BYTES = 20 * 1024 * 1024
 
 # Public base URL of the sync endpoints, used for the per-group SyncBaseURL of the configuration profiles
 SANTA_PUBLIC_BASE_URL = "http://localhost:8000"
@@ -124,6 +126,9 @@ SANTA_PUBLIC_BASE_URL = "http://localhost:8000"
 # Release sources
 GITHUB_TOKEN = None
 RELEASE_MAX_DOWNLOAD_BYTES = 500 * 1024 * 1024
+# unpacking archives (releases and uploads): bigger files are skipped, and an archive may not unpack to more in total
+RELEASE_MAX_FILE_BYTES = 512 * 1024 * 1024
+RELEASE_MAX_UNPACKED_BYTES = 2 * 1024 * 1024 * 1024
 RELEASE_HTTP_TIMEOUT = 60
 
 LOGGING = {

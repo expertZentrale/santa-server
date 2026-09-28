@@ -20,6 +20,7 @@ COPY . .
 
 # the static files are part of the image (served by WhiteNoise); the settings need some values to load
 RUN SECRET_KEY=build DB_HOST=build DB_USER=build DB_PASSWORD=build REDIS_URL=redis://build \
+    SANTA_PUBLIC_BASE_URL=http://build \
     python manage.py collectstatic --noinput \
     && chmod +x entrypoint.sh \
     && adduser -D -H -u 10001 santa
