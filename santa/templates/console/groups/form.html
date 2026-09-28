@@ -5,7 +5,7 @@
 <p><a href="{% url 'console:groups' %}">‹ {% translate "Groups" %}</a></p>
 <div class="page-head">
   <h1>{% if group %}{{ group.name }}{% else %}{% translate "New group" %}{% endif %}</h1>
-  {% if group %}<div class="actions"><a class="button primary" href="{% url 'console:group_profile' group.pk %}">{% translate "Download configuration profile" %}</a></div>{% endif %}
+  {% if group and can_see_sync_token %}<div class="actions"><a class="button primary" href="{% url 'console:group_profile' group.pk %}">{% translate "Download configuration profile" %}</a></div>{% endif %}
 </div>
 {% if group %}
 <section class="card">
@@ -15,8 +15,10 @@
       {% if stale_count %} · <a href="{% url 'console:machines' %}?group={{ group.pk }}&amp;status=stale"><span class="badge bad">{% blocktranslate count count=stale_count %}{{ count }} not synced for 2 days{% plural %}{{ count }} not synced for 2 days{% endblocktranslate %}</span></a>{% endif %}</dd>
     <dt>{% translate "Rules" %}</dt><dd><a href="{% url 'console:rules' %}?scope={{ group.pk }}">{% blocktranslate count count=rule_count %}{{ count }} for this group{% plural %}{{ count }} for this group{% endblocktranslate %}</a> {% translate "(plus the global ones)" %}</dd>
     <dt>{% translate "Open blocks" %}</dt><dd><a href="{% url 'console:events' %}?group={{ group.pk }}">{{ open_blocks }}</a></dd>
+    {% if can_see_sync_token %}
     <dt>SyncBaseURL</dt><dd><code>{{ group.sync_base_url }}</code> {% include "console/_copy.html" with value=group.sync_base_url %}
       <small class="muted">{% translate "Secret: every Mac with this URL belongs to the group. It is in the configuration profile." %}</small></dd>
+    {% endif %}
   </dl>
   {% if can_change %}
   <form method="post" action="{% url 'console:group_regenerate_token' group.pk %}" class="inline"

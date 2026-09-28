@@ -1,3 +1,4 @@
+import gzip
 import json
 import uuid
 import zlib
@@ -111,6 +112,26 @@ class SyncTestCase(TestCase):
         response = self.post("preflight", {"serial_num": "C02ZLIB", "santa_version": "2025.8"}, compress=True)
         self.assertEqual(response.status_code, 200)
         self.assertTrue(Machine.objects.filter(serial_number="C02ZLIB").exists())
+
+    def test_gzip_body(self):
+        body = gzip.compress(json.dumps({"serial_num": "C02GZIP", "santa_version": "2025.8"}).encode())
+        response = self.client.post(f"/sync/{self.dev.sync_token}/preflight/{self.machine_id}", body,
+                                    content_type="application/json", HTTP_CONTENT_ENCODING="gzip")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(Machine.objects.filter(serial_number="C02GZIP").exists())
+
+    def test_decompression_bomb_is_refused(self):
+        # a few KB that would expand to 5 MB, above the limit
+        bomb = {"serial_num": "C02BOMB", "padding": " " * (5 * 1024 * 1024)}
+        with self.settings(SYNC_MAX_DECOMPRESSED_BYTES=1024 * 1024):
+            response = self.post("preflight", bomb, compress=True)
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(Machine.objects.filter(serial_number="C02BOMB").exists())
+        body = gzip.compress(json.dumps(bomb).encode())
+        with self.settings(SYNC_MAX_DECOMPRESSED_BYTES=1024 * 1024):
+            response = self.client.post(f"/sync/{self.dev.sync_token}/preflight/{self.machine_id}", body,
+                                        content_type="application/json", HTTP_CONTENT_ENCODING="gzip")
+        self.assertEqual(response.status_code, 400)
 
     def test_old_santa_gets_clean_sync_flag(self):
         response = self.preflight(santa_version="2023.9")
@@ -246,3 +267,11 @@ class SyncTestCase(TestCase):
     def test_health(self):
         self.assertEqual(self.client.get("/health", HTTP_HOST="10.0.0.1").status_code, 200)
         self.assertEqual(self.client.get("/ready").status_code, 200)
+
+    def test_probes_answer_before_the_host_check(self):
+        # probes and Prometheus use the pod IP, not the public host name
+        with self.settings(ALLOWED_HOSTS=["santa.example.com"]):
+            for path in ("/health", "/ready", "/metrics"):
+                self.assertEqual(self.client.get(path, HTTP_HOST="10.0.0.1").status_code, 200, path)
+            self.assertIn(b"django_http_requests", self.client.get("/metrics", HTTP_HOST="10.0.0.1").content)
+            self.assertEqual(self.client.get("/login/", HTTP_HOST="10.0.0.1").status_code, 400)

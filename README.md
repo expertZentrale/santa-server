@@ -42,8 +42,8 @@ The image (`santa_server/settings.py`) is configured with environment variables:
 | `REDIS_URL` | yes | e.g. `redis://user:password@redis:6379/0` (cache, sessions, lock of the scheduled job) |
 | `CACHE_KEY_PREFIX` | | default `santa`, to share a Redis database |
 | `SANTA_PUBLIC_BASE_URL` | yes | the URL the Macs use, e.g. `https://santa.example.com`; part of the profiles |
-| `ALLOWED_HOSTS` | | comma separated, default `*` |
-| `CSRF_TRUSTED_ORIGINS` | behind a proxy | e.g. `https://santa.example.com` |
+| `ALLOWED_HOSTS` | | comma separated, default the host of `SANTA_PUBLIC_BASE_URL` |
+| `CSRF_TRUSTED_ORIGINS` | | comma separated, default the origin of `SANTA_PUBLIC_BASE_URL` |
 | `TRUST_X_FORWARDED_PROTO` | behind a proxy | `1` if a TLS terminating proxy sets `X-Forwarded-Proto` |
 | `SECURE_COOKIES` | | default on (off with `DEBUG`) |
 | `DEBUG` | | never in production |
@@ -79,8 +79,9 @@ separately.
 - **Endpoints**: `/health` (liveness, no database), `/ready` (checks the database), `/metrics` (Prometheus).
   They answer before the host check, for probes. `/sync/…` must be reachable by the Macs over HTTPS; the console
   (`/console/`), the request form (`/request/`), `/login/`, `/oidc/…` and `/admin/` can be limited to your network.
-- Put a TLS terminating proxy or ingress in front, and set `TRUST_X_FORWARDED_PROTO=1` and
-  `CSRF_TRUSTED_ORIGINS`.
+- Put a TLS terminating proxy or ingress in front, and set `TRUST_X_FORWARDED_PROTO=1`.
+- **Permissions**: the SyncBaseURL and the group profiles contain the secret sync token, the credential of the sync
+  API. Only users who may change groups see and download them; a read-only group permission doesn't.
 
 ## Sign-in
 

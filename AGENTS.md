@@ -34,7 +34,8 @@ Read this file before changing anything. If a request conflicts with these rules
 - **Redis and SQL Server are external.** The containers in `.devcontainer/docker-compose.yml` are for development only.
   Redis is used for the cache (`django_prometheus` Redis backend), the sessions, and the lock of the scheduled jobs.
 - Health: `/health` (liveness, no DB), `/ready` (DB check). Metrics: `/metrics` (django-prometheus).
-  These answer before the ALLOWED_HOSTS check (`santa/middleware.py`). Don't move them.
+  All three answer before the ALLOWED_HOSTS check (`HealthCheckMiddleware`), for probes and scrapers that use the
+  pod IP. Don't move them.
 
 ## Database: Microsoft SQL Server through mssql-django
 
@@ -114,8 +115,12 @@ Every model and query must work on SQL Server (mssql-django 2.x, `mssql_python` 
 
 ## Security
 
-- Sync tokens are secrets: never log them or show them outside the group pages (admin and console).
+- Sync tokens are secrets, the credential of the sync API: never log them, and only show the SyncBaseURL or serve the
+  group profile to users who may change groups (`can_see_sync_token()` in `services.py`), never to read-only viewers.
 - Uploaded binaries are only hashed, never stored.
+- Everything the server decompresses has a size limit: sync bodies (`SYNC_MAX_DECOMPRESSED_BYTES`), archives
+  (`RELEASE_MAX_FILE_BYTES`, `RELEASE_MAX_UNPACKED_BYTES` through `_UnpackBudget`). Keep new code paths within them.
+- `ALLOWED_HOSTS` is never `*` by default: it comes from `SANTA_PUBLIC_BASE_URL`.
 - Release downloads are size limited, and checked against the published hash when there is one
   (SHA-256 of Homebrew bottles, SHA-512 of npm tarballs). Never remove that check.
 - Admin actions and console views that change rules must check permissions and write an admin log entry

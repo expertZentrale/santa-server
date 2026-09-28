@@ -7,7 +7,7 @@ from django.test import SimpleTestCase
 
 SETTINGS_FILE = Path(__file__).resolve().parents[2] / "santa_server" / "settings.py"
 REQUIRED = {"SECRET_KEY": "secret", "DB_HOST": "db", "DB_USER": "santa", "DB_PASSWORD": "pw",
-            "REDIS_URL": "redis://redis:6379/0"}
+            "REDIS_URL": "redis://redis:6379/0", "SANTA_PUBLIC_BASE_URL": "https://santa.example.com/"}
 
 
 def load_settings(environ):
@@ -25,13 +25,20 @@ class ImageSettingsTestCase(SimpleTestCase):
             load_settings({key: value for key, value in REQUIRED.items() if key != "SECRET_KEY"})
         with self.assertRaisesMessage(ImproperlyConfigured, "DB_PASSWORD"):
             load_settings({**REQUIRED, "DB_PASSWORD": "  "})
+        with self.assertRaisesMessage(ImproperlyConfigured, "SANTA_PUBLIC_BASE_URL"):
+            load_settings({key: value for key, value in REQUIRED.items() if key != "SANTA_PUBLIC_BASE_URL"})
+        with self.assertRaisesMessage(ImproperlyConfigured, "http(s) URL"):
+            load_settings({**REQUIRED, "SANTA_PUBLIC_BASE_URL": "santa.example.com"})
 
     def test_defaults(self):
         settings = load_settings(REQUIRED)
         self.assertFalse(settings.DEBUG)
         self.assertTrue(settings.SESSION_COOKIE_SECURE)
         self.assertFalse(hasattr(settings, "SECURE_PROXY_SSL_HEADER"))
-        self.assertEqual(settings.ALLOWED_HOSTS, ["*"])
+        # never "*": the host and the CSRF origin of the public URL
+        self.assertEqual(settings.ALLOWED_HOSTS, ["santa.example.com"])
+        self.assertEqual(settings.CSRF_TRUSTED_ORIGINS, ["https://santa.example.com"])
+        self.assertEqual(settings.SANTA_PUBLIC_BASE_URL, "https://santa.example.com")
         self.assertEqual((settings.LANGUAGE_CODE, settings.TIME_ZONE), ("en", "UTC"))
         self.assertEqual(settings.SANTA_PROFILE_MACHINE_OWNER, "")
         self.assertEqual(settings.DATABASES["default"]["PORT"], "1433")

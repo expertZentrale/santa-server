@@ -103,12 +103,35 @@ def download(session, asset):
     return tmp
 
 
-def _spool(member_fileobj):
+class _UnpackBudget:
+    """The bytes an archive may still unpack: a small download must not fill the disk (decompression bomb)"""
+
+    def __init__(self, name):
+        self.name = name
+        self.remaining = settings.RELEASE_MAX_UNPACKED_BYTES
+
+    def consume(self, size):
+        self.remaining -= size
+        if self.remaining < 0:
+            raise ReleaseError(f"{self.name}: unpacks to more than {settings.RELEASE_MAX_UNPACKED_BYTES} bytes")
+
+
+def _spool(member_fileobj, budget):
     spooled = tempfile.SpooledTemporaryFile(max_size=16 * 1024 * 1024)
-    while chunk := member_fileobj.read(macho.CHUNK_SIZE):
-        spooled.write(chunk)
+    try:
+        while chunk := member_fileobj.read(macho.CHUNK_SIZE):
+            budget.consume(len(chunk))
+            spooled.write(chunk)
+    except BaseException:
+        spooled.close()
+        raise
     spooled.seek(0)
     return spooled
+
+
+def _worth_unpacking(path, size, pattern):
+    # small files are no executables, too big ones are skipped instead of filling the disk
+    return 4096 <= size <= settings.RELEASE_MAX_FILE_BYTES and _matches(path, pattern)
 
 
 def _matches(path, pattern):
@@ -142,11 +165,12 @@ def find_binaries(fileobj, name, pattern=""):
             yield name, info
     elif zipfile.is_zipfile(fileobj):
         fileobj.seek(0)
+        budget = _UnpackBudget(name)
         with zipfile.ZipFile(fileobj) as archive:
             for member in archive.infolist()[:MAX_ARCHIVE_MEMBERS]:
-                if member.is_dir() or member.file_size < 4096:
+                if member.is_dir() or not _worth_unpacking(member.filename, member.file_size, pattern):
                     continue
-                with archive.open(member) as member_fileobj, _spool(member_fileobj) as spooled:
+                with archive.open(member) as member_fileobj, _spool(member_fileobj, budget) as spooled:
                     info = _inspect_candidate(spooled, member.filename, pattern)
                     if info:
                         yield member.filename, info
@@ -156,16 +180,17 @@ def find_binaries(fileobj, name, pattern=""):
             archive = tarfile.open(fileobj=fileobj, mode="r:*")
         except tarfile.TarError:
             raise ReleaseError(f"{name}: not a Mach-O binary, zip or tar archive")
+        budget = _UnpackBudget(name)
         with archive:
             for index, member in enumerate(archive):
                 if index >= MAX_ARCHIVE_MEMBERS:
                     break
-                if not member.isfile() or member.size < 4096:
+                if not member.isfile() or not _worth_unpacking(member.name, member.size, pattern):
                     continue
                 member_fileobj = archive.extractfile(member)
                 if member_fileobj is None:
                     continue
-                with member_fileobj, _spool(member_fileobj) as spooled:
+                with member_fileobj, _spool(member_fileobj, budget) as spooled:
                     info = _inspect_candidate(spooled, member.name, pattern)
                     if info:
                         yield member.name, info

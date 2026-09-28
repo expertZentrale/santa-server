@@ -21,7 +21,7 @@
       <td class="num"><a href="{% url 'console:machines' %}?group={{ group.pk }}">{{ group.machine_count }}</a></td>
       <td class="num"><a href="{% url 'console:rules' %}?scope={{ group.pk }}">{{ group.rule_count }}</a></td>
       <td>{% if group.last_sync %}{% blocktranslate with since=group.last_sync|timesince %}{{ since }} ago{% endblocktranslate %}{% else %}–{% endif %}</td>
-      <td><a class="button small" href="{% url 'console:group_profile' group.pk %}">{% translate "Profile" %}</a></td>
+      <td>{% if perms.santa.change_group %}<a class="button small" href="{% url 'console:group_profile' group.pk %}">{% translate "Profile" %}</a>{% endif %}</td>
     </tr>
   {% empty %}
     <tr class="empty"><td colspan="6">{% translate "No groups yet." %}</td></tr>

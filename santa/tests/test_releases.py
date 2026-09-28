@@ -84,6 +84,24 @@ class FindBinariesTestCase(TestCase):
         found = list(find_binaries(buffer, "tool.zip", "*/MacOS/Tool"))
         self.assertEqual(len(found), 1)
 
+    def test_archive_that_unpacks_too_much_is_refused(self):
+        binary = build_macho(identifier="tool", team_id="", adhoc=True)
+        data = tar_gz({"a/tool": binary, "b/tool": binary, "c/tool": binary})
+        with self.settings(RELEASE_MAX_UNPACKED_BYTES=len(binary) * 2):
+            with self.assertRaisesMessage(ReleaseError, "unpacks to more than"):
+                list(find_binaries(io.BytesIO(data), "tools.tar.gz"))
+
+    def test_too_big_and_unmatched_files_are_not_unpacked(self):
+        binary = build_macho(identifier="tool", team_id="", adhoc=True)
+        data = tar_gz({"bin/tool": binary, "share/huge.bin": b"x" * 100_000})
+        with self.settings(RELEASE_MAX_FILE_BYTES=50_000, RELEASE_MAX_UNPACKED_BYTES=len(binary) + 1):
+            found = list(find_binaries(io.BytesIO(data), "tools.tar.gz"))
+            self.assertEqual([path for path, _ in found], ["bin/tool"])
+            # with a pattern, the other files aren't even read
+            data = tar_gz({"bin/tool": binary, "lib/other": binary})
+            found = list(find_binaries(io.BytesIO(data), "tools.tar.gz", "bin/*"))
+            self.assertEqual([path for path, _ in found], ["bin/tool"])
+
     def test_dmg_not_supported(self):
         with self.assertRaises(ReleaseError):
             list(find_binaries(io.BytesIO(b"x"), "Tool.dmg"))

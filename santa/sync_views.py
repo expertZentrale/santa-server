@@ -2,12 +2,12 @@
 
 Santa POSTs to <SyncBaseURL>/<stage>/<machine id>, SyncBaseURL being the group sync URL.
 """
-import gzip
 import json
 import logging
 import re
 import zlib
 
+from django.conf import settings
 from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
@@ -31,14 +31,24 @@ class BadRequest(Exception):
     pass
 
 
+def decompress(body, wbits):
+    """Decompress with a size limit: a small body must not expand to gigabytes (decompression bomb)"""
+    limit = settings.SYNC_MAX_DECOMPRESSED_BYTES
+    decompressor = zlib.decompressobj(wbits)
+    data = decompressor.decompress(body, limit + 1)
+    if len(data) > limit or decompressor.unconsumed_tail:
+        raise BadRequest(f"The decompressed body is bigger than {limit} bytes")
+    return data
+
+
 def read_json_body(request):
     body = request.body
     encoding = request.headers.get("Content-Encoding", "").lower()
     try:
         if encoding in ("deflate", "zlib"):
-            body = zlib.decompress(body)
+            body = decompress(body, zlib.MAX_WBITS)
         elif encoding == "gzip":
-            body = gzip.decompress(body)
+            body = decompress(body, 16 + zlib.MAX_WBITS)
         data = json.loads(body) if body else {}
     except (ValueError, zlib.error, OSError):
         raise BadRequest("Could not read the JSON body")
