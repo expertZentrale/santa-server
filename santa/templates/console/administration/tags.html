@@ -1,0 +1,28 @@
+{% extends "console/base.html" %}{% load console i18n %}
+{% block title %}{% translate "Tags" %}{% endblock %}
+{% block content %}
+{% include "console/administration/_tabs.html" %}
+<form class="filters" method="get">
+  {% if params.sort %}<input type="hidden" name="sort" value="{{ params.sort }}">{% endif %}
+  <input type="search" name="q" value="{{ params.q }}" placeholder="{% translate 'Name, description…' %}" aria-label="{% translate 'Search' %}">
+  <button class="button">{% translate "Filter" %}</button>
+  {% if perms.santa.add_tag %}<a class="button right" href="{% url 'console:admin_tag_add' %}">{% translate "New tag" %}</a>{% endif %}
+</form>
+<p class="muted small">{% translate "Only labels to find the rules, no effect on the Macs." %}</p>
+<table class="table">
+  <thead><tr>{% sort_th _("Tag") "name" %}<th>{% translate "Description" %}</th>{% sort_th _("Rules") "rules" "num" %}{% sort_th _("Package rules") "packages" "num" %}</tr></thead>
+  <tbody>
+  {% for tag in page %}
+    <tr>
+      <td><a class="strong" href="{% url 'console:admin_tag' tag.pk %}">{{ tag.name }}</a></td>
+      <td>{{ tag.description|default:"–" }}</td>
+      <td class="num"><a href="{% url 'console:rules' %}?tag={{ tag.pk }}">{{ tag.rule_count }}</a></td>
+      <td class="num">{{ tag.source_count }}</td>
+    </tr>
+  {% empty %}
+    <tr class="empty"><td colspan="4">{% translate "No tags for these filters." %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% include "console/_pagination.html" %}
+{% endblock %}

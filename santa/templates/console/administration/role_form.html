@@ -1,0 +1,43 @@
+{% extends "console/base.html" %}{% load i18n %}
+{% block title %}{% if role %}{{ role.name }}{% else %}{% translate "New role" %}{% endif %}{% endblock %}
+{% block main_class %}narrow{% endblock %}
+{% block content %}
+<p><a href="{% url 'console:admin_roles' %}">‹ {% translate "Roles" %}</a></p>
+<div class="page-head"><h1>{% if role %}{{ role.name }}{% else %}{% translate "New role" %}{% endif %}</h1></div>
+<form method="post" class="stack">
+  {% csrf_token %}
+  {% if form.non_field_errors %}<div class="error">{{ form.non_field_errors }}</div>{% endif %}
+  <fieldset class="plain"{% if role and not perms.auth.change_group %} disabled{% endif %}>
+  <section class="card"><h2>{% translate "Role" %}</h2>
+    {% include "console/_field.html" with field=form.name %}
+    {% if is_protected %}<p class="help small">{% translate "Given to the users with the admin role of the sign-in (OIDC_ADMIN_ROLE)." %}</p>{% endif %}
+    {% if sign_in_groups %}<p class="small">{% translate "Given by the sign-in groups" %} {% for group in sign_in_groups %}<a class="chip small" href="{% url 'console:admin_sign_in_group' group.pk %}">{{ group.name }}</a>{% endfor %}</p>{% endif %}
+  </section>
+  <section class="card"><h2>{% translate "Permissions" %}</h2>
+    <p class="help small">{% translate "The console needs “View” to show a page, and “Change” to save it. Changes apply right away." %}</p>
+    <table class="table compact permissions">
+      <thead><tr><th></th>{% for action, label in actions %}<th class="center">{{ label }}</th>{% endfor %}</tr></thead>
+      <tbody>{% for label, cells in rows %}
+        <tr><th scope="row">{{ label }}</th>{% for cell in cells %}<td class="center">{% if cell %}<input type="checkbox" name="permissions" value="{{ cell.pk }}" title="{{ cell.name }}" aria-label="{{ label }}: {{ cell.name }}"{% if cell.checked %} checked{% endif %}>{% endif %}</td>{% endfor %}</tr>
+      {% endfor %}</tbody>
+    </table>
+    <h3>{% translate "Requests" %}</h3>
+    {% for label, cell in request_permissions %}{% if cell %}<div class="field check"><label><input type="checkbox" name="permissions" value="{{ cell.pk }}"{% if cell.checked %} checked{% endif %}> {{ label }}</label></div>{% endif %}{% endfor %}
+    {% for error in form.permissions.errors %}<small class="error">{{ error }}</small>{% endfor %}
+  </section>
+  </fieldset>
+  {% if not role or perms.auth.change_group %}
+  <div class="actions"><button class="button primary">{% if role %}{% translate "Save" %}{% else %}{% translate "Create role" %}{% endif %}</button>
+    <a href="{% url 'console:admin_roles' %}">{% translate "Cancel" %}</a>
+    {% if role and perms.auth.delete_group and not is_protected %}<button class="button danger right" form="delete-form">{% translate "Delete" %}</button>{% endif %}</div>
+  {% endif %}
+</form>
+{% if role and perms.auth.delete_group and not is_protected %}
+<form id="delete-form" method="post" action="{% url 'console:admin_role_delete' role.pk %}" data-confirm="{% blocktranslate with name=role.name %}Delete the role {{ name }}? Its users lose its permissions.{% endblocktranslate %}">{% csrf_token %}</form>
+{% endif %}
+{% if members %}
+<section class="card"><h2>{% translate "Users" %}</h2>
+  <p>{% for member in members %}<a class="chip small" href="{% url 'console:admin_user' member.pk %}">{{ member.username }}</a>{% endfor %}</p>
+</section>
+{% endif %}
+{% endblock %}

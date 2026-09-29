@@ -14,7 +14,8 @@ Read this file before changing anything. If a request conflicts with these rules
 - Keep the project a **normal Django application** that a Django developer understands without studying it:
   - The day-to-day UI is the console (`santa/console/`, `/console/`): plain Django views, forms and templates,
     with htmx (vendored in `santa/static/santa/htmx.min.js`) and a small `console.js`. No build step.
-    The request form for the users is `/request/`. The Django admin (`santa/admin.py`) stays for low-level editing.
+    The request form for the users is `/request/`. The Django admin (`santa/admin.py`) stays for low-level editing;
+    configuration belongs in the console (*Administration*), not only in the admin.
     Both use the same functions in `services.py`; don't duplicate business logic in the views.
   - Don't add a SPA, a frontend build, CDN assets, DRF, Celery or other frameworks without the user agreeing first.
   - Scheduled work is a management command (run by the platform's scheduler, see the README), not a worker process.
@@ -107,8 +108,14 @@ Every model and query must work on SQL Server (mssql-django 2.x, `mssql_python` 
 
 - Any OpenID Connect provider through `mozilla-django-oidc` (`santa/auth.py`). Users are matched by the first of
   `OIDC_USERNAME_CLAIMS`. The role `OIDC_ADMIN_ROLE` in `OIDC_ROLES_CLAIM` makes them staff and members of the
-  AuthGroup "Santa admins"; everyone else only gets `/request/`. Local accounts (`ModelBackend`) stay for
-  break-glass access.
+  AuthGroup "Santa admins". Local accounts (`ModelBackend`) stay for break-glass access.
+- Sign-in groups (`SignInGroup`) map the values of `OIDC_GROUPS_CLAIM` to roles (AuthGroups) and console access.
+  Only mapped groups are stored (`SignInGroup.members`, as of the last sign-in), never every group of the token.
+  `apply_sign_in_roles()` sets the roles; roles no sign-in group grants are assigned by hand and stay.
+  `*` is everyone, with the role "Santa requesters" by default.
+- Requests need `request_event` / `request_package` / `request_other` (`request_kinds_for()` in `services.py`).
+- The console's *Administration* tab (`views_admin.py`) manages users, roles, sign-in groups, tags and the
+  configuration export / import. Keep it on the console patterns; the Django admin stays for low-level editing.
 - The console views check `is_staff` (`staff_required`) **and** the model permissions (`require_perms`).
 - `Machine.primary_user` is the `MachineOwner` of the group profile (`SANTA_PROFILE_MACHINE_OWNER`). The request
   form only offers events of the Macs of the signed-in user (`machines_for_user`).

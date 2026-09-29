@@ -22,7 +22,8 @@ def staff_required(view):
 
 
 def require_perms(request, *perms):
-    if not request.user.has_perms([f"santa.{perm}" for perm in perms]):
+    """The permissions of Santa by codename ("add_rule"), others with their app ("auth.change_user")"""
+    if not request.user.has_perms([perm if "." in perm else f"santa.{perm}" for perm in perms]):
         raise PermissionDenied
 
 

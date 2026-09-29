@@ -2,6 +2,9 @@ import json
 
 from django import forms
 from django.conf import settings
+from django.contrib.auth import password_validation
+from django.contrib.auth.models import Group as AuthGroup
+from django.contrib.auth.models import Permission, User
 from django.core.exceptions import ValidationError
 from django.forms import formset_factory
 from django.utils import timezone
@@ -9,7 +12,18 @@ from django.utils.translation import gettext
 from django.utils.translation import gettext_lazy as _
 
 from ..catalog import update_identifier_icons
-from ..models import AccessRequest, Group, Machine, Policy, ReleaseSource, Rule, RuleType, Tag, UserProfile
+from ..models import (
+    AccessRequest,
+    Group,
+    Machine,
+    Policy,
+    ReleaseSource,
+    Rule,
+    RuleType,
+    SignInGroup,
+    Tag,
+    UserProfile,
+)
 
 SCOPE_GLOBAL = "global"
 SCOPE_GROUPS = "groups"
@@ -496,3 +510,120 @@ class ProfileForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["language"].choices = [("", _("Language of the browser"))] + list(settings.LANGUAGES)
+
+
+# Administration
+
+
+class RolesField(forms.ModelMultipleChoiceField):
+    def __init__(self, **kwargs):
+        kwargs.setdefault("queryset", AuthGroup.objects.order_by("name"))
+        kwargs.setdefault("required", False)
+        kwargs.setdefault("widget", forms.CheckboxSelectMultiple)
+        super().__init__(**kwargs)
+
+
+class UserForm(forms.ModelForm):
+    """A user of the console. Staff and the password only for the local accounts: the sign-in sets the others."""
+
+    roles = RolesField(label=_("Roles"))
+    password1 = forms.CharField(label=_("Password"), required=False, strip=False,
+                                widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}))
+    password2 = forms.CharField(label=_("Password again"), required=False, strip=False,
+                                widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}))
+
+    class Meta:
+        model = User
+        fields = ("username", "first_name", "last_name", "email", "is_active", "is_staff")
+        labels = {
+            "username": _("Username"), "first_name": _("First name"), "last_name": _("Last name"),
+            "email": _("E-mail"), "is_active": _("Active"), "is_staff": _("Console access"),
+        }
+        help_texts = {
+            "username": _("For a local account, e.g. break-glass-admin. Users of the sign-in are created at their "
+                          "first sign-in."),
+            "is_active": _("Inactive users can't sign in."),
+            "is_staff": _("Can open the console, with the permissions of the roles."),
+        }
+
+    def __init__(self, *args, managed_roles=(), **kwargs):
+        super().__init__(*args, **kwargs)
+        self.managed_roles = set(managed_roles)
+        user = self.instance
+        self.is_local = user.pk is None or user.has_usable_password()
+        self.fields["roles"].queryset = AuthGroup.objects.exclude(
+            pk__in=[role.pk for role in self.managed_roles]).order_by("name")
+        if user.pk:
+            self.initial["roles"] = [role for role in user.groups.all() if role not in self.managed_roles]
+            self.fields["username"].disabled = True
+            self.fields["password1"].help_text = _("Leave empty to keep the password.")
+        else:
+            self.fields["password1"].required = self.fields["password2"].required = True
+        if not self.is_local:
+            # the sign-in sets them at every sign-in
+            for name in ("first_name", "last_name", "email", "is_staff", "password1", "password2"):
+                del self.fields[name]
+
+    def clean(self):
+        cleaned_data = super().clean()
+        password = cleaned_data.get("password1")
+        if password or cleaned_data.get("password2"):
+            if password != cleaned_data.get("password2"):
+                self.add_error("password2", gettext("The two passwords are different."))
+            else:
+                try:
+                    password_validation.validate_password(password, self.instance)
+                except ValidationError as e:
+                    self.add_error("password1", e)
+        return cleaned_data
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        if self.cleaned_data.get("password1"):
+            user.set_password(self.cleaned_data["password1"])
+        user.save()
+        kept = [role for role in user.groups.all() if role in self.managed_roles]
+        user.groups.set([*kept, *self.cleaned_data["roles"]])
+        return user
+
+
+class RoleForm(forms.ModelForm):
+    permissions = forms.ModelMultipleChoiceField(queryset=Permission.objects.none(), required=False,
+                                                 widget=forms.CheckboxSelectMultiple)
+
+    class Meta:
+        model = AuthGroup
+        fields = ("name", "permissions")
+        labels = {"name": _("Name")}
+
+    def __init__(self, *args, permissions=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["permissions"].queryset = permissions
+
+
+class SignInGroupForm(forms.ModelForm):
+    roles = RolesField(label=_("Roles"), help_text=_("The members get these roles"))
+
+    class Meta:
+        model = SignInGroup
+        fields = ("name", "claim_value", "console_access", "roles")
+        labels = {"name": _("Name"), "claim_value": _("Value in the groups claim"),
+                  "console_access": _("Console access")}
+        widgets = {"claim_value": forms.TextInput(attrs={"class": "mono", "autocomplete": "off"})}
+
+
+class TagForm(forms.ModelForm):
+    class Meta:
+        model = Tag
+        fields = ("name", "description")
+        labels = {"name": _("Name"), "description": _("Description")}
+
+
+class ConfigImportForm(forms.Form):
+    file = forms.FileField(label=_("File"), help_text=_("JSON file of “Export configuration”, e.g. from the test "
+                                                        "server, or of the export_config command."))
+    delete_missing = forms.BooleanField(
+        required=False, label=_("Delete what is not in the file"),
+        help_text=_("Deletes the manual rules and package rules that are not in the file."))
+    dry_run = forms.BooleanField(required=False, initial=True, label=_("Dry run"),
+                                 help_text=_("Only show what would change. Uncheck to import."))

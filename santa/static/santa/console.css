@@ -562,3 +562,8 @@ a.chip:hover { text-decoration: none; border-color: var(--accent); }
 
 .rule-preview { display: block; margin-top: .3rem; color: var(--muted); overflow-wrap: anywhere; }
 .rule-preview code { color: var(--text); background: var(--surface-2); padding: .05rem .3rem; border-radius: 4px; }
+
+/* Administration: the permission matrix of a role */
+.table .center { text-align: center; }
+.table.permissions tbody th { background: none; text-transform: none; letter-spacing: 0; font-size: inherit; color: var(--text); font-weight: 500; }
+.filters > p { margin: 0; flex: 1 1 20rem; }

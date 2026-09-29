@@ -56,6 +56,7 @@ The image (`santa_server/settings.py`) is configured with environment variables:
 | `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | for SSO | see [Sign-in](#sign-in) |
 | `OIDC_AUTHORIZATION_ENDPOINT`, `OIDC_TOKEN_ENDPOINT`, `OIDC_JWKS_ENDPOINT` | for SSO | endpoints of the provider |
 | `OIDC_ADMIN_ROLE`, `OIDC_ROLES_CLAIM` | | default `Santa.Admin` in the claim `roles` (dotted path for nested claims) |
+| `OIDC_GROUPS_CLAIM` | | default `groups` (dotted path): the claim matched against the [sign-in groups](#sign-in-groups-and-roles) |
 | `OIDC_USERNAME_CLAIMS`, `OIDC_SCOPES`, `OIDC_PROVIDER_NAME` | | default `preferred_username,upn,email`, `openid email profile`, button text |
 | `WAIT_FOR_URL` | | entrypoint: wait until this URL answers, e.g. a sidecar |
 | `RUN_MIGRATIONS` | | entrypoint: `0` to skip `migrate` when the web server starts |
@@ -86,8 +87,10 @@ separately.
 ## Sign-in
 
 Users sign in with any OpenID Connect provider. Members of the role `OIDC_ADMIN_ROLE` become administrators (staff,
-AuthGroup "Santa admins" with every Santa permission); everyone else can only use the request form. Local accounts
-(`python manage.py createsuperuser`) still work on `/login/`, e.g. for break-glass access.
+role "Santa admins" with every Santa permission, the users and the roles). Everyone else gets what their
+[sign-in groups](#sign-in-groups-and-roles) give them, by default only the request form. Local accounts
+(`python manage.py createsuperuser`, or *Administration* → *Users* → *New local account*) still work on `/login/`,
+e.g. for break-glass access.
 
 Register a web application with the redirect URI `https://<host>/oidc/callback/`, then set the endpoints:
 
@@ -100,6 +103,28 @@ Register a web application with the redirect URI `https://<host>/oidc/callback/`
   `OIDC_ROLES_CLAIM=realm_access.roles`.
 - **Okta, Authentik, …**: the endpoints from `/.well-known/openid-configuration`, and a claim with the roles or
   groups (e.g. `OIDC_ROLES_CLAIM=groups`).
+
+### Sign-in groups and roles
+
+In the console, *Administration* holds the users, the roles (sets of permissions: view / add / change / delete per
+page, and what users may request), the sign-in groups, the tags and the configuration export / import.
+
+A **sign-in group** is a group of your provider that gives roles, and the console if you tick *Console access*.
+Add only the groups that matter: the server compares the groups claim of the ID token (`OIDC_GROUPS_CLAIM`) with
+them and ignores and never stores the others. The roles apply at the next sign-in; a changed or deleted sign-in
+group applies to its members right away. Roles assigned by hand on the user page stay.
+
+The sign-in group `*` ("Everyone") is everyone who signs in. It gives the role "Santa requesters", which may request
+blocked apps, packages and other software. Remove a permission from that role, and give it to other roles, to limit
+who may request what.
+
+- **Microsoft Entra ID**: *Token configuration* → *Add groups claim* → *Groups assigned to the application*, for the
+  ID token, and assign the groups to the enterprise application. The claim then holds the object IDs of these
+  groups only: enter the object ID of each group as *Value in the groups claim*. With *All groups*, users with more
+  than 200 groups get an overage reference instead of the groups; the server then ignores their groups and logs a
+  warning.
+- **Keycloak**: a *Group Membership* mapper on the client (claim `groups`, add to the ID token); the values are the
+  group paths, e.g. `/santa/it`.
 
 ## Configuring the Macs
 

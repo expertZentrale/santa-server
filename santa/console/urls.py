@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views_events, views_groups, views_requests, views_rules, views_sources
+from . import views_admin, views_events, views_groups, views_requests, views_rules, views_sources
 
 app_name = "console"
 
@@ -49,4 +49,24 @@ urlpatterns = [
     path("requests/<int:pk>/", views_requests.admin_request_detail, name="request"),
     path("requests/<int:pk>/approve/", views_requests.admin_request_approve, name="request_approve"),
     path("requests/<int:pk>/deny/", views_requests.admin_request_deny, name="request_deny"),
+
+    path("administration/", views_admin.administration, name="administration"),
+    path("administration/users/", views_admin.users, name="admin_users"),
+    path("administration/users/add/", views_admin.user_form, name="admin_user_add"),
+    path("administration/users/<int:pk>/", views_admin.user_form, name="admin_user"),
+    path("administration/roles/", views_admin.roles, name="admin_roles"),
+    path("administration/roles/add/", views_admin.role_form, name="admin_role_add"),
+    path("administration/roles/<int:pk>/", views_admin.role_form, name="admin_role"),
+    path("administration/roles/<int:pk>/delete/", views_admin.role_delete, name="admin_role_delete"),
+    path("administration/sign-in-groups/", views_admin.sign_in_groups, name="admin_sign_in_groups"),
+    path("administration/sign-in-groups/add/", views_admin.sign_in_group_form, name="admin_sign_in_group_add"),
+    path("administration/sign-in-groups/<int:pk>/", views_admin.sign_in_group_form, name="admin_sign_in_group"),
+    path("administration/sign-in-groups/<int:pk>/delete/", views_admin.sign_in_group_delete,
+         name="admin_sign_in_group_delete"),
+    path("administration/tags/", views_admin.tags, name="admin_tags"),
+    path("administration/tags/add/", views_admin.tag_form, name="admin_tag_add"),
+    path("administration/tags/<int:pk>/", views_admin.tag_form, name="admin_tag"),
+    path("administration/tags/<int:pk>/delete/", views_admin.tag_delete, name="admin_tag_delete"),
+    path("administration/configuration/", views_admin.config, name="admin_config"),
+    path("administration/configuration/export/", views_admin.config_export, name="admin_config_export"),
 ]
