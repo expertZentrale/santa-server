@@ -301,19 +301,39 @@ form.inline { display: inline; margin: 0; }
 .rows-form select, .rows-form input:not([type="checkbox"]) { width: 100%; min-width: 8rem; margin-bottom: .25rem; }
 @keyframes flash { from { background: var(--info-bg); } to { background: transparent; } }
 
+/* The bulk actions float at the bottom of the window, so selecting rows never moves the table */
 .bulkbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: .6rem;
-  padding: .55rem .8rem;
-  margin-bottom: .75rem;
-  background: var(--info-bg);
-  border-radius: var(--radius);
-  position: sticky;
-  top: 64px;
-  z-index: 5;
+  padding: .5rem .6rem .5rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: 0 8px 24px rgb(16 24 40 / 18%), 0 2px 6px rgb(16 24 40 / 10%);
+  position: fixed;
+  left: 50%;
+  bottom: 1rem;
+  z-index: 20;
+  max-width: calc(100vw - 2rem);
+  transform: translate(-50%, 0);
+  transition: transform .18s ease-out, opacity .18s ease-out, visibility .18s;
 }
+.bulkbar:not(.visible) { transform: translate(-50%, calc(100% + 1.5rem)); opacity: 0; visibility: hidden; pointer-events: none; }
+.bulkbar .count { font-weight: 600; white-space: nowrap; }
+.bulkbar select[multiple] { position: absolute; bottom: calc(100% + .4rem); left: 1rem; box-shadow: var(--shadow); }
+.bulkbar-clear { border: 0; background: none; color: var(--muted); font-size: 1.2rem; line-height: 1; padding: .3rem .5rem; border-radius: 50%; cursor: pointer; }
+.bulkbar-clear:hover { background: var(--surface-2); color: var(--text); }
+body.has-bulkbar main { padding-bottom: 6rem; }
+@media (prefers-reduced-motion: reduce) { .bulkbar { transition: none; } }
+@media (max-width: 640px) {
+  .bulkbar { left: 16px; right: 16px; bottom: 16px; max-width: none; transform: none; border-radius: var(--radius); }
+  .bulkbar:not(.visible) { transform: translateY(calc(100% + 1.5rem)); }
+}
+[data-select-form] tbody tr:has(td.select input) { cursor: pointer; }
+.table tbody tr.selected { background: var(--info-bg); }
+.table tbody tr.selected:hover { background: color-mix(in srgb, var(--info-bg) 80%, var(--surface-2)); }
 .live { display: flex; align-items: center; gap: .5rem; color: var(--muted); margin-bottom: .5rem; font-size: .85em; }
 .live .dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--ok); animation: pulse 2s infinite; }
 @keyframes pulse { 50% { opacity: .3; } }

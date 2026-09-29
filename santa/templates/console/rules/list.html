@@ -28,7 +28,7 @@
   {% csrf_token %}
   <input type="hidden" name="next" value="{{ request.get_full_path }}">
   <div class="bulkbar" data-bulkbar hidden>
-    {% blocktranslate %}<span data-selected-count>0</span> selected{% endblocktranslate %}
+    <span class="count" title="{% translate 'Click selects a row, Ctrl-click adds or removes one, Shift-click selects a range.' %}">{% blocktranslate %}<span data-selected-count>0</span> selected{% endblocktranslate %}</span>
     <select name="action" aria-label="{% translate 'Action' %}">
       <option value="enable">{% translate "Enable / approve" %}</option><option value="disable">{% translate "Disable" %}</option>
       <option value="add_tag">{% translate "Add tag" %}</option><option value="remove_tag">{% translate "Remove tag" %}</option>
@@ -37,7 +37,7 @@
     <input name="tag" placeholder="{% translate 'tag' %}" aria-label="{% translate 'Tag' %}" data-tags data-show-when="action=add_tag|remove_tag">
     <select name="groups" multiple size="3" aria-label="{% translate 'Groups' %}" data-show-when="action=add_groups">{% for group in groups %}<option value="{{ group.pk }}">{{ group.name }}</option>{% endfor %}</select>
     <button class="button primary" data-confirm-when="action=delete" data-confirm="{% translate 'Delete the selected rules?' %}">{% translate "Apply" %}</button>
-    <small class="muted">{% translate "Shift-click selects a range." %}</small>
+    <button type="button" class="bulkbar-clear" data-clear-selection aria-label="{% translate 'Clear selection' %}" title="{% translate 'Clear selection (Esc)' %}">×</button>
   </div>
   <table class="table">
     <thead><tr><th class="select"><input type="checkbox" data-select-all aria-label="{% translate 'Select all' %}"></th>

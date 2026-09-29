@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: santa-server\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-28 13:43+0000\n"
+"POT-Creation-Date: 2026-09-29 09:14+0000\n"
 "Language: de\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -180,7 +180,7 @@ msgstr "Tag entfernen"
 msgid "Add groups"
 msgstr "Gruppen hinzufügen"
 
-#: santa/console/forms.py:121 santa/templates/console/groups/form.html:44
+#: santa/console/forms.py:121 santa/templates/console/groups/form.html:46
 #: santa/templates/console/rules/list.html:35
 #: santa/templates/console/sources/form.html:47
 msgid "Delete"
@@ -596,40 +596,40 @@ msgid_plural "%(count)s events marked as resolved."
 msgstr[0] "%(count)s Ereignis als erledigt markiert."
 msgstr[1] "%(count)s Ereignisse als erledigt markiert."
 
-#: santa/console/views_groups.py:55
+#: santa/console/views_groups.py:56
 #, python-format
 msgid "Group %(group)s created. Download its configuration profile below."
 msgstr "Gruppe %(group)s angelegt. Laden Sie unten ihr Konfigurationsprofil herunter."
 
-#: santa/console/views_groups.py:59
+#: santa/console/views_groups.py:60
 #, python-format
 msgid "Group %(group)s saved."
 msgstr "Gruppe %(group)s gespeichert."
 
-#: santa/console/views_groups.py:61
+#: santa/console/views_groups.py:62
 msgid "Profile settings changed: download the profile again and replace it in your MDM."
 msgstr "Profileinstellungen geändert: das Profil erneut herunterladen und in Ihrem MDM ersetzen."
 
-#: santa/console/views_groups.py:64
+#: santa/console/views_groups.py:65
 msgid "The Macs get the changes at their next sync."
 msgstr "Die Macs erhalten die Änderungen bei ihrer nächsten Synchronisierung."
 
-#: santa/console/views_groups.py:90
+#: santa/console/views_groups.py:92
 #, python-format
 msgid "New sync URL for %(group)s. Download the profile again and replace it in your MDM: the Macs with the old profile can no longer sync."
 msgstr "Neue Sync-URL für %(group)s. Laden Sie das Profil erneut herunter und ersetzen Sie es in Ihrem MDM: Macs mit dem alten Profil können sich nicht mehr synchronisieren."
 
-#: santa/console/views_groups.py:102
+#: santa/console/views_groups.py:104
 #, python-format
 msgid "%(group)s still has Macs. Move them to another group first (new configuration profile), then delete it."
 msgstr "%(group)s hat noch Macs. Verschieben Sie sie zuerst in eine andere Gruppe (neues Konfigurationsprofil) und löschen Sie die Gruppe dann."
 
-#: santa/console/views_groups.py:107
+#: santa/console/views_groups.py:109
 #, python-format
 msgid "Group %(group)s deleted."
 msgstr "Gruppe %(group)s gelöscht."
 
-#: santa/console/views_groups.py:192
+#: santa/console/views_groups.py:195
 #, python-format
 msgid "%(machine)s: clean sync at the next sync (the Mac drops and downloads all its rules)."
 msgstr "%(machine)s: Clean Sync bei der nächsten Synchronisierung (der Mac verwirft alle Regeln und lädt sie neu herunter)."
@@ -1471,6 +1471,11 @@ msgstr "Alle Ereignisse"
 
 #: santa/templates/console/events/list.html:18
 #: santa/templates/console/rules/list.html:31
+msgid "Click selects a row, Ctrl-click adds or removes one, Shift-click selects a range."
+msgstr "Klick wählt eine Zeile aus, Strg-Klick fügt eine hinzu oder entfernt sie, Umschalt-Klick wählt einen Bereich aus."
+
+#: santa/templates/console/events/list.html:18
+#: santa/templates/console/rules/list.html:31
 msgid "<span data-selected-count>0</span> selected"
 msgstr "<span data-selected-count>0</span> ausgewählt"
 
@@ -1484,8 +1489,13 @@ msgstr "Als erledigt markieren"
 
 #: santa/templates/console/events/list.html:21
 #: santa/templates/console/rules/list.html:40
-msgid "Shift-click selects a range."
-msgstr "Umschalt-Klick wählt einen Bereich aus."
+msgid "Clear selection"
+msgstr "Auswahl aufheben"
+
+#: santa/templates/console/events/list.html:21
+#: santa/templates/console/rules/list.html:40
+msgid "Clear selection (Esc)"
+msgstr "Auswahl aufheben (Esc)"
 
 #: santa/templates/console/events/list.html:25
 msgid "Pause live updates"
@@ -1604,35 +1614,35 @@ msgstr "(plus die globalen)"
 msgid "Open blocks"
 msgstr "Offene Blockierungen"
 
-#: santa/templates/console/groups/form.html:19
+#: santa/templates/console/groups/form.html:20
 msgid "Secret: every Mac with this URL belongs to the group. It is in the configuration profile."
 msgstr "Geheim: jeder Mac mit dieser URL gehört zur Gruppe. Sie steht im Konfigurationsprofil."
 
-#: santa/templates/console/groups/form.html:23
+#: santa/templates/console/groups/form.html:25
 msgid "The Macs with the current profile can no longer sync until the new profile is in your MDM. Regenerate?"
 msgstr "Die Macs mit dem aktuellen Profil können sich nicht mehr synchronisieren, bis das neue Profil in Ihrem MDM ist. Neu erzeugen?"
 
-#: santa/templates/console/groups/form.html:24
+#: santa/templates/console/groups/form.html:26
 msgid "Regenerate the sync URL"
 msgstr "Sync-URL neu erzeugen"
 
-#: santa/templates/console/groups/form.html:43
+#: santa/templates/console/groups/form.html:45
 #: santa/templates/console/profile.html:23
 #: santa/templates/console/rules/form.html:35
 #: santa/templates/console/sources/form.html:45
 msgid "Save"
 msgstr "Speichern"
 
-#: santa/templates/console/groups/form.html:43
+#: santa/templates/console/groups/form.html:45
 msgid "Create group"
 msgstr "Gruppe anlegen"
 
-#: santa/templates/console/groups/form.html:45
+#: santa/templates/console/groups/form.html:47
 #: santa/templates/console/rules/form.html:36
 msgid "History"
 msgstr "Verlauf"
 
-#: santa/templates/console/groups/form.html:49
+#: santa/templates/console/groups/form.html:51
 #, python-format
 msgid "Delete the group %(name)s and its rules?"
 msgstr "Die Gruppe %(name)s und ihre Regeln löschen?"
@@ -2355,3 +2365,6 @@ msgstr "Unbekannter Regeltyp %(rule_type)s."
 #, python-format
 msgid "Line %(number)s (%(pattern)s): %(error)s"
 msgstr "Zeile %(number)s (%(pattern)s): %(error)s"
+
+#~ msgid "Shift-click selects a range."
+#~ msgstr "Umschalt-Klick wählt einen Bereich aus."

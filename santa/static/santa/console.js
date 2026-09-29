@@ -32,17 +32,33 @@
     });
   }
 
-  // Selection and bulk bar of the lists
+  // Selection and bulk bar of the lists: the bar floats at the bottom, the table never moves
+  function rowBoxes(form) {
+    return [...form.querySelectorAll('tbody input[type="checkbox"]')];
+  }
+
   function updateSelection(form) {
-    const boxes = form.querySelectorAll('tbody input[type="checkbox"]');
-    const checked = [...boxes].filter((box) => box.checked).length;
+    const boxes = rowBoxes(form);
+    boxes.forEach((box) => box.closest("tr")?.classList.toggle("selected", box.checked));
+    const checked = boxes.filter((box) => box.checked).length;
     const bar = form.querySelector("[data-bulkbar]");
     if (bar) {
-      bar.hidden = checked === 0;
+      // the hidden attribute only avoids a flash before this script runs
+      bar.hidden = false;
+      bar.classList.toggle("visible", checked > 0);
       bar.querySelector("[data-selected-count]").textContent = checked;
     }
     const all = form.querySelector("[data-select-all]");
     if (all) all.checked = checked > 0 && checked === boxes.length;
+    document.body.classList.toggle(
+      "has-bulkbar", !!document.querySelector("[data-bulkbar].visible"));
+  }
+
+  function clearSelection(form) {
+    rowBoxes(form).forEach((box) => {
+      box.checked = false;
+    });
+    updateSelection(form);
   }
 
   // The drawer with the event details
@@ -461,6 +477,7 @@
     setupTagInputs(root);
     root.querySelectorAll("[data-source-form]").forEach(setupIdentifiers);
     root.querySelectorAll("[data-package-form]").forEach(setupPackageRequest);
+    root.querySelectorAll("[data-select-form]").forEach(updateSelection);
   }
 
   document.addEventListener("DOMContentLoaded", () => init(document));
@@ -502,24 +519,53 @@
     }
   });
 
-  // Shift-click on a row checkbox selects the range since the last click
+  // Rows are selected like files: click selects one row, Ctrl/⌘-click adds or removes one,
+  // Shift-click selects the range since the last click. The checkboxes still toggle a single row.
   let lastChecked = null;
+
+  function selectRange(boxes, box, checked) {
+    const [from, to] = [boxes.indexOf(lastChecked), boxes.indexOf(box)].sort((a, b) => a - b);
+    boxes.slice(from, to + 1).forEach((other) => {
+      other.checked = checked;
+    });
+  }
+
+  const INTERACTIVE = "a, button, input, select, textarea, label, summary, [hx-get], [hx-post]";
+
   document.addEventListener("click", (event) => {
-    const box = event.target.closest('[data-select-form] tbody input[type="checkbox"]');
-    if (!box) return;
-    const boxes = [...box.closest("[data-select-form]").querySelectorAll('tbody input[type="checkbox"]')];
-    if (event.shiftKey && lastChecked && boxes.includes(lastChecked) && lastChecked !== box) {
-      const [from, to] = [boxes.indexOf(lastChecked), boxes.indexOf(box)].sort((a, b) => a - b);
-      boxes.slice(from, to + 1).forEach((other) => {
-        other.checked = box.checked;
-      });
-      updateSelection(box.closest("[data-select-form]"));
+    const form = event.target.closest("[data-select-form]");
+    const row = event.target.closest("tbody tr");
+    if (!form || !row || !form.contains(row)) return;
+    const box = row.querySelector('input[type="checkbox"]');
+    if (!box || !rowBoxes(form).includes(box)) return;
+    const boxes = rowBoxes(form);
+    const canRange = event.shiftKey && lastChecked && boxes.includes(lastChecked) && lastChecked !== box;
+    if (event.target === box) {
+      if (canRange) selectRange(boxes, box, box.checked);
+    } else {
+      if (event.target.closest(INTERACTIVE)) return;
+      if (!event.shiftKey && window.getSelection()?.toString()) return;
+      if (canRange) {
+        selectRange(boxes, box, true);
+      } else if (event.ctrlKey || event.metaKey) {
+        box.checked = !box.checked;
+      } else {
+        const onlyThis = box.checked && boxes.every((other) => other === box || !other.checked);
+        boxes.forEach((other) => {
+          other.checked = false;
+        });
+        box.checked = !onlyThis;
+      }
     }
     lastChecked = box;
+    updateSelection(form);
   });
-  // no text selection while shift-clicking the rows
+  // no text selection while shift- or ctrl-clicking the rows
   document.addEventListener("mousedown", (event) => {
-    if (event.shiftKey && event.target.closest("[data-select-form] tbody")) event.preventDefault();
+    if ((event.shiftKey || event.ctrlKey || event.metaKey) && event.target.closest("[data-select-form] tbody")
+        && !event.target.closest(INTERACTIVE)) {
+      event.preventDefault();
+    }
   });
 
   document.addEventListener("click", (event) => {
@@ -537,6 +583,8 @@
     const copyButton = event.target.closest("[data-copy-text]");
     if (copyButton) copy(copyButton.dataset.copyText, copyButton);
     const confirmButton = event.target.closest("[data-confirm-when]");
+    const clearButton = event.target.closest("[data-clear-selection]");
+    if (clearButton) clearSelection(clearButton.closest("[data-select-form]"));
     if (confirmButton) {
       const [name, value] = confirmButton.dataset.confirmWhen.split("=");
       if (controlValue(confirmButton.form, name) === value && !window.confirm(confirmButton.dataset.confirm)) {
@@ -569,6 +617,14 @@
       }
       document.querySelector("[data-topbar]")?.classList.remove("nav-open");
     }
-    if (event.key === "Escape" && document.getElementById("drawer")?.classList.contains("open")) closeDrawer();
+    if (event.key === "Escape") {
+      if (document.getElementById("drawer")?.classList.contains("open")) {
+        closeDrawer();
+      } else if (!event.target.closest('input:not([type="checkbox"]), select, textarea')) {
+        document.querySelectorAll("[data-select-form]").forEach((form) => {
+          if (form.querySelector("[data-bulkbar].visible")) clearSelection(form);
+        });
+      }
+    }
   });
 })();
