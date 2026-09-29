@@ -24,6 +24,7 @@ from ..models import (
     Tag,
     UserProfile,
 )
+from ..validators import validate_identifier
 
 SCOPE_GLOBAL = "global"
 SCOPE_GROUPS = "groups"
@@ -427,18 +428,106 @@ class ApprovePackagesForm(forms.Form):
         return cleaned_data
 
 
-class ApproveOtherForm(forms.Form):
-    rule = forms.ModelChoiceField(queryset=Rule.objects.all(), required=False, widget=forms.HiddenInput)
+class ApproveOtherForm(TagsMixin):
+    """Approve a request for other software: create the rule for it right here, a manual rule or a package rule"""
+
+    RULE, PACKAGE, EXISTING, NONE = "rule", "package", "existing", "none"
+    NEW = "new"
+
+    result = forms.ChoiceField(
+        choices=[(RULE, _("New execution rule")), (PACKAGE, _("Package rule")),
+                 (EXISTING, _("Existing execution rule")), (NONE, _("No rule"))],
+        initial=RULE, widget=forms.RadioSelect, label=_("Approve with"))
+
+    # a new execution rule
+    rule_type = forms.ChoiceField(choices=rule_type_choices(), initial=RuleType.SIGNINGID, label=_("Rule type"))
+    identifier = forms.CharField(required=False, max_length=256, label=_("Identifier"),
+                                 widget=forms.TextInput(attrs={"class": "mono", "autocomplete": "off"}),
+                                 help_text=_("Or upload the app below: the server reads the identifier from it."))
+    file = forms.FileField(required=False, label=_("File"),
+                           help_text=_("Mach-O binary, or a zip / tar archive. Every executable in it gets a rule. "
+                                       "The file is only hashed, it is not stored."))
+    binary_pattern = forms.CharField(required=False, max_length=200, label=_("Binary pattern"),
+                                     help_text=_("Archives only: glob of the files to use, e.g. */bin/colima"))
+    policy = forms.ChoiceField(choices=ALLOW_POLICIES, initial=Policy.ALLOWLIST, label=_("Policy"))
+    scope = forms.ChoiceField(choices=[(SCOPE_MACHINES, _("The Macs of the requester")),
+                                       (SCOPE_GROUPS, _("Groups")), (SCOPE_GLOBAL, _("All Macs"))],
+                              initial=SCOPE_MACHINES, widget=forms.RadioSelect, label=_("Scope"))
+    groups = forms.ModelMultipleChoiceField(queryset=Group.objects.all(), required=False, label=_("Groups"),
+                                            widget=forms.CheckboxSelectMultiple)
+
+    # a package rule: a new one, or more identifiers for an existing one
+    package_target = forms.ChoiceField(label=_("Package rule"))
+    package_kind = forms.ChoiceField(choices=ReleaseSource.Kind.choices, initial=ReleaseSource.Kind.GITHUB_RELEASE,
+                                     label=_("Catalog"))
+    package_identifiers = forms.CharField(
+        required=False, label=_("Packages"), widget=forms.Textarea(attrs={"rows": 2, "class": "mono"}),
+        help_text=_("One per line. GitHub: owner/repo · Homebrew: formula or cask name · URL: the full URL · "
+                    "npm: package name · VS Code: publisher.name · JetBrains: plugin ID"))
+    package_name = forms.CharField(required=False, max_length=180, label=_("Name of the new package rule"))
+    package_rule_type = forms.ChoiceField(choices=rule_type_choices(), initial=RuleType.BINARY,
+                                          label=_("Preferred rule type"))
+    package_auto_approve = forms.BooleanField(required=False, initial=True, label=_("Auto approve"),
+                                              help_text=_("Enable the rules of new releases automatically."))
+    package_is_global = forms.BooleanField(required=False, label=_("All Macs (global)"))
+    package_groups = forms.ModelMultipleChoiceField(queryset=Group.objects.all(), required=False, label=_("Groups"),
+                                                    widget=forms.CheckboxSelectMultiple)
+
+    # an existing rule
     rule_identifier = forms.CharField(required=False, label=_("Rule"), max_length=256,
-                                      help_text=_("Optional: identifier of the rule you created for it"))
+                                      help_text=_("Identifier of the rule you created for it"))
+    rule = forms.ModelChoiceField(queryset=Rule.objects.all(), required=False, widget=forms.HiddenInput)
+
     note = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 2}), label=_("Note"),
                            help_text=_("Shown to the user"))
 
+    field_order = ["result", "rule_type", "identifier", "file", "binary_pattern", "policy", "scope", "groups",
+                   "tags", "new_tags", "package_target", "package_kind", "package_identifiers", "package_name",
+                   "package_rule_type", "package_auto_approve", "package_is_global", "package_groups",
+                   "rule_identifier", "rule", "note"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["rule_type"].choices = rule_type_choices()
+        self.fields["package_rule_type"].choices = rule_type_choices()
+        self.sources = {str(source.pk): source for source in ReleaseSource.objects.order_by("name")}
+        self.fields["package_target"].choices = [(self.NEW, gettext("New package rule"))] + [
+            (pk, gettext("Add to %(name)s") % {"name": f"{source.name} ({source.get_kind_display()})"})
+            for pk, source in self.sources.items()]
+        self.fields["package_target"].initial = self.NEW
+
     def clean(self):
         cleaned_data = super().clean()
-        identifier = (cleaned_data.get("rule_identifier") or "").strip()
-        if identifier:
-            rule = Rule.objects.filter(identifier__iexact=identifier).order_by("pk").first()
+        result = cleaned_data.get("result")
+        if result == self.RULE:
+            identifier = (cleaned_data.get("identifier") or "").strip()
+            cleaned_data["identifier"] = identifier
+            if not identifier and not cleaned_data.get("file"):
+                self.add_error("identifier", gettext("Enter the identifier, or upload the app."))
+            elif identifier and cleaned_data.get("rule_type"):
+                try:
+                    cleaned_data["identifier"] = validate_identifier(cleaned_data["rule_type"], identifier)
+                except ValidationError as e:
+                    self.add_error("identifier", e)
+            if cleaned_data.get("scope") == SCOPE_GROUPS and not cleaned_data.get("groups"):
+                self.add_error("groups", gettext("Choose at least one group."))
+        elif result == self.PACKAGE:
+            identifiers = [line.strip() for line in (cleaned_data.get("package_identifiers") or "").splitlines()
+                           if line.strip()]
+            cleaned_data["package_identifiers"] = identifiers
+            if not identifiers:
+                self.add_error("package_identifiers", gettext("Enter at least one identifier."))
+            target = cleaned_data.get("package_target")
+            cleaned_data["package_source"] = self.sources.get(target)
+            if target == self.NEW:
+                if not (cleaned_data.get("package_name") or "").strip():
+                    self.add_error("package_name", gettext("Enter a name for the new package rule."))
+                if not cleaned_data.get("package_is_global") and not cleaned_data.get("package_groups"):
+                    self.add_error("package_groups",
+                                   gettext("Choose at least one group for the new package rule, or all Macs."))
+        elif result == self.EXISTING:
+            identifier = (cleaned_data.get("rule_identifier") or "").strip()
+            rule = Rule.objects.filter(identifier__iexact=identifier).order_by("pk").first() if identifier else None
             if rule is None:
                 self.add_error("rule_identifier", gettext("No rule with this identifier."))
             cleaned_data["rule"] = rule

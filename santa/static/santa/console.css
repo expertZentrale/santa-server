@@ -567,3 +567,5 @@ a.chip:hover { text-decoration: none; border-color: var(--accent); }
 .table .center { text-align: center; }
 .table.permissions tbody th { background: none; text-transform: none; letter-spacing: 0; font-size: inherit; color: var(--text); font-weight: 500; }
 .filters > p { margin: 0; flex: 1 1 20rem; }
+details.upload { margin: 0 0 1rem; }
+details.upload summary { cursor: pointer; color: var(--muted); margin-bottom: .5rem; }

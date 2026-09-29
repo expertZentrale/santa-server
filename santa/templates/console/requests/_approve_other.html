@@ -1,0 +1,34 @@
+{% load i18n %}{% include "console/_field.html" with field=form.result %}
+<div data-show-when="result=rule">
+  {% if perms.santa.add_rule %}
+  <p class="help small">{% translate "Enter the identifier (e.g. the Signing ID that santactl fileinfo shows), or upload the app to read it from there." %}</p>
+  {% include "console/_field.html" with field=form.rule_type %}
+  {% include "console/_field.html" with field=form.identifier %}
+  <details class="upload"{% if form.file.errors or form.binary_pattern.value %} open{% endif %}>
+    <summary>{% translate "Upload the app instead" %}</summary>
+    {% include "console/_field.html" with field=form.file %}
+    {% include "console/_field.html" with field=form.binary_pattern %}
+  </details>
+  {% include "console/_field.html" with field=form.policy %}
+  {% include "console/_field.html" with field=form.scope %}
+  <div data-show-when="scope=groups">{% include "console/_field.html" with field=form.groups %}</div>
+  {% include "console/_field.html" with field=form.new_tags %}
+  {% else %}<p class="muted">{% translate "Creating execution rules needs the permission to add rules." %}</p>{% endif %}
+</div>
+<div data-show-when="result=package">
+  {% if perms.santa.add_releasesource %}
+  <p class="help small">{% translate "A package rule watches the releases and allows every new version. More options (patterns, delay, versions to keep) are on the page of the package rule after the approval." %}</p>
+  {% include "console/_field.html" with field=form.package_target %}
+  <div data-show-when="package_target=new">{% include "console/_field.html" with field=form.package_kind %}</div>
+  {% include "console/_field.html" with field=form.package_identifiers %}
+  <div data-show-when="package_target=new">
+    {% include "console/_field.html" with field=form.package_name %}
+    {% include "console/_field.html" with field=form.package_rule_type %}
+    {% include "console/_field.html" with field=form.package_auto_approve %}
+    {% include "console/_field.html" with field=form.package_is_global %}
+    <div data-hide-when="package_is_global">{% include "console/_field.html" with field=form.package_groups %}</div>
+  </div>
+  {% else %}<p class="muted">{% translate "Creating package rules needs the permission to add package rules." %}</p>{% endif %}
+</div>
+<div data-show-when="result=existing">{% include "console/_field.html" with field=form.rule_identifier %}</div>
+{% include "console/_field.html" with field=form.note %}

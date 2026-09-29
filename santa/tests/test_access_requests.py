@@ -2,13 +2,15 @@ import json
 from unittest.mock import patch
 
 from django.contrib.admin.models import LogEntry
-from django.contrib.auth.models import Permission
+from django.contrib.auth.models import Permission, User
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 
 from santa.models import AccessRequest, AccessRequestPackage, Event, Policy, ReleaseSource, Rule, RuleType
 from santa.services import machines_for_user
 
 from .test_console import SHA_A, SHA_B, ConsoleBase
+from .utils import build_macho
 
 
 class UserRequestTestCase(ConsoleBase):
@@ -203,6 +205,112 @@ class AdminRequestTestCase(ConsoleBase):
                                                     "new_name": "x"})
         self.assertContains(response, "Choose at least one group")
         self.assertFalse(ReleaseSource.objects.exists())
+
+    def other_request(self):
+        return AccessRequest.objects.create(requester=self.user, kind="OTHER", title="Figma", justification="design")
+
+    def test_approve_other_with_a_new_rule(self):
+        access_request = self.other_request()
+        response = self.client.get(reverse("console:request", args=(access_request.pk,)))
+        self.assertContains(response, 'enctype="multipart/form-data"')
+        self.assertEqual(response.context["approve_form"]["package_name"].initial, "Figma")
+        response, _ = self.approve(access_request, {
+            "result": "rule", "rule_type": RuleType.TEAMID, "identifier": "t8w5s5s6ra", "policy": Policy.ALLOWLIST,
+            "scope": "machines", "package_target": "new", "package_kind": "GITHUB_RELEASE",
+            "package_rule_type": RuleType.BINARY, "new_tags": "design", "note": "enjoy"})
+        self.assertRedirects(response, reverse("console:requests"))
+        rule = Rule.objects.get(rule_type=RuleType.TEAMID)
+        # normalized like on the rule form, for the Mac of the requester
+        self.assertEqual((rule.identifier, list(rule.machines.all())), ("T8W5S5S6RA", [self.machine]))
+        self.assertEqual([tag.name for tag in rule.tags.all()], ["design"])
+        access_request.refresh_from_db()
+        self.assertEqual((access_request.status, access_request.result_rule), (AccessRequest.Status.APPROVED, rule))
+
+    def test_approve_other_with_an_uploaded_app(self):
+        access_request = self.other_request()
+        upload = SimpleUploadedFile("figma", build_macho(identifier="com.figma.agent", team_id="T8W5S5S6RA"))
+        response, _ = self.approve(access_request, {
+            "result": "rule", "rule_type": RuleType.SIGNINGID, "file": upload, "policy": Policy.ALLOWLIST,
+            "scope": "groups", "groups": [self.dev.pk], "package_target": "new", "package_kind": "GITHUB_RELEASE",
+            "package_rule_type": RuleType.BINARY})
+        self.assertRedirects(response, reverse("console:requests"))
+        rule = Rule.objects.get()
+        self.assertEqual((rule.identifier, list(rule.groups.all())), ("T8W5S5S6RA:com.figma.agent", [self.dev]))
+
+    def test_approve_other_needs_an_identifier(self):
+        access_request = self.other_request()
+        response, _ = self.approve(access_request, {
+            "result": "rule", "rule_type": RuleType.TEAMID, "policy": Policy.ALLOWLIST, "scope": "machines",
+            "package_target": "new", "package_kind": "GITHUB_RELEASE", "package_rule_type": RuleType.BINARY})
+        self.assertContains(response, "Enter the identifier, or upload the app.")
+        self.assertFalse(Rule.objects.exists())
+
+    def test_approve_other_with_a_new_package_rule(self):
+        access_request = self.other_request()
+        response, sync = self.approve(access_request, {
+            "result": "package", "rule_type": RuleType.SIGNINGID, "policy": Policy.ALLOWLIST, "scope": "machines",
+            "package_target": "new", "package_kind": "GITHUB_RELEASE", "package_identifiers": "abiosoft/colima\n",
+            "package_name": "Colima", "package_rule_type": RuleType.BINARY, "package_groups": [self.dev.pk]})
+        self.assertRedirects(response, reverse("console:requests"))
+        source = ReleaseSource.objects.get(name="Colima")
+        self.assertEqual((source.identifiers, list(source.groups.all()), source.auto_approve),
+                         (["abiosoft/colima"], [self.dev], False))
+        sync.assert_called_once_with(source)
+        access_request.refresh_from_db()
+        self.assertEqual(access_request.result_source, source)
+
+    def test_approve_other_into_an_existing_package_rule(self):
+        source = ReleaseSource.objects.create(name="JS tools", kind="NPM_PACKAGE", identifier="esbuild",
+                                              is_global=True)
+        access_request = self.other_request()
+        response, _ = self.approve(access_request, {
+            "result": "package", "rule_type": RuleType.SIGNINGID, "policy": Policy.ALLOWLIST, "scope": "machines",
+            "package_target": source.pk, "package_kind": "GITHUB_RELEASE", "package_identifiers": "vite",
+            "package_rule_type": RuleType.BINARY})
+        self.assertRedirects(response, reverse("console:requests"))
+        source.refresh_from_db()
+        self.assertEqual(source.identifiers, ["esbuild", "vite"])
+
+    def test_approve_other_with_an_invalid_package(self):
+        access_request = self.other_request()
+        response, _ = self.approve(access_request, {
+            "result": "package", "rule_type": RuleType.SIGNINGID, "policy": Policy.ALLOWLIST, "scope": "machines",
+            "package_target": "new", "package_kind": "GITHUB_RELEASE", "package_identifiers": "not-a-repo",
+            "package_name": "Broken", "package_rule_type": RuleType.BINARY, "package_is_global": "on"})
+        self.assertContains(response, "use the owner/repo format")
+        access_request.refresh_from_db()
+        self.assertTrue(access_request.is_pending)
+
+    def test_approve_other_with_an_existing_rule_or_none(self):
+        rule = Rule.objects.create(rule_type=RuleType.BINARY, identifier=SHA_A, is_global=True)
+        access_request = self.other_request()
+        self.approve(access_request, {"result": "existing", "rule_identifier": SHA_A.upper(),
+                                      "rule_type": RuleType.SIGNINGID, "policy": Policy.ALLOWLIST,
+                                      "scope": "machines", "package_target": "new", "package_kind": "URL",
+                                      "package_rule_type": RuleType.BINARY})
+        access_request.refresh_from_db()
+        self.assertEqual(access_request.result_rule, rule)
+        other = self.other_request()
+        other.title = "Something else"
+        other.save()
+        self.approve(other, {"result": "none", "rule_type": RuleType.SIGNINGID, "policy": Policy.ALLOWLIST,
+                             "scope": "machines", "package_target": "new", "package_kind": "URL",
+                             "package_rule_type": RuleType.BINARY})
+        other.refresh_from_db()
+        self.assertEqual((other.status, other.result_rule), (AccessRequest.Status.APPROVED, None))
+
+    def test_approve_other_needs_the_rule_permissions(self):
+        approver = User.objects.create_user("approver", is_staff=True)
+        approver.user_permissions.set(Permission.objects.filter(codename__in=["view_accessrequest",
+                                                                              "change_accessrequest"]))
+        self.client.force_login(approver)
+        access_request = self.other_request()
+        response, _ = self.approve(access_request, {
+            "result": "rule", "rule_type": RuleType.TEAMID, "identifier": "T8W5S5S6RA", "policy": Policy.ALLOWLIST,
+            "scope": "machines", "package_target": "new", "package_kind": "GITHUB_RELEASE",
+            "package_rule_type": RuleType.BINARY})
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(Rule.objects.exists())
 
     def test_deny_all_packages(self):
         access_request, (esbuild,) = self.package_request(("NPM_PACKAGE", "esbuild"))
