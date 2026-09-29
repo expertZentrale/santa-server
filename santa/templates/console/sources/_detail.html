@@ -1,0 +1,45 @@
+{% load console i18n %}<div class="actions detail-actions">
+  {% if perms.santa.change_releasesource %}
+  <form method="post" action="{% url 'console:source_check' source.pk %}" class="inline"{% if in_drawer %} hx-post="{% url 'console:source_check' source.pk %}" hx-target="#drawer"{% endif %}>{% csrf_token %}<input type="hidden" name="next" value="{% url 'console:source' source.pk %}"><button class="button">{% translate "Check now" %}</button></form>
+  {% url 'console:source_edit' source.pk as edit_url %}<a class="button primary" href="{{ edit_url }}"{% if in_drawer %} hx-get="{{ edit_url }}" hx-target="#drawer"{% endif %}>{% translate "Edit" %}</a>{% endif %}
+  {% url 'console:history' 'releasesource' source.pk as history_url %}<a class="right" href="{{ history_url }}" hx-get="{{ history_url }}" hx-target="#drawer">{% translate "History" %}</a>
+</div>
+{% if source.last_error %}<pre class="error-box">{{ source.last_error }}</pre>{% endif %}
+<section class="card summary">
+  <dl class="facts inline">
+    <dt>{% translate "Catalog" %}</dt><dd>{{ source.get_kind_display }}</dd>
+    <dt>{% translate "Rules" %}</dt><dd>{{ source.get_rule_type_display }} · <span class="badge {{ source.policy|policy_class }}">{{ source.get_policy_display }}</span></dd>
+    <dt>{% translate "Scope" %}</dt><dd>{% if source.is_global %}{% translate "All Macs" %}{% else %}{{ source.groups.all|join:", "|default:_("none") }}{% endif %}</dd>
+    <dt>{% translate "Approval" %}</dt><dd>{% if source.auto_approve %}{% if source.auto_approve_delay_days %}{% blocktranslate count days=source.auto_approve_delay_days %}automatic after {{ days }} day{% plural %}automatic after {{ days }} days{% endblocktranslate %}{% else %}{% translate "automatic" %}{% endif %}{% else %}{% translate "manual" %}{% endif %}
+      · {% if source.keep_versions %}{% blocktranslate count count=source.keep_versions %}keep {{ count }} version{% plural %}keep {{ count }} versions{% endblocktranslate %}{% else %}{% translate "keep all versions" %}{% endif %}</dd>
+    {% if source.version_pattern %}<dt>{% translate "Versions" %}</dt><dd class="mono">{{ source.version_pattern }}</dd>{% endif %}
+    <dt>{% translate "Last check" %}</dt><dd>{{ source.last_checked_at|date:"d.m.Y H:i"|default:_("never") }}</dd>
+  </dl>
+</section>
+{% for identifier, item, versions in per_identifier %}
+<section class="card">
+  <h2 class="with-icon">{% if item.icon_url %}<img src="{{ item.icon_url }}" alt="" referrerpolicy="no-referrer">{% endif %}
+    {{ item.name|default:identifier }} <code>{{ identifier }}</code>
+    {% if identifier not in source.identifiers %}<span class="badge bad">{% translate "removed, deleted at the next check" %}</span>{% endif %}</h2>
+  <table class="table compact">
+    <thead><tr><th>{% translate "Version" %}</th><th>{% translate "Published" %}</th><th>{% translate "Binaries" %}</th><th>{% translate "Approval" %}</th><th></th></tr></thead>
+    <tbody>
+    {% for version in versions %}
+      <tr>
+        <td class="strong">{{ version.version }}</td>
+        <td>{{ version.published_at|default:version.created_at|date:"d.m.Y" }}</td>
+        <td><a href="{% url 'console:rules' %}?version={{ version.pk }}">{{ version.binary_count }}</a></td>
+        <td>{% if not version.binary_count %}<span class="muted">{% translate "no executable, nothing to allow" %}</span>
+          {% elif version.auto_enable_pending %}<span class="badge info">{% blocktranslate with date=version.auto_enable_at|date:"d.m.Y H:i" %}automatic on {{ date }}{% endblocktranslate %}</span>
+          {% else %}{% for rule in version.rules.all|slice:":1" %}{% if rule.is_enabled %}<span class="badge ok">{% translate "enabled" %}</span>{% else %}<span class="badge">{% translate "waiting / disabled" %}</span>{% endif %}{% endfor %}{% endif %}</td>
+        <td class="nowrap">{% if perms.santa.change_rule and version.binary_count %}
+          <form method="post" action="{% url 'console:version_approve' version.pk %}" class="inline"{% if in_drawer %} hx-post="{% url 'console:version_approve' version.pk %}" hx-target="#drawer"{% endif %}>{% csrf_token %}<button class="button small">{% translate "Approve" %}</button></form>
+          <form method="post" action="{% url 'console:version_disable' version.pk %}" class="inline"{% if in_drawer %} hx-post="{% url 'console:version_disable' version.pk %}" hx-target="#drawer"{% endif %}>{% csrf_token %}<button class="button small">{% translate "Disable" %}</button></form>{% endif %}</td>
+      </tr>
+    {% empty %}
+      <tr class="empty"><td colspan="5">{% translate "No version yet. Use “Check now”." %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endfor %}

@@ -1,0 +1,19 @@
+{% load i18n %}<ol class="history">
+  {% for entry in page %}
+  <li>
+    <span class="badge {% if entry.is_addition %}ok{% elif entry.is_deletion %}bad{% else %}info{% endif %}">{% if entry.is_addition %}{% translate "Added" %}{% elif entry.is_deletion %}{% translate "Deleted" %}{% else %}{% translate "Changed" %}{% endif %}</span>
+    <span class="history-when">{{ entry.action_time|date:"d.m.Y H:i" }}</span>
+    <span class="muted">{{ entry.user.get_full_name|default:entry.user.get_username }}</span>
+    {% with message=entry.get_change_message %}{% if message %}<p class="history-message">{{ message }}</p>{% endif %}{% endwith %}
+  </li>
+  {% empty %}
+  <li class="muted">{% translate "No changes recorded." %}</li>
+  {% endfor %}
+</ol>
+{% if page.paginator.num_pages > 1 %}
+<nav class="pagination" aria-label="{% translate 'Pages' %}">
+  {% if page.has_previous %}<a href="{% querystring page=page.previous_page_number %}"{% if in_drawer %} hx-get="{{ request.path }}{% querystring page=page.previous_page_number %}" hx-target="#drawer"{% endif %}>‹ {% translate "Previous" %}</a>{% endif %}
+  <span>{% blocktranslate with number=page.number pages=page.paginator.num_pages count=page.paginator.count %}Page {{ number }} of {{ pages }} · {{ count }} total{% endblocktranslate %}</span>
+  {% if page.has_next %}<a href="{% querystring page=page.next_page_number %}"{% if in_drawer %} hx-get="{{ request.path }}{% querystring page=page.next_page_number %}" hx-target="#drawer"{% endif %}>{% translate "Next" %} ›</a>{% endif %}
+</nav>
+{% endif %}

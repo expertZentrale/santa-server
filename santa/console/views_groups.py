@@ -16,6 +16,7 @@ from ..rules import GLOBAL, GROUP, MACHINE, effective_rule_objects
 from ..services import can_see_sync_token, remove_machine_from_rules, rules_only_for
 from .forms import GroupForm
 from .utils import (
+    changed_message,
     log_addition,
     log_change,
     log_deletion,
@@ -68,7 +69,7 @@ def group_form(request, pk=None):
                 messages.success(request, gettext("Group %(group)s created. Download its configuration profile below.")
                                  % {"group": group})
             else:
-                log_change(request.user, group, f"Changed in the console: {', '.join(form.changed_data)}")
+                log_change(request.user, group, changed_message(form))
                 message = gettext("Group %(group)s saved.") % {"group": group} + " "
                 if any(name in form.changed_data for name in GroupForm.SECTIONS[-1][2]):
                     message += gettext("Profile settings changed: download the profile again and replace it in "

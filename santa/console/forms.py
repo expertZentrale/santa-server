@@ -101,6 +101,15 @@ class MachinesField(forms.CharField):
             raise ValidationError(gettext("Unknown Mac: %(names)s") % {"names": ", ".join(unknown)})
         return machines
 
+    def has_changed(self, initial, data):
+        # the initial value is a queryset, the data a text: compare the Macs
+        try:
+            new = {machine.pk for machine in self.clean(data)}
+        except ValidationError:
+            return True
+        old = {machine.pk for machine in (initial.all() if hasattr(initial, "all") else initial or [])}
+        return new != old
+
 
 class RuleForm(TagsMixin, forms.ModelForm):
     machines = MachinesField(label=_("Macs"))

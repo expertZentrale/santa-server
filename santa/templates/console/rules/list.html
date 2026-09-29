@@ -5,7 +5,7 @@
   <h1>{% translate "Execution rules" %}</h1>
   <div class="actions">
     {% if perms.santa.add_rule %}<a class="button" href="{% url 'console:rule_upload' %}">{% translate "Upload binary" %}</a>
-    <a class="button primary" href="{% url 'console:rule_add' %}">{% translate "New rule" %}</a>{% endif %}
+    {% url 'console:rule_add' as add_url %}<a class="button primary" href="{{ add_url }}" hx-get="{{ add_url }}" hx-target="#drawer">{% translate "New rule" %}</a>{% endif %}
   </div>
 </div>
 <div class="tabs" role="tablist">

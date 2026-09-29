@@ -4,35 +4,5 @@
 {% block content %}
 <p><a href="{% url 'console:rules' %}">‹ {% translate "Execution rules" %}</a></p>
 <h1>{% if rule %}{% blocktranslate with type=rule.get_rule_type_display %}{{ type }} rule{% endblocktranslate %}{% else %}{% translate "New execution rule" %}{% endif %}</h1>
-<form method="post" class="stack">
-  {% csrf_token %}
-  {% if form.non_field_errors %}<div class="error">{{ form.non_field_errors }}</div>{% endif %}
-  <section class="card"><h2>{% translate "Target" %}</h2>
-    {% include "console/_field.html" with field=form.rule_type %}
-    {% include "console/_field.html" with field=form.identifier %}
-    <small class="help">{% blocktranslate %}From <code>santactl fileinfo /path/to/binary</code>, or create the rule from an event.{% endblocktranslate %}</small>
-  </section>
-  <section class="card"><h2>{% translate "Policy" %}</h2>
-    {% include "console/_field.html" with field=form.policy %}
-    <div data-show-when="policy=CEL">{% include "console/_field.html" with field=form.cel_expr %}
-      <small class="help">{% blocktranslate %}Return a policy, e.g. <code>target.signing_time &gt;= timestamp('2025-01-01T00:00:00Z') ? ALLOWLIST : BLOCKLIST</code>. Evaluated by Santa on the Mac.{% endblocktranslate %}</small></div>
-    <div data-show-when="policy=BLOCKLIST|SILENT_BLOCKLIST|CEL">
-      {% include "console/_field.html" with field=form.custom_msg %}
-      {% include "console/_field.html" with field=form.custom_url %}</div>
-  </section>
-  <section class="card"><h2>{% translate "Scope" %}</h2>
-    {% include "console/_field.html" with field=form.is_global %}
-    <div data-hide-when="is_global">
-      {% include "console/_field.html" with field=form.groups %}
-      {% include "console/_field.html" with field=form.machines %}</div>
-    {% include "console/_field.html" with field=form.is_enabled %}
-  </section>
-  <section class="card"><h2>{% translate "Tags and comment" %}</h2>
-    {% include "console/_field.html" with field=form.tags %}
-    {% include "console/_field.html" with field=form.new_tags %}
-    {% include "console/_field.html" with field=form.description %}
-  </section>
-  <div class="actions"><button class="button primary">{% translate "Save" %}</button> <a href="{% url 'console:rules' %}">{% translate "Cancel" %}</a>
-    {% if rule %}<a class="right" href="{% url 'admin:santa_rule_history' rule.pk %}">{% translate "History" %}</a>{% endif %}</div>
-</form>
+{% include "console/rules/_form.html" %}
 {% endblock %}

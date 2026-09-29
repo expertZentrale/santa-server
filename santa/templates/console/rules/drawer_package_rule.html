@@ -1,0 +1,3 @@
+{% extends "console/_drawer.html" %}{% load i18n %}
+{% block drawer_title %}{% blocktranslate with type=rule.get_rule_type_display %}{{ type }} rule{% endblocktranslate %}{% endblock %}
+{% block drawer_body %}{% include "console/rules/_package_rule.html" %}{% endblock %}

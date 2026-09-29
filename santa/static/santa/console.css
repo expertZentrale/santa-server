@@ -488,6 +488,16 @@ ul.plain { list-style: none; padding: 0; margin: 0; display: grid; gap: .3rem; }
 .drawer-head { display: flex; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
 .drawer-head h2 { margin: 0 0 .25rem; font-size: 1.2rem; }
 .drawer-head .link { font-size: 1.5rem; line-height: 1; }
+.drawer-head h2:focus { outline: none; }
+.drawer-tools { display: flex; align-items: flex-start; gap: .75rem; flex: none; }
+.drawer-tools a { padding-top: .3rem; white-space: nowrap; }
+/* forms and package rules need more room than an event */
+.drawer:has(.drawer-panel.wide) { width: min(760px, 100vw); }
+/* the cards of a page are plain sections in the drawer */
+.drawer .card { background: none; border: 0; box-shadow: none; padding: 0; margin: 0 0 1.5rem; }
+.drawer .card > h2 { font-size: 1rem; }
+.drawer .page-head { margin-bottom: 1rem; }
+.detail-actions { margin-bottom: 1.25rem; }
 
 .request .request-head { display: flex; justify-content: space-between; gap: 1rem; }
 .request .note { background: var(--surface-2); padding: .5rem .75rem; border-radius: 6px; }
@@ -579,3 +589,9 @@ a.chip:hover { text-decoration: none; border-color: var(--accent); }
 .filters > p { margin: 0; flex: 1 1 20rem; }
 details.upload { margin: 0 0 1rem; }
 details.upload summary { cursor: pointer; color: var(--muted); margin-bottom: .5rem; }
+
+/* History of an object */
+ol.history { list-style: none; padding: 0; margin: 0; display: grid; gap: .75rem; }
+ol.history > li { border-bottom: 1px solid var(--border); padding-bottom: .75rem; display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .6rem; }
+ol.history > li:last-child { border-bottom: 0; }
+.history-message { flex-basis: 100%; margin: 0; overflow-wrap: anywhere; }

@@ -1,0 +1,5 @@
+{% extends "console/_drawer.html" %}{% load i18n %}
+{% block drawer_class %} wide{% endblock %}
+{% block drawer_back %}{% if source %}{% url 'console:source' source.pk as source_url %}<a class="small" href="{{ source_url }}" hx-get="{{ source_url }}" hx-target="#drawer">‹ {{ source.name }}</a>{% endif %}{% endblock %}
+{% block drawer_title %}{% if source %}{% translate "Edit" %}{% else %}{% translate "New package rule" %}{% endif %}{% endblock %}
+{% block drawer_body %}{% include "console/sources/_form.html" with in_drawer=True %}{% endblock %}

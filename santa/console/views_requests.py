@@ -27,7 +27,16 @@ from .forms import (
     RequestOtherForm,
     RequestPackageForm,
 )
-from .utils import log_addition, log_change, paginate, require_perms, sort_by, staff_required
+from .utils import (
+    drawer_done,
+    log_addition,
+    log_change,
+    paginate,
+    render_drawer,
+    require_perms,
+    sort_by,
+    staff_required,
+)
 from .views_events import available_rule_types, default_rule_type, show_rule_preview
 from .views_sources import catalog_results
 
@@ -231,7 +240,7 @@ def admin_request_detail(request, pk, approve_form=None, deny_form=None):
     elif access_request.kind == AccessRequest.Kind.PACKAGE:
         identifiers = list(access_request.packages.values_list("identifier", flat=True))
         others = AccessRequest.objects.filter(packages__identifier__in=identifiers).exclude(pk=pk).distinct()
-    return render(request, "console/requests/detail.html", {
+    return render_drawer(request, "console/requests/detail.html", "console/requests/drawer_detail.html", {
         "access_request": access_request, "event": event, "others": others.select_related("requester")[:20],
         "approve_form": approve_form or _approve_forms(access_request),
         "deny_form": deny_form or DenyForm(),
@@ -281,7 +290,7 @@ def admin_request_approve(request, pk):
         except ReleaseError as e:
             messages.warning(request, f"{source}: {e}")
     messages.success(request, gettext("Request “%(title)s” approved.") % {"title": access_request.title})
-    return redirect("console:requests")
+    return drawer_done(request, "console:requests")
 
 
 def _allow_for_request(request, access_request, form, identifiers):
@@ -418,4 +427,4 @@ def admin_request_deny(request, pk):
     _decide(access_request, request.user, AccessRequest.Status.DENIED, form.cleaned_data["note"])
     access_request.packages.update(status=AccessRequestPackage.Status.DENIED)
     messages.success(request, gettext("Request “%(title)s” denied.") % {"title": access_request.title})
-    return redirect("console:requests")
+    return drawer_done(request, "console:requests")

@@ -12,6 +12,7 @@
   {% if not tag or perms.santa.change_tag %}
   <div class="actions"><button class="button primary">{% if tag %}{% translate "Save" %}{% else %}{% translate "Create tag" %}{% endif %}</button>
     <a href="{% url 'console:admin_tags' %}">{% translate "Cancel" %}</a>
+    {% if tag %}{% url 'console:history' 'tag' tag.pk as history_url %}<a href="{{ history_url }}" hx-get="{{ history_url }}" hx-target="#drawer">{% translate "History" %}</a>{% endif %}
     {% if tag and perms.santa.delete_tag %}<button class="button danger right" form="delete-form">{% translate "Delete" %}</button>{% endif %}</div>
   {% endif %}
 </form>

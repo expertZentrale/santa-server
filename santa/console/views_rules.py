@@ -9,11 +9,14 @@ from ..releases import ReleaseError, find_binaries
 from ..services import allow_identifier, binary_identifiers, set_rules_enabled
 from .forms import RuleBulkForm, RuleForm, UploadBinaryForm
 from .utils import (
+    changed_message,
+    drawer_done,
     is_htmx,
     log_addition,
     log_change,
     log_deletion,
     paginate,
+    render_drawer,
     require_perms,
     safe_next,
     sort_by,
@@ -149,7 +152,8 @@ def rule_form(request, pk=None):
     require_perms(request, "view_rule", "change_rule" if rule else "add_rule")
     if rule and rule.release_source_id:
         # the package rule owns them, only enable / disable here
-        return render(request, "console/rules/package_rule.html", {"rule": rule})
+        return render_drawer(request, "console/rules/package_rule.html", "console/rules/drawer_package_rule.html",
+                             {"rule": rule})
     initial = {}
     if rule is None and request.GET.get("machine", "").isdigit():
         # "New rule" on the page of a Mac
@@ -166,11 +170,12 @@ def rule_form(request, pk=None):
         if created:
             log_addition(request.user, rule)
         else:
-            log_change(request.user, rule, f"Changed in the console: {', '.join(form.changed_data)}")
+            log_change(request.user, rule, changed_message(form))
         messages.success(request, gettext("Rule saved: %(rule)s. The Macs get it at their next sync.")
                          % {"rule": rule})
-        return redirect("console:rules")
-    return render(request, "console/rules/form.html", {"form": form, "rule": rule})
+        return drawer_done(request, "console:rules")
+    return render_drawer(request, "console/rules/form.html", "console/rules/drawer_form.html",
+                         {"form": form, "rule": rule})
 
 
 @staff_required
