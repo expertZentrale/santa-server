@@ -44,7 +44,7 @@
   {% if can_change %}
   <div class="actions"><button class="button primary">{% if group %}{% translate "Save" %}{% else %}{% translate "Create group" %}{% endif %}</button>
     {% if group and perms.santa.delete_group %}<button class="button danger right" form="delete-form">{% translate "Delete" %}</button>{% endif %}
-    {% if group %}<a href="{% url 'admin:santa_group_history' group.pk %}">{% translate "History" %}</a>{% endif %}</div>
+    {% if group %}{% url 'console:history' 'group' group.pk as history_url %}<a href="{{ history_url }}" hx-get="{{ history_url }}" hx-target="#drawer">{% translate "History" %}</a>{% endif %}</div>
   {% endif %}
 </form>
 {% if group and perms.santa.delete_group %}

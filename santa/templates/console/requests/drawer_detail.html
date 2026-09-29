@@ -1,0 +1,5 @@
+{% extends "console/_drawer.html" %}{% load i18n %}
+{% block drawer_class %} wide{% endblock %}
+{% block drawer_title %}{{ access_request.title }}{% endblock %}
+{% block drawer_subtitle %}<span class="muted">{{ access_request.get_kind_display }} · {{ access_request.requester.get_full_name|default:access_request.requester.get_username }} · {{ access_request.created_at|date:"d.m.Y H:i" }}</span>{% endblock %}
+{% block drawer_body %}{% include "console/requests/_detail.html" with in_drawer=True %}{% endblock %}

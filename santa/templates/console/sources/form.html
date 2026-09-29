@@ -4,49 +4,5 @@
 {% block content %}
 <p><a href="{% if source %}{% url 'console:source' source.pk %}{% else %}{% url 'console:sources' %}{% endif %}">‹ {% translate "Back" %}</a></p>
 <h1>{% if source %}{{ source.name }}{% else %}{% translate "New package rule" %}{% endif %}</h1>
-<form method="post" class="stack" data-source-form data-catalog-url="{% url 'console:catalog_search' %}"
-      data-searchable="{{ searchable_kinds|join:',' }}">
-  {% csrf_token %}
-  {{ form.picked }}
-  {% if form.non_field_errors %}<div class="error">{{ form.non_field_errors }}</div>{% endif %}
-  <section class="card"><h2>{% translate "Source and packages" %}</h2>
-    {% include "console/_field.html" with field=form.name %}
-    {% include "console/_field.html" with field=form.kind %}
-    {% include "console/_field.html" with field=form.identifier %}
-    {% include "console/_field.html" with field=form.is_enabled %}
-  </section>
-  <section class="card"><h2>{% translate "Filters" %}</h2>
-    {% include "console/_field.html" with field=form.version_pattern %}
-    {% include "console/_field.html" with field=form.asset_pattern %}
-    {% include "console/_field.html" with field=form.binary_pattern %}
-    {% include "console/_field.html" with field=form.include_prereleases %}
-  </section>
-  <section class="card"><h2>{% translate "Rules" %}</h2>
-    {% include "console/_field.html" with field=form.rule_type %}
-    {% include "console/_field.html" with field=form.policy %}
-    <div data-show-when="policy=CEL">{% include "console/_field.html" with field=form.cel_expr %}</div>
-    <div data-show-when="policy=BLOCKLIST|SILENT_BLOCKLIST|CEL">
-      {% include "console/_field.html" with field=form.custom_msg %}
-      {% include "console/_field.html" with field=form.custom_url %}</div>
-  </section>
-  <section class="card"><h2>{% translate "Scope" %}</h2>
-    {% include "console/_field.html" with field=form.is_global %}
-    <div data-hide-when="is_global">{% include "console/_field.html" with field=form.groups %}</div>
-  </section>
-  <section class="card"><h2>{% translate "Approval" %}</h2>
-    {% include "console/_field.html" with field=form.auto_approve %}
-    {% include "console/_field.html" with field=form.auto_approve_delay_days %}
-    {% include "console/_field.html" with field=form.keep_versions %}
-  </section>
-  <section class="card"><h2>{% translate "Tags" %}</h2>
-    {% include "console/_field.html" with field=form.tags %}
-    {% include "console/_field.html" with field=form.new_tags %}
-  </section>
-  <div class="actions"><button class="button primary">{% translate "Save" %}</button>
-    {% if source and perms.santa.delete_releasesource %}
-    <button class="button danger right" form="delete-form">{% translate "Delete" %}</button>{% endif %}</div>
-</form>
-{% if source and perms.santa.delete_releasesource %}
-<form id="delete-form" method="post" action="{% url 'console:source_delete' source.pk %}" data-confirm="{% blocktranslate with name=source.name %}Delete {{ name }} and all its rules?{% endblocktranslate %}">{% csrf_token %}</form>
-{% endif %}
+{% include "console/sources/_form.html" %}
 {% endblock %}

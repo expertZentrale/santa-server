@@ -203,6 +203,11 @@ Profil des Benutzers gespeichert. Auf dem Smartphone liegt die Navigation hinter
 wählt sie aus, Strg-Klick fügt eine hinzu oder entfernt sie, Umschalt-Klick wählt einen Bereich. Die Aktionen für die
 Auswahl erscheinen unten im Fenster; Esc hebt die Auswahl auf.
 
+**Seitenleiste**: Ereignisse, Ausführungsregeln, Paketregeln, Anfragen und der Verlauf öffnen sich in einer Leiste
+rechts, auch zum Anlegen und Bearbeiten. Nach dem Speichern wird die Liste dahinter neu geladen. Esc oder ein Klick
+daneben schließt sie, *Seite ↗* öffnet dasselbe als eigene Seite. *Verlauf* zeigt jede Änderung an einer Regel,
+Paketregel, Gruppe, einem Mac, einer Anmeldegruppe, Rolle, einem Tag oder Benutzer.
+
 **Gruppen**: die Santa-Konfiguration jeder Gruppe, ihre geheime SyncBaseURL, der Download ihres
 Konfigurationsprofils, *Sync-URL neu erzeugen* und in der Liste das Basisprofil.
 
@@ -562,6 +567,11 @@ navigation is behind the menu button.
 
 **Lists**: click a column header to sort, again to reverse. A click on a row selects it, Ctrl-click adds or removes
 one, Shift-click selects a range. The actions for the selection appear at the bottom of the window; Esc clears it.
+
+**Side panel**: events, execution rules, package rules, requests and the history open in a panel on the right, also
+to create and edit them. After saving, the list behind it reloads. Esc or a click next to it closes it, *Page ↗* opens
+the same as a page of its own. *History* shows every change of a rule, package rule, group, Mac, sign-in group, role,
+tag or user.
 
 **Groups**: the Santa configuration of each group, its secret SyncBaseURL, the download of its configuration
 profile, *Regenerate the sync URL*, and the base profile on the list.

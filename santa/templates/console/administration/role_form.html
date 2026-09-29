@@ -29,6 +29,7 @@
   {% if not role or perms.auth.change_group %}
   <div class="actions"><button class="button primary">{% if role %}{% translate "Save" %}{% else %}{% translate "Create role" %}{% endif %}</button>
     <a href="{% url 'console:admin_roles' %}">{% translate "Cancel" %}</a>
+    {% if role %}{% url 'console:history' 'role' role.pk as history_url %}<a href="{{ history_url }}" hx-get="{{ history_url }}" hx-target="#drawer">{% translate "History" %}</a>{% endif %}
     {% if role and perms.auth.delete_group and not is_protected %}<button class="button danger right" form="delete-form">{% translate "Delete" %}</button>{% endif %}</div>
   {% endif %}
 </form>

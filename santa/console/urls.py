@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views_admin, views_events, views_groups, views_requests, views_rules, views_sources
+from . import views_admin, views_events, views_groups, views_history, views_requests, views_rules, views_sources
 
 app_name = "console"
 
@@ -49,6 +49,8 @@ urlpatterns = [
     path("requests/<int:pk>/", views_requests.admin_request_detail, name="request"),
     path("requests/<int:pk>/approve/", views_requests.admin_request_approve, name="request_approve"),
     path("requests/<int:pk>/deny/", views_requests.admin_request_deny, name="request_deny"),
+
+    path("history/<str:model>/<int:pk>/", views_history.history, name="history"),
 
     path("administration/", views_admin.administration, name="administration"),
     path("administration/users/", views_admin.users, name="admin_users"),

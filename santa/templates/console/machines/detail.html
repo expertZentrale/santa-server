@@ -8,7 +8,8 @@
   <div class="actions">
     <form method="post" action="{% url 'console:machine_clean_sync' machine.pk %}" data-confirm="{% translate 'The Mac drops all its rules and downloads them again at its next sync. Continue?' %}">
       {% csrf_token %}<button class="button"{% if machine.clean_sync_requested %} disabled{% endif %}>{% if machine.clean_sync_requested %}{% translate "Clean sync pending" %}{% else %}{% translate "Clean sync" %}{% endif %}</button></form>
-    {% if perms.santa.add_rule %}<a class="button primary" href="{% url 'console:rule_add' %}?machine={{ machine.pk }}">{% translate "New rule" %}</a>{% endif %}
+    {% url 'console:history' 'machine' machine.pk as history_url %}<a class="button" href="{{ history_url }}" hx-get="{{ history_url }}" hx-target="#drawer">{% translate "History" %}</a>
+    {% if perms.santa.add_rule %}<a class="button primary" href="{% url 'console:rule_add' %}?machine={{ machine.pk }}" hx-get="{% url 'console:rule_add' %}?machine={{ machine.pk }}" hx-target="#drawer">{% translate "New rule" %}</a>{% endif %}
   </div>
   {% endif %}
 </div>
@@ -72,7 +73,7 @@
       <tbody>{% for rule in page %}
         <tr{% if not rule.wins %} class="disabled"{% endif %}>
           <td class="select">{% if rule.on_mac and perms.santa.change_rule %}<input type="checkbox" name="rules" value="{{ rule.pk }}" aria-label="{% translate 'Select rule' %} {{ rule.pk }}">{% endif %}</td>
-          <td><a class="mono" href="{% url 'console:rule' rule.pk %}" title="{{ rule.identifier }}">{{ rule.identifier|short_hash:28 }}</a>
+          <td>{% url 'console:rule' rule.pk as rule_url %}<a class="mono" href="{{ rule_url }}" hx-get="{{ rule_url }}" hx-target="#drawer" title="{{ rule.identifier }}">{{ rule.identifier|short_hash:28 }}</a>
             {% if rule.description %}<small class="muted">{{ rule.description|truncatechars:70 }}</small>{% endif %}</td>
           <td>{{ rule.get_rule_type_display }}</td>
           <td><span class="badge {{ rule.policy|policy_class }}">{{ rule.get_policy_display }}</span></td>
@@ -107,7 +108,7 @@
 </section>
 {% if requests %}
 <section class="card"><h2>{% translate "Requests" %}</h2><ul class="plain">
-  {% for r in requests %}<li><a href="{% url 'console:request' r.pk %}">{{ r.title }}</a> · {{ r.requester }} · <span class="badge">{{ r.get_status_display }}</span></li>{% endfor %}
+  {% for r in requests %}<li>{% url 'console:request' r.pk as request_url %}<a href="{{ request_url }}" hx-get="{{ request_url }}" hx-target="#drawer">{{ r.title }}</a> · {{ r.requester }} · <span class="badge">{{ r.get_status_display }}</span></li>{% endfor %}
 </ul></section>
 {% endif %}
 {% endblock %}

@@ -1,5 +1,6 @@
 from django.contrib import messages
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import gettext, ngettext
 from django.views.decorators.http import require_POST
@@ -9,7 +10,20 @@ from ..models import ReleaseSource, ReleaseVersion
 from ..releases import ReleaseError, sync_release_source
 from ..services import set_rules_enabled
 from .forms import ReleaseSourceForm
-from .utils import log_addition, log_change, log_deletion, paginate, require_perms, safe_next, sort_by, staff_required
+from .utils import (
+    changed_message,
+    drawer_done,
+    is_htmx,
+    log_addition,
+    log_change,
+    log_deletion,
+    paginate,
+    render_drawer,
+    require_perms,
+    safe_next,
+    sort_by,
+    staff_required,
+)
 
 
 def latest_versions(source):
@@ -55,7 +69,8 @@ def source_detail(request, pk):
                       for identifier in source.identifiers]
     # versions of identifiers that were removed, deleted at the next check
     per_identifier += [(identifier, {}, items) for identifier, items in versions.items()]
-    return render(request, "console/sources/detail.html", {"source": source, "per_identifier": per_identifier})
+    return render_drawer(request, "console/sources/detail.html", "console/sources/drawer_detail.html",
+                         {"source": source, "per_identifier": per_identifier})
 
 
 @staff_required
@@ -73,14 +88,14 @@ def source_form(request, pk=None):
         if created:
             log_addition(request.user, source)
         else:
-            log_change(request.user, source, f"Changed in the console: {', '.join(form.changed_data)}")
+            log_change(request.user, source, changed_message(form))
         if not source.is_global and not source.groups.exists():
             messages.warning(request, gettext("%(source)s: no group and not global, its rules apply to no Mac.")
                              % {"source": source})
         messages.success(request, gettext("Package rule %(source)s saved. Use “Check now” to get the current "
                                           "releases.") % {"source": source})
-        return redirect("console:source", pk=source.pk)
-    return render(request, "console/sources/form.html", {
+        return drawer_done(request, reverse("console:source", args=[source.pk]))
+    return render_drawer(request, "console/sources/form.html", "console/sources/drawer_form.html", {
         "form": form, "source": source, "searchable_kinds": list(catalog.SEARCHABLE_KINDS),
     })
 
@@ -120,6 +135,9 @@ def source_check(request, pk):
         messages.success(request, message + ".")
     if not new_versions and not failed:
         messages.info(request, gettext("%(source)s: up to date.") % {"source": source})
+    if is_htmx(request):
+        # the drawer of the package rule again, with the messages
+        return source_detail(request, source.pk)
     return redirect(safe_next(request, "console:sources"))
 
 
@@ -141,6 +159,8 @@ def version_set_enabled(request, pk, enabled):
         message = ngettext("%(version)s: %(count)s rule disabled.", "%(version)s: %(count)s rules disabled.",
                            len(rules))
     messages.success(request, message % {"version": version, "count": len(rules)})
+    if is_htmx(request):
+        return source_detail(request, version.source_id)
     return redirect("console:source", pk=version.source_id)
 
 

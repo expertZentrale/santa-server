@@ -1,0 +1,5 @@
+{% extends "console/_drawer.html" %}{% load i18n %}
+{% block drawer_class %} wide{% endblock %}
+{% block drawer_title %}{{ source.name }}{% endblock %}
+{% block drawer_subtitle %}<span class="muted">{{ source.get_kind_display }}</span>{% endblock %}
+{% block drawer_body %}{% include "console/sources/_detail.html" with in_drawer=True %}{% endblock %}

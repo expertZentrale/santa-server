@@ -4,6 +4,8 @@ from django.contrib.admin.models import ADDITION, CHANGE, DELETION, LogEntry
 from django.contrib.auth.views import redirect_to_login
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
+from django.http import HttpResponse
+from django.shortcuts import redirect, render
 from django.utils.http import url_has_allowed_host_and_scheme
 
 PAGE_SIZE = 50
@@ -31,6 +33,20 @@ def is_htmx(request):
     return request.headers.get("HX-Request") == "true"
 
 
+def render_drawer(request, page_template, drawer_template, context):
+    """The side drawer for the links with hx-target="#drawer", the full page for everything else"""
+    return render(request, drawer_template if is_htmx(request) else page_template, context)
+
+
+def drawer_done(request, url):
+    """After a form was saved: reload the page behind the drawer (it shows the change and the message)"""
+    if is_htmx(request):
+        response = HttpResponse(status=204)
+        response["HX-Refresh"] = "true"
+        return response
+    return redirect(url)
+
+
 def _log(user, objects, flag, message):
     objects = [obj for obj in objects if obj is not None]
     if not objects:
@@ -51,6 +67,13 @@ def log_addition(user, obj, message="Added in the console"):
 def log_change(user, objects, message):
     """Log a change for one object or a list of objects of the same model"""
     _log(user, objects if isinstance(objects, (list, tuple)) else [objects], CHANGE, message)
+
+
+def changed_message(form):
+    """The log message of a saved console form: the fields that changed"""
+    if not form.changed_data:
+        return "No fields changed."
+    return f"Changed in the console: {', '.join(form.changed_data)}"
 
 
 def log_deletion(user, obj, message="Deleted in the console"):

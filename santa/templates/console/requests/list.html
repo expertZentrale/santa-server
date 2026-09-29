@@ -11,7 +11,7 @@
   <tbody>
   {% for r in page %}
     <tr>
-      <td><a class="strong" href="{% url 'console:request' r.pk %}">{{ r.title }}</a><small class="muted">{{ r.justification|truncatechars:90 }}</small></td>
+      <td>{% url 'console:request' r.pk as request_url %}<a class="strong" href="{{ request_url }}" hx-get="{{ request_url }}" hx-target="#drawer">{{ r.title }}</a><small class="muted">{{ r.justification|truncatechars:90 }}</small></td>
       <td>{{ r.get_kind_display }}</td>
       <td>{{ r.requester.get_full_name|default:r.requester.get_username }}</td>
       <td>{{ r.machine.hostname|default:"–" }}</td>

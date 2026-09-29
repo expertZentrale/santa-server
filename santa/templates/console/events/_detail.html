@@ -1,9 +1,12 @@
 {% load console i18n %}<div class="drawer-panel">
   <header class="drawer-head">
-    <div><h2>{{ event.file_name|default:_("(no name)") }}</h2>
+    <div><h2 tabindex="-1" data-drawer-title>{{ event.file_name|default:_("(no name)") }}</h2>
       <span class="badge {{ event.decision|decision_class }}">{{ event.decision }}</span>
       <span class="muted">{{ event.execution_time|date:"d.m.Y H:i:s" }}</span></div>
-    <button type="button" class="link" data-drawer-close aria-label="{% translate 'Close' %}">×</button>
+    <div class="drawer-tools">
+      {% if request.headers.hx_request %}<a class="small" href="{% url 'console:event' event.pk %}" title="{% translate 'Open as page' %}">{% translate "Page" %} ↗</a>{% endif %}
+      <button type="button" class="link" data-drawer-close aria-label="{% translate 'Close' %}">×</button>
+    </div>
   </header>
   <dl class="facts">
     <dt>{% translate "Path" %}</dt><dd class="mono">{{ event.file_path }}</dd>
@@ -15,9 +18,9 @@
     <dt>{% translate "Signing ID" %}</dt><dd class="mono">{{ event.signing_id|default:"–" }} {% if event.signing_id %}{% include "console/_copy.html" with value=event.signing_id %}{% endif %}</dd>
     <dt>{% translate "Team ID" %}</dt><dd class="mono">{{ event.team_id|default:"–" }} {% if event.team_id %}{% include "console/_copy.html" with value=event.team_id %}{% endif %}</dd>
     <dt>{% translate "Certificate" %}</dt><dd>{{ event.cert_cn|default:"–" }}{% if event.cert_sha256 %}<br><span class="mono small">{{ event.cert_sha256 }}</span>{% include "console/_copy.html" with value=event.cert_sha256 %}{% endif %}</dd>
-    {% if event.resolved_at %}<dt>{% translate "Resolved" %}</dt><dd>{% blocktranslate with date=event.resolved_at|date:"d.m.Y H:i" by=event.resolved_by|default:"–" %}{{ date }} by {{ by }}{% endblocktranslate %}{% if event.resolution_rule %} · <a href="{% url 'console:rule' event.resolution_rule.pk %}">{% translate "rule" %}</a>{% endif %}</dd>{% endif %}
+    {% if event.resolved_at %}<dt>{% translate "Resolved" %}</dt><dd>{% blocktranslate with date=event.resolved_at|date:"d.m.Y H:i" by=event.resolved_by|default:"–" %}{{ date }} by {{ by }}{% endblocktranslate %}{% if event.resolution_rule %} · {% url 'console:rule' event.resolution_rule.pk as rule_url %}<a href="{{ rule_url }}" hx-get="{{ rule_url }}" hx-target="#drawer">{% translate "rule" %}</a>{% endif %}</dd>{% endif %}
   </dl>
-  {% if requests %}<h3>{% translate "Requests" %}</h3><ul class="plain">{% for r in requests %}<li><a href="{% url 'console:request' r.pk %}">{{ r.requester }}</a> · <span class="badge">{{ r.get_status_display }}</span></li>{% endfor %}</ul>{% endif %}
+  {% if requests %}<h3>{% translate "Requests" %}</h3><ul class="plain">{% for r in requests %}<li>{% url 'console:request' r.pk as request_url %}<a href="{{ request_url }}" hx-get="{{ request_url }}" hx-target="#drawer">{{ r.requester }}</a> · <span class="badge">{{ r.get_status_display }}</span></li>{% endfor %}</ul>{% endif %}
   {% if perms.santa.add_rule %}
   <h3>{% translate "Create rule" %}</h3>
   <form method="post" action="{% url 'console:event_allow' event.pk %}" class="stack compact">

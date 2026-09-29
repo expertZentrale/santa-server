@@ -1,0 +1,6 @@
+{% extends "console/_drawer.html" %}{% load i18n %}
+{% block drawer_class %} wide{% endblock %}
+{% block drawer_back %}{% if object_in_drawer %}<a class="small" href="{{ object_url }}" hx-get="{{ object_url }}" hx-target="#drawer">‹ {{ obj }}</a>{% endif %}{% endblock %}
+{% block drawer_title %}{% translate "History" %}{% endblock %}
+{% block drawer_subtitle %}{% if not object_in_drawer %}<span class="muted">{{ obj }}</span>{% endif %}{% endblock %}
+{% block drawer_body %}{% include "console/history/_entries.html" with in_drawer=True %}{% endblock %}

@@ -1,6 +1,6 @@
 {% load console i18n %}<tr id="rule-{{ rule.pk }}"{% if not rule.is_enabled %} class="disabled"{% endif %}>
   <td class="select"><input type="checkbox" name="rules" value="{{ rule.pk }}" aria-label="{% translate 'Select rule' %} {{ rule.pk }}"></td>
-  <td><a class="mono strong" href="{% url 'console:rule' rule.pk %}" title="{{ rule.identifier }}">{{ rule.identifier|short_hash:28 }}</a>
+  <td>{% url 'console:rule' rule.pk as rule_url %}<a class="mono strong" href="{{ rule_url }}" hx-get="{{ rule_url }}" hx-target="#drawer" title="{{ rule.identifier }}">{{ rule.identifier|short_hash:28 }}</a>
     {% include "console/_copy.html" with value=rule.identifier %}
     {% if rule.description %}<small class="muted">{{ rule.description|truncatechars:80 }}</small>{% endif %}</td>
   <td>{{ rule.get_rule_type_display }}</td>
@@ -9,7 +9,7 @@
     {% for group in rule.groups.all %}<span class="chip small">{{ group.name }}</span>{% endfor %}
     {% for machine in rule.machines.all %}<a class="chip small mac" href="{% url 'console:machine' machine.pk %}">{{ machine.hostname|default:machine.serial_number }}</a>{% endfor %}{% endif %}</td>
   <td>{% for tag in rule.tags.all %}<span class="tag">{{ tag.name }}</span>{% endfor %}</td>
-  <td>{% if rule.release_source %}<a href="{% url 'console:source' rule.release_source_id %}">{{ rule.release_source.name }}</a>{% else %}<span class="muted">{% translate "manual" %}</span>{% endif %}</td>
+  <td>{% if rule.release_source %}{% url 'console:source' rule.release_source_id as source_url %}<a href="{{ source_url }}" hx-get="{{ source_url }}" hx-target="#drawer">{{ rule.release_source.name }}</a>{% else %}<span class="muted">{% translate "manual" %}</span>{% endif %}</td>
   <td>{% if perms.santa.change_rule %}
     <button type="button" class="switch{% if rule.is_enabled %} on{% endif %}" role="switch" aria-checked="{{ rule.is_enabled|yesno:'true,false' }}"
             aria-label="{% translate 'Enabled' %}" hx-post="{% url 'console:rule_toggle' rule.pk %}" hx-target="#rule-{{ rule.pk }}" hx-swap="outerHTML"></button>

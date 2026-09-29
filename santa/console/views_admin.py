@@ -24,7 +24,16 @@ from ..auth import (
 from ..config_io import ConfigImportError, export_config, import_config
 from ..models import SignInGroup, Tag
 from .forms import ConfigImportForm, RoleForm, SignInGroupForm, TagForm, UserForm
-from .utils import log_addition, log_change, log_deletion, paginate, require_perms, sort_by, staff_required
+from .utils import (
+    changed_message,
+    log_addition,
+    log_change,
+    log_deletion,
+    paginate,
+    require_perms,
+    sort_by,
+    staff_required,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +141,7 @@ def user_form(request, pk=None):
             if created:
                 log_addition(request.user, user)
             else:
-                log_change(request.user, user, f"Changed in the console: {', '.join(form.changed_data)}")
+                log_change(request.user, user, changed_message(form))
             messages.success(request, gettext("User %(user)s saved.") % {"user": user})
             return redirect("console:admin_users")
     sign_in_roles = []
@@ -199,7 +208,7 @@ def role_form(request, pk=None):
         if created:
             log_addition(request.user, role)
         else:
-            log_change(request.user, role, f"Changed in the console: {', '.join(form.changed_data)}")
+            log_change(request.user, role, changed_message(form))
         messages.success(request, gettext("Role %(role)s saved.") % {"role": role})
         return redirect("console:admin_roles")
     rows, request_permissions = permission_matrix(form)
@@ -252,7 +261,7 @@ def sign_in_group_form(request, pk=None):
         if created:
             log_addition(request.user, sign_in_group)
         else:
-            log_change(request.user, sign_in_group, f"Changed in the console: {', '.join(form.changed_data)}")
+            log_change(request.user, sign_in_group, changed_message(form))
         messages.success(request, gettext("Sign-in group %(group)s saved. It applies to its members now, new "
                                           "members get it at their next sign-in.") % {"group": sign_in_group})
         return redirect("console:admin_sign_in_groups")
@@ -303,7 +312,7 @@ def tag_form(request, pk=None):
         if created:
             log_addition(request.user, tag)
         else:
-            log_change(request.user, tag, f"Changed in the console: {', '.join(form.changed_data)}")
+            log_change(request.user, tag, changed_message(form))
         messages.success(request, gettext("Tag %(tag)s saved.") % {"tag": tag})
         return redirect("console:admin_tags")
     return render_section(request, "console/administration/tag_form.html", "tags", {"form": form, "tag": tag})

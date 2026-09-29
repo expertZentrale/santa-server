@@ -15,6 +15,7 @@
   {% if not sign_in_group or perms.santa.change_signingroup %}
   <div class="actions"><button class="button primary">{% if sign_in_group %}{% translate "Save" %}{% else %}{% translate "Create sign-in group" %}{% endif %}</button>
     <a href="{% url 'console:admin_sign_in_groups' %}">{% translate "Cancel" %}</a>
+    {% if sign_in_group %}{% url 'console:history' 'signingroup' sign_in_group.pk as history_url %}<a href="{{ history_url }}" hx-get="{{ history_url }}" hx-target="#drawer">{% translate "History" %}</a>{% endif %}
     {% if sign_in_group and perms.santa.delete_signingroup %}<button class="button danger right" form="delete-form">{% translate "Delete" %}</button>{% endif %}</div>
   {% endif %}
 </form>

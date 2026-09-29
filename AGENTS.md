@@ -14,8 +14,11 @@ Read this file before changing anything. If a request conflicts with these rules
 - Keep the project a **normal Django application** that a Django developer understands without studying it:
   - The day-to-day UI is the console (`santa/console/`, `/console/`): plain Django views, forms and templates,
     with htmx (vendored in `santa/static/santa/htmx.min.js`) and a small `console.js`. No build step.
-    The request form for the users is `/request/`. The Django admin (`santa/admin.py`) stays for low-level editing;
-    configuration belongs in the console (*Administration*), not only in the admin.
+    Details and forms open in the side drawer (`#drawer`): links keep their `href` and add
+    `hx-get … hx-target="#drawer"`, the views use `render_drawer()` / `drawer_done()` of `santa/console/utils.py`
+    (a page and a drawer template around the same body partial). The request form for the users is `/request/`.
+    The Django admin (`santa/admin.py`) stays for low-level editing; configuration belongs in the console
+    (*Administration*), not only in the admin.
     Both use the same functions in `services.py`; don't duplicate business logic in the views.
   - Don't add a SPA, a frontend build, CDN assets, DRF, Celery or other frameworks without the user agreeing first.
   - Scheduled work is a management command (run by the platform's scheduler, see the README), not a worker process.

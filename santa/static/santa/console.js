@@ -500,7 +500,11 @@
   document.addEventListener("DOMContentLoaded", () => init(document));
   document.addEventListener("htmx:afterSwap", (event) => {
     const drawer = document.getElementById("drawer");
-    if (event.detail.target === drawer) drawer.classList.add("open");
+    if (event.detail.target === drawer) {
+      drawer.classList.add("open");
+      init(drawer);
+      drawer.querySelector("[data-drawer-title]")?.focus({ preventScroll: true });
+    }
     updateConditional(event.detail.target.closest("form") || event.detail.target);
     setupTagInputs(event.detail.target);
     labelTables(event.detail.target.closest("table") || event.detail.target);
@@ -597,6 +601,12 @@
     const menu = document.querySelector("[data-user-menu]");
     if (menu?.open && !event.target.closest("[data-user-menu]")) menu.open = false;
     if (event.target.closest("[data-drawer-close]")) closeDrawer();
+    // a click next to the open drawer closes it, except on what opens another one
+    const drawer = document.getElementById("drawer");
+    if (drawer?.classList.contains("open") && event.target.isConnected && !event.target.closest("#drawer")
+        && !event.target.closest('[hx-target="#drawer"]')) {
+      closeDrawer();
+    }
     const copyButton = event.target.closest("[data-copy-text]");
     if (copyButton) copy(copyButton.dataset.copyText, copyButton);
     const confirmButton = event.target.closest("[data-confirm-when]");

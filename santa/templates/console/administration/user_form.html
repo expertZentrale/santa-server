@@ -32,6 +32,7 @@
   </section>
   </fieldset>
   <div class="actions"><button class="button primary">{% if edited_user %}{% translate "Save" %}{% else %}{% translate "Create account" %}{% endif %}</button>
-    <a href="{% url 'console:admin_users' %}">{% translate "Cancel" %}</a></div>
+    <a href="{% url 'console:admin_users' %}">{% translate "Cancel" %}</a>
+    {% if edited_user %}{% url 'console:history' 'user' edited_user.pk as history_url %}<a href="{{ history_url }}" hx-get="{{ history_url }}" hx-target="#drawer">{% translate "History" %}</a>{% endif %}</div>
 </form>
 {% endblock %}

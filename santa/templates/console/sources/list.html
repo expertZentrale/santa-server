@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-head">
   <h1>{% translate "Package rules" %}</h1>
-  <div class="actions">{% if perms.santa.add_releasesource %}<a class="button primary" href="{% url 'console:source_add' %}">{% translate "New package rule" %}</a>{% endif %}</div>
+  <div class="actions">{% if perms.santa.add_releasesource %}{% url 'console:source_add' as add_url %}<a class="button primary" href="{{ add_url }}" hx-get="{{ add_url }}" hx-target="#drawer">{% translate "New package rule" %}</a>{% endif %}</div>
 </div>
 <p class="muted">{% translate "Watch packages in a catalog. Every new version is downloaded, its executables become execution rules." %}</p>
 <form class="filters" method="get">
@@ -18,7 +18,7 @@
   <tbody>
   {% for source in page %}
     <tr{% if not source.is_enabled %} class="disabled"{% endif %}>
-      <td><a class="strong" href="{% url 'console:source' source.pk %}">{{ source.name }}</a>
+      <td>{% url 'console:source' source.pk as source_url %}<a class="strong" href="{{ source_url }}" hx-get="{{ source_url }}" hx-target="#drawer">{{ source.name }}</a>
         <small class="muted">{% blocktranslate count count=source.identifiers|length %}{{ count }} package{% plural %}{{ count }} packages{% endblocktranslate %}</small></td>
       <td>{{ source.get_kind_display }}</td>
       <td class="small">{% for identifier, version in source.latest|slice:":4" %}

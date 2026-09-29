@@ -1,0 +1,15 @@
+{% load i18n %}<div class="drawer-panel{% block drawer_class %}{% endblock %}">
+  <header class="drawer-head">
+    <div>
+      {% block drawer_back %}{% endblock %}
+      <h2 tabindex="-1" data-drawer-title>{% block drawer_title %}{% endblock %}</h2>
+      {% block drawer_subtitle %}{% endblock %}
+    </div>
+    <div class="drawer-tools">
+      {% if request.method == "GET" %}<a class="small" href="{{ request.get_full_path }}" title="{% translate 'Open as page' %}">{% translate "Page" %} ↗</a>{% endif %}
+      <button type="button" class="link" data-drawer-close aria-label="{% translate 'Close' %}">×</button>
+    </div>
+  </header>
+  {% if messages %}<ul class="messages">{% for message in messages %}<li class="{{ message.tags }}">{{ message }}</li>{% endfor %}</ul>{% endif %}
+  {% block drawer_body %}{% endblock %}
+</div>
