@@ -118,6 +118,8 @@ class TimeZoneTestCase(ConsoleBase):
         self.assertContains(self.events_page(), "29.09.2026 11:04")
         self.client.cookies[TIME_ZONE_COOKIE] = "Europe/Berlin"
         self.assertContains(self.events_page(), "29.09.2026 13:04")
+        self.client.cookies[TIME_ZONE_COOKIE] = "Asia%2FTokyo"
+        self.assertContains(self.events_page(), "29.09.2026 20:04")
         # an unknown name is ignored
         self.client.cookies[TIME_ZONE_COOKIE] = "Mars/Olympus"
         self.assertContains(self.events_page(), "29.09.2026 11:04")

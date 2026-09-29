@@ -488,10 +488,12 @@
     } catch (error) {
       return;
     }
+    // IANA names (Europe/Berlin) are valid cookie values as they are; Django doesn't URL-decode cookies
+    if (!/^[A-Za-z0-9_+\-/]+$/.test(zone)) return;
     const current = document.cookie.split("; ").find((item) => item.startsWith("santa_tz="));
-    if (!zone || current === `santa_tz=${encodeURIComponent(zone)}`) return;
+    if (current === `santa_tz=${zone}`) return;
     const secure = location.protocol === "https:" ? "; secure" : "";
-    document.cookie = `santa_tz=${encodeURIComponent(zone)}; path=/; max-age=31536000; samesite=lax${secure}`;
+    document.cookie = `santa_tz=${zone}; path=/; max-age=31536000; samesite=lax${secure}`;
   }
 
   sendTimeZone();
