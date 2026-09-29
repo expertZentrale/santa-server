@@ -247,7 +247,8 @@ python manage.py import_config - < santa-config.json            # import, "-" re
 ## Development
 
 Open the folder in VS Code → **Reopen in Container**. The devcontainer starts SQL Server 2022 and Redis, creates the
-database and runs the migrations (`.devcontainer/setup.sh`). Then:
+database and runs the migrations (`.devcontainer/setup.sh`). The tools run as the unprivileged user `dev` with the
+UID of your host user, so the files in the workspace stay yours. Then:
 
 ```bash
 python manage.py createsuperuser

@@ -9,3 +9,7 @@ RUN apk add --no-cache bash curl git gettext ca-certificates libssl3 libstdc++ l
     pip install --no-cache-dir -r requirements-dev.txt; \
     apk del .build-deps
 
+
+# an unprivileged user: files created in the workspace (git, collectstatic, migrations) belong to the host user,
+# the devcontainer changes its UID/GID to the host's (updateRemoteUserUID)
+RUN adduser -D -u 1000 -s /bin/bash dev
