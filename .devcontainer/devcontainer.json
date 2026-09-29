@@ -2,7 +2,7 @@
 	"name": "Santa Server",
 	"dockerComposeFile": "docker-compose.yml",
 	"service": "web",
-	"workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+	"workspaceFolder": "/workspaces/santa-server",
 	"containerEnv": {
 		"DJANGO_SETTINGS_MODULE": "santa_server.settings_dev",
 		"DB_HOST": "mssql",
