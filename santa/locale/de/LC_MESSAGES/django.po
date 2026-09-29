@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: santa-server\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-29 09:18+0000\n"
+"POT-Creation-Date: 2026-09-29 09:23+0000\n"
 "Language: de\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -249,14 +249,14 @@ msgid "Keep versions"
 msgstr "Versionen behalten"
 
 #: santa/console/forms.py:197 santa/templates/console/requests/detail.html:14
-#: santa/templates/request/new.html:24
+#: santa/templates/request/new.html:27
 msgid "Packages"
 msgstr "Pakete"
 
 #: santa/console/forms.py:198 santa/templates/console/sources/detail.html:16
 #: santa/templates/console/sources/list.html:12
 #: santa/templates/console/sources/list.html:17
-#: santa/templates/request/new.html:27
+#: santa/templates/request/new.html:30
 msgid "Catalog"
 msgstr "Katalog"
 
@@ -661,48 +661,48 @@ msgstr "%(machine)s: Clean Sync bei der nächsten Synchronisierung (der Mac verw
 msgid "Preferences saved."
 msgstr "Einstellungen gespeichert."
 
-#: santa/console/views_requests.py:88
+#: santa/console/views_requests.py:93
 msgid "Your request was sent to your IT team. You'll see the answer here."
 msgstr "Ihre Anfrage wurde an Ihr IT-Team gesendet. Die Antwort sehen Sie hier."
 
-#: santa/console/views_requests.py:112
+#: santa/console/views_requests.py:118
 #, python-format
 msgid "%(count)s packages: %(names)s"
 msgstr "%(count)s Pakete: %(names)s"
 
-#: santa/console/views_requests.py:124
+#: santa/console/views_requests.py:130
 #, python-format
 msgid "You have %(count)s open requests already. Wait for an answer first."
 msgstr "Sie haben bereits %(count)s offene Anfragen. Bitte warten Sie zuerst auf eine Antwort."
 
-#: santa/console/views_requests.py:133
+#: santa/console/views_requests.py:139
 #, python-format
 msgid "You have already asked for %(packages)s, the request is open. Remove it here."
 msgstr "Sie haben %(packages)s bereits angefragt, die Anfrage ist offen. Entfernen Sie es hier."
 
-#: santa/console/views_requests.py:141
+#: santa/console/views_requests.py:147
 msgid "You have already asked for this, the request is open."
 msgstr "Sie haben das bereits angefragt, die Anfrage ist offen."
 
-#: santa/console/views_requests.py:158
+#: santa/console/views_requests.py:164
 msgid "Request cancelled."
 msgstr "Anfrage zurückgezogen."
 
-#: santa/console/views_requests.py:271
+#: santa/console/views_requests.py:279
 #, python-format
 msgid "Request “%(title)s” approved."
 msgstr "Anfrage „%(title)s“ freigegeben."
 
-#: santa/console/views_requests.py:280
+#: santa/console/views_requests.py:288
 #, python-format
 msgid "The binary has no %(rule_type)s."
 msgstr "Das Binary hat keine %(rule_type)s."
 
-#: santa/console/views_requests.py:284
+#: santa/console/views_requests.py:292
 msgid "The Mac of the requester is not known, choose groups or all Macs."
 msgstr "Der Mac des Antragstellers ist nicht bekannt, bitte Gruppen oder alle Macs wählen."
 
-#: santa/console/views_requests.py:340
+#: santa/console/views_requests.py:348
 #, python-format
 msgid "Request “%(title)s” denied."
 msgstr "Anfrage „%(title)s“ abgelehnt."
@@ -1165,11 +1165,11 @@ msgstr "Paket"
 msgid "Other"
 msgstr "Sonstiges"
 
-#: santa/models.py:543 santa/models.py:584
+#: santa/models.py:543 santa/models.py:589
 msgid "Pending"
 msgstr "Offen"
 
-#: santa/models.py:544 santa/models.py:585
+#: santa/models.py:544 santa/models.py:590
 msgid "Approved"
 msgstr "Freigegeben"
 
@@ -1181,25 +1181,41 @@ msgstr "Abgelehnt"
 msgid "Cancelled"
 msgstr "Zurückgezogen"
 
-#: santa/models.py:586
+#: santa/models.py:591
 msgid "Not approved"
 msgstr "Nicht freigegeben"
 
-#: santa/models.py:610 santa/templates/console/base.html:42
+#: santa/models.py:615 santa/templates/console/base.html:42
 msgid "System"
 msgstr "System"
 
-#: santa/models.py:611 santa/templates/console/base.html:43
+#: santa/models.py:616 santa/templates/console/base.html:43
 msgid "Light"
 msgstr "Hell"
 
-#: santa/models.py:612 santa/templates/console/base.html:44
+#: santa/models.py:617 santa/templates/console/base.html:44
 msgid "Dark"
 msgstr "Dunkel"
 
-#: santa/models.py:616
+#: santa/models.py:621
 msgid "System: follows the light or dark mode of your computer."
 msgstr "System: folgt dem hellen oder dunklen Modus Ihres Computers."
+
+#: santa/models.py:641
+msgid "The value in the groups claim of the ID token: the object ID or the name of the group, depending on the provider. * is everyone who signs in."
+msgstr "Der Wert im Gruppen-Claim des ID-Tokens: die Objekt-ID oder der Name der Gruppe, je nach Anbieter. * steht für alle, die sich anmelden."
+
+#: santa/models.py:643
+msgid "A name to recognise the group, only for display"
+msgstr "Ein Name, an dem Sie die Gruppe erkennen, nur für die Anzeige"
+
+#: santa/models.py:645
+msgid "The members can open the console (with the permissions of their roles)"
+msgstr "Die Mitglieder können die Konsole öffnen (mit den Berechtigungen ihrer Rollen)"
+
+#: santa/models.py:647
+msgid "The members get these roles"
+msgstr "Die Mitglieder erhalten diese Rollen"
 
 #: santa/templates/console/_copy.html:1
 msgid "Copy"
@@ -2359,7 +2375,7 @@ msgstr "Nichts gefunden. Enter drücken, um „%(query)s“ trotzdem hinzuzufüg
 
 #: santa/templates/console/widgets/identifiers.html:7
 #: santa/templates/console/widgets/identifiers.html:16
-#: santa/templates/request/new.html:29
+#: santa/templates/request/new.html:32
 msgid "Remove"
 msgstr "Entfernen"
 
@@ -2397,24 +2413,28 @@ msgstr "Anfrage zurückziehen"
 msgid "You haven't requested anything yet."
 msgstr "Sie haben noch nichts angefragt."
 
-#: santa/templates/request/new.html:16
+#: santa/templates/request/new.html:8
+msgid "You can't make requests. Ask your IT team if you need software."
+msgstr "Sie können keine Anfragen stellen. Wenden Sie sich an Ihr IT-Team, wenn Sie Software benötigen."
+
+#: santa/templates/request/new.html:19
 msgid "Nothing was blocked on your Mac in the last 30 days."
 msgstr "Auf Ihrem Mac wurde in den letzten 30 Tagen nichts blockiert."
 
-#: santa/templates/request/new.html:16
+#: santa/templates/request/new.html:19
 msgid "We couldn't find your Mac. Use “Package” or “Other” instead, and name your Mac in the text."
 msgstr "Wir konnten Ihren Mac nicht finden. Verwenden Sie stattdessen „Paket“ oder „Sonstiges“ und nennen Sie Ihren Mac im Text."
 
-#: santa/templates/request/new.html:20 santa/templates/request/new.html:38
-#: santa/templates/request/new.html:41
+#: santa/templates/request/new.html:23 santa/templates/request/new.html:41
+#: santa/templates/request/new.html:44
 msgid "Send request"
 msgstr "Anfrage senden"
 
-#: santa/templates/request/new.html:29
+#: santa/templates/request/new.html:32
 msgid "Search, or type the name and press Enter"
 msgstr "Suchen oder den Namen eingeben und Enter drücken"
 
-#: santa/templates/request/new.html:33
+#: santa/templates/request/new.html:36
 msgid "Add as many as you need, also from different catalogs. Your IT team decides for each one."
 msgstr "Fügen Sie so viele hinzu, wie Sie brauchen, auch aus verschiedenen Katalogen. Ihr IT-Team entscheidet für jedes einzeln."
 

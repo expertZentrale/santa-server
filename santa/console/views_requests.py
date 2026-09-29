@@ -2,7 +2,7 @@ from datetime import timedelta
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -13,7 +13,7 @@ from .. import catalog
 from ..catalog import update_identifier_icons
 from ..models import AccessRequest, AccessRequestPackage, Event, ReleaseSource, RuleType
 from ..releases import ReleaseError, sync_release_source
-from ..services import allow_identifier, machines_for_user
+from ..services import allow_identifier, machines_for_user, request_kinds_for
 from .forms import (
     REQUESTABLE_PACKAGE_KINDS,
     SCOPE_GLOBAL,
@@ -58,14 +58,19 @@ def blocked_events_of(user):
 def my_requests(request):
     page = paginate(request, AccessRequest.objects.filter(requester=request.user)
                                                   .select_related("event", "machine").prefetch_related("packages"))
-    return render(request, "request/list.html", {"page": page})
+    return render(request, "request/list.html", {"page": page, "can_request": bool(request_kinds_for(request.user))})
 
 
 @login_required
 def new_request(request):
-    kind = request.GET.get("kind") or request.POST.get("kind") or AccessRequest.Kind.EVENT
-    if kind not in FORMS:
-        kind = AccessRequest.Kind.EVENT
+    allowed = request_kinds_for(request.user)
+    if not allowed:
+        return render(request, "request/new.html", {"kinds": []}, status=403)
+    kind = request.GET.get("kind") or request.POST.get("kind") or allowed[0]
+    if kind not in allowed:
+        if request.method == "POST":
+            raise PermissionDenied
+        kind = allowed[0]
     events = blocked_events_of(request.user)
     kwargs = {"events": events} if kind == AccessRequest.Kind.EVENT else {}
     initial = {}
@@ -88,7 +93,8 @@ def new_request(request):
             messages.success(request, gettext("Your request was sent to your IT team. You'll see the answer here."))
             return redirect("requests:list")
     return render(request, "request/new.html", {
-        "form": form, "kind": kind, "kinds": AccessRequest.Kind.choices,
+        "form": form, "kind": kind, "kinds": [(value, label) for value, label in AccessRequest.Kind.choices
+                                              if value in allowed],
         "has_machines": machines_for_user(request.user).exists(),
         "package_kinds": [(k, ReleaseSource.Kind(k).label) for k in REQUESTABLE_PACKAGE_KINDS],
         "searchable_kinds": list(catalog.SEARCHABLE_KINDS),
@@ -161,6 +167,8 @@ def cancel_request(request, pk):
 
 @login_required
 def request_catalog_search(request):
+    if AccessRequest.Kind.PACKAGE not in request_kinds_for(request.user):
+        raise PermissionDenied
     return catalog_results(request)
 
 

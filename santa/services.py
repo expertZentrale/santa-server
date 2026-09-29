@@ -1,7 +1,7 @@
 from django.db.models import Q
 from django.utils import timezone
 
-from .models import Event, Machine, ReleaseVersion, Rule, RuleType
+from .models import AccessRequest, Event, Machine, ReleaseVersion, Rule, RuleType
 
 EVENT_IDENTIFIER_FIELDS = {
     RuleType.BINARY: "file_sha256",
@@ -83,6 +83,18 @@ def can_see_sync_token(user):
     """The sync token (in the SyncBaseURL and the group profile) is the credential of the sync API: only for the
     users who may change the groups, never for read-only viewers."""
     return user.has_perm("santa.change_group")
+
+
+REQUEST_PERMISSIONS = {
+    AccessRequest.Kind.EVENT: "santa.request_event",
+    AccessRequest.Kind.PACKAGE: "santa.request_package",
+    AccessRequest.Kind.OTHER: "santa.request_other",
+}
+
+
+def request_kinds_for(user):
+    """The kinds of requests the user may make (roles, e.g. "Santa requesters" of the sign-in group for everyone)"""
+    return [kind for kind in AccessRequest.Kind if user.has_perm(REQUEST_PERMISSIONS[kind])]
 
 
 def machines_for_user(user):

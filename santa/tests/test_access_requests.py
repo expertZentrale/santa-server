@@ -2,6 +2,7 @@ import json
 from unittest.mock import patch
 
 from django.contrib.admin.models import LogEntry
+from django.contrib.auth.models import Permission
 from django.urls import reverse
 
 from santa.models import AccessRequest, AccessRequestPackage, Event, Policy, ReleaseSource, Rule, RuleType
@@ -224,3 +225,31 @@ class AdminRequestTestCase(ConsoleBase):
         self.client.force_login(self.user)
         response = self.client.post(reverse("console:request_approve", args=(access_request.pk,)), {})
         self.assertEqual(response.status_code, 403)
+
+
+class RequestPermissionsTestCase(ConsoleBase):
+    def setUp(self):
+        super().setUp()
+        self.user.groups.clear()
+        self.client.force_login(self.user)
+
+    def test_no_request_permission(self):
+        response = self.client.get(reverse("requests:new"))
+        self.assertEqual(response.status_code, 403)
+        self.assertContains(response, "You can't make requests", status_code=403)
+        self.assertNotContains(self.client.get(reverse("requests:list")), reverse("requests:new"))
+        self.assertEqual(self.client.get(reverse("requests:catalog_search"), {"kind": "NPM_PACKAGE", "q": "x"})
+                         .status_code, 403)
+
+    def test_only_the_allowed_kinds(self):
+        self.user.user_permissions.add(Permission.objects.get(codename="request_other"))
+        response = self.client.get(reverse("requests:new"), {"kind": "PACKAGE"})
+        self.assertEqual(response.context["kind"], "OTHER")
+        self.assertEqual([value for value, _ in response.context["kinds"]], ["OTHER"])
+        response = self.client.post(reverse("requests:new"), {"kind": "PACKAGE", "justification": "x",
+                                                              "packages": "[]"})
+        self.assertEqual(response.status_code, 403)
+        response = self.client.post(reverse("requests:new"), {"kind": "OTHER", "title": "Figma",
+                                                              "justification": "for the designs"})
+        self.assertRedirects(response, reverse("requests:list"))
+        self.assertTrue(AccessRequest.objects.filter(requester=self.user, kind="OTHER").exists())
