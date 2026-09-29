@@ -2,6 +2,9 @@ import json
 
 from django import forms
 from django.conf import settings
+from django.contrib.auth import password_validation
+from django.contrib.auth.models import Group as AuthGroup
+from django.contrib.auth.models import Permission, User
 from django.core.exceptions import ValidationError
 from django.forms import formset_factory
 from django.utils import timezone
@@ -9,7 +12,20 @@ from django.utils.translation import gettext
 from django.utils.translation import gettext_lazy as _
 
 from ..catalog import update_identifier_icons
-from ..models import AccessRequest, Group, Machine, Policy, ReleaseSource, Rule, RuleType, Tag, UserProfile
+from ..models import (
+    AccessRequest,
+    Group,
+    Machine,
+    Policy,
+    ReleaseSource,
+    Rule,
+    RuleType,
+    SignInGroup,
+    Tag,
+    UserProfile,
+)
+from ..users import time_zone_names
+from ..validators import validate_identifier
 
 SCOPE_GLOBAL = "global"
 SCOPE_GROUPS = "groups"
@@ -413,18 +429,106 @@ class ApprovePackagesForm(forms.Form):
         return cleaned_data
 
 
-class ApproveOtherForm(forms.Form):
-    rule = forms.ModelChoiceField(queryset=Rule.objects.all(), required=False, widget=forms.HiddenInput)
+class ApproveOtherForm(TagsMixin):
+    """Approve a request for other software: create the rule for it right here, a manual rule or a package rule"""
+
+    RULE, PACKAGE, EXISTING, NONE = "rule", "package", "existing", "none"
+    NEW = "new"
+
+    result = forms.ChoiceField(
+        choices=[(RULE, _("New execution rule")), (PACKAGE, _("Package rule")),
+                 (EXISTING, _("Existing execution rule")), (NONE, _("No rule"))],
+        initial=RULE, widget=forms.RadioSelect, label=_("Approve with"))
+
+    # a new execution rule
+    rule_type = forms.ChoiceField(choices=rule_type_choices(), initial=RuleType.SIGNINGID, label=_("Rule type"))
+    identifier = forms.CharField(required=False, max_length=256, label=_("Identifier"),
+                                 widget=forms.TextInput(attrs={"class": "mono", "autocomplete": "off"}),
+                                 help_text=_("Or upload the app below: the server reads the identifier from it."))
+    file = forms.FileField(required=False, label=_("File"),
+                           help_text=_("Mach-O binary, or a zip / tar archive. Every executable in it gets a rule. "
+                                       "The file is only hashed, it is not stored."))
+    binary_pattern = forms.CharField(required=False, max_length=200, label=_("Binary pattern"),
+                                     help_text=_("Archives only: glob of the files to use, e.g. */bin/colima"))
+    policy = forms.ChoiceField(choices=ALLOW_POLICIES, initial=Policy.ALLOWLIST, label=_("Policy"))
+    scope = forms.ChoiceField(choices=[(SCOPE_MACHINES, _("The Macs of the requester")),
+                                       (SCOPE_GROUPS, _("Groups")), (SCOPE_GLOBAL, _("All Macs"))],
+                              initial=SCOPE_MACHINES, widget=forms.RadioSelect, label=_("Scope"))
+    groups = forms.ModelMultipleChoiceField(queryset=Group.objects.all(), required=False, label=_("Groups"),
+                                            widget=forms.CheckboxSelectMultiple)
+
+    # a package rule: a new one, or more identifiers for an existing one
+    package_target = forms.ChoiceField(label=_("Package rule"))
+    package_kind = forms.ChoiceField(choices=ReleaseSource.Kind.choices, initial=ReleaseSource.Kind.GITHUB_RELEASE,
+                                     label=_("Catalog"))
+    package_identifiers = forms.CharField(
+        required=False, label=_("Packages"), widget=forms.Textarea(attrs={"rows": 2, "class": "mono"}),
+        help_text=_("One per line. GitHub: owner/repo · Homebrew: formula or cask name · URL: the full URL · "
+                    "npm: package name · VS Code: publisher.name · JetBrains: plugin ID"))
+    package_name = forms.CharField(required=False, max_length=180, label=_("Name of the new package rule"))
+    package_rule_type = forms.ChoiceField(choices=rule_type_choices(), initial=RuleType.BINARY,
+                                          label=_("Preferred rule type"))
+    package_auto_approve = forms.BooleanField(required=False, initial=True, label=_("Auto approve"),
+                                              help_text=_("Enable the rules of new releases automatically."))
+    package_is_global = forms.BooleanField(required=False, label=_("All Macs (global)"))
+    package_groups = forms.ModelMultipleChoiceField(queryset=Group.objects.all(), required=False, label=_("Groups"),
+                                                    widget=forms.CheckboxSelectMultiple)
+
+    # an existing rule
     rule_identifier = forms.CharField(required=False, label=_("Rule"), max_length=256,
-                                      help_text=_("Optional: identifier of the rule you created for it"))
+                                      help_text=_("Identifier of the rule you created for it"))
+    rule = forms.ModelChoiceField(queryset=Rule.objects.all(), required=False, widget=forms.HiddenInput)
+
     note = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 2}), label=_("Note"),
                            help_text=_("Shown to the user"))
 
+    field_order = ["result", "rule_type", "identifier", "file", "binary_pattern", "policy", "scope", "groups",
+                   "tags", "new_tags", "package_target", "package_kind", "package_identifiers", "package_name",
+                   "package_rule_type", "package_auto_approve", "package_is_global", "package_groups",
+                   "rule_identifier", "rule", "note"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["rule_type"].choices = rule_type_choices()
+        self.fields["package_rule_type"].choices = rule_type_choices()
+        self.sources = {str(source.pk): source for source in ReleaseSource.objects.order_by("name")}
+        self.fields["package_target"].choices = [(self.NEW, gettext("New package rule"))] + [
+            (pk, gettext("Add to %(name)s") % {"name": f"{source.name} ({source.get_kind_display()})"})
+            for pk, source in self.sources.items()]
+        self.fields["package_target"].initial = self.NEW
+
     def clean(self):
         cleaned_data = super().clean()
-        identifier = (cleaned_data.get("rule_identifier") or "").strip()
-        if identifier:
-            rule = Rule.objects.filter(identifier__iexact=identifier).order_by("pk").first()
+        result = cleaned_data.get("result")
+        if result == self.RULE:
+            identifier = (cleaned_data.get("identifier") or "").strip()
+            cleaned_data["identifier"] = identifier
+            if not identifier and not cleaned_data.get("file"):
+                self.add_error("identifier", gettext("Enter the identifier, or upload the app."))
+            elif identifier and cleaned_data.get("rule_type"):
+                try:
+                    cleaned_data["identifier"] = validate_identifier(cleaned_data["rule_type"], identifier)
+                except ValidationError as e:
+                    self.add_error("identifier", e)
+            if cleaned_data.get("scope") == SCOPE_GROUPS and not cleaned_data.get("groups"):
+                self.add_error("groups", gettext("Choose at least one group."))
+        elif result == self.PACKAGE:
+            identifiers = [line.strip() for line in (cleaned_data.get("package_identifiers") or "").splitlines()
+                           if line.strip()]
+            cleaned_data["package_identifiers"] = identifiers
+            if not identifiers:
+                self.add_error("package_identifiers", gettext("Enter at least one identifier."))
+            target = cleaned_data.get("package_target")
+            cleaned_data["package_source"] = self.sources.get(target)
+            if target == self.NEW:
+                if not (cleaned_data.get("package_name") or "").strip():
+                    self.add_error("package_name", gettext("Enter a name for the new package rule."))
+                if not cleaned_data.get("package_is_global") and not cleaned_data.get("package_groups"):
+                    self.add_error("package_groups",
+                                   gettext("Choose at least one group for the new package rule, or all Macs."))
+        elif result == self.EXISTING:
+            identifier = (cleaned_data.get("rule_identifier") or "").strip()
+            rule = Rule.objects.filter(identifier__iexact=identifier).order_by("pk").first() if identifier else None
             if rule is None:
                 self.add_error("rule_identifier", gettext("No rule with this identifier."))
             cleaned_data["rule"] = rule
@@ -489,10 +593,130 @@ class GroupForm(forms.ModelForm):
 class ProfileForm(forms.ModelForm):
     class Meta:
         model = UserProfile
-        fields = ("theme", "language")
+        fields = ("theme", "language", "time_zone")
         widgets = {"theme": forms.RadioSelect}
-        labels = {"theme": _("Theme"), "language": _("Language")}
+        labels = {"theme": _("Theme"), "language": _("Language"), "time_zone": _("Time zone")}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["language"].choices = [("", _("Language of the browser"))] + list(settings.LANGUAGES)
+        self.fields["time_zone"] = forms.ChoiceField(
+            choices=[("", _("Time zone of the browser"))] + [(name, name) for name in sorted(time_zone_names())],
+            required=False, label=_("Time zone"))
+
+
+# Administration
+
+
+class RolesField(forms.ModelMultipleChoiceField):
+    def __init__(self, **kwargs):
+        kwargs.setdefault("queryset", AuthGroup.objects.order_by("name"))
+        kwargs.setdefault("required", False)
+        kwargs.setdefault("widget", forms.CheckboxSelectMultiple)
+        super().__init__(**kwargs)
+
+
+class UserForm(forms.ModelForm):
+    """A user of the console. Staff and the password only for the local accounts: the sign-in sets the others."""
+
+    roles = RolesField(label=_("Roles"))
+    password1 = forms.CharField(label=_("Password"), required=False, strip=False,
+                                widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}))
+    password2 = forms.CharField(label=_("Password again"), required=False, strip=False,
+                                widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}))
+
+    class Meta:
+        model = User
+        fields = ("username", "first_name", "last_name", "email", "is_active", "is_staff")
+        labels = {
+            "username": _("Username"), "first_name": _("First name"), "last_name": _("Last name"),
+            "email": _("E-mail"), "is_active": _("Active"), "is_staff": _("Console access"),
+        }
+        help_texts = {
+            "username": _("For a local account, e.g. break-glass-admin. Users of the sign-in are created at their "
+                          "first sign-in."),
+            "is_active": _("Inactive users can't sign in."),
+            "is_staff": _("Can open the console, with the permissions of the roles."),
+        }
+
+    def __init__(self, *args, managed_roles=(), **kwargs):
+        super().__init__(*args, **kwargs)
+        self.managed_roles = set(managed_roles)
+        user = self.instance
+        self.is_local = user.pk is None or user.has_usable_password()
+        self.fields["roles"].queryset = AuthGroup.objects.exclude(
+            pk__in=[role.pk for role in self.managed_roles]).order_by("name")
+        if user.pk:
+            self.initial["roles"] = [role for role in user.groups.all() if role not in self.managed_roles]
+            self.fields["username"].disabled = True
+            self.fields["password1"].help_text = _("Leave empty to keep the password.")
+        else:
+            self.fields["password1"].required = self.fields["password2"].required = True
+        if not self.is_local:
+            # the sign-in sets them at every sign-in
+            for name in ("first_name", "last_name", "email", "is_staff", "password1", "password2"):
+                del self.fields[name]
+
+    def clean(self):
+        cleaned_data = super().clean()
+        password = cleaned_data.get("password1")
+        if password or cleaned_data.get("password2"):
+            if password != cleaned_data.get("password2"):
+                self.add_error("password2", gettext("The two passwords are different."))
+            else:
+                try:
+                    password_validation.validate_password(password, self.instance)
+                except ValidationError as e:
+                    self.add_error("password1", e)
+        return cleaned_data
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        if self.cleaned_data.get("password1"):
+            user.set_password(self.cleaned_data["password1"])
+        user.save()
+        kept = [role for role in user.groups.all() if role in self.managed_roles]
+        user.groups.set([*kept, *self.cleaned_data["roles"]])
+        return user
+
+
+class RoleForm(forms.ModelForm):
+    permissions = forms.ModelMultipleChoiceField(queryset=Permission.objects.none(), required=False,
+                                                 widget=forms.CheckboxSelectMultiple)
+
+    class Meta:
+        model = AuthGroup
+        fields = ("name", "permissions")
+        labels = {"name": _("Name")}
+
+    def __init__(self, *args, permissions=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["permissions"].queryset = permissions
+
+
+class SignInGroupForm(forms.ModelForm):
+    roles = RolesField(label=_("Roles"), help_text=_("The members get these roles"))
+
+    class Meta:
+        model = SignInGroup
+        fields = ("name", "claim_value", "console_access", "roles")
+        labels = {"name": _("Name"), "claim_value": _("Value in the groups claim"),
+                  "console_access": _("Console access")}
+        widgets = {"claim_value": forms.TextInput(attrs={"class": "mono", "autocomplete": "off"})}
+
+
+class TagForm(forms.ModelForm):
+    class Meta:
+        model = Tag
+        fields = ("name", "description")
+        labels = {"name": _("Name"), "description": _("Description")}
+
+
+class ConfigImportForm(forms.Form):
+    file = forms.FileField(label=_("File"), help_text=_("JSON file of “Export configuration”, e.g. from the test "
+                                                        "server, or of the export_config command."))
+    delete_missing = forms.BooleanField(
+        required=False, label=_("Delete what is not in the file"),
+        help_text=_("Deletes the manual rules and package rules that are not in the file."))
+    dry_run = forms.BooleanField(required=False, initial=True, label=_("Dry run"),
+                                 help_text=_("Only show what would change. Uncheck to import."))

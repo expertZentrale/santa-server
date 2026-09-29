@@ -4,6 +4,9 @@
 {% block content %}
 <p><a href="{% url 'requests:list' %}">‹ {% translate "My requests" %}</a></p>
 <h1>{% translate "Request software" %}</h1>
+{% if not kinds %}
+<section class="card empty">{% translate "You can't make requests. Ask your IT team if you need software." %}</section>
+{% else %}
 <div class="tabs" role="tablist">
   {% for value, label in kinds %}<a href="?kind={{ value }}" {% if kind == value %}class="active"{% endif %}>{{ label }}</a>{% endfor %}
 </div>
@@ -41,4 +44,5 @@
     <button class="button primary">{% translate "Send request" %}</button>
   {% endif %}
 </form>
+{% endif %}
 {% endblock %}

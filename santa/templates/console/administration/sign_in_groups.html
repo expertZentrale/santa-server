@@ -1,0 +1,25 @@
+{% extends "console/base.html" %}{% load i18n %}
+{% block title %}{% translate "Sign-in groups" %}{% endblock %}
+{% block content %}
+{% include "console/administration/_tabs.html" %}
+<div class="filters">
+  <p class="muted small">{% translate "The groups of your identity provider that give roles. Only the groups listed here count: the other groups in the token are ignored and not stored. They apply at the next sign-in." %}</p>
+  {% if perms.santa.add_signingroup %}<a class="button right" href="{% url 'console:admin_sign_in_group_add' %}">{% translate "New sign-in group" %}</a>{% endif %}
+</div>
+<table class="table">
+  <thead><tr><th>{% translate "Sign-in group" %}</th><th>{% translate "Value in the groups claim" %}</th><th>{% translate "Roles" %}</th><th>{% translate "Console" %}</th><th class="num">{% translate "Members" %}</th></tr></thead>
+  <tbody>
+  {% for group in sign_in_groups %}
+    <tr>
+      <td><a class="strong" href="{% url 'console:admin_sign_in_group' group.pk %}">{{ group.name }}</a></td>
+      <td>{% if group.claim_value == everyone %}<span class="muted">{% translate "everyone who signs in" %}</span>{% else %}<code>{{ group.claim_value }}</code>{% endif %}</td>
+      <td>{% for role in group.roles.all %}<a class="chip small" href="{% url 'console:admin_role' role.pk %}">{{ role.name }}</a>{% empty %}<span class="muted">–</span>{% endfor %}</td>
+      <td>{{ group.console_access|yesno:_("yes,no") }}</td>
+      <td class="num">{{ group.member_count }}</td>
+    </tr>
+  {% empty %}
+    <tr class="empty"><td colspan="5">{% translate "No sign-in groups yet." %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

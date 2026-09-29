@@ -6,11 +6,18 @@ from urllib.parse import parse_qs, urlparse
 import jwt
 from cryptography.hazmat.primitives.asymmetric import rsa
 from django.contrib.auth.models import Group as AuthGroup
-from django.contrib.auth.models import User
+from django.contrib.auth.models import Permission, User
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from santa.auth import ADMIN_GROUP_NAME, OIDCBackend
+from santa.auth import (
+    ADMIN_GROUP_NAME,
+    REQUESTERS_GROUP_NAME,
+    OIDCBackend,
+    delete_sign_in_group,
+    sign_in_group_changed,
+)
+from santa.models import SignInGroup
 
 TENANT = "https://login.example"
 OIDC_SETTINGS = {
@@ -43,7 +50,7 @@ class ClaimsTestCase(TestCase):
         self.assertTrue(AuthGroup.objects.get(name=ADMIN_GROUP_NAME).permissions.exists())
         user = backend.update_user(User.objects.get(pk=user.pk), self.claims(roles=[]))
         self.assertFalse(user.is_staff)
-        self.assertFalse(user.groups.exists())
+        self.assertEqual([group.name for group in user.groups.all()], [REQUESTERS_GROUP_NAME])
 
     def test_configurable_claims(self):
         # e.g. Keycloak: the realm roles are nested, the username is in another claim
@@ -52,6 +59,57 @@ class ClaimsTestCase(TestCase):
                            OIDC_ADMIN_ROLE="santa-admin"):
             user = OIDCBackend().create_user(claims)
         self.assertEqual(user.username, "jane")
+        self.assertTrue(user.is_staff)
+
+    def test_everyone_can_request_by_default(self):
+        user = OIDCBackend().create_user(self.claims())
+        self.assertTrue(user.has_perm("santa.request_package"))
+        self.assertFalse(user.has_perm("santa.view_rule"))
+
+    def test_sign_in_groups_give_roles_and_console(self):
+        approvers = AuthGroup.objects.create(name="Approvers")
+        approvers.permissions.set(Permission.objects.filter(codename__in=["view_accessrequest",
+                                                                          "change_accessrequest"]))
+        mapped = SignInGroup.objects.create(claim_value="1111-aaaa", name="IT support", console_access=True)
+        mapped.roles.add(approvers)
+        backend = OIDCBackend()
+        user = backend.create_user(self.claims(groups=["1111-aaaa", "9999-unmapped"]))
+        self.assertTrue(user.is_staff)
+        self.assertTrue(User.objects.get(pk=user.pk).has_perm("santa.change_accessrequest"))
+        # the groups nobody mapped are not stored
+        self.assertEqual(SignInGroup.objects.count(), 2)
+        self.assertEqual(set(user.sign_in_groups.values_list("claim_value", flat=True)), {"1111-aaaa", "*"})
+        # a role assigned by hand stays, the one of the group goes with the group
+        by_hand = AuthGroup.objects.create(name="Tag editors")
+        user.groups.add(by_hand)
+        user = backend.update_user(User.objects.get(pk=user.pk), self.claims(groups=["9999-unmapped"]))
+        self.assertFalse(user.is_staff)
+        self.assertEqual(set(user.groups.values_list("name", flat=True)), {"Tag editors", REQUESTERS_GROUP_NAME})
+
+    def test_changed_sign_in_group_applies_right_away(self):
+        approvers = AuthGroup.objects.create(name="Approvers")
+        mapped = SignInGroup.objects.create(claim_value="it", name="IT", console_access=True)
+        mapped.roles.add(approvers)
+        user = OIDCBackend().create_user(self.claims(groups=["it"]))
+        self.assertIn(approvers, user.groups.all())
+        mapped.roles.remove(approvers)
+        sign_in_group_changed(mapped, old_roles=[approvers])
+        self.assertNotIn(approvers, user.groups.all())
+        delete_sign_in_group(mapped)
+        self.assertFalse(User.objects.get(pk=user.pk).is_staff)
+
+    def test_group_overage_is_ignored(self):
+        mapped = SignInGroup.objects.create(claim_value="it", name="IT", console_access=True)
+        claims = self.claims(groups=["it"], _claim_names={"groups": "src1"})
+        with self.assertLogs("santa.auth", "WARNING"):
+            user = OIDCBackend().create_user(claims)
+        self.assertFalse(user.is_staff)
+        self.assertNotIn(mapped, user.sign_in_groups.all())
+
+    def test_nested_groups_claim(self):
+        SignInGroup.objects.create(claim_value="/santa/it", name="IT", console_access=True)
+        with self.settings(OIDC_GROUPS_CLAIM="attributes.groups"):
+            user = OIDCBackend().create_user(self.claims(attributes={"groups": "/santa/it"}))
         self.assertTrue(user.is_staff)
 
     def test_claims_without_username_are_refused(self):

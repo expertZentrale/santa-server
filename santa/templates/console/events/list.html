@@ -15,10 +15,10 @@
   <input type="hidden" name="next" value="{{ request.get_full_path }}">
   <input type="hidden" name="resolved" value="{{ params.resolved|default:'open' }}">
   <div class="bulkbar" data-bulkbar hidden>
-    {% blocktranslate %}<span data-selected-count>0</span> selected{% endblocktranslate %}
+    <span class="count" title="{% translate 'Click selects a row, Ctrl-click adds or removes one, Shift-click selects a range.' %}">{% blocktranslate %}<span data-selected-count>0</span> selected{% endblocktranslate %}</span>
     <button class="button primary" formaction="{% url 'console:events_allow' %}">{% translate "Create rules…" %}</button>
     <button class="button" formaction="{% url 'console:events_resolve' %}">{% translate "Mark resolved" %}</button>
-    <small class="muted">{% translate "Shift-click selects a range." %}</small>
+    <button type="button" class="bulkbar-clear" data-clear-selection aria-label="{% translate 'Clear selection' %}" title="{% translate 'Clear selection (Esc)' %}">×</button>
   </div>
   {% if view == "all" %}
     <div class="live">

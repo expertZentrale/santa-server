@@ -24,6 +24,9 @@
       <a href="{% url 'console:requests' %}" {% if request.path|slice:":18" == "/console/requests/" %}class="active" aria-current="page"{% endif %}>{% translate "Requests" %}{% if pending %} <span class="count">{{ pending }}</span>{% endif %}</a>
       <a href="{% url 'console:machines' %}" {% if request.path|slice:":13" == "/console/macs" %}class="active" aria-current="page"{% endif %}>{% translate "Macs" %}</a>
       <a href="{% url 'console:groups' %}" {% if request.path|slice:":15" == "/console/groups" %}class="active" aria-current="page"{% endif %}>{% translate "Groups" %}</a>
+      {% if perms.auth.view_user or perms.auth.view_group or perms.santa.view_signingroup or perms.santa.view_tag %}
+      <a href="{% url 'console:administration' %}" {% if request.path|slice:":23" == "/console/administration" %}class="active" aria-current="page"{% endif %}>{% translate "Administration" %}</a>
+      {% endif %}
     {% endif %}
     <a href="{% url 'requests:list' %}" {% if request.path|slice:":9" == "/request/" %}class="active" aria-current="page"{% endif %}>{% translate "My requests" %}</a>
   </nav>

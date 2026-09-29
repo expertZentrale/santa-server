@@ -1,9 +1,9 @@
 from django.db import connection
 from django.http import HttpResponse
-from django.utils import translation
+from django.utils import timezone, translation
 from django_prometheus.exports import ExportToDjangoView
 
-from .users import profile_for
+from .users import profile_for, time_zone_for
 
 
 class HealthCheckMiddleware:
@@ -40,4 +40,19 @@ class UserLanguageMiddleware:
             if language:
                 translation.activate(language)
                 request.LANGUAGE_CODE = language
+        return self.get_response(request)
+
+
+class UserTimeZoneMiddleware:
+    """Times in the time zone of the profile, or of the browser, instead of TIME_ZONE of the server"""
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        zone = time_zone_for(request)
+        if zone:
+            timezone.activate(zone)
+        else:
+            timezone.deactivate()
         return self.get_response(request)

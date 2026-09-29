@@ -14,6 +14,7 @@ from django.utils.html import format_html, format_html_join
 from django.utils.safestring import mark_safe
 from django.utils.text import slugify
 
+from .auth import delete_sign_in_group, sign_in_group_changed
 from .config_io import ConfigImportError, export_config, import_config
 from .forms import AddGroupsForm, AllowEventsForm, ImportConfigForm, RuleAdminForm, TagActionForm, UploadBinaryForm
 from .models import (
@@ -26,6 +27,7 @@ from .models import (
     ReleaseVersion,
     Rule,
     RuleType,
+    SignInGroup,
     Tag,
     generate_sync_token,
 )
@@ -595,6 +597,27 @@ class TagAdmin(admin.ModelAdmin):
     def rules_link(self, obj):
         url = reverse("admin:santa_rule_changelist") + f"?tags__id__exact={obj.pk}"
         return format_html('<a href="{}">{} rule(s)</a>', url, obj._rule_count)
+
+
+@admin.register(SignInGroup)
+class SignInGroupAdmin(admin.ModelAdmin):
+    list_display = ("name", "claim_value", "console_access")
+    list_filter = ("console_access",)
+    search_fields = ("name", "claim_value")
+    filter_horizontal = ("roles",)
+
+    def save_related(self, request, form, formsets, change):
+        old_roles = list(form.instance.roles.all()) if change else []
+        super().save_related(request, form, formsets, change)
+        # the members get the new roles now, not only at their next sign-in
+        sign_in_group_changed(form.instance, old_roles)
+
+    def delete_model(self, request, obj):
+        delete_sign_in_group(obj)
+
+    def delete_queryset(self, request, queryset):
+        for obj in queryset:
+            delete_sign_in_group(obj)
 
 
 class AccessRequestPackageInline(admin.TabularInline):

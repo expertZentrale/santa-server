@@ -1,0 +1,33 @@
+{% extends "console/base.html" %}{% load console i18n %}
+{% block title %}{% translate "Users" %}{% endblock %}
+{% block content %}
+{% include "console/administration/_tabs.html" %}
+<form class="filters" method="get">
+  {% if params.sort %}<input type="hidden" name="sort" value="{{ params.sort }}">{% endif %}
+  <input type="search" name="q" value="{{ params.q }}" placeholder="{% translate 'Name, username, e-mail…' %}" aria-label="{% translate 'Search' %}">
+  <select name="role" aria-label="{% translate 'Role' %}"><option value="">{% translate "Any role" %}</option>{% for role in roles %}<option value="{{ role.pk }}" {% if params.role == role.pk|stringformat:"s" %}selected{% endif %}>{{ role.name }}</option>{% endfor %}</select>
+  <select name="staff" aria-label="{% translate 'Console access' %}"><option value="">{% translate "All users" %}</option><option value="yes" {% if params.staff == "yes" %}selected{% endif %}>{% translate "With console access" %}</option></select>
+  <button class="button">{% translate "Filter" %}</button>
+  {% if perms.auth.add_user %}<a class="button right" href="{% url 'console:admin_user_add' %}">{% translate "New local account" %}</a>{% endif %}
+</form>
+<p class="muted small">{% translate "Users of the sign-in are created at their first sign-in. Their roles come from the sign-in groups; add local accounts only for break-glass access." %}</p>
+<table class="table">
+  <thead><tr>{% sort_th _("User") "user" %}{% sort_th _("Name") "name" %}<th>{% translate "Account" %}</th><th>{% translate "Roles" %}</th><th>{% translate "Console" %}</th>{% sort_th _("Last sign-in") "login" %}</tr></thead>
+  <tbody>
+  {% for u in page %}
+    <tr{% if not u.is_active %} class="disabled"{% endif %}>
+      <td><a class="strong" href="{% url 'console:admin_user' u.pk %}">{{ u.username }}</a>{% if u.email and u.email != u.username %}<small class="muted">{{ u.email }}</small>{% endif %}</td>
+      <td>{{ u.get_full_name|default:"–" }}</td>
+      <td>{% if u.from_sign_in %}<span class="badge info">{% translate "sign-in" %}</span>{% else %}<span class="badge">{% translate "local" %}</span>{% endif %}
+        {% if u.is_superuser %}<span class="badge bad">{% translate "superuser" %}</span>{% endif %}{% if not u.is_active %}<span class="badge">{% translate "inactive" %}</span>{% endif %}</td>
+      <td>{% for role in u.groups.all %}<span class="chip small">{{ role.name }}</span>{% endfor %}</td>
+      <td>{{ u.is_staff|yesno:_("yes,no") }}</td>
+      <td>{{ u.last_login|date:"d.m.Y H:i"|default:"–" }}</td>
+    </tr>
+  {% empty %}
+    <tr class="empty"><td colspan="6">{% translate "No users for these filters." %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% include "console/_pagination.html" %}
+{% endblock %}

@@ -3,11 +3,13 @@ from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.admin.models import ADDITION, CHANGE, LogEntry
+from django.contrib.auth.models import Group as AuthGroup
 from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
+from santa.auth import REQUESTERS_GROUP_NAME
 from santa.models import Event, Group, Machine, Policy, ReleaseSource, ReleaseVersion, Rule, RuleType, Tag
 
 from .test_catalog import LOCMEM
@@ -22,6 +24,8 @@ class ConsoleBase(TestCase):
     def setUpTestData(cls):
         cls.admin = User.objects.create_superuser("admin", "admin@example.com", "pw")
         cls.user = User.objects.create_user("jdoe@example.com", "jdoe@example.com", "pw")
+        # the role the sign-in gives everyone (migration 0012)
+        cls.user.groups.add(AuthGroup.objects.get(name=REQUESTERS_GROUP_NAME))
         cls.dev = Group.objects.create(name="Development")
         cls.sales = Group.objects.create(name="Sales")
         cls.machine = Machine.objects.create(machine_id="M1", serial_number="C02TEST", hostname="jdoe-mbp",

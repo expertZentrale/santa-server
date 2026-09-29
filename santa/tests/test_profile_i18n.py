@@ -2,14 +2,15 @@ import ast
 import gettext
 import hashlib
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 from django.conf import settings
 from django.test import override_settings
 from django.urls import reverse
 
-from santa.models import Rule, RuleType, UserProfile
-from santa.users import gravatar_url, profile_for
+from santa.models import Event, Rule, RuleType, UserProfile
+from santa.users import TIME_ZONE_COOKIE, gravatar_url, profile_for
 
 from .test_console import SHA_A, SHA_B, ConsoleBase
 
@@ -101,6 +102,34 @@ def po_translations(path):
                 entries[current["msgid"]] = current.get("msgstr", current.get("msgstr[0]", ""))
             current, field = {}, None
     return entries
+
+
+class TimeZoneTestCase(ConsoleBase):
+    def setUp(self):
+        super().setUp()
+        event = self.make_event(file_name="timed")
+        Event.objects.filter(pk=event.pk).update(execution_time=datetime(2026, 9, 29, 11, 4, tzinfo=UTC))
+
+    def events_page(self):
+        return self.client.get(reverse("console:events"), {"view": "all", "days": "", "resolved": "all"})
+
+    @override_settings(TIME_ZONE="UTC")
+    def test_time_zone_of_the_browser(self):
+        self.assertContains(self.events_page(), "29.09.2026 11:04")
+        self.client.cookies[TIME_ZONE_COOKIE] = "Europe/Berlin"
+        self.assertContains(self.events_page(), "29.09.2026 13:04")
+        self.client.cookies[TIME_ZONE_COOKIE] = "Asia%2FTokyo"
+        self.assertContains(self.events_page(), "29.09.2026 20:04")
+        # an unknown name is ignored
+        self.client.cookies[TIME_ZONE_COOKIE] = "Mars/Olympus"
+        self.assertContains(self.events_page(), "29.09.2026 11:04")
+
+    def test_profile_wins_over_the_browser(self):
+        self.client.cookies[TIME_ZONE_COOKIE] = "Europe/Berlin"
+        self.client.post(reverse("profile"), {"theme": "auto", "language": "", "time_zone": "America/New_York"})
+        self.assertEqual(profile_for(self.admin).time_zone, "America/New_York")
+        self.assertContains(self.events_page(), "29.09.2026 07:04")
+        self.assertContains(self.client.get(reverse("profile")), "Times are shown in America/New_York.")
 
 
 class SortingTestCase(ConsoleBase):

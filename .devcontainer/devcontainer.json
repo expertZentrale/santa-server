@@ -12,6 +12,7 @@
 		"DB_PASSWORD": "SantaDev!Passw0rd",
 		"REDIS_URL": "redis://redis:6379/1"
 	},
+	"remoteUser": "dev",
 	"forwardPorts": [8000],
 	"postCreateCommand": ".devcontainer/setup.sh",
 	"customizations": {

@@ -568,6 +568,11 @@ class AccessRequest(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        permissions = [
+            ("request_event", "Can request the apps blocked on their Macs"),
+            ("request_package", "Can request packages"),
+            ("request_other", "Can request other software"),
+        ]
 
     def __str__(self):
         return f"{self.title} ({self.requester})"
@@ -616,6 +621,38 @@ class UserProfile(models.Model):
                              help_text=_("System: follows the light or dark mode of your computer."))
     # empty: the language of the browser, else the default of the server (LANGUAGE_CODE)
     language = models.CharField(max_length=8, blank=True, choices=settings.LANGUAGES)
+    # empty: the time zone of the browser, else TIME_ZONE of the server
+    time_zone = models.CharField(max_length=64, blank=True)
+    # OIDC_ADMIN_ROLE was in the ID token of the last sign-in: keeps "Santa admins" when the roles are recomputed
+    has_admin_role = models.BooleanField(default=False, editable=False)
 
     def __str__(self):
         return f"Profile of {self.user}"
+
+
+class SignInGroup(models.Model):
+    """A group of the OpenID Connect provider (in OIDC_GROUPS_CLAIM) whose members get roles at sign-in.
+
+    Only the groups added here count: the others in the claim are ignored and never stored.
+    """
+
+    EVERYONE = "*"
+
+    claim_value = models.CharField(
+        max_length=255, unique=True,
+        help_text=_("The value in the groups claim of the ID token: the object ID or the name of the group, "
+                    "depending on the provider. * is everyone who signs in."))
+    name = models.CharField(max_length=200, help_text=_("A name to recognise the group, only for display"))
+    console_access = models.BooleanField(
+        default=False, help_text=_("The members can open the console (with the permissions of their roles)"))
+    roles = models.ManyToManyField("auth.Group", blank=True, related_name="sign_in_groups",
+                                   help_text=_("The members get these roles"))
+    # state, not configuration: who had the group at their last sign-in
+    members = models.ManyToManyField(settings.AUTH_USER_MODEL, blank=True, related_name="sign_in_groups",
+                                     editable=False)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name

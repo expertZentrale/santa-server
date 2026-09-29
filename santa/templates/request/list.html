@@ -3,7 +3,7 @@
 {% block main_class %}narrow{% endblock %}
 {% block content %}
 <div class="page-head"><h1>{% translate "My requests" %}</h1>
-  <div class="actions"><a class="button primary" href="{% url 'requests:new' %}">{% translate "Request software" %}</a></div></div>
+  {% if can_request %}<div class="actions"><a class="button primary" href="{% url 'requests:new' %}">{% translate "Request software" %}</a></div>{% endif %}</div>
 <p class="muted">{% translate "Ask your IT team to allow a program that Santa blocked on your Mac, a package, or anything else." %}</p>
 {% for r in page %}
 <section class="card request">

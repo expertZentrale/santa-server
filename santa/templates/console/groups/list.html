@@ -5,7 +5,7 @@
   <h1>{% translate "Groups" %}</h1>
   <div class="actions">
     <a class="button" href="{% url 'console:base_profile' %}">{% translate "Base profile (.mobileconfig)" %}</a>
-    {% if perms.santa.view_rule %}<a class="button" href="{% url 'admin:santa_config_export' %}">{% translate "Export configuration" %}</a>{% endif %}
+    {% if perms.santa.view_rule and perms.santa.view_releasesource %}<a class="button" href="{% url 'console:admin_config' %}">{% translate "Export / import" %}</a>{% endif %}
     {% if perms.santa.add_group %}<a class="button primary" href="{% url 'console:group_add' %}">{% translate "New group" %}</a>{% endif %}
   </div>
 </div>

@@ -31,6 +31,7 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "santa.middleware.UserLanguageMiddleware",
+    "santa.middleware.UserTimeZoneMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "django_prometheus.middleware.PrometheusAfterMiddleware",
@@ -82,6 +83,8 @@ LOGIN_REDIRECT_URL_FAILURE = "/login/?failed=1"
 # The role of the administrators (staff access to the console and the admin), in the claim OIDC_ROLES_CLAIM
 OIDC_ADMIN_ROLE = "Santa.Admin"
 OIDC_ROLES_CLAIM = "roles"
+# The groups of the user (object IDs or names, depending on the provider), matched against the sign-in groups
+OIDC_GROUPS_CLAIM = "groups"
 # the first of these claims that is set is the username
 OIDC_USERNAME_CLAIMS = ["preferred_username", "upn", "email"]
 # name of the button on the login page

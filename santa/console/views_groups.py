@@ -1,23 +1,35 @@
 from datetime import timedelta
 
 from django.contrib import messages
-from django.db.models import Count, Max, Q
+from django.db.models import Count, Max, Q, prefetch_related_objects
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.text import slugify
-from django.utils.translation import gettext
+from django.utils.translation import gettext, ngettext
 from django.views.decorators.http import require_POST
 
 from ..models import AccessRequest, ClientMode, Event, Group, Machine, Rule, generate_sync_token
 from ..profiles import base_profile, group_profile
-from ..rules import effective_rules
-from ..services import can_see_sync_token
+from ..rules import GLOBAL, GROUP, MACHINE, effective_rule_objects
+from ..services import can_see_sync_token, remove_machine_from_rules, rules_only_for
 from .forms import GroupForm
-from .utils import log_addition, log_change, log_deletion, paginate, require_perms, sort_by, staff_required
+from .utils import (
+    log_addition,
+    log_change,
+    log_deletion,
+    paginate,
+    require_perms,
+    safe_next,
+    sort_by,
+    staff_required,
+)
 
 # a Mac that has not synced for this long is shown as stale
 STALE_AFTER = timedelta(days=2)
+# the rules of one page at most, and far below the 2100 parameters of SQL Server
+MAX_BULK = 500
 
 
 def mobileconfig_response(content, filename):
@@ -162,26 +174,95 @@ def machines(request):
     })
 
 
+MACHINE_RULE_SCOPES = {"mac": MACHINE, "group": GROUP, "global": GLOBAL}
+
+
+def machine_rules(machine, effective, params):
+    """The rules that reach the Mac (the winning one per identifier), plus the disabled or overridden rules
+    that list the Mac itself: those can still be removed from it."""
+    winners = {rule.pk for _, rule in effective.values()}
+    rows = {rule.pk: (level, rule) for level, rule in effective.values()}
+    for rule in Rule.objects.filter(machines=machine):
+        rows.setdefault(rule.pk, (MACHINE, rule))
+    level = MACHINE_RULE_SCOPES.get(params.get("rules"))
+    q = params.get("q", "").strip().lower()
+    result = []
+    for rule_level, rule in rows.values():
+        if level is not None and rule_level != level:
+            continue
+        if q and q not in rule.identifier.lower() and q not in rule.description.lower():
+            continue
+        rule.scope_level = rule_level
+        rule.wins = rule.pk in winners
+        result.append(rule)
+    result.sort(key=lambda rule: (-rule.scope_level, -rule.created_at.timestamp(), -rule.pk))
+    return result
+
+
 @staff_required
 def machine_detail(request, pk):
     require_perms(request, "view_machine")
     machine = get_object_or_404(Machine.objects.select_related("group"), pk=pk)
-    expected = effective_rules(machine)
+    effective = effective_rule_objects(machine)
     synced = machine.synced_rules or {}
+    page = paginate(request, machine_rules(machine, effective, request.GET))
+    prefetch_related_objects(page.object_list, "tags", "groups")
+    on_mac = set(machine.rules.values_list("pk", flat=True))
+    for rule in page:
+        rule.on_mac = rule.pk in on_mac
+        rule.in_group = any(group.pk == machine.group_id for group in rule.groups.all())
     context = {
         "machine": machine,
-        "expected_count": len(expected),
+        "expected_count": len(effective),
         "synced_count": len(synced),
-        "missing_count": len(set(expected) - set(synced)),
-        "extra_count": len(set(synced) - set(expected)),
+        "missing_count": len(set(effective) - set(synced)),
+        "extra_count": len(set(synced) - set(effective)),
         "is_stale": not machine.last_postflight_at or machine.last_postflight_at < timezone.now() - STALE_AFTER,
-        "rules": Rule.objects.filter(machines=machine).prefetch_related("tags").order_by("-created_at"),
+        "page": page,
+        "params": request.GET,
+        "levels": {"machine": MACHINE, "group": GROUP, "global": GLOBAL},
         "events": (Event.objects.filter(machine=machine).order_by("-execution_time")[:15]),
         "open_blocks": Event.objects.filter(machine=machine, resolved_at__isnull=True,
                                             decision__startswith="BLOCK_").count(),
         "requests": AccessRequest.objects.filter(machine=machine).select_related("requester")[:10],
     }
     return render(request, "console/machines/detail.html", context)
+
+
+@staff_required
+@require_POST
+def machine_rules_remove(request, pk):
+    require_perms(request, "view_rule", "change_rule")
+    machine = get_object_or_404(Machine, pk=pk)
+    rule_ids = [value for value in request.POST.getlist("rules") if value.isdigit()][:MAX_BULK]
+    rules = list(machine.rules.filter(pk__in=rule_ids))
+    orphans = rules_only_for(machine, rules)
+    if orphans and not request.user.has_perm("santa.delete_rule"):
+        messages.warning(request, ngettext(
+            "%(count)s rule only applies to this Mac: removing the Mac would delete it, which needs the permission "
+            "to delete rules. It was kept.",
+            "%(count)s rules only apply to this Mac: removing the Mac would delete them, which needs the permission "
+            "to delete rules. They were kept.", len(orphans)) % {"count": len(orphans)})
+        rules = [rule for rule in rules if rule not in orphans]
+        orphans = []
+    narrowed = [rule for rule in rules if rule not in orphans]
+    remove_machine_from_rules(machine, narrowed)
+    log_change(request.user, narrowed, f"Removed from the Mac {machine}")
+    for rule in orphans:
+        log_deletion(request.user, rule, f"Deleted in the console: removed from its only Mac {machine}")
+        rule.delete()
+    if narrowed:
+        messages.success(request, ngettext(
+            "%(mac)s removed from %(count)s rule. Its group and global scopes stay, the Mac gets the change at its "
+            "next sync.",
+            "%(mac)s removed from %(count)s rules. Their group and global scopes stay, the Mac gets the change at its "
+            "next sync.",
+            len(narrowed)) % {"mac": machine, "count": len(narrowed)})
+    if orphans:
+        messages.success(request, ngettext("%(count)s rule that only applied to this Mac deleted.",
+                                           "%(count)s rules that only applied to this Mac deleted.",
+                                           len(orphans)) % {"count": len(orphans)})
+    return redirect(safe_next(request, reverse("console:machine", args=[machine.pk])))
 
 
 @staff_required

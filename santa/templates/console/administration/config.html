@@ -1,0 +1,36 @@
+{% extends "console/base.html" %}{% load i18n %}
+{% block title %}{% translate "Export / import" %}{% endblock %}
+{% block content %}
+{% include "console/administration/_tabs.html" %}
+<div class="grid-2">
+  <section class="card"><h2>{% translate "Export" %}</h2>
+    <p>{% translate "The groups, the package rules and the manual rules as a JSON file, e.g. to move them from the test server to production. The sync URLs are not part of it." %}</p>
+    <a class="button primary" href="{% url 'console:admin_config_export' %}">{% translate "Export configuration" %}</a>
+  </section>
+  <section class="card"><h2>{% translate "Import" %}</h2>
+    <p class="small">{% translate "Everything is matched by name (groups, package rules) or by rule type, identifier and policy (rules). Existing groups keep their sync URL, new groups get a new one. The rules of the package rules are built by checking the package rules." %}</p>
+    {% if can_import %}
+    <form method="post" enctype="multipart/form-data" class="stack">
+      {% csrf_token %}
+      {% for field in form %}{% include "console/_field.html" %}{% endfor %}
+      <div class="actions"><button class="button primary">{% translate "Import" %}</button></div>
+    </form>
+    {% else %}<p class="muted">{% translate "Importing needs the permissions to add, change and delete groups, rules and package rules." %}</p>{% endif %}
+  </section>
+</div>
+{% if errors %}
+<section class="card"><h2>{% translate "Nothing imported, the file has errors" %}</h2>
+  <ul class="error">{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul></section>
+{% endif %}
+{% if report %}
+<section class="card"><h2>{% if dry_run %}{% translate "Dry run: nothing saved" %}{% else %}{% translate "Imported" %}{% endif %}
+  <span class="muted">{% blocktranslate count count=report.changes|length %}{{ count }} change{% plural %}{{ count }} changes{% endblocktranslate %}</span></h2>
+  {% if report.warnings %}<ul class="messages">{% for warning in report.warnings %}<li class="warning">{{ warning }}</li>{% endfor %}</ul>{% endif %}
+  <table class="table compact">
+    <thead><tr><th>{% translate "Action" %}</th><th>{% translate "Type" %}</th><th>{% translate "Object" %}</th></tr></thead>
+    <tbody>{% for action, model, obj in report.changes %}<tr><td>{{ action }}</td><td>{{ model }}</td><td>{{ obj }}</td></tr>
+    {% empty %}<tr class="empty"><td colspan="3">{% translate "Already identical." %}</td></tr>{% endfor %}</tbody>
+  </table>
+</section>
+{% endif %}
+{% endblock %}

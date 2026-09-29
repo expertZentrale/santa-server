@@ -228,6 +228,9 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
 
 /* Forms */
 .stack { display: grid; gap: .25rem; }
+.stack > .button, .stack > button { justify-self: start; }
+/* room for the cards after a form (e.g. the members of a role) */
+form.stack { margin-bottom: 1rem; }
 .stack.compact .field { margin-bottom: .5rem; }
 .field { display: grid; gap: .25rem; margin-bottom: .9rem; }
 .field > label { font-weight: 600; }
@@ -284,9 +287,10 @@ form.inline { display: inline; margin: 0; }
   box-shadow: var(--shadow);
   overflow: hidden;
 }
-.table th, .table td { padding: .55rem .75rem; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border); }
+.table th, .table td { padding: .55rem .75rem; text-align: left; vertical-align: middle; border-bottom: 1px solid var(--border); }
+.table td > input[type="checkbox"], .table th > input[type="checkbox"] { margin: 0; vertical-align: middle; }
 .table th { background: var(--surface-2); font-size: .8rem; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
-.table tbody tr:last-child td { border-bottom: 0; }
+.table tbody tr:last-child td, .table tbody tr:last-child th { border-bottom: 0; }
 .table tbody tr:hover { background: color-mix(in srgb, var(--surface-2) 60%, transparent); }
 .table tr.disabled td { opacity: .6; }
 .table tr.empty td { text-align: center; color: var(--muted); padding: 2rem; }
@@ -297,23 +301,45 @@ form.inline { display: inline; margin: 0; }
 .table-form { margin: 0; }
 /* wide tables (long names, other languages) scroll in their box, not the whole page */
 .table-scroll { overflow-x: auto; margin-bottom: 1rem; border-radius: var(--radius); }
+/* a table wider than the page grows out of it, centered, up to the window; only then it scrolls */
+.table-scroll { width: max-content; min-width: 100%; max-width: calc(100vw - 3rem); margin-left: 50%; transform: translateX(-50%); }
 .table-scroll > .table { margin-bottom: 0; }
 .rows-form select, .rows-form input:not([type="checkbox"]) { width: 100%; min-width: 8rem; margin-bottom: .25rem; }
 @keyframes flash { from { background: var(--info-bg); } to { background: transparent; } }
 
+/* The bulk actions float at the bottom of the window, so selecting rows never moves the table */
 .bulkbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: .6rem;
-  padding: .55rem .8rem;
-  margin-bottom: .75rem;
-  background: var(--info-bg);
-  border-radius: var(--radius);
-  position: sticky;
-  top: 64px;
-  z-index: 5;
+  padding: .5rem .6rem .5rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: 0 8px 24px rgb(16 24 40 / 18%), 0 2px 6px rgb(16 24 40 / 10%);
+  position: fixed;
+  left: 50%;
+  bottom: 1rem;
+  z-index: 20;
+  max-width: calc(100vw - 2rem);
+  transform: translate(-50%, 0);
+  transition: transform .18s ease-out, opacity .18s ease-out, visibility .18s;
 }
+.bulkbar:not(.visible) { transform: translate(-50%, calc(100% + 1.5rem)); opacity: 0; visibility: hidden; pointer-events: none; }
+.bulkbar .count { font-weight: 600; white-space: nowrap; }
+.bulkbar select[multiple] { position: absolute; bottom: calc(100% + .4rem); left: 1rem; box-shadow: var(--shadow); }
+.bulkbar-clear { border: 0; background: none; color: var(--muted); font-size: 1.2rem; line-height: 1; padding: .3rem .5rem; border-radius: 50%; cursor: pointer; }
+.bulkbar-clear:hover { background: var(--surface-2); color: var(--text); }
+body.has-bulkbar main { padding-bottom: 6rem; }
+@media (prefers-reduced-motion: reduce) { .bulkbar { transition: none; } }
+@media (max-width: 640px) {
+  .bulkbar { left: 16px; right: 16px; bottom: 16px; max-width: none; transform: none; border-radius: var(--radius); }
+  .bulkbar:not(.visible) { transform: translateY(calc(100% + 1.5rem)); }
+}
+[data-select-form] tbody tr:has(td.select input) { cursor: pointer; }
+.table tbody tr.selected { background: var(--info-bg); }
+.table tbody tr.selected:hover { background: color-mix(in srgb, var(--info-bg) 80%, var(--surface-2)); }
 .live { display: flex; align-items: center; gap: .5rem; color: var(--muted); margin-bottom: .5rem; font-size: .85em; }
 .live .dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--ok); animation: pulse 2s infinite; }
 @keyframes pulse { 50% { opacity: .3; } }
@@ -345,7 +371,7 @@ form.inline { display: inline; margin: 0; }
   border-radius: 999px;
   background: var(--surface-2);
 }
-.chip.small { padding: .05rem .5rem; font-size: .8em; margin: 0 .2rem .2rem 0; }
+.chip.small { padding: .05rem .5rem; font-size: .8em; margin: .1rem .2rem .1rem 0; }
 .chip.mac { border-style: dashed; }
 .tag { display: inline-block; font-size: .8em; color: var(--muted); margin-right: .35rem; }
 .tag::before { content: "#"; }
@@ -358,6 +384,9 @@ form.inline { display: inline; margin: 0; }
   position: relative;
   cursor: pointer;
   transition: background .15s;
+  display: inline-block;
+  vertical-align: middle;
+  flex: none;
 }
 .switch::after {
   content: "";
@@ -513,7 +542,7 @@ ul.plain { list-style: none; padding: 0; margin: 0; display: grid; gap: .3rem; }
   }
   .table:not(.keep) td::before { content: attr(data-label); color: var(--muted); font-size: .8rem; grid-column: 1; grid-row: 1 / span 6; }
   .table:not(.keep) td > * { grid-column: 2; }
-  .table-scroll { overflow-x: visible; }
+  .table-scroll { overflow-x: visible; width: auto; max-width: none; margin-left: 0; transform: none; }
   .table:not(.keep) td[data-label=""] { display: block; }
   .table:not(.keep) td[data-label=""]::before { content: none; }
   .table:not(.keep) td.num { text-align: left; }
@@ -542,3 +571,11 @@ a.chip:hover { text-decoration: none; border-color: var(--accent); }
 
 .rule-preview { display: block; margin-top: .3rem; color: var(--muted); overflow-wrap: anywhere; }
 .rule-preview code { color: var(--text); background: var(--surface-2); padding: .05rem .3rem; border-radius: 4px; }
+
+/* Administration: the permission matrix of a role */
+.table .center { text-align: center; }
+.table.permissions th, .table.permissions td { padding: .4rem .5rem; }
+.table.permissions tbody th { background: none; text-transform: none; letter-spacing: 0; font-size: inherit; color: var(--text); font-weight: 500; }
+.filters > p { margin: 0; flex: 1 1 20rem; }
+details.upload { margin: 0 0 1rem; }
+details.upload summary { cursor: pointer; color: var(--muted); margin-bottom: .5rem; }

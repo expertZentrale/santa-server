@@ -1,0 +1,24 @@
+{% extends "console/base.html" %}{% load i18n %}
+{% block title %}{% translate "Roles" %}{% endblock %}
+{% block content %}
+{% include "console/administration/_tabs.html" %}
+<div class="filters">
+  <p class="muted small">{% translate "A role is a set of permissions. Users get roles from their sign-in groups, or here by hand." %}</p>
+  {% if perms.auth.add_group %}<a class="button right" href="{% url 'console:admin_role_add' %}">{% translate "New role" %}</a>{% endif %}
+</div>
+<table class="table">
+  <thead><tr><th>{% translate "Role" %}</th><th class="num">{% translate "Users" %}</th><th class="num">{% translate "Permissions" %}</th><th>{% translate "Sign-in groups" %}</th></tr></thead>
+  <tbody>
+  {% for role in roles %}
+    <tr>
+      <td><a class="strong" href="{% url 'console:admin_role' role.pk %}">{{ role.name }}</a></td>
+      <td class="num"><a href="{% url 'console:admin_users' %}?role={{ role.pk }}">{{ role.user_count }}</a></td>
+      <td class="num">{{ role.permission_count }}</td>
+      <td>{% for group in role.sign_in_groups.all %}<a class="chip small" href="{% url 'console:admin_sign_in_group' group.pk %}">{{ group.name }}</a>{% empty %}<span class="muted">–</span>{% endfor %}</td>
+    </tr>
+  {% empty %}
+    <tr class="empty"><td colspan="4">{% translate "No roles yet." %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

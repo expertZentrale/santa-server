@@ -4,7 +4,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.translation import gettext, ngettext
 from django.views.decorators.http import require_POST
 
-from ..models import Group, Policy, Rule, RuleType, Tag
+from ..models import Group, Machine, Policy, Rule, RuleType, Tag
 from ..releases import ReleaseError, find_binaries
 from ..services import allow_identifier, binary_identifiers, set_rules_enabled
 from .forms import RuleBulkForm, RuleForm, UploadBinaryForm
@@ -150,7 +150,11 @@ def rule_form(request, pk=None):
     if rule and rule.release_source_id:
         # the package rule owns them, only enable / disable here
         return render(request, "console/rules/package_rule.html", {"rule": rule})
-    form = RuleForm(request.POST or None, instance=rule)
+    initial = {}
+    if rule is None and request.GET.get("machine", "").isdigit():
+        # "New rule" on the page of a Mac
+        initial["machines"] = Machine.objects.filter(pk=request.GET["machine"])
+    form = RuleForm(request.POST or None, instance=rule, initial=initial)
     if request.method == "POST" and form.is_valid():
         created = rule is None
         rule = form.save(commit=False)

@@ -35,5 +35,9 @@ STORAGES = {
     "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
 }
 
+# like the image: TIME_ZONE / LANGUAGE_CODE in .devcontainer/.env or containerEnv of devcontainer.json
+TIME_ZONE = os.getenv("TIME_ZONE", TIME_ZONE)  # noqa: F405
+LANGUAGE_CODE = os.getenv("LANGUAGE_CODE", LANGUAGE_CODE)  # noqa: F405
+
 SANTA_PUBLIC_BASE_URL = os.getenv("SANTA_PUBLIC_BASE_URL", "http://localhost:8000")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN") or None

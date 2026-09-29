@@ -1,0 +1,21 @@
+{% extends "console/base.html" %}{% load i18n %}
+{% block title %}{% if tag %}{{ tag.name }}{% else %}{% translate "New tag" %}{% endif %}{% endblock %}
+{% block main_class %}narrow{% endblock %}
+{% block content %}
+<p><a href="{% url 'console:admin_tags' %}">‹ {% translate "Tags" %}</a></p>
+<div class="page-head"><h1>{% if tag %}{{ tag.name }}{% else %}{% translate "New tag" %}{% endif %}</h1></div>
+<form method="post" class="stack">
+  {% csrf_token %}
+  <fieldset class="plain"{% if tag and not perms.santa.change_tag %} disabled{% endif %}>
+  <section class="card">{% for field in form %}{% include "console/_field.html" %}{% endfor %}</section>
+  </fieldset>
+  {% if not tag or perms.santa.change_tag %}
+  <div class="actions"><button class="button primary">{% if tag %}{% translate "Save" %}{% else %}{% translate "Create tag" %}{% endif %}</button>
+    <a href="{% url 'console:admin_tags' %}">{% translate "Cancel" %}</a>
+    {% if tag and perms.santa.delete_tag %}<button class="button danger right" form="delete-form">{% translate "Delete" %}</button>{% endif %}</div>
+  {% endif %}
+</form>
+{% if tag and perms.santa.delete_tag %}
+<form id="delete-form" method="post" action="{% url 'console:admin_tag_delete' tag.pk %}" data-confirm="{% blocktranslate with name=tag.name %}Delete the tag {{ name }}? The rules stay.{% endblocktranslate %}">{% csrf_token %}</form>
+{% endif %}
+{% endblock %}
