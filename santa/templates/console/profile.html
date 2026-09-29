@@ -1,4 +1,4 @@
-{% extends "console/base.html" %}{% load i18n %}
+{% extends "console/base.html" %}{% load i18n tz %}
 {% block title %}{% translate "Profile" %}{% endblock %}
 {% block main_class %}narrow{% endblock %}
 {% block content %}
@@ -20,6 +20,8 @@
   <h2>{% translate "Preferences" %}</h2>
   {% include "console/_field.html" with field=form.theme %}
   {% include "console/_field.html" with field=form.language %}
+  {% include "console/_field.html" with field=form.time_zone %}
+  {% get_current_timezone as TIME_ZONE %}<p class="help small">{% blocktranslate %}Times are shown in {{ TIME_ZONE }}.{% endblocktranslate %}</p>
   <div class="actions"><button class="button primary">{% translate "Save" %}</button></div>
 </form>
 {% endblock %}

@@ -24,6 +24,7 @@ from ..models import (
     Tag,
     UserProfile,
 )
+from ..users import time_zone_names
 from ..validators import validate_identifier
 
 SCOPE_GLOBAL = "global"
@@ -592,13 +593,16 @@ class GroupForm(forms.ModelForm):
 class ProfileForm(forms.ModelForm):
     class Meta:
         model = UserProfile
-        fields = ("theme", "language")
+        fields = ("theme", "language", "time_zone")
         widgets = {"theme": forms.RadioSelect}
-        labels = {"theme": _("Theme"), "language": _("Language")}
+        labels = {"theme": _("Theme"), "language": _("Language"), "time_zone": _("Time zone")}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["language"].choices = [("", _("Language of the browser"))] + list(settings.LANGUAGES)
+        self.fields["time_zone"] = forms.ChoiceField(
+            choices=[("", _("Time zone of the browser"))] + [(name, name) for name in sorted(time_zone_names())],
+            required=False, label=_("Time zone"))
 
 
 # Administration

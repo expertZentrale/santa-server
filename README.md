@@ -48,7 +48,7 @@ The image (`santa_server/settings.py`) is configured with environment variables:
 | `SECURE_COOKIES` | | default on (off with `DEBUG`) |
 | `DEBUG` | | never in production |
 | `LANGUAGE_CODE` | | default language, `en` or `de`; the browser and the user profile win over it |
-| `TIME_ZONE` | | default `UTC` |
+| `TIME_ZONE` | | default `UTC`; the console shows the times in the time zone of the browser, or of the user profile |
 | `GITHUB_TOKEN` | recommended | for package rules and the catalog search; without it GitHub allows 60 requests per hour |
 | `SANTA_PROFILE_ORGANIZATION` | | `PayloadOrganization` of the profiles |
 | `SANTA_PROFILE_IDENTIFIER_PREFIX` | set once | prefix of the profile identifiers, e.g. `com.example.santa`. The profile UUIDs are derived from it: **don't change it after the profiles are deployed** |

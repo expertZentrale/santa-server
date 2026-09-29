@@ -621,6 +621,8 @@ class UserProfile(models.Model):
                              help_text=_("System: follows the light or dark mode of your computer."))
     # empty: the language of the browser, else the default of the server (LANGUAGE_CODE)
     language = models.CharField(max_length=8, blank=True, choices=settings.LANGUAGES)
+    # empty: the time zone of the browser, else TIME_ZONE of the server
+    time_zone = models.CharField(max_length=64, blank=True)
     # OIDC_ADMIN_ROLE was in the ID token of the last sign-in: keeps "Santa admins" when the roles are recomputed
     has_admin_role = models.BooleanField(default=False, editable=False)
 

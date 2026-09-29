@@ -480,6 +480,21 @@
     root.querySelectorAll("[data-select-form]").forEach(updateSelection);
   }
 
+  // The server shows the times in the time zone of the browser (unless the profile sets one)
+  function sendTimeZone() {
+    let zone = "";
+    try {
+      zone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+    } catch (error) {
+      return;
+    }
+    const current = document.cookie.split("; ").find((item) => item.startsWith("santa_tz="));
+    if (!zone || current === `santa_tz=${encodeURIComponent(zone)}`) return;
+    const secure = location.protocol === "https:" ? "; secure" : "";
+    document.cookie = `santa_tz=${encodeURIComponent(zone)}; path=/; max-age=31536000; samesite=lax${secure}`;
+  }
+
+  sendTimeZone();
   document.addEventListener("DOMContentLoaded", () => init(document));
   document.addEventListener("htmx:afterSwap", (event) => {
     const drawer = document.getElementById("drawer");
