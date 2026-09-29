@@ -1,5 +1,6 @@
 {% extends "console/base.html" %}{% load console i18n %}
 {% block title %}{{ access_request.title }}{% endblock %}
+{% block main_class %}narrow{% endblock %}
 {% block content %}
 <p><a href="{% url 'console:requests' %}">‹ {% translate "Requests" %}</a></p>
 <h1>{{ access_request.title }}</h1>

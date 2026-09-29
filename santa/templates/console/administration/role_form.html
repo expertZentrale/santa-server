@@ -15,7 +15,7 @@
   </section>
   <section class="card"><h2>{% translate "Permissions" %}</h2>
     <p class="help small">{% translate "The console needs “View” to show a page, and “Change” to save it. Changes apply right away." %}</p>
-    <table class="table compact permissions">
+    <table class="table compact permissions keep">
       <thead><tr><th></th>{% for action, label in actions %}<th class="center">{{ label }}</th>{% endfor %}</tr></thead>
       <tbody>{% for label, cells in rows %}
         <tr><th scope="row">{{ label }}</th>{% for cell in cells %}<td class="center">{% if cell %}<input type="checkbox" name="permissions" value="{{ cell.pk }}" title="{{ cell.name }}" aria-label="{{ label }}: {{ cell.name }}"{% if cell.checked %} checked{% endif %}>{% endif %}</td>{% endfor %}</tr>

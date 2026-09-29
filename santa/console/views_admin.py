@@ -55,6 +55,8 @@ PERMISSION_ROWS = [
     ("auth", "user", _("Users")),
     ("auth", "group", _("Roles")),
 ]
+# internal models without a page of their own: nothing to grant
+HIDDEN_PERMISSION_MODELS = {("santa", "accessrequestpackage"), ("santa", "userprofile")}
 PERMISSION_ACTIONS = [("view", _("View")), ("add", _("Add")), ("change", _("Change")), ("delete", _("Delete"))]
 REQUEST_PERMISSION_LABELS = {
     "request_event": _("Request apps blocked on their Macs"),
@@ -167,7 +169,7 @@ def permission_matrix(form):
     listed = {(app, model) for app, model, _label in models}
     for perm in sorted(permissions.values(), key=lambda perm: perm.content_type.model):
         key = (perm.content_type.app_label, perm.content_type.model)
-        if key not in listed:
+        if key not in listed and key not in HIDDEN_PERMISSION_MODELS:
             listed.add(key)
             models.append((*key, perm.content_type.model_class()._meta.verbose_name_plural.capitalize()))
     for app, model, label in models:
