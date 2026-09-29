@@ -43,6 +43,7 @@ urlpatterns = [
     path("macs/", views_groups.machines, name="machines"),
     path("macs/<int:pk>/", views_groups.machine_detail, name="machine"),
     path("macs/<int:pk>/clean-sync/", views_groups.machine_clean_sync, name="machine_clean_sync"),
+    path("macs/<int:pk>/rules/remove/", views_groups.machine_rules_remove, name="machine_rules_remove"),
 
     path("requests/", views_requests.admin_requests, name="requests"),
     path("requests/<int:pk>/", views_requests.admin_request_detail, name="request"),

@@ -7,8 +7,8 @@ logger = logging.getLogger(__name__)
 GLOBAL, GROUP, MACHINE = 0, 1, 2
 
 
-def effective_rules(machine):
-    """Return {santa_key: santa rule payload} for the rules that apply to the machine.
+def effective_rule_objects(machine):
+    """Return {santa_key: (scope level, rule)} for the rules that apply to the machine.
 
     One Santa rule per identifier: the most specific scope wins, then the strictest policy.
     """
@@ -25,7 +25,12 @@ def effective_rules(machine):
             key = rule.santa_key
             if key not in chosen or rank > chosen[key][0]:
                 chosen[key] = (rank, rule)
-    return {key: rule.to_santa() for key, (_, rule) in chosen.items()}
+    return {key: (rank[0], rule) for key, (rank, rule) in chosen.items()}
+
+
+def effective_rules(machine):
+    """Return {santa_key: santa rule payload} for the rules that apply to the machine."""
+    return {key: rule.to_santa() for key, (_, rule) in effective_rule_objects(machine).items()}
 
 
 def build_sync_session(machine):

@@ -8,7 +8,7 @@
   <div class="actions">
     <form method="post" action="{% url 'console:machine_clean_sync' machine.pk %}" data-confirm="{% translate 'The Mac drops all its rules and downloads them again at its next sync. Continue?' %}">
       {% csrf_token %}<button class="button"{% if machine.clean_sync_requested %} disabled{% endif %}>{% if machine.clean_sync_requested %}{% translate "Clean sync pending" %}{% else %}{% translate "Clean sync" %}{% endif %}</button></form>
-    {% if perms.santa.add_rule %}<a class="button primary" href="{% url 'console:rule_add' %}">{% translate "New rule" %}</a>{% endif %}
+    {% if perms.santa.add_rule %}<a class="button primary" href="{% url 'console:rule_add' %}?machine={{ machine.pk }}">{% translate "New rule" %}</a>{% endif %}
   </div>
   {% endif %}
 </div>
@@ -42,21 +42,54 @@
     </dl>
   </section>
 </div>
-<section class="card">
-  <h2>{% translate "Rules only for this Mac" %}</h2>
-  {% if rules %}
-  <table class="table compact">
-    <thead><tr><th>{% translate "Identifier" %}</th><th>{% translate "Type" %}</th><th>{% translate "Policy" %}</th><th>{% translate "Tags" %}</th><th>{% translate "Enabled" %}</th></tr></thead>
-    <tbody>{% for rule in rules %}
-      <tr{% if not rule.is_enabled %} class="disabled"{% endif %}>
-        <td><a class="mono" href="{% url 'console:rule' rule.pk %}">{{ rule.identifier|short_hash:28 }}</a><small class="muted">{{ rule.description|truncatechars:70 }}</small></td>
-        <td>{{ rule.get_rule_type_display }}</td>
-        <td><span class="badge {{ rule.policy|policy_class }}">{{ rule.get_policy_display }}</span></td>
-        <td>{% for tag in rule.tags.all %}<span class="tag">{{ tag.name }}</span>{% endfor %}</td>
-        <td>{{ rule.is_enabled|yesno:_("yes,no") }}</td>
-      </tr>{% endfor %}</tbody>
-  </table>
-  {% else %}<p class="muted">{% blocktranslate with group=machine.group.name %}None. The Mac gets the global rules and the rules of {{ group }}.{% endblocktranslate %}</p>{% endif %}
+<section class="card" id="rules">
+  <h2>{% translate "Rules for this Mac" %}</h2>
+  <p class="muted small">{% translate "The rule that wins for each identifier (this Mac, then its group, then all Macs), and the disabled rules that list this Mac." %}</p>
+  <form class="filters" method="get" action="#rules">
+    <input type="search" name="q" value="{{ params.q }}" placeholder="{% translate 'Identifier, description…' %}" aria-label="{% translate 'Search' %}">
+    <select name="rules" aria-label="{% translate 'Applies through' %}">
+      <option value="">{% translate "All rules" %}</option>
+      <option value="mac" {% if params.rules == "mac" %}selected{% endif %}>{% translate "This Mac" %}</option>
+      <option value="group" {% if params.rules == "group" %}selected{% endif %}>{% blocktranslate with group=machine.group.name %}Group {{ group }}{% endblocktranslate %}</option>
+      <option value="global" {% if params.rules == "global" %}selected{% endif %}>{% translate "All Macs" %}</option>
+    </select>
+    <button class="button">{% translate "Filter" %}</button>
+  </form>
+  <form method="post" action="{% url 'console:machine_rules_remove' machine.pk %}" class="table-form" data-select-form
+        data-confirm="{% translate 'Remove this Mac from the selected rules? A rule that only applies to this Mac is deleted.' %}">
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ request.get_full_path }}#rules">
+    {% if perms.santa.change_rule %}
+    <div class="bulkbar" data-bulkbar hidden>
+      <span class="count" title="{% translate 'Click selects a row, Ctrl-click adds or removes one, Shift-click selects a range.' %}">{% blocktranslate %}<span data-selected-count>0</span> selected{% endblocktranslate %}</span>
+      <button class="button primary">{% translate "Remove this Mac" %}</button>
+      <button type="button" class="bulkbar-clear" data-clear-selection aria-label="{% translate 'Clear selection' %}" title="{% translate 'Clear selection (Esc)' %}">×</button>
+    </div>
+    {% endif %}
+    <table class="table compact">
+      <thead><tr><th class="select"></th><th>{% translate "Identifier" %}</th><th>{% translate "Type" %}</th><th>{% translate "Policy" %}</th>
+        <th>{% translate "Applies through" %}</th><th>{% translate "Tags" %}</th><th>{% translate "Enabled" %}</th></tr></thead>
+      <tbody>{% for rule in page %}
+        <tr{% if not rule.wins %} class="disabled"{% endif %}>
+          <td class="select">{% if rule.on_mac and perms.santa.change_rule %}<input type="checkbox" name="rules" value="{{ rule.pk }}" aria-label="{% translate 'Select rule' %} {{ rule.pk }}">{% endif %}</td>
+          <td><a class="mono" href="{% url 'console:rule' rule.pk %}" title="{{ rule.identifier }}">{{ rule.identifier|short_hash:28 }}</a>
+            {% if rule.description %}<small class="muted">{{ rule.description|truncatechars:70 }}</small>{% endif %}</td>
+          <td>{{ rule.get_rule_type_display }}</td>
+          <td><span class="badge {{ rule.policy|policy_class }}">{{ rule.get_policy_display }}</span></td>
+          <td>{% if rule.scope_level == levels.machine %}<span class="chip small mac">{% translate "This Mac" %}</span>
+              {% if rule.is_global %}<small class="muted">{% translate "also all Macs" %}</small>
+              {% elif rule.in_group %}<small class="muted">{% blocktranslate with group=machine.group.name %}also {{ group }}{% endblocktranslate %}</small>{% endif %}
+            {% elif rule.scope_level == levels.group %}<a class="chip small" href="{% url 'console:group' machine.group_id %}">{{ machine.group.name }}</a>
+            {% else %}<span class="chip small">{% translate "All Macs" %}</span>{% endif %}
+            {% if rule.is_enabled and not rule.wins %}<span class="badge">{% translate "overridden" %}</span>{% endif %}</td>
+          <td>{% for tag in rule.tags.all %}<span class="tag">{{ tag.name }}</span>{% endfor %}</td>
+          <td>{{ rule.is_enabled|yesno:_("yes,no") }}</td>
+        </tr>{% empty %}
+        <tr class="empty"><td colspan="7">{% if params.q or params.rules %}{% translate "No rules for these filters." %}{% else %}{% translate "No rules reach this Mac." %}{% endif %}</td></tr>
+      {% endfor %}</tbody>
+    </table>
+  </form>
+  {% include "console/_pagination.html" %}
 </section>
 <section class="card">
   <h2>{% translate "Recent events" %} <a class="small" href="{% url 'console:events' %}?view=all&amp;machine={{ machine.pk }}&amp;days=&amp;resolved=all">{% translate "all" %}</a></h2>

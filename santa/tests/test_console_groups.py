@@ -1,13 +1,14 @@
 from datetime import timedelta
 
-from django.contrib.admin.models import LogEntry
+from django.contrib.admin.models import DELETION, LogEntry
 from django.contrib.auth.models import Permission, User
 from django.urls import reverse
 from django.utils import timezone
 
-from santa.models import Group, Machine, Rule, RuleType
+from santa.models import Group, Machine, Policy, Rule, RuleType
+from santa.rules import GROUP, MACHINE, effective_rules
 
-from .test_console import SHA_A, ConsoleBase
+from .test_console import SHA_A, SHA_B, ConsoleBase
 
 
 class ConsoleGroupsTestCase(ConsoleBase):
@@ -96,3 +97,61 @@ class ConsoleGroupsTestCase(ConsoleBase):
         self.machine.refresh_from_db()
         self.assertTrue(self.machine.clean_sync_requested)
         self.assertTrue(LogEntry.objects.filter(object_id=str(self.machine.pk)).exists())
+
+    def test_machine_lists_every_rule_that_reaches_it(self):
+        Rule.objects.create(rule_type=RuleType.BINARY, identifier=SHA_A, is_global=True, description="for all")
+        Rule.objects.create(rule_type=RuleType.BINARY, identifier=SHA_B, description="dev rule").groups.add(self.dev)
+        Rule.objects.create(rule_type=RuleType.BINARY, identifier="c" * 64,
+                            description="sales rule").groups.add(self.sales)
+        # the same identifier for this Mac only: it wins over the global rule
+        mine = Rule.objects.create(rule_type=RuleType.BINARY, identifier=SHA_A, policy=Policy.BLOCKLIST,
+                                   description="blocked here")
+        mine.machines.add(self.machine)
+        url = reverse("console:machine", args=(self.machine.pk,))
+        response = self.client.get(url)
+        rules = {rule.description: rule for rule in response.context["page"]}
+        self.assertEqual(set(rules), {"blocked here", "dev rule"})
+        self.assertEqual(rules["blocked here"].scope_level, MACHINE)
+        self.assertEqual(rules["dev rule"].scope_level, GROUP)
+        self.assertContains(response, f'name="rules" value="{mine.pk}"')
+        self.assertEqual([r.description for r in self.client.get(url, {"rules": "group"}).context["page"]],
+                         ["dev rule"])
+        self.assertEqual([r.description for r in self.client.get(url, {"q": "block"}).context["page"]],
+                         ["blocked here"])
+
+    def test_remove_mac_keeps_group_scope_and_deletes_orphans(self):
+        shared = Rule.objects.create(rule_type=RuleType.BINARY, identifier=SHA_A, description="shared")
+        shared.groups.add(self.dev)
+        shared.machines.add(self.machine)
+        only_here = Rule.objects.create(rule_type=RuleType.BINARY, identifier=SHA_B, description="only here")
+        only_here.machines.add(self.machine)
+        elsewhere = Rule.objects.create(rule_type=RuleType.BINARY, identifier="c" * 64)
+        elsewhere.machines.add(self.other_machine)
+        url = reverse("console:machine_rules_remove", args=(self.machine.pk,))
+        response = self.client.post(url, {"rules": [shared.pk, only_here.pk, elsewhere.pk]})
+        self.assertRedirects(response, reverse("console:machine", args=(self.machine.pk,)))
+        self.assertEqual(list(shared.machines.all()), [])
+        self.assertEqual(list(shared.groups.all()), [self.dev])
+        self.assertFalse(Rule.objects.filter(pk=only_here.pk).exists())
+        # a rule that doesn't list this Mac is not touched
+        self.assertEqual(list(elsewhere.machines.all()), [self.other_machine])
+        self.assertIn(SHA_A, {rule["identifier"] for rule in effective_rules(self.machine).values()})
+        self.assertTrue(LogEntry.objects.filter(object_id=str(shared.pk), change_message__contains="Removed").exists())
+        self.assertTrue(LogEntry.objects.filter(object_id=str(only_here.pk), action_flag=DELETION).exists())
+
+    def test_remove_mac_needs_permissions(self):
+        only_here = Rule.objects.create(rule_type=RuleType.BINARY, identifier=SHA_B)
+        only_here.machines.add(self.machine)
+        url = reverse("console:machine_rules_remove", args=(self.machine.pk,))
+        viewer = User.objects.create_user("viewer", is_staff=True)
+        viewer.user_permissions.set(Permission.objects.filter(codename__in=["view_machine", "view_rule"]))
+        self.client.force_login(viewer)
+        self.assertEqual(self.client.post(url, {"rules": [only_here.pk]}).status_code, 403)
+        # may change but not delete rules: the rule only this Mac has is kept
+        viewer.user_permissions.add(Permission.objects.get(codename="change_rule"))
+        self.client.post(url, {"rules": [only_here.pk]})
+        self.assertEqual(list(only_here.machines.all()), [self.machine])
+
+    def test_new_rule_from_the_mac_page(self):
+        response = self.client.get(reverse("console:rule_add"), {"machine": self.machine.pk})
+        self.assertContains(response, "C02TEST")

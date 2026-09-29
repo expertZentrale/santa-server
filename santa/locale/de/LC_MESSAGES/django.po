@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: santa-server\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-09-29 09:14+0000\n"
+"POT-Creation-Date: 2026-09-29 09:18+0000\n"
 "Language: de\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -54,7 +54,7 @@ msgstr "Compiler erlauben"
 msgid "Rule type"
 msgstr "Regeltyp"
 
-#: santa/console/forms.py:28 santa/templates/console/machines/detail.html:49
+#: santa/console/forms.py:28 santa/templates/console/machines/detail.html:70
 #: santa/templates/console/rules/list.html:44
 #: santa/templates/console/rules/package_rule.html:10
 msgid "Identifier"
@@ -63,7 +63,7 @@ msgstr "Kennung"
 #: santa/console/forms.py:28 santa/console/forms.py:145
 #: santa/console/forms.py:237 santa/console/forms.py:323
 #: santa/templates/console/events/allow.html:23
-#: santa/templates/console/machines/detail.html:49
+#: santa/templates/console/machines/detail.html:70
 #: santa/templates/console/rules/form.html:15
 #: santa/templates/console/rules/list.html:19
 #: santa/templates/console/rules/list.html:44
@@ -78,7 +78,7 @@ msgstr "Kommentar"
 
 #: santa/console/forms.py:29 santa/console/forms.py:49
 #: santa/templates/console/events/allow.html:23
-#: santa/templates/console/machines/detail.html:49
+#: santa/templates/console/machines/detail.html:71
 #: santa/templates/console/rules/list.html:45
 #: santa/templates/console/sources/form.html:41
 msgid "Tags"
@@ -147,7 +147,7 @@ msgid "All Macs (global)"
 msgstr "Alle Macs (global)"
 
 #: santa/console/forms.py:107 santa/console/forms.py:201
-#: santa/templates/console/machines/detail.html:49
+#: santa/templates/console/machines/detail.html:71
 #: santa/templates/console/rules/_row.html:15
 #: santa/templates/console/rules/list.html:24
 #: santa/templates/console/rules/list.html:45
@@ -195,7 +195,7 @@ msgid "Choose at least one group."
 msgstr "Bitte mindestens eine Gruppe wählen."
 
 #: santa/console/forms.py:139 santa/templates/console/events/list.html:30
-#: santa/templates/console/machines/detail.html:65
+#: santa/templates/console/machines/detail.html:98
 #: santa/templates/console/requests/detail.html:24
 msgid "File"
 msgstr "Datei"
@@ -273,6 +273,8 @@ msgid "Only these Macs"
 msgstr "Nur diese Macs"
 
 #: santa/console/forms.py:239 santa/console/forms.py:325
+#: santa/templates/console/machines/detail.html:54
+#: santa/templates/console/machines/detail.html:83
 #: santa/templates/console/rules/_row.html:8
 #: santa/templates/console/sources/detail.html:18
 #: santa/templates/console/sources/list.html:29
@@ -596,40 +598,61 @@ msgid_plural "%(count)s events marked as resolved."
 msgstr[0] "%(count)s Ereignis als erledigt markiert."
 msgstr[1] "%(count)s Ereignisse als erledigt markiert."
 
-#: santa/console/views_groups.py:56
+#: santa/console/views_groups.py:68
 #, python-format
 msgid "Group %(group)s created. Download its configuration profile below."
 msgstr "Gruppe %(group)s angelegt. Laden Sie unten ihr Konfigurationsprofil herunter."
 
-#: santa/console/views_groups.py:60
+#: santa/console/views_groups.py:72
 #, python-format
 msgid "Group %(group)s saved."
 msgstr "Gruppe %(group)s gespeichert."
 
-#: santa/console/views_groups.py:62
+#: santa/console/views_groups.py:74
 msgid "Profile settings changed: download the profile again and replace it in your MDM."
 msgstr "Profileinstellungen geändert: das Profil erneut herunterladen und in Ihrem MDM ersetzen."
 
-#: santa/console/views_groups.py:65
+#: santa/console/views_groups.py:77
 msgid "The Macs get the changes at their next sync."
 msgstr "Die Macs erhalten die Änderungen bei ihrer nächsten Synchronisierung."
 
-#: santa/console/views_groups.py:92
+#: santa/console/views_groups.py:104
 #, python-format
 msgid "New sync URL for %(group)s. Download the profile again and replace it in your MDM: the Macs with the old profile can no longer sync."
 msgstr "Neue Sync-URL für %(group)s. Laden Sie das Profil erneut herunter und ersetzen Sie es in Ihrem MDM: Macs mit dem alten Profil können sich nicht mehr synchronisieren."
 
-#: santa/console/views_groups.py:104
+#: santa/console/views_groups.py:116
 #, python-format
 msgid "%(group)s still has Macs. Move them to another group first (new configuration profile), then delete it."
 msgstr "%(group)s hat noch Macs. Verschieben Sie sie zuerst in eine andere Gruppe (neues Konfigurationsprofil) und löschen Sie die Gruppe dann."
 
-#: santa/console/views_groups.py:109
+#: santa/console/views_groups.py:121
 #, python-format
 msgid "Group %(group)s deleted."
 msgstr "Gruppe %(group)s gelöscht."
 
-#: santa/console/views_groups.py:195
+#: santa/console/views_groups.py:242
+#, python-format
+msgid "%(count)s rule only applies to this Mac: removing the Mac would delete it, which needs the permission to delete rules. It was kept."
+msgid_plural "%(count)s rules only apply to this Mac: removing the Mac would delete them, which needs the permission to delete rules. They were kept."
+msgstr[0] "%(count)s Regel gilt nur für diesen Mac: Das Entfernen des Macs würde sie löschen, dafür ist die Berechtigung zum Löschen von Regeln nötig. Sie wurde beibehalten."
+msgstr[1] "%(count)s Regeln gelten nur für diesen Mac: Das Entfernen des Macs würde sie löschen, dafür ist die Berechtigung zum Löschen von Regeln nötig. Sie wurden beibehalten."
+
+#: santa/console/views_groups.py:256
+#, python-format
+msgid "%(mac)s removed from %(count)s rule. Its group and global scopes stay, the Mac gets the change at its next sync."
+msgid_plural "%(mac)s removed from %(count)s rules. Their group and global scopes stay, the Mac gets the change at its next sync."
+msgstr[0] "%(mac)s aus %(count)s Regel entfernt. Ihre Gruppen- und globalen Geltungsbereiche bleiben, der Mac erhält die Änderung bei seiner nächsten Synchronisierung."
+msgstr[1] "%(mac)s aus %(count)s Regeln entfernt. Ihre Gruppen- und globalen Geltungsbereiche bleiben, der Mac erhält die Änderung bei seiner nächsten Synchronisierung."
+
+#: santa/console/views_groups.py:262
+#, python-format
+msgid "%(count)s rule that only applied to this Mac deleted."
+msgid_plural "%(count)s rules that only applied to this Mac deleted."
+msgstr[0] "%(count)s Regel, die nur für diesen Mac galt, gelöscht."
+msgstr[1] "%(count)s Regeln, die nur für diesen Mac galten, gelöscht."
+
+#: santa/console/views_groups.py:276
 #, python-format
 msgid "%(machine)s: clean sync at the next sync (the Mac drops and downloads all its rules)."
 msgstr "%(machine)s: Clean Sync bei der nächsten Synchronisierung (der Mac verwirft alle Regeln und lädt sie neu herunter)."
@@ -735,21 +758,21 @@ msgstr[1] "%(count)s Regeln gelöscht. Die Macs entfernen sie bei ihrer nächste
 msgid "The rules of package rules are managed by their package rule, disable them instead."
 msgstr "Die Regeln von Paketregeln werden von ihrer Paketregel verwaltet, deaktivieren Sie sie stattdessen."
 
-#: santa/console/views_rules.py:166
+#: santa/console/views_rules.py:170
 #, python-format
 msgid "Rule saved: %(rule)s. The Macs get it at their next sync."
 msgstr "Regel gespeichert: %(rule)s. Die Macs erhalten sie bei ihrer nächsten Synchronisierung."
 
-#: santa/console/views_rules.py:185
+#: santa/console/views_rules.py:189
 msgid "No Mach-O executable found in this file."
 msgstr "In dieser Datei wurde kein ausführbares Mach-O gefunden."
 
-#: santa/console/views_rules.py:198
+#: santa/console/views_rules.py:202
 #, python-format
 msgid "The file has no %(rule_type)s (unsigned or ad-hoc signed?). Use a binary rule instead."
 msgstr "Die Datei hat keine %(rule_type)s (unsigniert oder ad hoc signiert?). Verwenden Sie stattdessen eine Binary-Regel."
 
-#: santa/console/views_rules.py:212
+#: santa/console/views_rules.py:216
 #, python-format
 msgid "%(count)s rule saved (%(new)s new)."
 msgid_plural "%(count)s rules saved (%(new)s new)."
@@ -1232,7 +1255,7 @@ msgstr "Paketregeln"
 
 #: santa/templates/console/base.html:24
 #: santa/templates/console/events/_detail.html:20
-#: santa/templates/console/machines/detail.html:76
+#: santa/templates/console/machines/detail.html:109
 #: santa/templates/console/requests/detail.html:5
 #: santa/templates/console/requests/list.html:2
 msgid "Requests"
@@ -1263,7 +1286,7 @@ msgstr "Abmelden"
 #: santa/templates/console/events/_row.html:5
 #: santa/templates/console/events/allow.html:28
 #: santa/templates/console/events/list.html:52
-#: santa/templates/console/machines/detail.html:69
+#: santa/templates/console/machines/detail.html:102
 msgid "(no name)"
 msgstr "(ohne Namen)"
 
@@ -1286,7 +1309,7 @@ msgstr "Mac"
 #: santa/templates/console/events/_detail.html:11
 #: santa/templates/console/events/list.html:31
 #: santa/templates/console/machines/detail.html:21
-#: santa/templates/console/machines/detail.html:65
+#: santa/templates/console/machines/detail.html:98
 #: santa/templates/console/machines/list.html:19
 #: santa/templates/console/profile.html:13
 msgid "User"
@@ -1335,6 +1358,7 @@ msgid "File, signing ID, SHA-256, Mac, user…"
 msgstr "Datei, Signing ID, SHA-256, Mac, Benutzer…"
 
 #: santa/templates/console/events/_filters.html:4
+#: santa/templates/console/machines/detail.html:49
 #: santa/templates/console/machines/list.html:8
 #: santa/templates/console/rules/list.html:18
 #: santa/templates/console/sources/list.html:11
@@ -1348,7 +1372,7 @@ msgstr "Alle Gruppen"
 
 #: santa/templates/console/events/_filters.html:9
 #: santa/templates/console/events/list.html:30
-#: santa/templates/console/machines/detail.html:65
+#: santa/templates/console/machines/detail.html:98
 #: santa/templates/console/requests/detail.html:25
 msgid "Decision"
 msgstr "Entscheidung"
@@ -1370,6 +1394,7 @@ msgid "Open and resolved"
 msgstr "Offen und erledigt"
 
 #: santa/templates/console/events/_filters.html:23
+#: santa/templates/console/machines/detail.html:56
 #: santa/templates/console/machines/list.html:16
 #: santa/templates/console/rules/list.html:25
 #: santa/templates/console/sources/list.html:14
@@ -1392,7 +1417,7 @@ msgid "Select event"
 msgstr "Ereignis auswählen"
 
 #: santa/templates/console/events/_row.html:10
-#: santa/templates/console/machines/detail.html:71
+#: santa/templates/console/machines/detail.html:104
 msgid "resolved"
 msgstr "erledigt"
 
@@ -1470,11 +1495,13 @@ msgid "All events"
 msgstr "Alle Ereignisse"
 
 #: santa/templates/console/events/list.html:18
+#: santa/templates/console/machines/detail.html:64
 #: santa/templates/console/rules/list.html:31
 msgid "Click selects a row, Ctrl-click adds or removes one, Shift-click selects a range."
 msgstr "Klick wählt eine Zeile aus, Strg-Klick fügt eine hinzu oder entfernt sie, Umschalt-Klick wählt einen Bereich aus."
 
 #: santa/templates/console/events/list.html:18
+#: santa/templates/console/machines/detail.html:64
 #: santa/templates/console/rules/list.html:31
 msgid "<span data-selected-count>0</span> selected"
 msgstr "<span data-selected-count>0</span> ausgewählt"
@@ -1488,11 +1515,13 @@ msgid "Mark resolved"
 msgstr "Als erledigt markieren"
 
 #: santa/templates/console/events/list.html:21
+#: santa/templates/console/machines/detail.html:66
 #: santa/templates/console/rules/list.html:40
 msgid "Clear selection"
 msgstr "Auswahl aufheben"
 
 #: santa/templates/console/events/list.html:21
+#: santa/templates/console/machines/detail.html:66
 #: santa/templates/console/rules/list.html:40
 msgid "Clear selection (Esc)"
 msgstr "Auswahl aufheben (Esc)"
@@ -1516,7 +1545,7 @@ msgid "Select all"
 msgstr "Alle auswählen"
 
 #: santa/templates/console/events/list.html:30
-#: santa/templates/console/machines/detail.html:65
+#: santa/templates/console/machines/detail.html:98
 msgid "Time"
 msgstr "Zeit"
 
@@ -1791,33 +1820,90 @@ msgid "%(total)s rules: %(binary)s binary, %(signing)s signing ID, %(team)s team
 msgstr "%(total)s Regeln: %(binary)s Binary, %(signing)s Signing ID, %(team)s Team ID, %(cert)s Zertifikat, %(cdhash)s CDHash, %(compiler)s Compiler, %(transitive)s transitiv"
 
 #: santa/templates/console/machines/detail.html:46
-msgid "Rules only for this Mac"
-msgstr "Regeln nur für diesen Mac"
+msgid "Rules for this Mac"
+msgstr "Regeln für diesen Mac"
+
+#: santa/templates/console/machines/detail.html:47
+msgid "The rule that wins for each identifier (this Mac, then its group, then all Macs), and the disabled rules that list this Mac."
+msgstr "Die Regel, die je Kennung gewinnt (dieser Mac, dann seine Gruppe, dann alle Macs), und die deaktivierten Regeln, in denen dieser Mac eingetragen ist."
 
 #: santa/templates/console/machines/detail.html:49
+msgid "Identifier, description…"
+msgstr "Kennung, Beschreibung…"
+
+#: santa/templates/console/machines/detail.html:50
+#: santa/templates/console/machines/detail.html:71
+msgid "Applies through"
+msgstr "Gilt über"
+
+#: santa/templates/console/machines/detail.html:51
+msgid "All rules"
+msgstr "Alle Regeln"
+
+#: santa/templates/console/machines/detail.html:52
+#: santa/templates/console/machines/detail.html:79
+msgid "This Mac"
+msgstr "Dieser Mac"
+
+#: santa/templates/console/machines/detail.html:53
+#, python-format
+msgid "Group %(group)s"
+msgstr "Gruppe %(group)s"
+
+#: santa/templates/console/machines/detail.html:59
+msgid "Remove this Mac from the selected rules? A rule that only applies to this Mac is deleted."
+msgstr "Diesen Mac aus den ausgewählten Regeln entfernen? Eine Regel, die nur für diesen Mac gilt, wird gelöscht."
+
+#: santa/templates/console/machines/detail.html:65
+msgid "Remove this Mac"
+msgstr "Diesen Mac entfernen"
+
+#: santa/templates/console/machines/detail.html:70
 #: santa/templates/console/rules/list.html:44
 msgid "Type"
 msgstr "Typ"
 
-#: santa/templates/console/machines/detail.html:56
+#: santa/templates/console/machines/detail.html:74
+#: santa/templates/console/rules/_row.html:2
+msgid "Select rule"
+msgstr "Regel auswählen"
+
+#: santa/templates/console/machines/detail.html:80
+msgid "also all Macs"
+msgstr "auch alle Macs"
+
+#: santa/templates/console/machines/detail.html:81
+#, python-format
+msgid "also %(group)s"
+msgstr "auch %(group)s"
+
+#: santa/templates/console/machines/detail.html:84
+msgid "overridden"
+msgstr "überschrieben"
+
+#: santa/templates/console/machines/detail.html:86
 #: santa/templates/console/rules/_row.html:16
 msgid "yes,no"
 msgstr "ja,nein"
 
-#: santa/templates/console/machines/detail.html:59
-#, python-format
-msgid "None. The Mac gets the global rules and the rules of %(group)s."
-msgstr "Keine. Der Mac erhält die globalen Regeln und die Regeln von %(group)s."
+#: santa/templates/console/machines/detail.html:88
+#: santa/templates/console/rules/list.html:48
+msgid "No rules for these filters."
+msgstr "Keine Regeln für diese Filter."
 
-#: santa/templates/console/machines/detail.html:62
+#: santa/templates/console/machines/detail.html:88
+msgid "No rules reach this Mac."
+msgstr "Für diesen Mac gelten keine Regeln."
+
+#: santa/templates/console/machines/detail.html:95
 msgid "Recent events"
 msgstr "Letzte Ereignisse"
 
-#: santa/templates/console/machines/detail.html:62
+#: santa/templates/console/machines/detail.html:95
 msgid "all"
 msgstr "alle"
 
-#: santa/templates/console/machines/detail.html:73
+#: santa/templates/console/machines/detail.html:106
 msgid "No events."
 msgstr "Keine Ereignisse."
 
@@ -1962,10 +2048,6 @@ msgstr "Erstellt"
 msgid "No requests."
 msgstr "Keine Anfragen."
 
-#: santa/templates/console/rules/_row.html:2
-msgid "Select rule"
-msgstr "Regel auswählen"
-
 #: santa/templates/console/rules/_row.html:12
 #: santa/templates/console/sources/detail.html:19
 msgid "manual"
@@ -2071,10 +2153,6 @@ msgstr "Die ausgewählten Regeln löschen?"
 #: santa/templates/console/rules/list.html:39
 msgid "Apply"
 msgstr "Anwenden"
-
-#: santa/templates/console/rules/list.html:48
-msgid "No rules for these filters."
-msgstr "Keine Regeln für diese Filter."
 
 #: santa/templates/console/rules/package_rule.html:8
 #, python-format
@@ -2365,6 +2443,10 @@ msgstr "Unbekannter Regeltyp %(rule_type)s."
 #, python-format
 msgid "Line %(number)s (%(pattern)s): %(error)s"
 msgstr "Zeile %(number)s (%(pattern)s): %(error)s"
+
+#, python-format
+#~ msgid "None. The Mac gets the global rules and the rules of %(group)s."
+#~ msgstr "Keine. Der Mac erhält die globalen Regeln und die Regeln von %(group)s."
 
 #~ msgid "Shift-click selects a range."
 #~ msgstr "Umschalt-Klick wählt einen Bereich aus."

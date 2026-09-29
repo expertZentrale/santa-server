@@ -56,6 +56,18 @@ def set_rules_enabled(rules, enabled):
     return rules.update(is_enabled=enabled), cancelled
 
 
+def rules_only_for(machine, rules):
+    """The manual rules that have no scope left without this Mac (no global, no group, no other Mac)"""
+    return [rule for rule in rules
+            if rule.release_source_id is None and not rule.is_global and not rule.groups.exists()
+            and not rule.machines.exclude(pk=machine.pk).exists()]
+
+
+def remove_machine_from_rules(machine, rules):
+    """Take the Mac out of the scope of the rules; their global and group scopes stay as they are"""
+    machine.rules.remove(*rules)
+
+
 def binary_identifiers(rule_type, info):
     """The identifiers of an inspected Mach-O file for a rule type (CDHash: one per architecture)"""
     return [identifier for identifier in {
