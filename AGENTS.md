@@ -162,5 +162,10 @@ Every model and query must work on SQL Server (mssql-django 2.x, `mssql_python` 
 - New behaviour comes with tests in `santa/tests/`. Tests never reach the network: mock the HTTP session
   (see `test_releases.py`). The binaries in the tests are synthetic Mach-O files from `santa/tests/utils.py`.
 - Style: ruff, line length 119. Match the surrounding code. Comments only explain *why*, not *what*.
-- Code, identifiers and admin texts are in English.
+- Code, identifiers, comments and admin texts are in English (the German UI texts are in the `.po` file).
+- **Commit messages: German first, then English.** The German subject line and body, a line `---`, then the same
+  content in English (subject line and body). Trailers such as `Co-Authored-By` come last.
+- **README: German first, then English**, in the one `README.md`: the German part, then the English part with the
+  same sections. Every change to the README updates both parts, so they always say the same. Links inside the
+  README point to the headings of their own language.
 - Don't commit, push or deploy unless the user asks.
