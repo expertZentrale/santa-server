@@ -7,10 +7,10 @@
   <td><span class="badge {{ rule.policy|policy_class }}">{{ rule.get_policy_display }}</span></td>
   <td>{% if rule.is_global %}<span class="chip small">{% translate "All Macs" %}</span>{% else %}
     {% for group in rule.groups.all %}<span class="chip small">{{ group.name }}</span>{% endfor %}
-    {% for machine in rule.machines.all %}<a class="chip small mac" href="{% url 'console:machine' machine.pk %}">{{ machine.hostname|default:machine.serial_number }}</a>{% endfor %}{% endif %}</td>
+    {% for machine in rule.machines.all %}{% url 'console:machine' machine.pk as machine_url %}<a class="chip small mac" href="{{ machine_url }}" hx-get="{{ machine_url }}" hx-target="#drawer">{{ machine.hostname|default:machine.serial_number }}</a>{% endfor %}{% endif %}</td>
   <td>{% for tag in rule.tags.all %}<span class="tag">{{ tag.name }}</span>{% endfor %}</td>
   <td>{% if rule.release_source %}{% url 'console:source' rule.release_source_id as source_url %}<a href="{{ source_url }}" hx-get="{{ source_url }}" hx-target="#drawer">{{ rule.release_source.name }}</a>{% else %}<span class="muted">{% translate "manual" %}</span>{% endif %}</td>
-  <td>{% if perms.santa.change_rule %}
+  <td{% if perms.santa.change_rule %} class="toggle"{% endif %}>{% if perms.santa.change_rule %}
     <button type="button" class="switch{% if rule.is_enabled %} on{% endif %}" role="switch" aria-checked="{{ rule.is_enabled|yesno:'true,false' }}"
             aria-label="{% translate 'Enabled' %}" hx-post="{% url 'console:rule_toggle' rule.pk %}" hx-target="#rule-{{ rule.pk }}" hx-swap="outerHTML"></button>
     {% else %}{{ rule.is_enabled|yesno:_("yes,no") }}{% endif %}</td>

@@ -2,7 +2,7 @@
 {% block title %}{% if tag %}{{ tag.name }}{% else %}{% translate "New tag" %}{% endif %}{% endblock %}
 {% block main_class %}narrow{% endblock %}
 {% block content %}
-<p><a href="{% url 'console:admin_tags' %}">‹ {% translate "Tags" %}</a></p>
+{% url 'console:admin_tags' as back_url %}{% include "console/_back.html" with url=back_url label=_("Tags") %}
 <div class="page-head"><h1>{% if tag %}{{ tag.name }}{% else %}{% translate "New tag" %}{% endif %}</h1></div>
 <form method="post" class="stack">
   {% csrf_token %}
@@ -11,8 +11,8 @@
   </fieldset>
   {% if not tag or perms.santa.change_tag %}
   <div class="actions"><button class="button primary">{% if tag %}{% translate "Save" %}{% else %}{% translate "Create tag" %}{% endif %}</button>
-    <a href="{% url 'console:admin_tags' %}">{% translate "Cancel" %}</a>
-    {% if tag %}{% url 'console:history' 'tag' tag.pk as history_url %}<a href="{{ history_url }}" hx-get="{{ history_url }}" hx-target="#drawer">{% translate "History" %}</a>{% endif %}
+    <a class="button" href="{% url 'console:admin_tags' %}">{% translate "Cancel" %}</a>
+    {% if tag %}{% url 'console:history' 'tag' tag.pk as history_url %}<a class="button right" href="{{ history_url }}" hx-get="{{ history_url }}" hx-target="#drawer">{% translate "History" %}</a>{% endif %}
     {% if tag and perms.santa.delete_tag %}<button class="button danger right" form="delete-form">{% translate "Delete" %}</button>{% endif %}</div>
   {% endif %}
 </form>

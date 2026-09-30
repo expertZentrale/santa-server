@@ -6,7 +6,7 @@
     <dt>{% translate "Why" %}</dt><dd class="prewrap">{{ access_request.justification }}</dd>
     {% if access_request.link %}<dt>{% translate "Link" %}</dt><dd><a href="{{ access_request.link }}" rel="noopener noreferrer" target="_blank">{{ access_request.link }}</a></dd>{% endif %}
     {% if access_request.kind == "PACKAGE" %}<dt>{% translate "Packages" %}</dt><dd>{% include "request/_packages.html" with packages=access_request.packages.all %}</dd>{% endif %}
-    <dt>{% translate "Macs" %}</dt><dd>{% for machine in requester_machines %}{{ machine.hostname|default:machine.serial_number }} ({{ machine.group.name }}){% if not forloop.last %}, {% endif %}{% empty %}<span class="muted">{% translate "none found for this user" %}</span>{% endfor %}</dd>
+    <dt>{% translate "Macs" %}</dt><dd>{% for machine in requester_machines %}{% url 'console:machine' machine.pk as machine_url %}<a href="{{ machine_url }}" hx-get="{{ machine_url }}" hx-target="#drawer">{{ machine.hostname|default:machine.serial_number }}</a> ({{ machine.group.name }}){% if not forloop.last %}, {% endif %}{% empty %}<span class="muted">{% translate "none found for this user" %}</span>{% endfor %}</dd>
     {% if access_request.decision_note %}<dt>{% translate "Note" %}</dt><dd class="prewrap">{{ access_request.decision_note }}</dd>{% endif %}
     {% if access_request.result_rule %}<dt>{% translate "Rule" %}</dt><dd>{% url 'console:rule' access_request.result_rule.pk as rule_url %}<a href="{{ rule_url }}" hx-get="{{ rule_url }}" hx-target="#drawer">{{ access_request.result_rule }}</a></dd>{% endif %}
     {% if access_request.result_source %}<dt>{% translate "Package rule" %}</dt><dd>{% url 'console:source' access_request.result_source.pk as source_url %}<a href="{{ source_url }}" hx-get="{{ source_url }}" hx-target="#drawer">{{ access_request.result_source }}</a></dd>{% endif %}
@@ -32,6 +32,7 @@
 {% endif %}
 {% if access_request.is_pending and perms.santa.change_accessrequest %}
 <section class="card"><h2>{% translate "Approve" %}</h2>
+  {% include "console/rules/_existing.html" %}
   <form method="post" action="{% url 'console:request_approve' access_request.pk %}" class="stack"{% if access_request.kind == "OTHER" %} enctype="multipart/form-data"{% endif %}{% if in_drawer %} hx-post="{% url 'console:request_approve' access_request.pk %}" hx-target="#drawer"{% if access_request.kind == "OTHER" %} hx-encoding="multipart/form-data"{% endif %}{% endif %}>
     {% csrf_token %}
     {% if approve_form.non_field_errors %}<div class="error">{{ approve_form.non_field_errors }}</div>{% endif %}

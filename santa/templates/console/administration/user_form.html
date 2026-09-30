@@ -2,7 +2,7 @@
 {% block title %}{% if edited_user %}{{ edited_user.username }}{% else %}{% translate "New local account" %}{% endif %}{% endblock %}
 {% block main_class %}narrow{% endblock %}
 {% block content %}
-<p><a href="{% url 'console:admin_users' %}">‹ {% translate "Users" %}</a></p>
+{% url 'console:admin_users' as back_url %}{% include "console/_back.html" with url=back_url label=_("Users") %}
 <div class="page-head"><h1>{% if edited_user %}{{ edited_user.get_full_name|default:edited_user.username }}{% else %}{% translate "New local account" %}{% endif %}</h1></div>
 {% if edited_user %}
 <section class="card">
@@ -32,7 +32,7 @@
   </section>
   </fieldset>
   <div class="actions"><button class="button primary">{% if edited_user %}{% translate "Save" %}{% else %}{% translate "Create account" %}{% endif %}</button>
-    <a href="{% url 'console:admin_users' %}">{% translate "Cancel" %}</a>
-    {% if edited_user %}{% url 'console:history' 'user' edited_user.pk as history_url %}<a href="{{ history_url }}" hx-get="{{ history_url }}" hx-target="#drawer">{% translate "History" %}</a>{% endif %}</div>
+    <a class="button" href="{% url 'console:admin_users' %}">{% translate "Cancel" %}</a>
+    {% if edited_user %}{% url 'console:history' 'user' edited_user.pk as history_url %}<a class="button right" href="{{ history_url }}" hx-get="{{ history_url }}" hx-target="#drawer">{% translate "History" %}</a>{% endif %}</div>
 </form>
 {% endblock %}

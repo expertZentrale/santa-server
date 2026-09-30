@@ -1,0 +1,30 @@
+{% load console i18n %}<div class="grid-2">
+  <section class="card">
+    <h2>{% translate "Mac" %}</h2>
+    <dl class="facts">
+      <dt>{% translate "Serial number" %}</dt><dd class="mono">{{ machine.serial_number }} {% include "console/_copy.html" with value=machine.serial_number %}</dd>
+      <dt>{% translate "Machine ID" %}</dt><dd class="mono small">{{ machine.machine_id }} {% include "console/_copy.html" with value=machine.machine_id %}</dd>
+      <dt>{% translate "User" %}</dt><dd>{{ machine.primary_user|default:"–" }}</dd>
+      <dt>{% translate "Group" %}</dt><dd>{% url 'console:group' machine.group_id as group_url %}<a href="{{ group_url }}" hx-get="{{ group_url }}" hx-target="#drawer">{{ machine.group.name }}</a></dd>
+      <dt>{% translate "Model" %}</dt><dd>{{ machine.model_identifier|default:"–" }}</dd>
+      <dt>macOS</dt><dd>{{ machine.os_version|default:"–" }} {% if machine.os_build %}<span class="muted">({{ machine.os_build }})</span>{% endif %}</dd>
+      <dt>Santa</dt><dd>{{ machine.santa_version|default:"–" }}</dd>
+      <dt>IP</dt><dd class="mono">{{ machine.last_ip|default:"–" }}</dd>
+    </dl>
+  </section>
+  <section class="card">
+    <h2>{% translate "Sync" %}</h2>
+    <dl class="facts">
+      <dt>{% translate "Mode" %}</dt><dd>{% if machine.client_mode %}<span class="badge {% if machine.client_mode == 'LOCKDOWN' %}bad{% else %}info{% endif %}">{{ machine.get_client_mode_display }}</span>{% else %}–{% endif %}
+        <span class="muted">{% blocktranslate with mode=machine.group.get_client_mode_display %}group: {{ mode }}{% endblocktranslate %}</span></dd>
+      <dt>{% translate "Last sync" %}</dt><dd>{% if is_stale %}<span class="badge bad">{{ machine.last_postflight_at|date:"d.m.Y H:i"|default:_("never") }}</span>
+        {% else %}{{ machine.last_postflight_at|date:"d.m.Y H:i" }}{% endif %}
+        <small class="muted">{% blocktranslate with date=machine.last_preflight_at|date:"d.m.Y H:i"|default:"–" %}last preflight {{ date }}{% endblocktranslate %}</small></dd>
+      <dt>{% translate "Rules" %}</dt><dd>{% blocktranslate %}{{ expected_count }} should be on the Mac, {{ synced_count }} confirmed by it{% endblocktranslate %}
+        {% if missing_count or extra_count %}<br><span class="badge info">{% blocktranslate %}{{ missing_count }} to add, {{ extra_count }} to remove at the next sync{% endblocktranslate %}</span>
+        {% else %} <span class="badge ok">{% translate "in sync" %}</span>{% endif %}</dd>
+      <dt>{% translate "Reported" %}</dt><dd class="small">{% blocktranslate with total=machine.reported_rule_count binary=machine.binary_rule_count signing=machine.signingid_rule_count team=machine.teamid_rule_count cert=machine.certificate_rule_count cdhash=machine.cdhash_rule_count compiler=machine.compiler_rule_count transitive=machine.transitive_rule_count %}{{ total }} rules: {{ binary }} binary, {{ signing }} signing ID, {{ team }} team ID, {{ cert }} certificate, {{ cdhash }} CDHash, {{ compiler }} compiler, {{ transitive }} transitive{% endblocktranslate %}</dd>
+      <dt>{% translate "Open blocks" %}</dt><dd><a href="{% url 'console:events' %}?machine={{ machine.pk }}">{{ open_blocks }}</a></dd>
+    </dl>
+  </section>
+</div>

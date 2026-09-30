@@ -6,5 +6,5 @@
     <dt>{% translate "Description" %}</dt><dd>{{ rule.description }}</dd>
     <dt>{% translate "Enabled" %}</dt><dd>{% if rule.is_enabled %}{% translate "yes" %}{% else %}{% translate "no – waiting for approval" %}{% endif %}</dd>
   </dl>
-  {% url 'console:history' 'rule' rule.pk as history_url %}<p><a href="{{ history_url }}" hx-get="{{ history_url }}" hx-target="#drawer">{% translate "History" %}</a></p>
+  {% url 'console:history' 'rule' rule.pk as history_url %}<div class="actions"><a class="button" href="{{ history_url }}" hx-get="{{ history_url }}" hx-target="#drawer">{% translate "History" %}</a></div>
 </section>

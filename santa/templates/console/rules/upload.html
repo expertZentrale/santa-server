@@ -2,7 +2,7 @@
 {% block title %}{% translate "Upload binary" %}{% endblock %}
 {% block main_class %}narrow{% endblock %}
 {% block content %}
-<p><a href="{% url 'console:rules' %}">‹ {% translate "Execution rules" %}</a></p>
+{% url 'console:rules' as back_url %}{% include "console/_back.html" with url=back_url label=_("Execution rules") %}
 <h1>{% translate "Allow or block a binary by upload" %}</h1>
 <form method="post" enctype="multipart/form-data" class="stack">
   {% csrf_token %}

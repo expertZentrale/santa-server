@@ -1,0 +1,18 @@
+{% load console i18n %}{# The rules that already match a binary (services.existing_rules); compact: one line in a list #}
+{% if matches %}{% if compact %}
+<small class="existing-rules compact"><span class="strong">{% translate "Already:" %}</span>
+  {% for match in matches|slice:":3" %}{% url 'console:rule' match.rule.pk as rule_url %}<a href="{{ rule_url }}" hx-get="{{ rule_url }}" hx-target="#drawer" class="{% if not match.applies %}muted{% endif %}"><span class="badge {{ match.rule.policy|policy_class }}">{{ match.rule.get_policy_display }}</span> {{ match.rule.get_rule_type_display }}{% if match.rule.is_global %} · {% translate "All Macs" %}{% else %}{% for group in match.rule.groups.all %} · {{ group.name }}{% endfor %}{% endif %}{% if not match.rule.is_enabled %} ({% translate "disabled" %}){% elif not match.applies %} ({% translate "not for these Macs" %}){% endif %}</a>{% if not forloop.last %}; {% endif %}{% endfor %}{% if matches|length > 3 %} …{% endif %}
+</small>
+{% else %}
+<div class="existing-rules">
+  <strong>{% if same_identifier %}{% translate "There is a rule for this identifier already" %}{% else %}{% translate "There are rules for this binary already" %}{% endif %}</strong>
+  <ul class="plain">
+    {% for match in matches %}<li{% if not match.applies %} class="muted"{% endif %}>
+      <span class="badge {{ match.rule.policy|policy_class }}">{{ match.rule.get_policy_display }}</span>
+      {% url 'console:rule' match.rule.pk as rule_url %}<a href="{{ rule_url }}" hx-get="{{ rule_url }}" hx-target="#drawer">{{ match.rule.get_rule_type_display }}</a>
+      {% if match.rule.is_global %}<span class="chip small">{% translate "All Macs" %}</span>{% else %}{% for group in match.rule.groups.all %}<span class="chip small">{{ group.name }}</span>{% endfor %}{% for machine in match.rule.machines.all %}<span class="chip small mac">{{ machine.hostname|default:machine.serial_number }}</span>{% endfor %}{% endif %}
+      {% if not match.rule.is_enabled %}<span class="badge">{% translate "disabled" %}</span>{% elif not match.applies %}<small>{% translate "not for these Macs" %}</small>{% endif %}
+    </li>{% endfor %}
+  </ul>
+</div>
+{% endif %}{% endif %}

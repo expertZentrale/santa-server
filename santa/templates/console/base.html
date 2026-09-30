@@ -30,6 +30,7 @@
     {% endif %}
     <a href="{% url 'requests:list' %}" {% if request.path|slice:":9" == "/request/" %}class="active" aria-current="page"{% endif %}>{% translate "My requests" %}</a>
   </nav>
+  {% block topbar_extra %}{% endblock %}
   <details class="user-menu" data-user-menu>
     <summary aria-label="{% translate 'Account' %}: {{ user.get_full_name|default:user.get_username }}">
       <img class="avatar" src="{{ avatar_url }}" alt="" width="32" height="32" referrerpolicy="no-referrer">
@@ -67,6 +68,7 @@
   {% block content %}{% endblock %}
 </main>
 <aside id="drawer" class="drawer" aria-live="polite"></aside>
+<template id="drawer-back"><button type="button" class="icon-button" data-drawer-back title="{% translate 'Back' %}" aria-label="{% translate 'Back' %}">{% include "console/icons/chevron-left.svg" %}</button></template>
 {% if user.is_staff %}{% tag_names as names %}{{ names|json_script:"tag-names" }}{% endif %}
 </body>
 </html>

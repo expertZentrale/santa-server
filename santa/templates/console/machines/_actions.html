@@ -1,0 +1,8 @@
+{% load i18n %}  {% if perms.santa.change_machine %}
+  <div class="actions{% if in_drawer %} detail-actions{% endif %}">
+    <form method="post" action="{% url 'console:machine_clean_sync' machine.pk %}" data-confirm="{% translate 'The Mac drops all its rules and downloads them again at its next sync. Continue?' %}">
+      {% csrf_token %}<button class="button"{% if machine.clean_sync_requested %} disabled{% endif %}>{% if machine.clean_sync_requested %}{% translate "Clean sync pending" %}{% else %}{% translate "Clean sync" %}{% endif %}</button></form>
+    {% url 'console:history' 'machine' machine.pk as history_url %}<a class="button" href="{{ history_url }}" hx-get="{{ history_url }}" hx-target="#drawer">{% translate "History" %}</a>
+    {% if perms.santa.add_rule %}<a class="button primary" href="{% url 'console:rule_add' %}?machine={{ machine.pk }}" hx-get="{% url 'console:rule_add' %}?machine={{ machine.pk }}" hx-target="#drawer">{% translate "New rule" %}</a>{% endif %}
+  </div>
+  {% endif %}

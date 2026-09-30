@@ -2,7 +2,7 @@
 {% block title %}{% translate "Request software" %}{% endblock %}
 {% block main_class %}narrow{% endblock %}
 {% block content %}
-<p><a href="{% url 'requests:list' %}">‹ {% translate "My requests" %}</a></p>
+{% url 'requests:list' as back_url %}{% include "console/_back.html" with url=back_url label=_("My requests") %}
 <h1>{% translate "Request software" %}</h1>
 {% if not kinds %}
 <section class="card empty">{% translate "You can't make requests. Ask your IT team if you need software." %}</section>

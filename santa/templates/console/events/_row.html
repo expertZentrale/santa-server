@@ -1,10 +1,10 @@
-{% load console i18n %}<tr{% if new %} class="new"{% endif %}>
-  <td class="select"><input type="checkbox" name="ids" value="{{ event.pk }}" aria-label="{% translate 'Select event' %} {{ event.pk }}"></td>
+{% load console i18n %}<tr data-key="{{ event.pk }}">
+  <td class="select"><input type="checkbox" name="ids" value="{{ event.pk }}" data-sha="{{ event.file_sha256 }}" aria-label="{% translate 'Select event' %} {{ event.pk }}"></td>
   <td class="nowrap">{{ event.execution_time|date:"d.m.Y H:i:s" }}</td>
   <td><span class="badge {{ event.decision|decision_class }}">{{ event.decision }}</span></td>
   <td><a href="{% url 'console:event' event.pk %}" hx-get="{% url 'console:event' event.pk %}" hx-target="#drawer" class="strong">{{ event.file_name|default:_("(no name)") }}</a>
     <small class="muted mono" title="{{ event.file_path }}">{{ event.file_path|truncatechars:60 }}</small></td>
-  <td><a href="{% url 'console:machine' event.machine_id %}">{{ event.machine.hostname|default:event.machine.serial_number }}</a><br><small class="muted">{{ event.group.name }}</small></td>
+  <td>{% url 'console:machine' event.machine_id as machine_url %}<a href="{{ machine_url }}" hx-get="{{ machine_url }}" hx-target="#drawer">{{ event.machine.hostname|default:event.machine.serial_number }}</a><br><small class="muted">{{ event.group.name }}</small></td>
   <td>{{ event.executing_user|default:"–" }}</td>
   <td class="mono small">{{ event.signing_id|default:"–" }}</td>
   <td>{% if event.resolved_at %}<span class="badge ok" title="{{ event.resolved_at }}">{% translate "resolved" %}</span>{% endif %}</td>

@@ -1,0 +1,5 @@
+{% extends "console/_drawer.html" %}{% load i18n %}
+{% block drawer_class %} wide{% endblock %}
+{% block drawer_attrs %}{% if saved %} data-refresh-on-close{% endif %}{% if saved_shas %} data-saved-shas="{{ saved_shas }}"{% endif %}{% endblock %}
+{% block drawer_title %}{% blocktranslate count count=binaries|length %}Create a rule for {{ count }} binary{% plural %}Create rules for {{ count }} binaries{% endblocktranslate %}{% endblock %}
+{% block drawer_body %}{% include "console/events/_create_rules_form.html" with in_drawer=True %}{% endblock %}

@@ -2,52 +2,10 @@
 {% block title %}{% if group %}{{ group.name }}{% else %}{% translate "New group" %}{% endif %}{% endblock %}
 {% block main_class %}narrow{% endblock %}
 {% block content %}
-<p><a href="{% url 'console:groups' %}">‹ {% translate "Groups" %}</a></p>
+{% url 'console:groups' as back_url %}{% include "console/_back.html" with url=back_url label=_("Groups") %}
 <div class="page-head">
   <h1>{% if group %}{{ group.name }}{% else %}{% translate "New group" %}{% endif %}</h1>
   {% if group and can_see_sync_token %}<div class="actions"><a class="button primary" href="{% url 'console:group_profile' group.pk %}">{% translate "Download configuration profile" %}</a></div>{% endif %}
 </div>
-{% if group %}
-<section class="card">
-  <dl class="facts">
-    <dt>{% translate "Macs" %}</dt><dd><a href="{% url 'console:machines' %}?group={{ group.pk }}">{{ machine_count }}</a>
-      {% if lockdown_count %} · {% blocktranslate count count=lockdown_count %}{{ count }} in lockdown{% plural %}{{ count }} in lockdown{% endblocktranslate %}{% endif %}
-      {% if stale_count %} · <a href="{% url 'console:machines' %}?group={{ group.pk }}&amp;status=stale"><span class="badge bad">{% blocktranslate count count=stale_count %}{{ count }} not synced for 2 days{% plural %}{{ count }} not synced for 2 days{% endblocktranslate %}</span></a>{% endif %}</dd>
-    <dt>{% translate "Rules" %}</dt><dd><a href="{% url 'console:rules' %}?scope={{ group.pk }}">{% blocktranslate count count=rule_count %}{{ count }} for this group{% plural %}{{ count }} for this group{% endblocktranslate %}</a> {% translate "(plus the global ones)" %}</dd>
-    <dt>{% translate "Open blocks" %}</dt><dd><a href="{% url 'console:events' %}?group={{ group.pk }}">{{ open_blocks }}</a></dd>
-    {% if can_see_sync_token %}
-    <dt>SyncBaseURL</dt><dd><code>{{ group.sync_base_url }}</code> {% include "console/_copy.html" with value=group.sync_base_url %}
-      <small class="muted">{% translate "Secret: every Mac with this URL belongs to the group. It is in the configuration profile." %}</small></dd>
-    {% endif %}
-  </dl>
-  {% if can_change %}
-  <form method="post" action="{% url 'console:group_regenerate_token' group.pk %}" class="inline"
-        data-confirm="{% translate 'The Macs with the current profile can no longer sync until the new profile is in your MDM. Regenerate?' %}">
-    {% csrf_token %}<button class="button small danger">{% translate "Regenerate the sync URL" %}</button></form>
-  {% endif %}
-</section>
-{% endif %}
-<form method="post" class="stack">
-  {% csrf_token %}
-  {% if form.non_field_errors %}<div class="error">{{ form.non_field_errors }}</div>{% endif %}
-  <fieldset class="plain"{% if not can_change %} disabled{% endif %}>
-  {% for title, help_text, fields in form.sections %}
-    <section class="card"><h2>{{ title }}</h2>
-      {% if help_text %}<p class="help small">{{ help_text }}</p>{% endif %}
-      {% for field in fields %}
-        {% if field.name == "remount_usb_mode" %}<div data-show-when="block_usb_mount=on">{% include "console/_field.html" %}</div>
-        {% else %}{% include "console/_field.html" %}{% endif %}
-      {% endfor %}
-    </section>
-  {% endfor %}
-  </fieldset>
-  {% if can_change %}
-  <div class="actions"><button class="button primary">{% if group %}{% translate "Save" %}{% else %}{% translate "Create group" %}{% endif %}</button>
-    {% if group and perms.santa.delete_group %}<button class="button danger right" form="delete-form">{% translate "Delete" %}</button>{% endif %}
-    {% if group %}{% url 'console:history' 'group' group.pk as history_url %}<a href="{{ history_url }}" hx-get="{{ history_url }}" hx-target="#drawer">{% translate "History" %}</a>{% endif %}</div>
-  {% endif %}
-</form>
-{% if group and perms.santa.delete_group %}
-<form id="delete-form" method="post" action="{% url 'console:group_delete' group.pk %}" data-confirm="{% blocktranslate with name=group.name %}Delete the group {{ name }} and its rules?{% endblocktranslate %}">{% csrf_token %}</form>
-{% endif %}
+{% include "console/groups/_form.html" %}
 {% endblock %}

@@ -1,0 +1,20 @@
+{% load console i18n %}<section class="card">
+  <div class="card-head"><h2>{% translate "Recent events" %}</h2>
+    <a class="button small" href="{% url 'console:events' %}?view=all&amp;machine={{ machine.pk }}&amp;days=&amp;resolved=all">{% translate "All events" %}</a></div>
+  {% if events %}
+  <table class="table compact">
+    <thead><tr><th>{% translate "Time" %}</th><th>{% translate "Decision" %}</th><th>{% translate "File" %}</th><th>{% translate "User" %}</th><th>{% translate "Status" %}</th></tr></thead>
+    <tbody>{% for event in events %}
+      <tr><td class="nowrap">{{ event.execution_time|date:"d.m.Y H:i" }}</td>
+        <td><span class="badge {{ event.decision|decision_class }}">{{ event.decision }}</span></td>
+        <td><a href="{% url 'console:event' event.pk %}" hx-get="{% url 'console:event' event.pk %}" hx-target="#drawer">{{ event.file_name|default:_("(no name)") }}</a></td>
+        <td>{{ event.executing_user|default:"–" }}</td>
+        <td>{% if event.resolved_at %}<span class="badge ok">{% translate "resolved" %}</span>{% endif %}</td></tr>{% endfor %}</tbody>
+  </table>
+  {% else %}<p class="muted">{% translate "No events." %}</p>{% endif %}
+</section>
+{% if requests %}
+<section class="card"><h2>{% translate "Requests" %}</h2><ul class="plain">
+  {% for r in requests %}<li>{% url 'console:request' r.pk as request_url %}<a href="{{ request_url }}" hx-get="{{ request_url }}" hx-target="#drawer">{{ r.title }}</a> · {{ r.requester }} · <span class="badge">{{ r.get_status_display }}</span></li>{% endfor %}
+</ul></section>
+{% endif %}

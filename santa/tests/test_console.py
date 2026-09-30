@@ -11,6 +11,7 @@ from django.utils import timezone
 
 from santa.auth import REQUESTERS_GROUP_NAME
 from santa.models import Event, Group, Machine, Policy, ReleaseSource, ReleaseVersion, Rule, RuleType, Tag
+from santa.services import existing_rules, is_allowed
 
 from .test_catalog import LOCMEM
 
@@ -77,6 +78,44 @@ class ConsolePagesTestCase(ConsoleBase):
         self.assertEqual(self.client.get(reverse("console:rules")).status_code, 403)
 
 
+class ConsolePaginationTestCase(ConsoleBase):
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        Rule.objects.bulk_create(Rule(rule_type=RuleType.BINARY, identifier=f"{i:064x}", is_global=True)
+                                 for i in range(60))
+
+    def test_page_size_is_chosen_and_remembered(self):
+        response = self.client.get(reverse("console:rules"))
+        self.assertEqual(len(response.context["page"]), 50)
+        response = self.client.get(reverse("console:rules"), {"per_page": 25, "policy": "ALLOWLIST"})
+        self.assertEqual(len(response.context["page"]), 25)
+        # the links of the page sizes keep the filters and go back to the first page
+        self.assertContains(response, 'href="?per_page=100&amp;policy=ALLOWLIST"')
+        self.assertContains(response, '<a href="?per_page=25&amp;policy=ALLOWLIST" aria-current="true">25</a>',
+                            html=True)
+        # every list keeps the size of the session
+        self.assertEqual(self.client.get(reverse("console:rules")).context["page"].paginator.per_page, 25)
+        self.assertEqual(self.client.get(reverse("console:machines")).context["page"].paginator.per_page, 25)
+
+    def test_unknown_page_size_is_ignored(self):
+        for value in ("7", "abc", "100000"):
+            response = self.client.get(reverse("console:rules"), {"per_page": value})
+            self.assertEqual(response.context["page"].paginator.per_page, 50, value)
+
+    def test_page_size_choice_is_shown_on_a_single_page(self):
+        response = self.client.get(reverse("console:rules"), {"per_page": 100})
+        self.assertEqual(response.context["page"].paginator.num_pages, 1)
+        self.assertContains(response, "Per page")
+        self.assertContains(response, 'aria-disabled="true"', count=2)
+
+    def test_drawer_tools(self):
+        rule = Rule.objects.first()
+        response = self.client.get(reverse("console:rule", args=[rule.pk]), headers={"HX-Request": "true"})
+        self.assertContains(response, 'class="icon-button" data-drawer-close title="Close" aria-label="Close"')
+        self.assertContains(response, 'aria-label="Open as page"')
+
+
 class ConsoleRulesTestCase(ConsoleBase):
     def test_create_rule(self):
         tag = Tag.objects.create(name="dev tools")
@@ -123,6 +162,36 @@ class ConsoleRulesTestCase(ConsoleBase):
         self.client.post(reverse("console:rules_bulk"), {"action": "delete", "rules": [rules[1].pk]})
         self.assertEqual(Rule.objects.count(), 1)
         self.assertTrue(LogEntry.objects.filter(action_flag=CHANGE, object_id=str(rules[0].pk)).exists())
+
+    def test_bulk_set_policy(self):
+        manual = Rule.objects.create(rule_type=RuleType.SIGNINGID, identifier="ABCDE12345:com.example.tool",
+                                     is_global=True, policy=Policy.CEL, cel_expr="ALLOWLIST")
+        source = ReleaseSource.objects.create(name="colima", kind=ReleaseSource.Kind.HOMEBREW_FORMULA,
+                                              identifier="colima", is_global=True)
+        package = Rule.objects.create(rule_type=RuleType.BINARY, identifier=SHA_A, release_source=source,
+                                      is_global=True)
+        response = self.client.post(reverse("console:rules_bulk"), {
+            "action": "set_policy", "policy": Policy.SILENT_BLOCKLIST, "rules": [manual.pk, package.pk]}, follow=True)
+        self.assertContains(response, "1 rule set to “Block silently”.")
+        self.assertContains(response, "change the policy there")
+        manual.refresh_from_db()
+        package.refresh_from_db()
+        self.assertEqual((manual.policy, manual.cel_expr), (Policy.SILENT_BLOCKLIST, ""))
+        self.assertEqual(package.policy, Policy.ALLOWLIST)
+        self.assertTrue(LogEntry.objects.filter(object_id=str(manual.pk), change_message__contains="Policy").exists())
+        # CEL needs an expression, it is not offered
+        response = self.client.post(reverse("console:rules_bulk"), {
+            "action": "set_policy", "policy": Policy.CEL, "rules": [manual.pk]}, follow=True)
+        manual.refresh_from_db()
+        self.assertEqual(manual.policy, Policy.SILENT_BLOCKLIST)
+        self.assertNotContains(self.client.get(reverse("console:rules")), '<option value="CEL">', html=False)
+
+    def test_rule_form(self):
+        response = self.client.get(reverse("console:rule_add"))
+        # Santa shows the message and the URL only in the block dialog, a silent block has none
+        self.assertContains(response, 'data-show-when="policy=BLOCKLIST|CEL"')
+        # the tags become chips (console.js), with the translated texts
+        self.assertContains(response, 'data-placeholder="Add a tag, Enter creates a new one"')
 
     def test_package_rules_are_read_only(self):
         source = ReleaseSource.objects.create(name="colima", kind=ReleaseSource.Kind.HOMEBREW_FORMULA,
@@ -183,7 +252,7 @@ class ConsoleSourcesTestCase(ConsoleBase):
         source = ReleaseSource.objects.create(name="colima", kind=ReleaseSource.Kind.HOMEBREW_FORMULA,
                                               identifier="colima", is_global=True, auto_approve=False)
         version = ReleaseVersion.objects.create(source=source, identifier="colima", version="1",
-                                                auto_enable_pending=True)
+                                                auto_enable_pending=True, binary_count=1)
         rule = Rule.objects.create(rule_type=RuleType.BINARY, identifier=SHA_A, release_source=source,
                                    release_version=version, is_global=True, is_enabled=False)
         self.client.post(reverse("console:version_approve", args=(version.pk,)))
@@ -191,6 +260,16 @@ class ConsoleSourcesTestCase(ConsoleBase):
         version.refresh_from_db()
         self.assertTrue(rule.is_enabled)
         self.assertFalse(version.auto_enable_pending)
+        # an enabled version can only be disabled, a disabled one only approved
+        approve_url = reverse("console:version_approve", args=(version.pk,))
+        disable_url = reverse("console:version_disable", args=(version.pk,))
+        response = self.client.get(reverse("console:source", args=(source.pk,)))
+        self.assertContains(response, disable_url)
+        self.assertNotContains(response, approve_url)
+        self.client.post(disable_url)
+        response = self.client.get(reverse("console:source", args=(source.pk,)))
+        self.assertContains(response, approve_url)
+        self.assertNotContains(response, disable_url)
         with patch("santa.console.views_sources.sync_release_source", return_value=[]) as sync:
             response = self.client.post(reverse("console:source_check", args=(source.pk,)), follow=True)
         sync.assert_called_once()
@@ -208,76 +287,219 @@ class ConsoleEventsTestCase(ConsoleBase):
         self.assertEqual((rows[0]["event_count"], rows[0]["machine_count"], rows[0]["user_count"]), (2, 2, 2))
         self.assertNotContains(response, "other-tool")
 
-    def test_live_rows(self):
+    def test_live_updates(self):
         first = self.make_event()
-        url = reverse("console:event_rows")
+        url = reverse("console:event_updates")
         self.assertEqual(self.client.get(url, {"after": first.pk}).status_code, 204)
         new = self.make_event(sha256=SHA_B, file_name="brand-new")
+        self.make_event(file_name="colima", minutes_ago=1)
+        allowed = self.make_event(sha256="c" * 64, file_name="allowed", decision="ALLOW_BINARY")
+        # "All events": every new event, with its key and the new position
+        response = self.client.get(url, {"after": first.pk, "view": "all"})
+        self.assertContains(response, f'data-max-pk="{allowed.pk}"')
+        self.assertContains(response, f'data-key="{new.pk}"')
+        self.assertContains(response, f'data-key="{allowed.pk}"')
+        # the filters of the list apply
+        response = self.client.get(url, {"after": first.pk, "view": "all", "group": self.sales.pk})
+        self.assertNotContains(response, "data-key")
+        # "Blocked apps": the rows of the binaries with new blocks, with all their blocks
         response = self.client.get(url, {"after": first.pk})
-        self.assertContains(response, "brand-new")
-        self.assertContains(response, f"after={new.pk}")
-        self.assertContains(response, 'hx-swap-oob="true"')
-        # the filters of the list apply to the new rows too
-        self.assertEqual(self.client.get(url, {"after": first.pk, "group": self.sales.pk}).status_code, 204)
-        response = self.client.get(reverse("console:new_events_count"), {"after": first.pk})
-        self.assertContains(response, "1 new block")
+        rows = {row["file_sha256"]: row for row in response.context["rows"]}
+        self.assertEqual(set(rows), {SHA_A, SHA_B})
+        self.assertEqual(rows[SHA_A]["event_count"], 2)
+        self.assertContains(response, f'data-key="{SHA_B}"')
+        # the list polls it, in the default order new rows are added on top
+        response = self.client.get(reverse("console:events"), {"view": "all"})
+        self.assertContains(response, "data-live-updates")
+        self.assertTrue(response.context["live_insert"])
+        self.assertFalse(self.client.get(reverse("console:events"), {"sort": "program"}).context["live_insert"])
+        self.client.force_login(User.objects.create_user("viewer", is_staff=True))
+        self.assertEqual(self.client.get(url, {"after": first.pk}).status_code, 403)
 
-    def test_allow_several_binaries_with_their_own_tags(self):
+    def test_relations_open_in_the_drawer(self):
+        event = self.make_event(signing_id="ABCDE12345:com.example.a", team_id="ABCDE12345")
+        rule = Rule.objects.create(rule_type=RuleType.SIGNINGID, identifier="ABCDE12345:com.example.a", is_global=True)
+        rule_url = reverse("console:rule", args=(rule.pk,))
+        machine_url = reverse("console:machine", args=(self.machine.pk,))
+        group_url = reverse("console:group", args=(self.dev.pk,))
+        response = self.client.get(reverse("console:event", args=(event.pk,)), headers={"HX-Request": "true"})
+        for url in (rule_url, machine_url, group_url):
+            self.assertContains(response, f'href="{url}" hx-get="{url}" hx-target="#drawer"')
+        response = self.client.post(reverse("console:events_create_rules"), {"ids": [event.pk]},
+                                    headers={"HX-Request": "true"})
+        self.assertContains(response, f'href="{rule_url}" hx-get="{rule_url}" hx-target="#drawer"')
+        # the Mac and the group as drawers, and as pages without JS
+        for url in (machine_url, group_url):
+            self.assertNotContains(self.client.get(url, headers={"HX-Request": "true"}), "<html")
+            self.assertContains(self.client.get(url), "<html")
+        response = self.client.get(machine_url, headers={"HX-Request": "true"})
+        self.assertContains(response, f'data-drawer-url="{machine_url}"')
+
+    def test_group_saves_in_the_drawer(self):
+        data = {"name": "Development", "description": "", "client_mode": "MONITOR", "batch_size": 100,
+                "full_sync_interval": 600}
+        response = self.client.post(reverse("console:group", args=(self.dev.pk,)), data,
+                                    headers={"HX-Request": "true"})
+        if response.status_code == 200:
+            self.fail(response.context["form"].errors)
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response["HX-Trigger"], "drawerSaved")
+
+    def create_rules(self, events, htmx=True, **data):
+        data = {"ids": [e.pk for e in events], "apply": "1", "policy": Policy.ALLOWLIST, "scope": "groups",
+                "groups": [self.dev.pk], "rule_type": "", **data}
+        headers = {"HX-Request": "true"} if htmx else {}
+        return self.client.post(reverse("console:events_create_rules"), data, headers=headers)
+
+    def test_create_rules_for_several_binaries(self):
         a = self.make_event(signing_id="ABCDE12345:com.example.a", team_id="ABCDE12345")
-        self.make_event(machine=self.other_machine, signing_id="ABCDE12345:com.example.a", team_id="ABCDE12345")
+        other = self.make_event(machine=self.other_machine, signing_id="ABCDE12345:com.example.a",
+                                team_id="ABCDE12345")
         b = self.make_event(sha256=SHA_B, file_name="unsigned", minutes_ago=5)
-        url = reverse("console:events_allow")
-        response = self.client.post(url, {"shas": [SHA_A], "ids": [b.pk]})
-        self.assertEqual(len(response.context["formset"].forms), 2)
-        rows = {form.initial["event"]: form for form in response.context["formset"]}
-        self.assertEqual(rows[b.pk].initial["rule_type"], RuleType.BINARY)
-        self.assertNotIn(RuleType.SIGNINGID, dict(rows[b.pk].fields["rule_type"].choices))
-        event_ids = [e.pk for e in response.context["events"]]
-        data = {"ids": event_ids, "apply": "1", "groups": [self.dev.pk],
-                "rows-TOTAL_FORMS": 2, "rows-INITIAL_FORMS": 2}
-        for index, (event, rule_type, scope, tags) in enumerate([
-                (a, RuleType.SIGNINGID, "machines", "signed"), (b, RuleType.BINARY, "groups", "unsigned, cli")]):
-            data.update({f"rows-{index}-event": event.pk, f"rows-{index}-include": "on",
-                         f"rows-{index}-rule_type": rule_type, f"rows-{index}-policy": Policy.ALLOWLIST,
-                         f"rows-{index}-scope": scope, f"rows-{index}-new_tags": tags,
-                         f"rows-{index}-description": ""})
-        response = self.client.post(url, data)
-        self.assertRedirects(response, reverse("console:events"))
+        # the bulk bar opens the form in the drawer
+        response = self.client.post(reverse("console:events_create_rules"), {"shas": [SHA_A], "ids": [b.pk]},
+                                    headers={"HX-Request": "true"})
+        self.assertNotContains(response, "<html")
+        self.assertContains(response, "Suggested per binary")
+        self.assertEqual(len(response.context["binaries"]), 2)
+        # suggested per binary: a signing ID rule and a binary rule, both on the Macs of their events
+        response = self.create_rules([a, other, b], scope="machines", include=[SHA_A, SHA_B], new_tags="cli")
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response["HX-Trigger"], "drawerSaved")
         signed = Rule.objects.get(rule_type=RuleType.SIGNINGID)
         self.assertEqual({m.pk for m in signed.machines.all()}, {self.machine.pk, self.other_machine.pk})
         self.assertFalse(signed.groups.exists())
-        self.assertEqual([t.name for t in signed.tags.all()], ["signed"])
         unsigned = Rule.objects.get(rule_type=RuleType.BINARY)
-        self.assertEqual(list(unsigned.groups.all()), [self.dev])
-        self.assertEqual({t.name for t in unsigned.tags.all()}, {"unsigned", "cli"})
-        # the events are resolved, on both Macs for the machine scoped rule
+        self.assertEqual([t.name for t in unsigned.tags.all()], ["cli"])
+        self.assertEqual(unsigned.description, "unsigned (/opt/bin/unsigned)")
         self.assertFalse(Event.objects.filter(resolved_at__isnull=True).exists())
 
-    def test_apply_to_all_offers_every_rule_type(self):
-        # the first row is an unsigned binary: the "apply to all" select still has the signing ID
-        event = self.make_event(sha256=SHA_B, file_name="unsigned")
-        response = self.client.post(reverse("console:events_allow"), {"ids": [event.pk]})
-        self.assertContains(response, '<select data-apply="rule_type"')
-        select = response.content.decode().split('data-apply="rule_type"', 1)[1].split("</select>", 1)[0]
-        self.assertIn(f'value="{RuleType.SIGNINGID}"', select)
+    def test_rule_type_falls_back_and_the_rest_stays_in_the_drawer(self):
+        a = self.make_event(signing_id="ABCDE12345:com.example.a", team_id="ABCDE12345")
+        b = self.make_event(sha256=SHA_B, file_name="unsigned", minutes_ago=5)
+        c = self.make_event(sha256="c" * 64, file_name="left out", minutes_ago=10)
+        # a signing ID for all: the unsigned binary gets a binary rule; the unchecked one stays in the drawer
+        response = self.create_rules([a, b, c], rule_type=RuleType.SIGNINGID, include=[SHA_A, SHA_B])
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual({r.rule_type for r in Rule.objects.all()}, {RuleType.SIGNINGID, RuleType.BINARY})
+        self.assertEqual([binary["event"] for binary in response.context["binaries"]], [c])
+        self.assertContains(response, "1 binary left")
+        self.assertContains(response, "data-refresh-on-close")
+        # the second decision for the rest: block it silently
+        response = self.create_rules([c], rule_type=RuleType.BINARY, include=["c" * 64],
+                                     policy=Policy.SILENT_BLOCKLIST, scope="global", saved="1")
+        self.assertEqual(response.status_code, 204)
+        blocked = Rule.objects.get(identifier="c" * 64)
+        self.assertEqual((blocked.policy, blocked.is_global), (Policy.SILENT_BLOCKLIST, True))
+        c.refresh_from_db()
+        self.assertEqual(c.resolution_rule, blocked)
+
+    def test_create_rules_errors(self):
+        a = self.make_event()
+        response = self.create_rules([a], groups=[], include=[SHA_A])
+        self.assertContains(response, "Choose at least one group.")
+        response = self.create_rules([a], include=[])
+        self.assertContains(response, "Choose at least one binary.")
+        response = self.create_rules([a], include=[SHA_A], policy=Policy.CEL)
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Rule.objects.exists())
+
+    def test_create_rules_without_js(self):
+        a = self.make_event()
+        response = self.client.post(reverse("console:events_create_rules"), {"ids": [a.pk]})
+        self.assertContains(response, "<html")
+        self.assertContains(response, 'value="BLOCKLIST"')
+        response = self.create_rules([a], htmx=False, include=[SHA_A], rule_type=RuleType.BINARY)
+        self.assertRedirects(response, reverse("console:events"))
+        self.assertTrue(Rule.objects.exists())
 
     def test_create_rule_from_the_drawer(self):
         event = self.make_event()
         response = self.client.get(reverse("console:event", args=(event.pk,)), HTTP_HX_REQUEST="true")
         self.assertContains(response, "Create rule")
+        self.assertContains(response, 'value="SILENT_BLOCKLIST"')
+        self.assertNotContains(response, "Suggested per binary")
         self.assertNotContains(response, "<html")
-        self.client.post(reverse("console:event_allow", args=(event.pk,)), {
-            "rule_type": RuleType.BINARY, "policy": Policy.ALLOWLIST, "scope": "machines", "next": "https://evil/"})
+        self.client.post(reverse("console:event_create_rule", args=(event.pk,)), {
+            "rule_type": RuleType.BINARY, "policy": Policy.BLOCKLIST, "scope": "machines", "include": SHA_A,
+            "next": "https://evil/"})
         rule = Rule.objects.get()
         self.assertEqual(list(rule.machines.all()), [self.machine])
+        self.assertEqual(rule.policy, Policy.BLOCKLIST)
+
+    def test_existing_rules(self):
+        signed = self.make_event(signing_id="ABCDE12345:com.example.a", team_id="ABCDE12345")
+        other = self.make_event(sha256=SHA_B, machine=self.other_machine, team_id="ABCDE12345")
+        allow = Rule.objects.create(rule_type=RuleType.SIGNINGID, identifier="ABCDE12345:com.example.a",
+                                    is_global=True)
+        team = Rule.objects.create(rule_type=RuleType.TEAMID, identifier="ABCDE12345", policy=Policy.BLOCKLIST)
+        team.groups.add(self.dev)
+        disabled = Rule.objects.create(rule_type=RuleType.BINARY, identifier=SHA_B, is_global=True, is_enabled=False)
+        matches = existing_rules([signed, other])
+        # the most specific rule type first, "applies" for the Macs of the events
+        self.assertEqual([(m["rule"], m["applies"]) for m in matches[SHA_A]], [(allow, True), (team, True)])
+        self.assertEqual([(m["rule"], m["applies"]) for m in matches[SHA_B]], [(disabled, False), (team, False)])
+        self.assertTrue(is_allowed(matches[SHA_A]))
+        self.assertFalse(is_allowed(matches[SHA_B]))
+        # many events: chunked for SQL Server
+        many = [Event(machine=self.machine, group=self.dev, execution_time=timezone.now(), decision="BLOCK_UNKNOWN",
+                      file_sha256=f"{i:064x}", signing_id=f"ABCDE12345:com.example.{i}") for i in range(1500)]
+        self.assertEqual(len(existing_rules(many)), 1500)
+
+    def test_existing_rules_are_shown(self):
+        event = self.make_event(signing_id="ABCDE12345:com.example.a", team_id="ABCDE12345")
+        unsigned = self.make_event(sha256=SHA_B, file_name="unsigned")
+        Rule.objects.create(rule_type=RuleType.SIGNINGID, identifier="ABCDE12345:com.example.a", is_global=True)
+        response = self.client.get(reverse("console:event", args=(event.pk,)), HTTP_HX_REQUEST="true")
+        self.assertContains(response, "There are rules for this binary already")
+        # several binaries: the allowed one is shown, but not checked
+        response = self.client.post(reverse("console:events_create_rules"), {"ids": [event.pk, unsigned.pk]},
+                                    headers={"HX-Request": "true"})
+        self.assertContains(response, "Already:")
+        self.assertEqual(response.context["form"]["include"].value(), [SHA_B])
+        self.assertContains(self.client.get(reverse("console:events")), "Rule exists")
+        # "New rule": the rules with the typed identifier
+        url = reverse("console:rules_existing")
+        response = self.client.get(url, {"rule_type": RuleType.SIGNINGID, "identifier": "abcde12345:com.example.a"})
+        self.assertContains(response, "There is a rule for this identifier already")
+        self.assertNotContains(self.client.get(url, {"rule_type": RuleType.TEAMID, "identifier": "ABCDE12345"}),
+                               "already")
+        self.client.force_login(User.objects.create_user("viewer", is_staff=True))
+        self.assertEqual(self.client.get(url, {"rule_type": RuleType.TEAMID, "identifier": "x"}).status_code, 403)
+
+    def test_groups_are_the_default_scope(self):
+        event = self.make_event()
+        response = self.client.get(reverse("console:event", args=(event.pk,)), HTTP_HX_REQUEST="true")
+        self.assertEqual(response.context["form"]["scope"].value(), "groups")
+        response = self.client.post(reverse("console:events_create_rules"), {"ids": [event.pk]})
+        self.assertEqual(response.context["form"]["scope"].value(), "groups")
+
+    def test_the_drawer_follows_the_selection(self):
+        a = self.make_event(signing_id="ABCDE12345:com.example.a", team_id="ABCDE12345")
+        b = self.make_event(sha256=SHA_B, file_name="unsigned")
+        c = self.make_event(sha256="c" * 64, file_name="third")
+        # b was unchecked by hand, c is new in the selection: checked; the entered values stay
+        response = self.create_rules([a, b, c], refresh="1", known=[SHA_A, SHA_B], include=[SHA_A],
+                                     policy=Policy.BLOCKLIST, new_tags="later", apply="")
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Rule.objects.exists())
+        form = response.context["form"]
+        self.assertEqual(sorted(form["include"].value()), sorted([SHA_A, "c" * 64]))
+        self.assertEqual(form["policy"].value(), Policy.BLOCKLIST)
+        self.assertEqual(form["new_tags"].value(), "later")
+        self.assertFalse(form.errors)
+        # nothing selected anymore
+        response = self.client.post(reverse("console:events_create_rules"), {"refresh": "1"},
+                                    headers={"HX-Request": "true"})
+        self.assertContains(response, "Select events in the list.")
 
     def test_selected_apps_follow_the_resolved_filter(self):
         event = self.make_event()
         Event.objects.filter(pk=event.pk).update(resolved_at=timezone.now())
-        response = self.client.post(reverse("console:events_allow"), {"shas": [SHA_A]})
+        response = self.client.post(reverse("console:events_create_rules"), {"shas": [SHA_A]})
         self.assertRedirects(response, reverse("console:events"))
-        response = self.client.post(reverse("console:events_allow"), {"shas": [SHA_A], "resolved": "all"})
-        self.assertEqual(len(response.context["formset"].forms), 1)
+        response = self.client.post(reverse("console:events_create_rules"), {"shas": [SHA_A], "resolved": "all"})
+        self.assertEqual(len(response.context["binaries"]), 1)
 
     def test_mark_resolved(self):
         self.make_event()

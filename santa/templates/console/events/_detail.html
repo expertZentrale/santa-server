@@ -1,16 +1,16 @@
-{% load console i18n %}<div class="drawer-panel">
+{% load console i18n %}<div class="drawer-panel" data-drawer-url="{% url 'console:event' event.pk %}">
   <header class="drawer-head">
     <div><h2 tabindex="-1" data-drawer-title>{{ event.file_name|default:_("(no name)") }}</h2>
       <span class="badge {{ event.decision|decision_class }}">{{ event.decision }}</span>
       <span class="muted">{{ event.execution_time|date:"d.m.Y H:i:s" }}</span></div>
     <div class="drawer-tools">
-      {% if request.headers.hx_request %}<a class="small" href="{% url 'console:event' event.pk %}" title="{% translate 'Open as page' %}">{% translate "Page" %} ↗</a>{% endif %}
-      <button type="button" class="link" data-drawer-close aria-label="{% translate 'Close' %}">×</button>
+      {% if request.headers.hx_request %}<a class="icon-button" href="{% url 'console:event' event.pk %}" title="{% translate 'Open as page' %}" aria-label="{% translate 'Open as page' %}">{% include "console/icons/maximize.svg" %}</a>{% endif %}
+      <button type="button" class="icon-button" data-drawer-close title="{% translate 'Close' %}" aria-label="{% translate 'Close' %}">{% include "console/icons/x.svg" %}</button>
     </div>
   </header>
   <dl class="facts">
     <dt>{% translate "Path" %}</dt><dd class="mono">{{ event.file_path }}</dd>
-    <dt>{% translate "Mac" %}</dt><dd><a href="{% url 'console:machine' event.machine_id %}">{{ event.machine.hostname|default:event.machine.serial_number }}</a> · {{ event.machine.serial_number }} · <a href="{% url 'console:group' event.group_id %}">{{ event.group.name }}</a></dd>
+    <dt>{% translate "Mac" %}</dt><dd>{% url 'console:machine' event.machine_id as machine_url %}<a href="{{ machine_url }}" hx-get="{{ machine_url }}" hx-target="#drawer">{{ event.machine.hostname|default:event.machine.serial_number }}</a> · {{ event.machine.serial_number }} · {% url 'console:group' event.group_id as group_url %}<a href="{{ group_url }}" hx-get="{{ group_url }}" hx-target="#drawer">{{ event.group.name }}</a></dd>
     <dt>{% translate "User" %}</dt><dd>{{ event.executing_user|default:"–" }}{% if event.parent_name %} · {% blocktranslate with parent=event.parent_name %}started by {{ parent }}{% endblocktranslate %}{% endif %}</dd>
     {% if event.bundle_id %}<dt>{% translate "Bundle" %}</dt><dd>{{ event.bundle_name }} {{ event.bundle_version }} <span class="mono muted">{{ event.bundle_id }}</span></dd>{% endif %}
     <dt>SHA-256</dt><dd class="mono">{{ event.file_sha256 }} {% if event.file_sha256 %}{% include "console/_copy.html" with value=event.file_sha256 %}{% endif %}</dd>
@@ -23,15 +23,12 @@
   {% if requests %}<h3>{% translate "Requests" %}</h3><ul class="plain">{% for r in requests %}<li>{% url 'console:request' r.pk as request_url %}<a href="{{ request_url }}" hx-get="{{ request_url }}" hx-target="#drawer">{{ r.requester }}</a> · <span class="badge">{{ r.get_status_display }}</span></li>{% endfor %}</ul>{% endif %}
   {% if perms.santa.add_rule %}
   <h3>{% translate "Create rule" %}</h3>
-  <form method="post" action="{% url 'console:event_allow' event.pk %}" class="stack compact">
+  {% include "console/rules/_existing.html" %}
+  <form method="post" action="{% url 'console:event_create_rule' event.pk %}" class="stack compact">
     {% csrf_token %}
     <input type="hidden" name="next" value="{{ request.META.HTTP_HX_CURRENT_URL|default:request.get_full_path }}">
-    {% include "console/_field.html" with field=form.rule_type %}
-    {% include "console/_field.html" with field=form.policy %}
-    {% include "console/_field.html" with field=form.scope %}
-    <div data-show-when="scope=groups">{% include "console/_field.html" with field=form.groups %}</div>
-    {% include "console/_field.html" with field=form.tags %}
-    {% include "console/_field.html" with field=form.new_tags %}
+    <input type="hidden" name="include" value="{{ event.file_sha256 }}">
+    {% include "console/events/_rule_form.html" %}
     <button class="button primary">{% translate "Create rule" %}</button>
   </form>
   {% endif %}

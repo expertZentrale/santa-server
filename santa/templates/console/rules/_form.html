@@ -4,13 +4,16 @@
   <section class="card"><h2>{% translate "Target" %}</h2>
     {% include "console/_field.html" with field=form.rule_type %}
     {% include "console/_field.html" with field=form.identifier %}
+    {% if not rule %}<div hx-get="{% url 'console:rules_existing' %}" hx-include="closest form"
+         hx-trigger="change from:[name='identifier'], change from:[name='rule_type'], keyup changed delay:400ms from:[name='identifier']"
+         aria-live="polite"></div>{% endif %}
     <small class="help">{% blocktranslate %}From <code>santactl fileinfo /path/to/binary</code>, or create the rule from an event.{% endblocktranslate %}</small>
   </section>
   <section class="card"><h2>{% translate "Policy" %}</h2>
     {% include "console/_field.html" with field=form.policy %}
     <div data-show-when="policy=CEL">{% include "console/_field.html" with field=form.cel_expr %}
       <small class="help">{% blocktranslate %}Return a policy, e.g. <code>target.signing_time &gt;= timestamp('2025-01-01T00:00:00Z') ? ALLOWLIST : BLOCKLIST</code>. Evaluated by Santa on the Mac.{% endblocktranslate %}</small></div>
-    <div data-show-when="policy=BLOCKLIST|SILENT_BLOCKLIST|CEL">
+    <div data-show-when="policy=BLOCKLIST|CEL">
       {% include "console/_field.html" with field=form.custom_msg %}
       {% include "console/_field.html" with field=form.custom_url %}</div>
   </section>
@@ -27,6 +30,6 @@
     {% include "console/_field.html" with field=form.description %}
   </section>
   <div class="actions"><button class="button primary">{% translate "Save" %}</button>
-    {% if in_drawer %}<button type="button" class="link" data-drawer-close>{% translate "Cancel" %}</button>{% else %}<a href="{% url 'console:rules' %}">{% translate "Cancel" %}</a>{% endif %}
-    {% if rule %}{% url 'console:history' 'rule' rule.pk as history_url %}<a class="right" href="{{ history_url }}" hx-get="{{ history_url }}" hx-target="#drawer">{% translate "History" %}</a>{% endif %}</div>
+    {% if in_drawer %}<button type="button" class="button" data-drawer-close>{% translate "Cancel" %}</button>{% else %}<a class="button" href="{% url 'console:rules' %}">{% translate "Cancel" %}</a>{% endif %}
+    {% if rule %}{% url 'console:history' 'rule' rule.pk as history_url %}<a class="button right" href="{{ history_url }}" hx-get="{{ history_url }}" hx-target="#drawer">{% translate "History" %}</a>{% endif %}</div>
 </form>

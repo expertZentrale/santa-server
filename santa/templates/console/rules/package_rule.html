@@ -2,7 +2,7 @@
 {% block title %}{% translate "Rule" %}{% endblock %}
 {% block main_class %}narrow{% endblock %}
 {% block content %}
-<p><a href="{% url 'console:rules' %}">‹ {% translate "Execution rules" %}</a></p>
+{% url 'console:rules' as back_url %}{% include "console/_back.html" with url=back_url label=_("Execution rules") %}
 <h1>{% blocktranslate with type=rule.get_rule_type_display %}{{ type }} rule{% endblocktranslate %}</h1>
 {% include "console/rules/_package_rule.html" %}
 {% endblock %}

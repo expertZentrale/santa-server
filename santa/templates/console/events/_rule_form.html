@@ -1,0 +1,8 @@
+{# The fields of a rule from events: the drawer of one event and the rules for several binaries #}
+{% include "console/_field.html" with field=form.rule_type %}
+{% include "console/_field.html" with field=form.policy %}
+{% include "console/_field.html" with field=form.scope %}
+<div data-show-when="scope=groups">{% include "console/_field.html" with field=form.groups %}</div>
+{% include "console/_field.html" with field=form.tags %}
+{% include "console/_field.html" with field=form.new_tags %}
+{% include "console/_field.html" with field=form.description %}

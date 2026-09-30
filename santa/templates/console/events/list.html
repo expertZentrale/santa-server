@@ -1,5 +1,6 @@
 {% extends "console/base.html" %}{% load console i18n %}
 {% block title %}{% translate "Events" %}{% endblock %}
+{% block topbar_extra %}{% include "console/events/_live_pill.html" %}{% endblock %}
 {% block content %}
 <div class="page-head">
   <h1>{% translate "Events" %}</h1>
@@ -16,47 +17,27 @@
   <input type="hidden" name="resolved" value="{{ params.resolved|default:'open' }}">
   <div class="bulkbar" data-bulkbar hidden>
     <span class="count" title="{% translate 'Click selects a row, Ctrl-click adds or removes one, Shift-click selects a range.' %}">{% blocktranslate %}<span data-selected-count>0</span> selected{% endblocktranslate %}</span>
-    <button class="button primary" formaction="{% url 'console:events_allow' %}">{% translate "Create rules…" %}</button>
+    {% url 'console:events_create_rules' as create_rules_url %}<button class="button primary" formaction="{{ create_rules_url }}" hx-post="{{ create_rules_url }}" hx-target="#drawer">{% translate "Create rules…" %}</button>
     <button class="button" formaction="{% url 'console:events_resolve' %}">{% translate "Mark resolved" %}</button>
     <button type="button" class="bulkbar-clear" data-clear-selection aria-label="{% translate 'Clear selection' %}" title="{% translate 'Clear selection (Esc)' %}">×</button>
   </div>
   {% if view == "all" %}
-    <div class="live">
-      {% if live %}<label><input type="checkbox" id="live-pause"> {% translate "Pause live updates" %}</label>
-      <span class="dot" aria-hidden="true"></span> {% translate "live" %}{% else %}<input type="checkbox" id="live-pause" hidden checked>{% translate "Live updates only on the first page, sorted by time." %}{% endif %}
-    </div>
-    <table class="table">
+    <table class="table" data-live-updates="{% url 'console:event_updates' %}{% querystring page=None sort=None %}" data-after="{{ max_pk }}"{% if live_insert %} data-insert{% endif %}>
       <thead><tr><th class="select"><input type="checkbox" data-select-all aria-label="{% translate 'Select all' %}"></th>
         {% sort_th _("Time") "time" %}{% sort_th _("Decision") "decision" %}{% sort_th _("File") "file" %}
         {% sort_th _("Mac") "mac" %}{% sort_th _("User") "user" %}{% sort_th _("Signing ID") "signing" %}<th></th></tr></thead>
-      <tbody id="event-rows">
+      <tbody>
         {% for event in page %}{% include "console/events/_row.html" %}{% empty %}
         <tr class="empty"><td colspan="8">{% translate "No events for these filters." %}</td></tr>{% endfor %}
       </tbody>
     </table>
-    {% if live %}
-    <div id="poller" hx-get="{% url 'console:event_rows' %}{% querystring after=max_pk page=None view=None sort=None %}"
-         hx-trigger="every 5s [!document.getElementById('live-pause').checked]" hx-target="#event-rows" hx-swap="afterbegin"></div>
-    {% endif %}
   {% else %}
-    <div hx-get="{% url 'console:new_events_count' %}{% querystring after=max_pk page=None view=None sort=None %}"
-         hx-trigger="every 10s" hx-swap="innerHTML" class="new-count"></div>
-    <table class="table">
+    <table class="table" data-live-updates="{% url 'console:event_updates' %}{% querystring page=None sort=None %}" data-after="{{ max_pk }}"{% if live_insert %} data-insert{% endif %}>
       <thead><tr><th class="select"><input type="checkbox" data-select-all aria-label="{% translate 'Select all' %}"></th>
         {% sort_th _("Program") "program" %}<th>{% translate "Signing ID / Team ID" %}</th>{% sort_th _("Blocks") "blocks" "num" %}
         {% sort_th _("Macs") "macs" "num" %}{% sort_th _("Users") "users" "num" %}{% sort_th _("Last seen") "last" %}<th></th></tr></thead>
       <tbody>
-      {% for row in page %}
-        <tr>
-          <td class="select"><input type="checkbox" name="shas" value="{{ row.file_sha256 }}" aria-label="{% translate 'Select' %} {{ row.file_name }}"></td>
-          <td><a href="{% url 'console:event' row.last_pk %}" hx-get="{% url 'console:event' row.last_pk %}" hx-target="#drawer" class="strong">{{ row.file_name|default:_("(no name)") }}</a>
-            <small class="muted mono" title="{{ row.file_path }}">{{ row.file_path|truncatechars:60 }}</small></td>
-          <td class="mono small">{{ row.signing_id|default:"–" }}<br><span class="muted">{{ row.team_id|default:_("unsigned") }}</span></td>
-          <td class="num">{{ row.event_count }}</td><td class="num">{{ row.machine_count }}</td><td class="num">{{ row.user_count }}</td>
-          <td>{{ row.last_seen|date:"d.m.Y H:i" }}</td>
-          <td>{% if row.has_request %}<a class="badge info" href="{% url 'console:requests' %}">{% translate "requested" %}</a>{% endif %}
-            <a class="small" href="{% querystring view='all' sha256=row.file_sha256 page=None sort=None %}">{% translate "events" %}</a></td>
-        </tr>
+      {% for row in page %}{% include "console/events/_app_row.html" %}
       {% empty %}
         <tr class="empty"><td colspan="8">{% translate "Nothing blocked for these filters." %}</td></tr>
       {% endfor %}

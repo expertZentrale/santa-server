@@ -144,15 +144,14 @@ class SortingTestCase(ConsoleBase):
         # unknown columns fall back to the default order
         self.assertEqual(self.client.get(reverse("console:rules"), {"sort": "password"}).context["sort"], "-created")
 
-    def test_sort_blocked_apps_and_live_only_in_time_order(self):
+    def test_sort_blocked_apps_and_events(self):
         self.make_event()
         self.make_event(machine=self.other_machine)
         self.make_event(sha256=SHA_B, file_name="other")
         response = self.client.get(reverse("console:events"), {"sort": "-blocks"})
         self.assertEqual([row["event_count"] for row in response.context["page"]], [2, 1])
         response = self.client.get(reverse("console:events"), {"view": "all", "sort": "file"})
-        self.assertFalse(response.context["live"])
-        self.assertTrue(self.client.get(reverse("console:events"), {"view": "all"}).context["live"])
+        self.assertEqual(response.status_code, 200)
         for name in ("sources", "machines", "groups", "requests"):
             self.assertEqual(self.client.get(reverse(f"console:{name}"), {"sort": "-name"}).status_code, 200)
 

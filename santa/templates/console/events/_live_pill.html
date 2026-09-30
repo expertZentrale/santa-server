@@ -1,0 +1,5 @@
+{% load i18n %}{# New rows of the list: in the top bar, so it never covers the list (console.js) #}
+<a class="live-pill" href="{% url 'console:events' %}{% querystring page=None sort=None %}" data-live-pill hidden aria-live="polite"
+   data-one="{% if view == 'all' %}{% translate 'new event' %}{% else %}{% translate 'new block' %}{% endif %}"
+   data-many="{% if view == 'all' %}{% translate 'new events' %}{% else %}{% translate 'new blocks' %}{% endif %}"
+   data-elsewhere="{% translate 'on page 1' %}"><span class="dot" aria-hidden="true"></span><span data-live-pill-count></span><span class="live-pill-text" data-live-pill-text></span></a>

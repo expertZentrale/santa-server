@@ -17,10 +17,12 @@ from ..services import can_see_sync_token, remove_machine_from_rules, rules_only
 from .forms import GroupForm
 from .utils import (
     changed_message,
+    drawer_done,
     log_addition,
     log_change,
     log_deletion,
     paginate,
+    render_drawer,
     require_perms,
     safe_next,
     sort_by,
@@ -77,7 +79,7 @@ def group_form(request, pk=None):
                 else:
                     message += gettext("The Macs get the changes at their next sync.")
                 messages.success(request, message)
-            return redirect("console:group", pk=group.pk)
+            return drawer_done(request, reverse("console:group", args=[group.pk]))
     context = {"form": form, "group": group, "can_change": can_change,
                "can_see_sync_token": can_see_sync_token(request.user)}
     if group:
@@ -91,7 +93,7 @@ def group_form(request, pk=None):
             "open_blocks": Event.objects.filter(group=group, resolved_at__isnull=True,
                                                 decision__startswith="BLOCK_").count(),
         })
-    return render(request, "console/groups/form.html", context)
+    return render_drawer(request, "console/groups/form.html", "console/groups/drawer_form.html", context)
 
 
 @staff_required
@@ -227,7 +229,7 @@ def machine_detail(request, pk):
                                             decision__startswith="BLOCK_").count(),
         "requests": AccessRequest.objects.filter(machine=machine).select_related("requester")[:10],
     }
-    return render(request, "console/machines/detail.html", context)
+    return render_drawer(request, "console/machines/detail.html", "console/machines/drawer_detail.html", context)
 
 
 @staff_required
