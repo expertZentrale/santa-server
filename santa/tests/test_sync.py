@@ -242,7 +242,12 @@ class SyncTestCase(TestCase):
         self.assertEqual(preflight["client_mode"], "MONITOR")
         self.assertEqual([r["identifier"] for r in rules], [SHA_C])
         # the old group URL does not work anymore for this machine
-        self.assertEqual(self.post("ruledownload", {}, group=self.dev).status_code, 400)
+        with self.assertLogs("santa.sync_views", "WARNING") as logs:
+            response = self.post("ruledownload", {}, group=self.dev)
+        self.assertEqual(response.status_code, 400)
+        # the reason is logged, but the response does not tell which group the machine belongs to
+        self.assertEqual(response.json(), {"error": "bad request"})
+        self.assertIn(f"belongs to group {self.sales.pk}", logs.output[0])
 
     def test_event_upload(self):
         self.preflight()

@@ -76,8 +76,9 @@ def sync_view(func):
             with transaction.atomic():
                 response = func(request, group, machine_id, data)
         except BadRequest as e:
+            # the detail is only for the operators, it can name other groups
             logger.warning("Group %s, machine %s: %s", group.pk, machine_id, e)
-            return JsonResponse({"error": str(e)}, status=400)
+            return JsonResponse({"error": "bad request"}, status=400)
         return JsonResponse(response)
     return wrapper
 
