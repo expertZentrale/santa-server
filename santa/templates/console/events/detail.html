@@ -1,4 +1,4 @@
 {% extends "console/base.html" %}{% load i18n %}
 {% block title %}{{ event.file_name }}{% endblock %}
 {% block main_class %}narrow{% endblock %}
-{% block content %}<p><a href="{% url 'console:events' %}">‹ {% translate "Events" %}</a></p><section class="card">{% include "console/events/_detail.html" %}</section>{% endblock %}
+{% block content %}{% url 'console:events' as back_url %}{% include "console/_back.html" with url=back_url label=_("Events") %}<section class="card">{% include "console/events/_detail.html" %}</section>{% endblock %}

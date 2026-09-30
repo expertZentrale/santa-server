@@ -15,7 +15,7 @@
   <tbody>
   {% for group in groups %}
     <tr>
-      <td><a class="strong" href="{% url 'console:group' group.pk %}">{{ group.name }}</a>
+      <td>{% url 'console:group' group.pk as group_url %}<a class="strong" href="{{ group_url }}" hx-get="{{ group_url }}" hx-target="#drawer">{{ group.name }}</a>
         {% if group.description %}<small class="muted">{{ group.description|truncatechars:90 }}</small>{% endif %}</td>
       <td><span class="badge {% if group.client_mode == 'LOCKDOWN' %}bad{% else %}info{% endif %}">{{ group.get_client_mode_display }}</span></td>
       <td class="num"><a href="{% url 'console:machines' %}?group={{ group.pk }}">{{ group.machine_count }}</a></td>

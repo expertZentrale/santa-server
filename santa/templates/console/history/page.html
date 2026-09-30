@@ -2,7 +2,7 @@
 {% block title %}{% translate "History" %}{% endblock %}
 {% block main_class %}narrow{% endblock %}
 {% block content %}
-<p><a href="{{ object_url }}">‹ {{ obj }}</a></p>
+{% include "console/_back.html" with url=object_url label=obj %}
 <h1>{% translate "History" %}</h1>
 <section class="card">{% include "console/history/_entries.html" %}</section>
 {% endblock %}

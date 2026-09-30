@@ -1,4 +1,4 @@
-{% load i18n %}<div class="drawer-panel{% block drawer_class %}{% endblock %}">
+{% load i18n %}<div class="drawer-panel{% block drawer_class %}{% endblock %}"{% if request.method == "GET" %} data-drawer-url="{{ request.get_full_path }}"{% endif %}{% block drawer_attrs %}{% endblock %}>
   <header class="drawer-head">
     <div>
       {% block drawer_back %}{% endblock %}
@@ -6,8 +6,8 @@
       {% block drawer_subtitle %}{% endblock %}
     </div>
     <div class="drawer-tools">
-      {% if request.method == "GET" %}<a class="small" href="{{ request.get_full_path }}" title="{% translate 'Open as page' %}">{% translate "Page" %} ↗</a>{% endif %}
-      <button type="button" class="link" data-drawer-close aria-label="{% translate 'Close' %}">×</button>
+      {% if request.method == "GET" %}<a class="icon-button" href="{{ request.get_full_path }}" title="{% translate 'Open as page' %}" aria-label="{% translate 'Open as page' %}">{% include "console/icons/maximize.svg" %}</a>{% endif %}
+      <button type="button" class="icon-button" data-drawer-close title="{% translate 'Close' %}" aria-label="{% translate 'Close' %}">{% include "console/icons/x.svg" %}</button>
     </div>
   </header>
   {% if messages %}<ul class="messages">{% for message in messages %}<li class="{{ message.tags }}">{{ message }}</li>{% endfor %}</ul>{% endif %}

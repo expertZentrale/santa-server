@@ -61,12 +61,89 @@
     updateSelection(form);
   }
 
-  // The drawer with the event details
+  // The drawer: details and forms. A link inside it opens the next view in it; the views before are kept
+  // (their DOM, with what was entered) and "Back" brings them back.
+  const drawerStack = [];
+  let drawerSaved = false;
+
   function closeDrawer() {
     const drawer = document.getElementById("drawer");
+    // the drawer saved something the page behind it doesn't show yet
+    if (drawerSaved || drawer.querySelector("[data-refresh-on-close]")) {
+      window.location.reload();
+      return;
+    }
+    drawerStack.length = 0;
     drawer.classList.remove("open");
     drawer.replaceChildren();
   }
+
+  function pushDrawerView(drawer) {
+    const view = document.createDocumentFragment();
+    const scroll = drawer.scrollTop;
+    while (drawer.firstChild) view.append(drawer.firstChild);
+    drawerStack.push({ view, scroll });
+  }
+
+  function updateDrawerBack(drawer) {
+    drawer.querySelectorAll("[data-drawer-back]").forEach((button) => button.remove());
+    // the links back of the templates are for the page, the stack knows the way back
+    drawer.querySelectorAll(".drawer-head .back").forEach((link) => {
+      link.hidden = drawerStack.length > 0;
+    });
+    const tools = drawer.querySelector(".drawer-tools");
+    const template = document.getElementById("drawer-back");
+    if (drawerStack.length && tools && template) tools.prepend(template.content.cloneNode(true));
+  }
+
+  function drawerBack() {
+    const drawer = document.getElementById("drawer");
+    const previous = drawerStack.pop();
+    if (!previous) return;
+    drawer.replaceChildren(previous.view);
+    drawer.scrollTop = previous.scroll;
+    updateDrawerBack(drawer);
+    drawer.querySelector("[data-drawer-title]")?.focus({ preventScroll: true });
+  }
+
+  // a view of the drawer again from the server, after something was saved in the view after it
+  function reloadDrawerView(drawer) {
+    const createRules = drawer.querySelector("[data-create-rules]");
+    if (createRules) {
+      htmx.ajax("POST", createRules.getAttribute("action"), {
+        source: createRules, target: "#drawer", values: { refresh: "1" }, headers: { "X-Drawer-Reload": "1" },
+      });
+      return;
+    }
+    const url = drawer.querySelector("[data-drawer-url]")?.dataset.drawerUrl;
+    if (url) htmx.ajax("GET", url, { target: "#drawer", headers: { "X-Drawer-Reload": "1" } });
+  }
+
+  document.addEventListener("htmx:beforeSwap", (event) => {
+    const drawer = document.getElementById("drawer");
+    if (event.detail.target !== drawer || !event.detail.shouldSwap) return;
+    const config = event.detail.requestConfig || {};
+    if (config.headers?.["X-Drawer-Reload"]) return;
+    const inside = config.elt && config.elt !== drawer && drawer.contains(config.elt);
+    if (config.verb === "get" && inside && drawer.classList.contains("open")) {
+      pushDrawerView(drawer);
+    } else if (!inside) {
+      // opened from the page: a new start
+      drawerStack.length = 0;
+    }
+  });
+
+  // drawer_done(): back to the view before and update it, or reload the page when there is none
+  document.addEventListener("drawerSaved", () => {
+    const drawer = document.getElementById("drawer");
+    drawerSaved = true;
+    if (!drawerStack.length) {
+      window.location.reload();
+      return;
+    }
+    drawerBack();
+    reloadDrawerView(drawer);
+  });
 
   function copy(text, element) {
     const done = () => {
@@ -193,6 +270,8 @@
         event.preventDefault();
         moveSelection(box, event.key === "ArrowDown" ? 1 : -1);
       } else if (event.key === "Escape") {
+        // only open suggestions close, not the drawer around the form
+        if (box.classList.contains("open")) event.stopPropagation();
         box.classList.remove("open");
       }
     });
@@ -291,6 +370,8 @@
         event.preventDefault();
         moveSelection(box, event.key === "ArrowDown" ? 1 : -1);
       } else if (event.key === "Escape") {
+        // only open suggestions close, not the drawer around the form
+        if (box.classList.contains("open")) event.stopPropagation();
         box.classList.remove("open");
       }
     });
@@ -391,6 +472,8 @@
           choose(selected.dataset.tag);
         }
       } else if (event.key === "Escape") {
+        // only open suggestions close, not the drawer around the form
+        if (box.classList.contains("open")) event.stopPropagation();
         box.classList.remove("open");
       }
     });
@@ -405,7 +488,150 @@
     input.addEventListener("blur", () => setTimeout(() => box.classList.remove("open"), 150));
   }
 
+  // Tags as chips in one input: an existing tag selects its option in the (hidden) multiple select,
+  // a new name goes into the new_tags field. Without JS both fields stay as they are.
+  function setupTagPicker(select) {
+    const form = select.closest("form");
+    const newInput = form?.querySelector(`input[name="${select.name.replace(/tags$/, "new_tags")}"]`);
+    if (!newInput || select.dataset.tagPicker) return;
+    select.dataset.tagPicker = "1";
+    newInput.dataset.tagInput = "1";
+    const field = select.closest(".field");
+    const newField = newInput.closest(".field");
+    const chips = document.createElement("ul");
+    chips.className = "chips";
+    const wrapper = document.createElement("div");
+    wrapper.className = "combobox";
+    const search = document.createElement("input");
+    search.type = "text";
+    search.id = `${select.id}-search`;
+    search.autocomplete = "off";
+    search.placeholder = select.dataset.placeholder || "";
+    search.setAttribute("role", "combobox");
+    search.setAttribute("aria-autocomplete", "list");
+    search.setAttribute("aria-expanded", "false");
+    const box = document.createElement("div");
+    box.className = "suggestions";
+    box.id = `${select.id}-suggestions`;
+    box.setAttribute("role", "listbox");
+    search.setAttribute("aria-controls", box.id);
+    wrapper.append(search, box);
+    select.hidden = true;
+    select.after(chips, wrapper);
+    field.querySelector(`label[for="${select.id}"]`)?.setAttribute("for", search.id);
+    // the new_tags value is submitted from the hidden input, its field is not needed anymore
+    newInput.type = "hidden";
+    field.append(newInput);
+    if (newField && newField !== field) {
+      newField.querySelectorAll(".error").forEach((error) => field.append(error));
+      newField.hidden = true;
+    }
+    const options = [...select.options];
+    let added = newInput.value.split(",").map((name) => name.trim()).filter(Boolean);
+
+    function render() {
+      const items = [...options.filter((option) => option.selected).map((option) => ({ name: option.text, option })),
+                     ...added.map((name) => ({ name }))];
+      chips.replaceChildren(...items.map((item) => {
+        const chip = document.createElement("li");
+        chip.className = "chip";
+        const text = document.createElement("span");
+        text.textContent = item.name;
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "chip-remove";
+        remove.setAttribute("aria-label", `${select.dataset.removeLabel || "Remove"} ${item.name}`);
+        remove.textContent = "×";
+        remove.addEventListener("click", () => {
+          if (item.option) item.option.selected = false;
+          else added = added.filter((name) => name !== item.name);
+          render();
+          search.focus();
+        });
+        chip.append(text, remove);
+        return chip;
+      }));
+      newInput.value = added.join(", ");
+    }
+
+    function show() {
+      const typed = search.value.trim().toLowerCase();
+      const matches = options.filter((option) => !option.selected && option.text.toLowerCase().includes(typed))
+                             .slice(0, 8);
+      box.replaceChildren(...matches.map((option) => {
+        const item = document.createElement("button");
+        item.type = "button";
+        item.className = "suggestion tag-suggestion";
+        item.setAttribute("role", "option");
+        item.dataset.tag = option.text;
+        item.textContent = option.text;
+        return item;
+      }));
+      const open = matches.length > 0 && document.activeElement === search;
+      box.classList.toggle("open", open);
+      search.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+
+    function add(name) {
+      name = name.trim().slice(0, 100);
+      if (!name) return;
+      const option = options.find((item) => item.text.toLowerCase() === name.toLowerCase());
+      if (option) option.selected = true;
+      else if (!added.some((item) => item.toLowerCase() === name.toLowerCase())) added.push(name);
+      search.value = "";
+      render();
+      show();
+    }
+
+    search.addEventListener("input", () => {
+      if (search.value.includes(",")) {
+        search.value.split(",").forEach(add);
+      } else {
+        show();
+      }
+    });
+    search.addEventListener("focus", show);
+    search.addEventListener("keydown", (event) => {
+      const open = box.classList.contains("open");
+      if (open && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+        event.preventDefault();
+        moveSelection(box, event.key === "ArrowDown" ? 1 : -1);
+      } else if (event.key === "Enter") {
+        const selected = open && box.querySelector(".suggestion[aria-selected=true]");
+        if (selected || search.value.trim()) {
+          event.preventDefault();
+          add(selected ? selected.dataset.tag : search.value);
+        }
+      } else if (event.key === "Backspace" && !search.value) {
+        const last = added.length ? null : options.filter((option) => option.selected).pop();
+        if (added.length) added.pop();
+        else if (last) last.selected = false;
+        render();
+      } else if (event.key === "Escape" && open) {
+        event.preventDefault();
+        event.stopPropagation();
+        box.classList.remove("open");
+      }
+    });
+    // mousedown: before the input loses the focus
+    box.addEventListener("mousedown", (event) => {
+      const item = event.target.closest(".suggestion");
+      if (item) {
+        event.preventDefault();
+        add(item.dataset.tag);
+      }
+    });
+    // a typed name counts, also without Enter (the suggestions keep the focus with preventDefault)
+    search.addEventListener("blur", () => {
+      if (search.value.trim()) add(search.value);
+      box.classList.remove("open");
+      search.setAttribute("aria-expanded", "false");
+    });
+    render();
+  }
+
   function setupTagInputs(root) {
+    root.querySelectorAll('select[multiple][name$="tags"]').forEach(setupTagPicker);
     const names = tagNames();
     if (!names.length) return;
     root.querySelectorAll('input[name$="new_tags"], input[data-apply="new_tags"], input[data-tags]')
@@ -469,9 +695,40 @@
     });
   }
 
+  // Rules for several binaries: what each rule uses with the chosen rule type, or its suggestion when the binary
+  // has no identifier of that type
+  function updateBinaryPreviews(root) {
+    root.querySelectorAll("[data-binaries]").forEach((list) => {
+      const select = list.closest("form").querySelector('select[name$="rule_type"]');
+      let labels = {};
+      try {
+        labels = JSON.parse(list.dataset.ruleTypes);
+      } catch (error) {
+        return;
+      }
+      list.querySelectorAll("[data-binary-preview]").forEach((preview) => {
+        let identifiers = {};
+        try {
+          identifiers = JSON.parse(preview.dataset.identifiers);
+        } catch (error) {
+          return;
+        }
+        const chosen = select?.value || "";
+        const fallback = chosen && !identifiers[chosen];
+        const type = chosen && !fallback ? chosen : preview.dataset.suggested;
+        const code = document.createElement("code");
+        code.textContent = identifiers[type] || "";
+        preview.classList.toggle("fallback", Boolean(fallback));
+        preview.replaceChildren(`${fallback ? list.dataset.fallbackLabel : list.dataset.previewLabel} ${labels[type] || type}: `,
+                                code);
+      });
+    });
+  }
+
   function init(root) {
     labelTables(root);
     updateRulePreviews(root);
+    updateBinaryPreviews(root);
     updateConditional(root);
     updateNewRuleFields(root);
     setupTagInputs(root);
@@ -496,13 +753,126 @@
     document.cookie = `santa_tz=${zone}; path=/; max-age=31536000; samesite=lax${secure}`;
   }
 
+  // the checkbox pickers (details): the count on the button, closed by a click outside or Escape
+  document.addEventListener("change", (event) => {
+    const picker = event.target.closest("[data-picker]");
+    if (!picker) return;
+    const count = picker.querySelectorAll("input:checked").length;
+    const badge = picker.querySelector("[data-picker-count]");
+    badge.textContent = count;
+    badge.hidden = !count;
+  });
+  document.addEventListener("click", (event) => {
+    document.querySelectorAll("[data-picker][open]").forEach((picker) => {
+      if (!picker.contains(event.target)) picker.open = false;
+    });
+  });
+  document.addEventListener("keydown", (event) => {
+    const open = event.key === "Escape" && document.querySelector("[data-picker][open]");
+    if (!open) return;
+    // only the picker closes, not the drawer or the selection
+    event.stopImmediatePropagation();
+    open.open = false;
+    open.querySelector("summary").focus();
+  });
+
+  // New events without a reload: every 10 s the changed rows come from the server. A row that is already in the
+  // list is replaced (its checkbox stays as it is), a new one is added on top (first page, default order). The
+  // pill in the top bar counts the new rows not seen yet, the selection and an open drawer are not touched.
+  function setupLiveUpdates() {
+    const table = document.querySelector("table[data-live-updates]");
+    const pill = document.querySelector("[data-live-pill]");
+    if (!table || !pill) return;
+    const tbody = table.tBodies[0];
+    const baseTitle = document.title;
+    const unseen = new Set();
+    let elsewhere = 0;
+    let after = table.dataset.after;
+    const seen = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        unseen.delete(entry.target);
+        seen.unobserve(entry.target);
+      });
+      renderPill();
+    }, {
+      // behind the sticky top bar is not seen, and most of the row must be visible
+      rootMargin: `-${document.querySelector(".topbar")?.offsetHeight || 0}px 0px 0px 0px`, threshold: 0.6,
+    });
+
+    function renderPill() {
+      const count = unseen.size + elsewhere;
+      pill.hidden = !count;
+      pill.querySelector("[data-live-pill-count]").textContent = count;
+      pill.querySelector("[data-live-pill-text]").textContent =
+        ` ${count === 1 ? pill.dataset.one : pill.dataset.many}${unseen.size ? "" : ` ${pill.dataset.elsewhere}`}`;
+      document.title = count ? `(${count}) ${baseTitle}` : baseTitle;
+    }
+
+    function apply(rows) {
+      rows.forEach((row) => {
+        const current = [...tbody.rows].find((other) => other.dataset.key === row.dataset.key);
+        const box = current?.querySelector('td.select input[type="checkbox"]');
+        if (box?.checked) row.querySelector('td.select input[type="checkbox"]').checked = true;
+        if (current && !("insert" in table.dataset)) {
+          current.replaceWith(row);
+        } else if ("insert" in table.dataset) {
+          current?.remove();
+          tbody.querySelector("tr.empty")?.remove();
+          tbody.prepend(row);
+        } else {
+          elsewhere += 1;
+          return;
+        }
+        row.classList.add("new");
+        unseen.add(row);
+        seen.observe(row);
+      });
+      htmx.process(tbody);
+      labelTables(table.closest(".table-scroll") || table);
+      document.querySelectorAll("[data-select-form]").forEach(updateSelection);
+      renderPill();
+    }
+
+    async function poll() {
+      if (document.hidden) return;
+      const url = new URL(table.dataset.liveUpdates, window.location.href);
+      url.searchParams.set("after", after);
+      try {
+        const response = await fetch(url, { headers: { "HX-Request": "true" }, credentials: "same-origin" });
+        if (response.status !== 200) return;
+        const wrapper = document.createElement("template");
+        wrapper.innerHTML = await response.text();
+        const update = wrapper.content.querySelector("template[data-max-pk]");
+        if (!update) return;
+        after = update.dataset.maxPk;
+        // newest last, so that prepending keeps the newest on top
+        apply([...update.content.querySelectorAll("tr[data-key]")].reverse());
+      } catch (error) {
+        // offline for a moment: the next poll tries again
+      }
+    }
+
+    pill.addEventListener("click", (event) => {
+      const first = [...tbody.rows].find((row) => unseen.has(row));
+      if (!first) return;
+      event.preventDefault();
+      const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      first.scrollIntoView({ block: "center", behavior: reduced ? "auto" : "smooth" });
+    });
+    setInterval(poll, 10000);
+  }
+
   sendTimeZone();
+  document.addEventListener("DOMContentLoaded", setupLiveUpdates);
   document.addEventListener("DOMContentLoaded", () => init(document));
   document.addEventListener("htmx:afterSwap", (event) => {
     const drawer = document.getElementById("drawer");
     if (event.detail.target === drawer) {
       drawer.classList.add("open");
       init(drawer);
+      uncheckSaved(drawer);
+      updateDrawerBack(drawer);
       drawer.querySelector("[data-drawer-title]")?.focus({ preventScroll: true });
     }
     updateConditional(event.detail.target.closest("form") || event.detail.target);
@@ -519,6 +889,7 @@
       updateNewRuleFields(form);
     }
     if (event.target.matches("select[data-identifiers]")) updateRulePreviews(event.target.parentElement);
+    if (form && event.target.matches('select[name$="rule_type"]')) updateBinaryPreviews(form);
     const selectForm = event.target.closest("[data-select-form]");
     if (selectForm) {
       if (event.target.matches("[data-select-all]")) {
@@ -527,18 +898,54 @@
         });
       }
       updateSelection(selectForm);
-    }
-    // "Apply to all rows" of the allow page
-    const apply = event.target.closest("[data-apply]");
-    if (apply && apply.value) {
-      document.querySelectorAll("[data-row]").forEach((row) => {
-        const field = row.querySelector(`[name$="-${apply.dataset.apply}"]`);
-        if (!field) return;
-        if (field.tagName === "SELECT" && ![...field.options].some((o) => o.value === apply.value)) return;
-        field.value = apply.value;
-      });
+      syncCreateRules(selectForm);
     }
   });
+
+  // The drawer "create rules" follows the selection of the list behind it: a click, Ctrl- or Shift-click adds or
+  // removes binaries. The drawer form is posted with ?refresh, which never saves and keeps what was entered.
+  let syncTimer = null;
+
+  function syncCreateRules(listForm) {
+    const drawer = document.getElementById("drawer");
+    const drawerForm = drawer.querySelector("[data-create-rules]");
+    if (!drawerForm || !drawer.classList.contains("open") || drawer.contains(listForm)) return;
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(() => {
+      drawerForm.querySelectorAll('input[type="hidden"][name="ids"], input[type="hidden"][name="shas"]')
+                .forEach((input) => input.remove());
+      rowBoxes(listForm).filter((box) => box.checked).forEach((box) => {
+        const input = document.createElement("input");
+        input.type = "hidden";
+        input.name = box.name;
+        input.value = box.value;
+        drawerForm.append(input);
+      });
+      const resolved = listForm.querySelector('[name="resolved"]');
+      const drawerResolved = drawerForm.querySelector('[name="resolved"]');
+      if (resolved && drawerResolved) drawerResolved.value = resolved.value;
+      const scroll = drawer.scrollTop;
+      htmx.ajax("POST", drawerForm.getAttribute("action"), {
+        source: drawerForm, target: "#drawer", values: { refresh: "1" },
+      }).then(() => {
+        drawer.scrollTop = scroll;
+      });
+    }, 250);
+  }
+
+  // after saving with binaries left: the saved ones are no longer selected in the list
+  function uncheckSaved(drawer) {
+    const saved = drawer.querySelector("[data-saved-shas]");
+    if (!saved) return;
+    const shas = new Set(saved.dataset.savedShas.split(" "));
+    document.querySelectorAll("[data-select-form]").forEach((form) => {
+      if (drawer.contains(form)) return;
+      rowBoxes(form).forEach((box) => {
+        if (shas.has(box.dataset.sha || box.value)) box.checked = false;
+      });
+      updateSelection(form);
+    });
+  }
 
   // Rows are selected like files: click selects one row, Ctrl/⌘-click adds or removes one,
   // Shift-click selects the range since the last click. The checkboxes still toggle a single row.
@@ -552,6 +959,16 @@
   }
 
   const INTERACTIVE = "a, button, input, select, textarea, label, summary, [hx-get], [hx-post]";
+
+  // the whole cell of a switch toggles it, not only the small switch (else the click would select the row)
+  document.addEventListener("click", (event) => {
+    const cell = event.target.closest("td.toggle");
+    if (!cell || event.target.closest(INTERACTIVE)) return;
+    const toggle = cell.querySelector(".switch");
+    if (!toggle) return;
+    event.stopImmediatePropagation();
+    toggle.click();
+  }, true);
 
   document.addEventListener("click", (event) => {
     const form = event.target.closest("[data-select-form]");
@@ -580,6 +997,7 @@
     }
     lastChecked = box;
     updateSelection(form);
+    syncCreateRules(form);
   });
   // no text selection while shift- or ctrl-clicking the rows
   document.addEventListener("mousedown", (event) => {
@@ -600,11 +1018,18 @@
     }
     const menu = document.querySelector("[data-user-menu]");
     if (menu?.open && !event.target.closest("[data-user-menu]")) menu.open = false;
-    if (event.target.closest("[data-drawer-close]")) closeDrawer();
+    // × closes the drawer; "Cancel" of a view opened from another one goes back to it
+    const close = event.target.closest("[data-drawer-close]");
+    if (close && drawerStack.length && !close.closest(".drawer-tools")) drawerBack();
+    else if (close) closeDrawer();
+    if (event.target.closest("[data-drawer-back]")) drawerBack();
     // a click next to the open drawer closes it, except on what opens another one
     const drawer = document.getElementById("drawer");
+    // "create rules" follows the selection: selecting rows of the list keeps it open
+    const selecting = drawer?.querySelector("[data-create-rules]")
+                      && event.target.closest("[data-select-form] tbody, [data-select-all]");
     if (drawer?.classList.contains("open") && event.target.isConnected && !event.target.closest("#drawer")
-        && !event.target.closest('[hx-target="#drawer"]')) {
+        && !event.target.closest('[hx-target="#drawer"]') && !selecting) {
       closeDrawer();
     }
     const copyButton = event.target.closest("[data-copy-text]");

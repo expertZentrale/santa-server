@@ -1,0 +1,7 @@
+{% extends "console/base.html" %}{% load i18n %}
+{% block title %}{% translate "Create rules" %}{% endblock %}
+{% block content %}
+{% url 'console:events' as back_url %}{% include "console/_back.html" with url=back_url label=_("Events") %}
+<div class="page-head"><h1>{% blocktranslate count count=binaries|length %}Create a rule for {{ count }} binary{% plural %}Create rules for {{ count }} binaries{% endblocktranslate %}</h1></div>
+<section class="card">{% include "console/events/_create_rules_form.html" %}</section>
+{% endblock %}

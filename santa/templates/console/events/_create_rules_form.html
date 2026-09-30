@@ -1,0 +1,31 @@
+{% load i18n %}{% url 'console:events_create_rules' as action %}
+{% if not binaries %}<p class="card empty">{% translate "Select events in the list." %}</p>{% endif %}
+<form method="post" action="{{ action }}" class="stack"{% if in_drawer %} hx-post="{{ action }}" hx-target="#drawer"{% endif %} data-create-rules{% if not binaries %} hidden{% endif %}>
+  {% csrf_token %}
+  {% for event in events %}<input type="hidden" name="ids" value="{{ event.pk }}">{% endfor %}
+  <input type="hidden" name="resolved" value="{{ resolved }}">
+  {% for binary in binaries %}<input type="hidden" name="known" value="{{ binary.event.file_sha256 }}">{% endfor %}
+  {% if saved %}<input type="hidden" name="saved" value="1">{% endif %}
+  {% if form.non_field_errors %}<div class="error">{{ form.non_field_errors }}</div>{% endif %}
+  {% include "console/events/_rule_form.html" %}
+  <fieldset class="plain field{% if form.include.errors %} has-error{% endif %}">
+    <legend class="strong">{% translate "Binaries" %}</legend>
+    <ul class="plain binaries" data-binaries data-rule-types="{{ rule_types }}"
+        data-preview-label="{% translate 'The rule uses' %}" data-fallback-label="{% translate 'Not available, the rule uses' %}">
+      {% for binary in binaries %}{% with sha=binary.event.file_sha256 %}
+      <li><label>
+        <input type="checkbox" name="include" value="{{ sha }}"{% if sha in form.include.value %} checked{% endif %}>
+        <span class="binary-text">
+          <span><strong>{{ binary.event.file_name|default:_("(no name)") }}</strong>
+            <span class="badge">{% blocktranslate count count=binary.events %}{{ count }} event{% plural %}{{ count }} events{% endblocktranslate %} · {% blocktranslate count count=binary.macs %}{{ count }} Mac{% plural %}{{ count }} Macs{% endblocktranslate %}</span></span>
+          {% include "console/rules/_existing.html" with matches=binary.matches compact=True %}
+          <small class="rule-preview" data-binary-preview data-identifiers="{{ binary.identifiers }}" data-suggested="{{ binary.suggested }}"></small>
+        </span>
+      </label></li>
+      {% endwith %}{% endfor %}
+    </ul>
+    {% for error in form.include.errors %}<small class="error">{{ error }}</small>{% endfor %}
+  </fieldset>
+  <div class="actions"><button class="button primary" name="apply" value="1">{% if binaries|length == 1 %}{% translate "Create rule" %}{% else %}{% translate "Create rules" %}{% endif %}</button>
+    {% if in_drawer %}<button type="button" class="button" data-drawer-close>{% translate "Cancel" %}</button>{% else %}<a class="button" href="{% url 'console:events' %}">{% translate "Cancel" %}</a>{% endif %}</div>
+</form>

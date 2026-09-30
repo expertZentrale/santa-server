@@ -1,7 +1,7 @@
 from django.db.models import Q
 from django.utils import timezone
 
-from .models import AccessRequest, Event, Machine, ReleaseVersion, Rule, RuleType
+from .models import AccessRequest, Event, Machine, Policy, ReleaseVersion, Rule, RuleType
 
 EVENT_IDENTIFIER_FIELDS = {
     RuleType.BINARY: "file_sha256",
@@ -13,7 +13,8 @@ EVENT_IDENTIFIER_FIELDS = {
 
 
 def allow_identifier(rule_type, identifier, policy, is_global, groups, user, description="", tags=(), machines=()):
-    """Create the rule, or widen the scope of the manual rule that already exists for this identifier.
+    """Create the rule (of any policy, allow or block), or widen the scope of the manual rule that already exists
+    for this identifier and policy.
 
     Returns (rule, created).
     """
@@ -44,6 +45,50 @@ def resolve_events(rule, user):
     return events.update(resolved_at=timezone.now(), resolved_by=user, resolution_rule=rule)
 
 
+# the most specific rule type wins on the Mac
+RULE_TYPE_PRECEDENCE = [RuleType.CDHASH, RuleType.BINARY, RuleType.SIGNINGID, RuleType.CERTIFICATE, RuleType.TEAMID]
+ALLOW_POLICIES = (Policy.ALLOWLIST, Policy.ALLOWLIST_COMPILER)
+
+
+def existing_rules(events):
+    """The rules that already match the binaries of the events, by SHA-256: [{"rule", "applies"}]
+
+    applies: the rule is enabled and reaches at least one Mac of the events (global, its group or the Mac).
+    """
+    events_of = {}
+    for event in events:
+        events_of.setdefault(event.file_sha256, []).append(event)
+    found = {sha: [] for sha in events_of}
+    for rule_type, field in EVENT_IDENTIFIER_FIELDS.items():
+        binaries_of = {}
+        for sha, binary_events in events_of.items():
+            for event in binary_events:
+                if getattr(event, field):
+                    binaries_of.setdefault(getattr(event, field), set()).add(sha)
+        identifiers = list(binaries_of)
+        # SQL Server: at most 2100 parameters per query
+        for start in range(0, len(identifiers), 1000):
+            rules = (Rule.objects.filter(rule_type=rule_type, identifier__in=identifiers[start:start + 1000])
+                                 .prefetch_related("groups", "machines"))
+            for rule in rules:
+                for sha in binaries_of[rule.identifier]:
+                    found[sha].append(rule)
+    result = {}
+    for sha, rules in found.items():
+        machines = {event.machine_id for event in events_of[sha]}
+        groups = {event.machine.group_id for event in events_of[sha]}
+        result[sha] = [{"rule": rule, "applies": rule.is_enabled and (
+            rule.is_global or any(group.pk in groups for group in rule.groups.all())
+            or any(machine.pk in machines for machine in rule.machines.all()))}
+            for rule in sorted(rules, key=lambda rule: RULE_TYPE_PRECEDENCE.index(rule.rule_type))]
+    return result
+
+
+def is_allowed(matches):
+    """An allow rule of existing_rules() reaches the Macs of the binary"""
+    return any(match["applies"] and match["rule"].policy in ALLOW_POLICIES for match in matches)
+
+
 def set_rules_enabled(rules, enabled):
     """Enable or disable the rules. Returns (count, the release versions whose automatic approval was cancelled)."""
     cancelled = []
@@ -54,6 +99,20 @@ def set_rules_enabled(rules, enabled):
             release_version.auto_enable_pending = False
             release_version.save(update_fields=["auto_enable_pending"])
     return rules.update(is_enabled=enabled), cancelled
+
+
+def set_rules_policy(rules, policy):
+    """Set the policy of the manual rules; the rules of package rules follow their package rule.
+
+    Returns (the changed rules, the number of skipped package rules).
+    """
+    manual = [rule for rule in rules if rule.release_source_id is None]
+    for rule in manual:
+        rule.policy = policy
+        # an expression only belongs to a CEL rule
+        rule.cel_expr = ""
+        rule.save(update_fields=["policy", "cel_expr", "updated_at"])
+    return manual, len(rules) - len(manual)
 
 
 def rules_only_for(machine, rules):

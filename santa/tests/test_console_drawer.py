@@ -54,13 +54,13 @@ class DrawerTestCase(ConsoleBase):
         self.assertContains(self.client.get(reverse("console:requests")),
                             f'href="{request_url}" hx-get="{request_url}" hx-target="#drawer"')
 
-    def test_save_in_the_drawer_refreshes_the_page(self):
+    def test_save_in_the_drawer_tells_console_js(self):
         url = reverse("console:rule", args=(self.rule.pk,))
         data = {"rule_type": RuleType.BINARY, "identifier": SHA_A, "policy": Policy.ALLOWLIST, "is_global": "on",
                 "is_enabled": "on"}
         response = self.client.post(url, {**data, "description": "new text"}, **HTMX)
         self.assertEqual(response.status_code, 204)
-        self.assertEqual(response["HX-Refresh"], "true")
+        self.assertEqual(response["HX-Trigger"], "drawerSaved")
         self.rule.refresh_from_db()
         self.assertEqual(self.rule.description, "new text")
         # without htmx: the redirect as before
@@ -78,7 +78,7 @@ class DrawerTestCase(ConsoleBase):
     def test_approve_and_deny_in_the_drawer(self):
         response = self.client.post(reverse("console:request_deny", args=(self.request_other.pk,)),
                                     {"note": "no"}, **HTMX)
-        self.assertEqual(response["HX-Refresh"], "true")
+        self.assertEqual(response["HX-Trigger"], "drawerSaved")
         self.request_other.refresh_from_db()
         self.assertEqual(self.request_other.status, AccessRequest.Status.DENIED)
 

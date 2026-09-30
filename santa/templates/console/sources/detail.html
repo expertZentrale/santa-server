@@ -1,7 +1,7 @@
 {% extends "console/base.html" %}{% load console i18n %}
 {% block title %}{{ source.name }}{% endblock %}
 {% block content %}
-<p><a href="{% url 'console:sources' %}">‹ {% translate "Package rules" %}</a></p>
+{% url 'console:sources' as back_url %}{% include "console/_back.html" with url=back_url label=_("Package rules") %}
 <div class="page-head"><h1>{{ source.name }}</h1></div>
 {% include "console/sources/_detail.html" %}
 {% endblock %}

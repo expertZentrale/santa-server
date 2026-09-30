@@ -9,6 +9,7 @@ from django.shortcuts import redirect, render
 from django.utils.http import url_has_allowed_host_and_scheme
 
 PAGE_SIZE = 50
+PAGE_SIZES = (25, 50, 100, 200)
 
 
 def staff_required(view):
@@ -39,10 +40,11 @@ def render_drawer(request, page_template, drawer_template, context):
 
 
 def drawer_done(request, url):
-    """After a form was saved: reload the page behind the drawer (it shows the change and the message)"""
+    """After a form was saved in the drawer: console.js goes back to the previous view of the drawer and updates it,
+    or reloads the page behind it (both show the change and the message)"""
     if is_htmx(request):
         response = HttpResponse(status=204)
-        response["HX-Refresh"] = "true"
+        response["HX-Trigger"] = "drawerSaved"
         return response
     return redirect(url)
 
@@ -80,8 +82,24 @@ def log_deletion(user, obj, message="Deleted in the console"):
     _log(user, [obj], DELETION, message)
 
 
-def paginate(request, queryset, per_page=PAGE_SIZE):
-    return Paginator(queryset, per_page).get_page(request.GET.get("page"))
+def page_size(request):
+    """The ?per_page= of the request, else the last one of the session: one size for every list"""
+    try:
+        size = int(request.GET.get("per_page", ""))
+    except ValueError:
+        size = None
+    if size in PAGE_SIZES:
+        request.session["per_page"] = size
+        return size
+    size = request.session.get("per_page")
+    return size if size in PAGE_SIZES else PAGE_SIZE
+
+
+def paginate(request, queryset, per_page=None):
+    """A page of the queryset, with the page size the user chose (or a fixed per_page)"""
+    page = Paginator(queryset, per_page or page_size(request)).get_page(request.GET.get("page"))
+    page.page_sizes = PAGE_SIZES
+    return page
 
 
 def safe_next(request, default):

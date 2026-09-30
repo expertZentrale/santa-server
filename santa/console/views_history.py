@@ -9,7 +9,7 @@ from django.shortcuts import get_object_or_404
 from django.urls import reverse
 
 from ..models import Group, Machine, ReleaseSource, Rule, SignInGroup, Tag
-from .utils import paginate, render_drawer, staff_required
+from .utils import PAGE_SIZE, paginate, render_drawer, staff_required
 
 # URL name: (model, permission to view it, URL name of its page, whether the page opens in the drawer too)
 HISTORY_MODELS = {
@@ -35,6 +35,6 @@ def history(request, model, pk):
     entries = (LogEntry.objects.filter(content_type=ContentType.objects.get_for_model(model_class), object_id=str(pk))
                                .select_related("user").order_by("-action_time", "-pk"))
     return render_drawer(request, "console/history/page.html", "console/history/drawer.html", {
-        "obj": obj, "page": paginate(request, entries), "object_url": reverse(url_name, args=[pk]),
+        "obj": obj, "page": paginate(request, entries, per_page=PAGE_SIZE), "object_url": reverse(url_name, args=[pk]),
         "object_in_drawer": has_drawer,
     })

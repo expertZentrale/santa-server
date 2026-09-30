@@ -6,16 +6,16 @@ app_name = "console"
 
 urlpatterns = [
     path("events/", views_events.events, name="events"),
-    path("events/rows/", views_events.event_rows, name="event_rows"),
-    path("events/new-count/", views_events.new_events_count, name="new_events_count"),
-    path("events/allow/", views_events.events_allow, name="events_allow"),
+    path("events/updates/", views_events.event_updates, name="event_updates"),
+    path("events/create-rules/", views_events.events_create_rules, name="events_create_rules"),
     path("events/resolve/", views_events.events_resolve, name="events_resolve"),
     path("events/<int:pk>/", views_events.event_detail, name="event"),
-    path("events/<int:pk>/allow/", views_events.event_allow_one, name="event_allow"),
+    path("events/<int:pk>/create-rule/", views_events.event_create_rule, name="event_create_rule"),
 
     path("rules/", views_rules.rules, name="rules"),
     path("rules/bulk/", views_rules.rules_bulk, name="rules_bulk"),
     path("rules/add/", views_rules.rule_form, name="rule_add"),
+    path("rules/existing/", views_rules.rules_existing, name="rules_existing"),
     path("rules/upload/", views_rules.rule_upload, name="rule_upload"),
     path("rules/<int:pk>/", views_rules.rule_form, name="rule"),
     path("rules/<int:pk>/toggle/", views_rules.rule_toggle, name="rule_toggle"),

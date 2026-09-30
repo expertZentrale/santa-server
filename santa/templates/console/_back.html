@@ -1,0 +1,1 @@
+{# The link back to a list or an object: url, label, drawer (open it in the drawer) #}<a class="back" href="{{ url }}"{% if drawer %} hx-get="{{ url }}" hx-target="#drawer"{% endif %}>{% include "console/icons/chevron-left.svg" %}<span>{{ label }}</span></a>

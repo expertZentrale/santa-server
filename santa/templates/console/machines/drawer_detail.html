@@ -1,0 +1,11 @@
+{% extends "console/_drawer.html" %}{% load i18n %}
+{% block drawer_class %} wide{% endblock %}
+{% block drawer_title %}{{ machine.hostname|default:machine.serial_number }}{% endblock %}
+{% block drawer_subtitle %}{% url 'console:group' machine.group_id as group_url %}<span class="muted">{% translate "Group" %}: <a href="{{ group_url }}" hx-get="{{ group_url }}" hx-target="#drawer">{{ machine.group.name }}</a></span>{% endblock %}
+{% block drawer_body %}
+{% include "console/machines/_actions.html" with in_drawer=True %}
+{% include "console/machines/_summary.html" %}
+{# the long table of its rules stays on the page #}
+<p><a class="button small" href="{% url 'console:machine' machine.pk %}#rules">{% translate "Rules for this Mac" %}</a></p>
+{% include "console/machines/_activity.html" %}
+{% endblock %}

@@ -1,0 +1,7 @@
+{% extends "console/_drawer.html" %}{% load i18n %}
+{% block drawer_class %} wide{% endblock %}
+{% block drawer_title %}{% if group %}{{ group.name }}{% else %}{% translate "New group" %}{% endif %}{% endblock %}
+{% block drawer_body %}
+{% if group and can_see_sync_token %}<div class="actions detail-actions"><a class="button primary" href="{% url 'console:group_profile' group.pk %}">{% translate "Download configuration profile" %}</a></div>{% endif %}
+{% include "console/groups/_form.html" with in_drawer=True %}
+{% endblock %}

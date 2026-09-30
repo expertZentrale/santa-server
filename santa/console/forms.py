@@ -6,7 +6,6 @@ from django.contrib.auth import password_validation
 from django.contrib.auth.models import Group as AuthGroup
 from django.contrib.auth.models import Permission, User
 from django.core.exceptions import ValidationError
-from django.forms import formset_factory
 from django.utils import timezone
 from django.utils.translation import gettext
 from django.utils.translation import gettext_lazy as _
@@ -39,6 +38,8 @@ RULE_TYPE_HELP = {
     RuleType.TEAMID: _("everything from this developer"),
 }
 ALLOW_POLICIES = [(Policy.ALLOWLIST, _("Allow")), (Policy.ALLOWLIST_COMPILER, _("Allow compiler"))]
+# rules from events can also block; CEL needs an expression per rule, that is the rule form
+EVENT_POLICIES = [*ALLOW_POLICIES, (Policy.BLOCKLIST, _("Block")), (Policy.SILENT_BLOCKLIST, _("Block silently"))]
 # labels of the model fields the console forms show (the admin keeps the English field names)
 RULE_LABELS = {
     "rule_type": _("Rule type"), "identifier": _("Identifier"), "policy": _("Policy"), "description": _("Comment"),
@@ -63,7 +64,9 @@ def parse_new_tags(value):
 
 class TagsMixin(forms.Form):
     tags = forms.ModelMultipleChoiceField(queryset=Tag.objects.all(), required=False, label=_("Tags"),
-                                          widget=forms.SelectMultiple(attrs={"size": 4}),
+                                          widget=forms.SelectMultiple(attrs={
+                                              "size": 4, "data-placeholder": _("Add a tag, Enter creates a new one"),
+                                              "data-remove-label": _("Remove")}),
                                           help_text=_("Only labels to find the rules, no effect on the Macs."))
     new_tags = forms.CharField(required=False, max_length=500, label=_("New tags"),
                                widget=forms.TextInput(attrs={"placeholder": _("comma separated")}))
@@ -143,16 +146,22 @@ class RuleForm(TagsMixin, forms.ModelForm):
 
 class RuleBulkForm(forms.Form):
     ACTIONS = [("enable", _("Enable / approve")), ("disable", _("Disable")), ("add_tag", _("Add tag")),
-               ("remove_tag", _("Remove tag")), ("add_groups", _("Add groups")), ("delete", _("Delete"))]
+               ("remove_tag", _("Remove tag")), ("set_policy", _("Set policy")), ("add_groups", _("Add groups")),
+               ("delete", _("Delete"))]
+    # CEL needs an expression per rule, not a bulk change
+    POLICIES = [(value, label) for value, label in Policy.choices if value != Policy.CEL]
 
     action = forms.ChoiceField(choices=ACTIONS)
     rules = forms.ModelMultipleChoiceField(queryset=Rule.objects.all())
     tag = forms.CharField(required=False, max_length=100)
     groups = forms.ModelMultipleChoiceField(queryset=Group.objects.all(), required=False)
+    policy = forms.ChoiceField(choices=POLICIES, required=False)
 
     def clean(self):
         cleaned_data = super().clean()
         action = cleaned_data.get("action")
+        if action == "set_policy" and not cleaned_data.get("policy"):
+            self.add_error("policy", gettext("Choose a policy."))
         if action in ("add_tag", "remove_tag") and not (cleaned_data.get("tag") or "").strip():
             self.add_error("tag", gettext("Enter a tag."))
         if action == "add_groups" and not cleaned_data.get("groups"):
@@ -251,27 +260,51 @@ class ReleaseSourceForm(TagsMixin, forms.ModelForm):
         return source
 
 
-class AllowRowForm(TagsMixin):
-    """One binary of the selected events, each with its own rule type, policy, scope and tags
+class EventRuleForm(TagsMixin):
+    """One rule decision for the binaries of the selected events (one binary: the drawer of an event)
 
-    Only new_tags is shown: it suggests the existing tags, and parse_new_tags reuses them.
+    rows: the events grouped by binary. With several binaries the rule type can stay "suggested per binary",
+    and a type a binary doesn't have falls back to its suggestion (the view decides, see rule_type_for).
     """
-    event = forms.IntegerField(widget=forms.HiddenInput)
-    include = forms.BooleanField(required=False, initial=True, label=_("Include"))
-    rule_type = forms.ChoiceField(choices=rule_type_choices(), label=_("Rule type"))
-    policy = forms.ChoiceField(choices=ALLOW_POLICIES, initial=Policy.ALLOWLIST, label=_("Policy"))
-    scope = forms.ChoiceField(choices=[(SCOPE_GROUPS, _("Selected groups")), (SCOPE_MACHINES, _("Only these Macs")),
-                                       (SCOPE_GLOBAL, _("All Macs"))], initial=SCOPE_GROUPS, label=_("Scope"))
-    description = forms.CharField(max_length=500, required=False, label=_("Comment"))
+    field_order = ["rule_type", "policy", "scope", "groups", "tags", "new_tags", "description", "include"]
 
-
-AllowFormSet = formset_factory(AllowRowForm, extra=0)
-
-
-class AllowSharedForm(forms.Form):
+    rule_type = forms.ChoiceField(label=_("Rule type"), required=False)
+    policy = forms.ChoiceField(choices=EVENT_POLICIES, initial=Policy.ALLOWLIST, label=_("Policy"))
+    scope = forms.ChoiceField(choices=[(SCOPE_MACHINES, _("The Macs of these events")), (SCOPE_GROUPS, _("Groups")),
+                                       (SCOPE_GLOBAL, _("All Macs"))],
+                              initial=SCOPE_GROUPS, widget=forms.RadioSelect, label=_("Scope"))
     groups = forms.ModelMultipleChoiceField(queryset=Group.objects.all(), required=False, label=_("Groups"),
-                                            widget=forms.CheckboxSelectMultiple,
-                                            help_text=_("For the rows with the “Selected groups” scope."))
+                                            widget=forms.CheckboxSelectMultiple)
+    description = forms.CharField(max_length=500, required=False, label=_("Comment"),
+                                  help_text=_("Empty: the name and path of each binary."))
+    include = forms.MultipleChoiceField(label=_("Binaries"), widget=forms.CheckboxSelectMultiple,
+                                        error_messages={"required": _("Choose at least one binary.")})
+
+    def __init__(self, *args, rows, available_types=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.rows = rows
+        self.several = len(rows) > 1
+        types = rule_type_choices(available_types)
+        if self.several:
+            self.fields["rule_type"].choices = lambda: [("", _("Suggested per binary")), *types()]
+        else:
+            self.fields["rule_type"].choices = types
+            self.fields["rule_type"].required = True
+        if len({event.machine_id for row in rows for event in row}) == 1:
+            self.fields["scope"].choices = [(SCOPE_MACHINES, _("This Mac")), (SCOPE_GROUPS, _("Groups")),
+                                            (SCOPE_GLOBAL, _("All Macs"))]
+        # a binary is its SHA-256: the ids of its events change with every new event
+        self.fields["include"].choices = [(row[0].file_sha256, row[0].file_name or row[0].file_sha256) for row in rows]
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if cleaned_data.get("scope") == SCOPE_GROUPS and not cleaned_data.get("groups"):
+            self.add_error("groups", gettext("Choose at least one group."))
+        return cleaned_data
+
+    def included_rows(self):
+        chosen = set(self.cleaned_data.get("include") or [])
+        return [row for row in self.rows if row[0].file_sha256 in chosen]
 
 
 class RequestEventForm(forms.Form):
@@ -348,7 +381,7 @@ class ApproveEventForm(TagsMixin):
     policy = forms.ChoiceField(choices=ALLOW_POLICIES, initial=Policy.ALLOWLIST, label=_("Policy"))
     scope = forms.ChoiceField(choices=[(SCOPE_MACHINES, _("The Mac of the requester")),
                                        (SCOPE_GROUPS, _("Groups")), (SCOPE_GLOBAL, _("All Macs"))],
-                              initial=SCOPE_MACHINES, widget=forms.RadioSelect, label=_("Scope"))
+                              initial=SCOPE_GROUPS, widget=forms.RadioSelect, label=_("Scope"))
     groups = forms.ModelMultipleChoiceField(queryset=Group.objects.all(), required=False, label=_("Groups"),
                                             widget=forms.CheckboxSelectMultiple)
     note = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 2}), label=_("Note"),
@@ -462,7 +495,7 @@ class ApproveOtherForm(TagsMixin):
     policy = forms.ChoiceField(choices=ALLOW_POLICIES, initial=Policy.ALLOWLIST, label=_("Policy"))
     scope = forms.ChoiceField(choices=[(SCOPE_MACHINES, _("The Macs of the requester")),
                                        (SCOPE_GROUPS, _("Groups")), (SCOPE_GLOBAL, _("All Macs"))],
-                              initial=SCOPE_MACHINES, widget=forms.RadioSelect, label=_("Scope"))
+                              initial=SCOPE_GROUPS, widget=forms.RadioSelect, label=_("Scope"))
     groups = forms.ModelMultipleChoiceField(queryset=Group.objects.all(), required=False, label=_("Groups"),
                                             widget=forms.CheckboxSelectMultiple)
 

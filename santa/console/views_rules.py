@@ -6,7 +6,7 @@ from django.views.decorators.http import require_POST
 
 from ..models import Group, Machine, Policy, Rule, RuleType, Tag
 from ..releases import ReleaseError, find_binaries
-from ..services import allow_identifier, binary_identifiers, set_rules_enabled
+from ..services import allow_identifier, binary_identifiers, set_rules_enabled, set_rules_policy
 from .forms import RuleBulkForm, RuleForm, UploadBinaryForm
 from .utils import (
     changed_message,
@@ -110,6 +110,15 @@ def rules_bulk(request):
                                                "Tag “%(tag)s” removed from %(count)s rules.", len(rules_list))
                              % {"tag": name, "count": len(rules_list)})
         log_change(request.user, rules_list, f"Tag {name} {'added' if action == 'add_tag' else 'removed'}")
+    elif action == "set_policy":
+        policy = Policy(form.cleaned_data["policy"])
+        changed, skipped = set_rules_policy(rules_list, policy)
+        log_change(request.user, changed, f"Policy set to {policy.value}")
+        message = ngettext("%(count)s rule set to “%(policy)s”.", "%(count)s rules set to “%(policy)s”.", len(changed))
+        messages.success(request, message % {"count": len(changed), "policy": policy.label})
+        if skipped:
+            messages.warning(request, gettext("The rules of package rules are managed by their package rule, "
+                                              "change the policy there."))
     elif action == "add_groups":
         groups = list(form.cleaned_data["groups"])
         changed = [rule for rule in rules_list if not rule.is_global]
@@ -144,6 +153,20 @@ def rule_toggle(request, pk):
     if is_htmx(request):
         return render(request, "console/rules/_row.html", {"rule": rule})
     return redirect(safe_next(request, "console:rules"))
+
+
+@staff_required
+def rules_existing(request):
+    """The rules with the identifier typed in "New rule" (htmx partial)"""
+    require_perms(request, "view_rule")
+    identifier = request.GET.get("identifier", "").strip()
+    rules = []
+    if identifier and request.GET.get("rule_type") in RuleType.values:
+        rules = (Rule.objects.filter(rule_type=request.GET["rule_type"], identifier__iexact=identifier)
+                             .prefetch_related("groups", "machines")[:10])
+    # "applies" only means something for a binary of an event
+    return render(request, "console/rules/_existing.html", {"matches": [{"rule": rule, "applies": True}
+                                                                        for rule in rules], "same_identifier": True})
 
 
 @staff_required

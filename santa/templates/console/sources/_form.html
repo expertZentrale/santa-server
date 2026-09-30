@@ -19,7 +19,7 @@
     {% include "console/_field.html" with field=form.rule_type %}
     {% include "console/_field.html" with field=form.policy %}
     <div data-show-when="policy=CEL">{% include "console/_field.html" with field=form.cel_expr %}</div>
-    <div data-show-when="policy=BLOCKLIST|SILENT_BLOCKLIST|CEL">
+    <div data-show-when="policy=BLOCKLIST|CEL">
       {% include "console/_field.html" with field=form.custom_msg %}
       {% include "console/_field.html" with field=form.custom_url %}</div>
   </section>
@@ -37,7 +37,7 @@
     {% include "console/_field.html" with field=form.new_tags %}
   </section>
   <div class="actions"><button class="button primary">{% translate "Save" %}</button>
-    {% if in_drawer %}<button type="button" class="link" data-drawer-close>{% translate "Cancel" %}</button>{% endif %}
+    {% if in_drawer %}<button type="button" class="button" data-drawer-close>{% translate "Cancel" %}</button>{% endif %}
     {% if source and perms.santa.delete_releasesource %}
     <button class="button danger right" form="delete-form">{% translate "Delete" %}</button>{% endif %}</div>
 </form>

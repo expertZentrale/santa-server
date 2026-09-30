@@ -2,7 +2,7 @@
 {% block title %}{% if source %}{{ source.name }}{% else %}{% translate "New package rule" %}{% endif %}{% endblock %}
 {% block main_class %}narrow{% endblock %}
 {% block content %}
-<p><a href="{% if source %}{% url 'console:source' source.pk %}{% else %}{% url 'console:sources' %}{% endif %}">‹ {% translate "Back" %}</a></p>
+{% if source %}{% url 'console:source' source.pk as back_url %}{% include "console/_back.html" with url=back_url label=source.name %}{% else %}{% url 'console:sources' as back_url %}{% include "console/_back.html" with url=back_url label=_("Package rules") %}{% endif %}
 <h1>{% if source %}{{ source.name }}{% else %}{% translate "New package rule" %}{% endif %}</h1>
 {% include "console/sources/_form.html" %}
 {% endblock %}

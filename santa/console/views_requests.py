@@ -13,7 +13,7 @@ from .. import catalog
 from ..catalog import update_identifier_icons
 from ..models import AccessRequest, AccessRequestPackage, Event, ReleaseSource, RuleType
 from ..releases import ReleaseError, find_binaries, sync_release_source
-from ..services import allow_identifier, binary_identifiers, machines_for_user, request_kinds_for
+from ..services import allow_identifier, binary_identifiers, existing_rules, machines_for_user, request_kinds_for
 from .forms import (
     REQUESTABLE_PACKAGE_KINDS,
     SCOPE_GLOBAL,
@@ -242,6 +242,7 @@ def admin_request_detail(request, pk, approve_form=None, deny_form=None):
         others = AccessRequest.objects.filter(packages__identifier__in=identifiers).exclude(pk=pk).distinct()
     return render_drawer(request, "console/requests/detail.html", "console/requests/drawer_detail.html", {
         "access_request": access_request, "event": event, "others": others.select_related("requester")[:20],
+        "matches": existing_rules([event]).get(event.file_sha256, []) if event else [],
         "approve_form": approve_form or _approve_forms(access_request),
         "deny_form": deny_form or DenyForm(),
         "requester_machines": machines_for_user(access_request.requester).select_related("group"),
