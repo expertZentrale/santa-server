@@ -72,7 +72,7 @@ Das Image (`santa_server/settings.py`) wird über Umgebungsvariablen konfigurier
 | `GUNICORN_WORKERS`, `GUNICORN_THREADS` | | Standard `2` Worker-Prozesse mit je `4` Threads, siehe [Größe des Webservers](#größe-des-webservers) |
 | `GUNICORN_WORKER_CLASS` | | Standard `gthread`; `sync` nur mit einem Thread je Worker |
 | `GUNICORN_TIMEOUT` | | Standard `120` Sekunden ohne Lebenszeichen, bevor ein Worker neu gestartet wird |
-| `GUNICORN_MAX_REQUESTS` | | Standard `1000`: ein Worker wird nach so vielen Anfragen (±10 %) ersetzt, `0` = nie |
+| `GUNICORN_MAX_REQUESTS` | | Standard `1000`: ein Worker wird nach 1000 bis 1100 Anfragen ersetzt (zufällig bis +10 %), `0` = nie |
 
 Für Einstellungen, die keine Variablen sind, oder Werte, die ein Secret Store in eine Datei schreibt: Legen Sie
 `santa_server/settings_local.py` mit `from .settings import *` und Ihren Änderungen an, binden Sie sie in den
@@ -470,7 +470,7 @@ The image (`santa_server/settings.py`) is configured with environment variables:
 | `GUNICORN_WORKERS`, `GUNICORN_THREADS` | | default `2` worker processes with `4` threads each, see [Sizing the web server](#sizing-the-web-server) |
 | `GUNICORN_WORKER_CLASS` | | default `gthread`; `sync` only with one thread per worker |
 | `GUNICORN_TIMEOUT` | | default `120` seconds without a heartbeat before a worker is restarted |
-| `GUNICORN_MAX_REQUESTS` | | default `1000`: a worker is replaced after this many requests (±10 %), `0` = never |
+| `GUNICORN_MAX_REQUESTS` | | default `1000`: a worker is replaced after 1000 to 1100 requests (randomly up to +10 %), `0` = never |
 
 For settings that aren't variables, or values rendered into a file by a secret store: create
 `santa_server/settings_local.py` with `from .settings import *` and your overrides, mount it into the container and

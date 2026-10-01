@@ -1,7 +1,8 @@
 """gunicorn settings of the image (gunicorn reads ./gunicorn.conf.py from /code by itself).
 
-Every value comes from an environment variable, see the configuration table of the README. Flags on the command line
-still win over this file.
+Workers, threads, worker class, timeout and max requests come from the GUNICORN_* environment variables (the
+configuration table of the README). Bind, logging, the heartbeat directory, the graceful timeout and the control
+socket are fixed here. Flags on the command line still win over this file.
 """
 import os
 import sys
