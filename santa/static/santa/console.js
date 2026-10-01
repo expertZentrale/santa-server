@@ -403,6 +403,10 @@
     index = Math.min(Math.max(index + step, 0), options.length - 1);
     options[index].setAttribute("aria-selected", "true");
     options[index].scrollIntoView({ block: "nearest" });
+    // screen readers follow the option through the input that controls the list
+    if (box.id && options[index].id) {
+      document.querySelector(`[aria-controls="${box.id}"]`)?.setAttribute("aria-activedescendant", options[index].id);
+    }
   }
 
   // Tags typed as "a, b": suggest the existing tags for the part after the last comma
@@ -558,10 +562,11 @@
       const typed = search.value.trim().toLowerCase();
       const matches = options.filter((option) => !option.selected && option.text.toLowerCase().includes(typed))
                              .slice(0, 8);
-      box.replaceChildren(...matches.map((option) => {
+      box.replaceChildren(...matches.map((option, index) => {
         const item = document.createElement("button");
         item.type = "button";
         item.className = "suggestion tag-suggestion";
+        item.id = `${box.id}-${index}`;
         item.setAttribute("role", "option");
         item.dataset.tag = option.text;
         item.textContent = option.text;
@@ -570,6 +575,7 @@
       const open = matches.length > 0 && document.activeElement === search;
       box.classList.toggle("open", open);
       search.setAttribute("aria-expanded", open ? "true" : "false");
+      search.removeAttribute("aria-activedescendant");
     }
 
     function add(name) {
@@ -895,23 +901,21 @@
 
   function applyWidths(table, settings) {
     const widths = settings.widths || {};
-    const columns = tableColumns(table);
-    if (!Object.keys(widths).length) {
-      table.classList.remove("fixed");
-      table.style.width = "";
-      [...table.tHead.rows[0].cells].forEach((th) => { th.style.width = ""; });
-      return;
-    }
-    // fixed layout: every column keeps the width it has now, unless one was set
-    const current = [...table.tHead.rows[0].cells].map((th) => th.getBoundingClientRect().width / rem());
-    [...table.tHead.rows[0].cells].forEach((th, index) => {
+    const cells = [...table.tHead.rows[0].cells];
+    // start from the natural layout, so a column shown again gets its own width (hidden, it measures 0)
+    table.classList.remove("fixed");
+    table.style.width = "";
+    cells.forEach((th) => { th.style.width = ""; });
+    if (!Object.keys(widths).length || !tableColumns(table).length) return;
+    // fixed layout: the visible columns keep their natural width, unless one was set; hidden ones get none
+    const visible = cells.filter((th) => th.getClientRects().length);
+    const natural = visible.map((th) => th.getBoundingClientRect().width / rem());
+    visible.forEach((th, index) => {
       const key = th.dataset.col;
-      th.style.width = `${(key && widths[key]) || current[index]}rem`;
+      th.style.width = `${(key && widths[key]) || natural[index]}rem`;
     });
     table.classList.add("fixed");
-    const total = [...table.tHead.rows[0].cells].reduce((sum, th) => sum + parseFloat(th.style.width), 0);
-    table.style.width = `${total}rem`;
-    if (!columns.length) table.classList.remove("fixed");
+    table.style.width = `${visible.reduce((sum, th) => sum + parseFloat(th.style.width), 0)}rem`;
   }
 
   function applyHidden(table, settings) {
@@ -1122,11 +1126,24 @@
     textarea.replaceWith(wrapper);
     const box = document.createElement("div");
     box.className = "suggestions";
+    box.id = `${textarea.id || "cel"}-suggestions`;
     box.setAttribute("role", "listbox");
     wrapper.append(textarea, box);
     textarea.setAttribute("autocomplete", "off");
+    textarea.setAttribute("role", "combobox");
+    textarea.setAttribute("aria-autocomplete", "list");
+    textarea.setAttribute("aria-controls", box.id);
+    textarea.setAttribute("aria-expanded", "false");
     textarea.spellcheck = false;
     let match = null;
+
+    function setOpen(open) {
+      box.classList.toggle("open", open);
+      textarea.setAttribute("aria-expanded", open ? "true" : "false");
+      const selected = open && box.querySelector(".suggestion[aria-selected=true]");
+      if (selected) textarea.setAttribute("aria-activedescendant", selected.id);
+      else textarea.removeAttribute("aria-activedescendant");
+    }
 
     function current() {
       const before = textarea.value.slice(0, textarea.selectionStart);
@@ -1137,7 +1154,7 @@
     function show() {
       const { token, last } = current();
       if (!token) {
-        box.classList.remove("open");
+        setOpen(false);
         return;
       }
       const lower = token.toLowerCase();
@@ -1149,6 +1166,8 @@
           return owner && !["target", "ancestors"].includes(owner) && last
                  && text.startsWith(last.toLowerCase()) && text !== last.toLowerCase();
         }
+        // global functions (timestamp, duration) start a value, like the fields
+        if (item.kind === "global" && token.includes(".")) return false;
         return text.startsWith(lower) && text !== lower;
       }).slice(0, 8);
       match = { token, last };
@@ -1156,6 +1175,7 @@
         const option = document.createElement("button");
         option.type = "button";
         option.className = "suggestion cel-suggestion";
+        option.id = `${box.id}-${index}`;
         option.setAttribute("role", "option");
         option.setAttribute("aria-selected", index === 0 ? "true" : "false");
         option.dataset.text = item.text;
@@ -1169,7 +1189,7 @@
         option.append(text);
         return option;
       }));
-      box.classList.toggle("open", found.length > 0);
+      setOpen(found.length > 0);
       // in the drawer the list can end below the window
       if (found.length) box.scrollIntoView({ block: "nearest" });
     }
@@ -1186,7 +1206,7 @@
         const offset = text.slice(inner, inner + 2) === ", " ? inner + 2 : inner + 1;
         textarea.selectionStart = textarea.selectionEnd = start + offset;
       }
-      box.classList.remove("open");
+      setOpen(false);
       textarea.focus();
       textarea.dispatchEvent(new Event("input", { bubbles: true }));
     }
@@ -1206,7 +1226,7 @@
         }
       } else if (event.key === "Escape") {
         event.stopPropagation();
-        box.classList.remove("open");
+        setOpen(false);
       }
     });
     box.addEventListener("mousedown", (event) => {
@@ -1216,7 +1236,7 @@
         insert(option);
       }
     });
-    textarea.addEventListener("blur", () => setTimeout(() => box.classList.remove("open"), 150));
+    textarea.addEventListener("blur", () => setTimeout(() => setOpen(false), 150));
   }
 
   // "Only signing IDs starting with": writes the CEL expression of the Team ID rule, the same as the server

@@ -4,12 +4,13 @@ from unittest.mock import patch
 
 from django.contrib.admin.models import ADDITION, CHANGE, LogEntry
 from django.contrib.auth.models import Group as AuthGroup
-from django.contrib.auth.models import User
+from django.contrib.auth.models import Permission, User
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
 from santa.auth import REQUESTERS_GROUP_NAME
+from santa.console.forms import CEL_SUGGESTIONS
 from santa.models import Event, Group, Machine, Policy, ReleaseSource, ReleaseVersion, Rule, RuleType, Tag
 from santa.services import existing_rules, is_allowed
 
@@ -184,6 +185,22 @@ class ConsoleRulesTestCase(ConsoleBase):
         self.assertContains(response, 'data-table="rules" data-optional="comment created"')
         self.assertContains(response, '<th data-col="identifier"')
         self.assertContains(response, '<td data-col="created"')
+
+    def test_export_for_read_only_users(self):
+        # the export needs the same permission as the list, not the one to add rules
+        viewer = User.objects.create_user("reader", is_staff=True)
+        viewer.user_permissions.add(Permission.objects.get(codename="view_rule"))
+        self.client.force_login(viewer)
+        response = self.client.get(reverse("console:rules"))
+        self.assertContains(response, reverse("console:rules_export"))
+        self.assertNotContains(response, reverse("console:rule_upload"))
+        self.assertEqual(self.client.get(reverse("console:rules_export")).status_code, 200)
+
+    def test_cel_global_functions(self):
+        kinds = {text: kind for text, kind, _help in CEL_SUGGESTIONS}
+        # timestamp() and duration() start a value, startsWith() follows one
+        self.assertEqual((kinds['timestamp("")'], kinds['duration("")'], kinds['startsWith("")']),
+                         ("global", "global", "function"))
 
     def test_export_csv(self):
         Rule.objects.create(rule_type=RuleType.BINARY, identifier=SHA_A, is_global=True, description="=HYPERLINK()")

@@ -4,8 +4,9 @@
 <div class="page-head">
   <h1>{% translate "Execution rules" %}</h1>
   <div class="actions">
-    {% if perms.santa.add_rule %}<a class="button" href="{% url 'console:rule_upload' %}">{% translate "Upload binary" %}</a>
+    {# the list and the export need the same permission (view_rule) #}
     {% url 'console:rules_export' as export_url %}<a class="button" href="{{ export_url }}{% querystring page=None %}" download>{% translate "Export CSV" %}</a>
+    {% if perms.santa.add_rule %}<a class="button" href="{% url 'console:rule_upload' %}">{% translate "Upload binary" %}</a>
     {% url 'console:rule_add' as add_url %}<a class="button primary" href="{{ add_url }}" hx-get="{{ add_url }}" hx-target="#drawer">{% translate "New rule" %}</a>{% endif %}
   </div>
 </div>

@@ -115,7 +115,8 @@ class MachinesField(forms.CharField):
         return new != old
 
 
-# Suggestions for the CEL field (console.js). They only complete: Santa evaluates the expression, so fields of newer
+# Suggestions for the CEL field (console.js): fields and global functions start a value, functions follow one (".").
+# They only complete: Santa evaluates the expression, so fields of newer
 # Santa versions work without being listed. Fields: https://northpole.dev/features/binary-authorization/
 CEL_SUGGESTIONS = [
     ("target.signing_id", "field", _("TEAMID:bundle.id of the binary (cached)")),
@@ -138,8 +139,8 @@ CEL_SUGGESTIONS = [
     ("size()", "function", _("Length of a string or list")),
     ("exists(x, )", "function", _("Any element of a list matches")),
     ("all(x, )", "function", _("Every element of a list matches")),
-    ('timestamp("")', "function", _("Time, e.g. timestamp(\"2025-01-01T00:00:00Z\")")),
-    ('duration("")', "function", _("Duration, e.g. duration(\"24h\")")),
+    ('timestamp("")', "global", _("Time, e.g. timestamp(\"2025-01-01T00:00:00Z\")")),
+    ('duration("")', "global", _("Duration, e.g. duration(\"24h\")")),
     (" in []", "function", _("Value in a list")),
 ]
 
