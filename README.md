@@ -130,10 +130,8 @@ Anfrageformular. Lokale Konten (`python manage.py createsuperuser` oder *Adminis
 Registrieren Sie eine Webanwendung mit der Redirect-URI `https://<host>/oidc/callback/` und setzen Sie die Endpunkte:
 
 - **Microsoft Entra ID**: eine App-Registrierung (Single Tenant) mit Client Secret und einer App-Rolle `Santa.Admin`,
-  die den Administratoren zugewiesen ist.
-  `OIDC_AUTHORIZATION_ENDPOINT=https://login.microsoftonline.com/<tenant>/oauth2/v2.0/authorize`,
-  `OIDC_TOKEN_ENDPOINT=https://login.microsoftonline.com/<tenant>/oauth2/v2.0/token`,
-  `OIDC_JWKS_ENDPOINT=https://login.microsoftonline.com/<tenant>/discovery/v2.0/keys`.
+  die den Administratoren zugewiesen ist, Schritt für Schritt unter
+  [Einrichtung in Microsoft Entra ID](#einrichtung-in-microsoft-entra-id).
 - **Keycloak**: `…/realms/<realm>/protocol/openid-connect/auth`, `/token` und `/certs`; Realm-Rollen stehen in
   `OIDC_ROLES_CLAIM=realm_access.roles`.
 - **Okta, Authentik, …**: die Endpunkte aus `/.well-known/openid-configuration` und ein Claim mit den Rollen oder
@@ -155,13 +153,58 @@ Die Anmeldegruppe `*` („Everyone“) umfasst alle, die sich anmelden. Sie verg
 blockierte Apps, Pakete und andere Software anfragen darf. Entfernen Sie eine Berechtigung aus dieser Rolle und geben
 Sie sie anderen Rollen, um einzuschränken, wer was anfragen darf.
 
-- **Microsoft Entra ID**: *Tokenkonfiguration* → *Gruppenanspruch hinzufügen* → *Der Anwendung zugewiesene Gruppen*,
-  für das ID-Token, und weisen Sie die Gruppen der Unternehmensanwendung zu. Der Claim enthält dann nur die Objekt-IDs
-  dieser Gruppen: Tragen Sie die Objekt-ID jeder Gruppe als *Wert im Gruppen-Claim* ein. Mit *Alle Gruppen* erhalten
-  Benutzer mit mehr als 200 Gruppen statt der Gruppen einen Überschreitungsverweis (Overage); der Server ignoriert
-  dann ihre Gruppen und schreibt eine Warnung ins Log.
+- **Microsoft Entra ID**: der Gruppenanspruch mit den Objekt-IDs der Gruppen, siehe
+  [Einrichtung in Microsoft Entra ID](#einrichtung-in-microsoft-entra-id), Schritt 4. Tragen Sie die Objekt-ID jeder
+  Gruppe als *Wert im Gruppen-Claim* ein.
 - **Keycloak**: ein *Group Membership*-Mapper am Client (Claim `groups`, zum ID-Token hinzufügen); die Werte sind die
   Gruppenpfade, z. B. `/santa/it`.
+
+#### Einrichtung in Microsoft Entra ID
+
+Santa Server liest die Claims aus dem ID-Token (nicht vom Userinfo-Endpunkt, der bei Entra ID keine Rollen liefert).
+Im Entra Admin Center:
+
+1. **App-Registrierung** (*App-Registrierungen* → *Neue Registrierung*): *Nur Konten in diesem Organisationsverzeichnis*
+   (Single Tenant), Plattform *Web*, Umleitungs-URI `https://<host>/oidc/callback/`.
+   - *Zertifikate & Geheimnisse* → neuer geheimer Clientschlüssel: der **Wert** (nicht die ID) ist
+     `OIDC_CLIENT_SECRET`. Notieren Sie das Ablaufdatum: Danach schlägt die Anmeldung fehl.
+   - Die *Anwendungs-ID (Client)* ist `OIDC_CLIENT_ID`; mit der *Verzeichnis-ID (Mandant)*:
+     `OIDC_AUTHORIZATION_ENDPOINT=https://login.microsoftonline.com/<tenant>/oauth2/v2.0/authorize`,
+     `OIDC_TOKEN_ENDPOINT=https://login.microsoftonline.com/<tenant>/oauth2/v2.0/token`,
+     `OIDC_JWKS_ENDPOINT=https://login.microsoftonline.com/<tenant>/discovery/v2.0/keys`.
+   - *API-Berechtigungen*: Microsoft Graph, delegiert `openid`, `profile`, `email`, dann
+     *Administratorzustimmung erteilen*.
+2. **App-Rolle für die Administratoren** (*App-Rollen* → *App-Rolle erstellen*): Anzeigename z. B. „Santa admin“,
+   *Zulässige Mitgliedstypen* Benutzer/Gruppen, **Wert `Santa.Admin`** (genau wie `OIDC_ADMIN_ROLE`, mit Groß- und
+   Kleinschreibung). Unter *Unternehmensanwendungen* → die App → *Benutzer und Gruppen* weisen Sie die Rolle den
+   Administratoren zu (Gruppen zuweisen erfordert Entra ID P1). Entra ID schreibt sie ohne weitere Einstellung in den
+   Claim `roles` des ID-Tokens.
+3. **Optionale Ansprüche** (*Tokenkonfiguration* → *Optionalen Anspruch hinzufügen* → Tokentyp *ID*): `email` und
+   `upn`. `preferred_username` ist im ID-Token enthalten und wird der Benutzername; er muss zum `MachineOwner` der
+   Gruppenprofile passen (siehe [Die Macs konfigurieren](#die-macs-konfigurieren)), sonst zeigt das Anfrageformular
+   die Ereignisse der eigenen Macs nicht.
+4. **Gruppenanspruch** für die Anmeldegruppen (*Tokenkonfiguration* → *Gruppenanspruch hinzufügen*):
+   - *Der Anwendung zugewiesene Gruppen*, und die Gruppen unter *Benutzer und Gruppen* der Unternehmensanwendung
+     zuweisen. Mit *Alle Gruppen* erhalten Benutzer mit mehr als 200 Gruppen statt der Gruppen einen
+     Überschreitungsverweis (Overage); der Server ignoriert dann ihre Gruppen und schreibt eine Warnung ins Log.
+   - Unter *ID*: *Gruppen-ID*. Der Claim `groups` enthält dann die Objekt-IDs der zugewiesenen Gruppen.
+   - **Nicht** *Gruppen als Rollenanspruch ausgeben* ankreuzen: Dann stehen die Gruppen statt der App-Rollen im Claim
+     `roles`, `Santa.Admin` fehlt (niemand wird Administrator) und der Claim `groups` ebenso (keine Anmeldegruppe
+     passt). Die Einstellungen für *Zugriff* und *SAML* liest Santa Server nicht.
+5. **Wer sich anmelden darf** (*Unternehmensanwendungen* → die App → *Eigenschaften*): *Zuweisung erforderlich?* auf
+   *Ja*. Sonst kann sich jeder im Mandanten anmelden und erhält über die Anmeldegruppe `*` die Rolle
+   „Santa requesters“.
+
+Das ID-Token eines Administrators enthält dann z. B.:
+
+```json
+"preferred_username": "jdoe@example.com",
+"roles": ["Santa.Admin"],
+"groups": ["8f1c…-…", "2b7e…-…"]
+```
+
+Änderungen gelten ab der nächsten Anmeldung. Prüfen Sie unter *Administration* → *Benutzer*: Administratoren haben die
+Rolle „Santa admins“, die anderen die Rollen ihrer Anmeldegruppen.
 
 ### Die Macs konfigurieren
 
@@ -525,10 +568,7 @@ e.g. for break-glass access.
 Register a web application with the redirect URI `https://<host>/oidc/callback/`, then set the endpoints:
 
 - **Microsoft Entra ID**: an app registration (single tenant) with a client secret and an app role `Santa.Admin`
-  assigned to the administrators.
-  `OIDC_AUTHORIZATION_ENDPOINT=https://login.microsoftonline.com/<tenant>/oauth2/v2.0/authorize`,
-  `OIDC_TOKEN_ENDPOINT=https://login.microsoftonline.com/<tenant>/oauth2/v2.0/token`,
-  `OIDC_JWKS_ENDPOINT=https://login.microsoftonline.com/<tenant>/discovery/v2.0/keys`.
+  assigned to the administrators, step by step in [Setting up Microsoft Entra ID](#setting-up-microsoft-entra-id).
 - **Keycloak**: `…/realms/<realm>/protocol/openid-connect/auth`, `/token` and `/certs`; realm roles are in
   `OIDC_ROLES_CLAIM=realm_access.roles`.
 - **Okta, Authentik, …**: the endpoints from `/.well-known/openid-configuration`, and a claim with the roles or
@@ -548,13 +588,55 @@ The sign-in group `*` ("Everyone") is everyone who signs in. It gives the role "
 blocked apps, packages and other software. Remove a permission from that role, and give it to other roles, to limit
 who may request what.
 
-- **Microsoft Entra ID**: *Token configuration* → *Add groups claim* → *Groups assigned to the application*, for the
-  ID token, and assign the groups to the enterprise application. The claim then holds the object IDs of these
-  groups only: enter the object ID of each group as *Value in the groups claim*. With *All groups*, users with more
-  than 200 groups get an overage reference instead of the groups; the server then ignores their groups and logs a
-  warning.
+- **Microsoft Entra ID**: the groups claim with the object IDs of the groups, see
+  [Setting up Microsoft Entra ID](#setting-up-microsoft-entra-id), step 4. Enter the object ID of each group as
+  *Value in the groups claim*.
 - **Keycloak**: a *Group Membership* mapper on the client (claim `groups`, add to the ID token); the values are the
   group paths, e.g. `/santa/it`.
+
+#### Setting up Microsoft Entra ID
+
+Santa Server reads the claims from the ID token (not from the userinfo endpoint, which has no roles with Entra ID).
+In the Entra admin center:
+
+1. **App registration** (*App registrations* → *New registration*): *Accounts in this organizational directory only*
+   (single tenant), platform *Web*, redirect URI `https://<host>/oidc/callback/`.
+   - *Certificates & secrets* → new client secret: the **value** (not the ID) is `OIDC_CLIENT_SECRET`. Note the
+     expiry date: sign-in fails after it.
+   - The *Application (client) ID* is `OIDC_CLIENT_ID`; with the *Directory (tenant) ID*:
+     `OIDC_AUTHORIZATION_ENDPOINT=https://login.microsoftonline.com/<tenant>/oauth2/v2.0/authorize`,
+     `OIDC_TOKEN_ENDPOINT=https://login.microsoftonline.com/<tenant>/oauth2/v2.0/token`,
+     `OIDC_JWKS_ENDPOINT=https://login.microsoftonline.com/<tenant>/discovery/v2.0/keys`.
+   - *API permissions*: Microsoft Graph, delegated `openid`, `profile`, `email`, then *Grant admin consent*.
+2. **App role for the administrators** (*App roles* → *Create app role*): display name e.g. "Santa admin", *Allowed
+   member types* Users/Groups, **value `Santa.Admin`** (exactly like `OIDC_ADMIN_ROLE`, case-sensitive). Under
+   *Enterprise applications* → the app → *Users and groups*, assign the role to the administrators (assigning groups
+   needs Entra ID P1). Entra ID puts it into the `roles` claim of the ID token without further settings.
+3. **Optional claims** (*Token configuration* → *Add optional claim* → token type *ID*): `email` and `upn`.
+   `preferred_username` is in the ID token and becomes the username; it must match the `MachineOwner` of the group
+   profiles (see [Configuring the Macs](#configuring-the-macs)), otherwise the request form doesn't show the events of
+   the user's own Macs.
+4. **Groups claim** for the sign-in groups (*Token configuration* → *Add groups claim*):
+   - *Groups assigned to the application*, and assign the groups under *Users and groups* of the enterprise
+     application. With *All groups*, users with more than 200 groups get an overage reference instead of the groups;
+     the server then ignores their groups and logs a warning.
+   - Under *ID*: *Group ID*. The `groups` claim then holds the object IDs of the assigned groups.
+   - Do **not** tick *Emit groups as role claims*: the groups then replace the app roles in the `roles` claim,
+     `Santa.Admin` is missing (nobody becomes an administrator) and so is the `groups` claim (no sign-in group
+     matches). Santa Server doesn't read the settings for *Access* and *SAML*.
+5. **Who may sign in** (*Enterprise applications* → the app → *Properties*): set *Assignment required?* to *Yes*.
+   Otherwise anyone in the tenant can sign in and gets the role "Santa requesters" through the sign-in group `*`.
+
+The ID token of an administrator then contains, for example:
+
+```json
+"preferred_username": "jdoe@example.com",
+"roles": ["Santa.Admin"],
+"groups": ["8f1c…-…", "2b7e…-…"]
+```
+
+Changes apply at the next sign-in. Check under *Administration* → *Users*: administrators have the role
+"Santa admins", the others the roles of their sign-in groups.
 
 ### Configuring the Macs
 
