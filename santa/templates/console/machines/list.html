@@ -15,7 +15,7 @@
     <option value="clean" {% if params.status == "clean" %}selected{% endif %}>{% translate "Clean sync pending" %}</option></select>
   <button class="button">{% translate "Filter" %}</button>
 </form>
-<table class="table">
+<table class="table" data-table="macs">
   <thead><tr>{% sort_th _("Mac") "mac" %}{% sort_th _("User") "user" %}{% sort_th _("Group") "group" %}{% sort_th _("Mode") "mode" %}{% sort_th _("Santa / macOS") "santa" %}<th class="num">{% translate "Rules" %}</th>{% sort_th _("Last sync") "sync" %}</tr></thead>
   <tbody>
   {% for machine in page %}

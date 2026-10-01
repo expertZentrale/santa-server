@@ -11,7 +11,7 @@
   {% if perms.auth.add_user %}<a class="button right" href="{% url 'console:admin_user_add' %}">{% translate "New local account" %}</a>{% endif %}
 </form>
 <p class="muted small">{% translate "Users of the sign-in are created at their first sign-in. Their roles come from the sign-in groups; add local accounts only for break-glass access." %}</p>
-<table class="table">
+<table class="table" data-table="users">
   <thead><tr>{% sort_th _("User") "user" %}{% sort_th _("Name") "name" %}<th>{% translate "Account" %}</th><th>{% translate "Roles" %}</th><th>{% translate "Console" %}</th>{% sort_th _("Last sign-in") "login" %}</tr></thead>
   <tbody>
   {% for u in page %}

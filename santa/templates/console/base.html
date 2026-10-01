@@ -68,6 +68,7 @@
   {% block content %}{% endblock %}
 </main>
 <aside id="drawer" class="drawer" aria-live="polite"></aside>
+<template id="table-texts" data-resize="{% translate 'Resize column' %}" data-columns="{% translate 'Columns' %}" data-reset="{% translate 'Reset widths and columns' %}"></template>
 <template id="drawer-back"><button type="button" class="icon-button" data-drawer-back title="{% translate 'Back' %}" aria-label="{% translate 'Back' %}">{% include "console/icons/chevron-left.svg" %}</button></template>
 {% if user.is_staff %}{% tag_names as names %}{{ names|json_script:"tag-names" }}{% endif %}
 </body>

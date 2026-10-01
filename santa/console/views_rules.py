@@ -1,6 +1,10 @@
+import csv
+
 from django.contrib import messages
 from django.db.models import Q
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.utils.translation import gettext, ngettext
 from django.views.decorators.http import require_POST
 
@@ -62,12 +66,51 @@ def filter_rules(request, rules):
 def rules(request):
     require_perms(request, "view_rule")
     queryset, sort = sort_by(request, filter_rules(request, Rule.objects.all()), RULE_COLUMNS, "-created")
-    page = paginate(request, queryset.select_related("release_source")
+    page = paginate(request, queryset.select_related("release_source", "created_by")
                                      .prefetch_related("groups", "tags", "machines"))
     return render(request, "console/rules/list.html", {
         "page": page, "sort": sort, "params": request.GET, "rule_types": RuleType.choices, "policies": Policy.choices,
         "groups": Group.objects.order_by("name"), "tags": Tag.objects.order_by("name"),
     })
+
+
+# a spreadsheet would run a cell starting with one of these as a formula
+CSV_FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
+
+
+def csv_cell(value):
+    value = "" if value is None else str(value)
+    return f"'{value}" if value.startswith(CSV_FORMULA_START) else value
+
+
+@staff_required
+def rules_export(request):
+    """The rules of the list with its filters, all pages, as CSV"""
+    require_perms(request, "view_rule")
+    queryset, _sort = sort_by(request, filter_rules(request, Rule.objects.all()), RULE_COLUMNS, "-created")
+    queryset = queryset.select_related("release_source", "created_by").prefetch_related("groups", "tags", "machines")
+    response = HttpResponse(content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = f'attachment; filename="santa-rules-{timezone.localdate():%Y-%m-%d}.csv"'
+    # the BOM makes Excel read UTF-8
+    response.write("\ufeff")
+    writer = csv.writer(response)
+    writer.writerow([gettext("Type"), gettext("Identifier"), gettext("Policy"), gettext("Scope"), gettext("Tags"),
+                     gettext("Enabled"), gettext("Package rule"), gettext("Comment"), gettext("Created"),
+                     gettext("Created by")])
+    for rule in queryset.iterator(chunk_size=500):
+        if rule.is_global:
+            scope = gettext("All Macs")
+        else:
+            scope = ", ".join([group.name for group in rule.groups.all()]
+                              + [machine.hostname or machine.serial_number for machine in rule.machines.all()])
+        writer.writerow([csv_cell(value) for value in (
+            rule.get_rule_type_display(), rule.identifier, rule.get_policy_display(), scope,
+            ", ".join(tag.name for tag in rule.tags.all()), gettext("yes") if rule.is_enabled else gettext("no"),
+            rule.release_source.name if rule.release_source else "", rule.description,
+            timezone.localtime(rule.created_at).strftime("%Y-%m-%d %H:%M"),
+            rule.created_by.get_username() if rule.created_by else "",
+        )])
+    return response
 
 
 @staff_required

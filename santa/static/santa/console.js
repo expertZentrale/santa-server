@@ -403,6 +403,10 @@
     index = Math.min(Math.max(index + step, 0), options.length - 1);
     options[index].setAttribute("aria-selected", "true");
     options[index].scrollIntoView({ block: "nearest" });
+    // screen readers follow the option through the input that controls the list
+    if (box.id && options[index].id) {
+      document.querySelector(`[aria-controls="${box.id}"]`)?.setAttribute("aria-activedescendant", options[index].id);
+    }
   }
 
   // Tags typed as "a, b": suggest the existing tags for the part after the last comma
@@ -558,10 +562,11 @@
       const typed = search.value.trim().toLowerCase();
       const matches = options.filter((option) => !option.selected && option.text.toLowerCase().includes(typed))
                              .slice(0, 8);
-      box.replaceChildren(...matches.map((option) => {
+      box.replaceChildren(...matches.map((option, index) => {
         const item = document.createElement("button");
         item.type = "button";
         item.className = "suggestion tag-suggestion";
+        item.id = `${box.id}-${index}`;
         item.setAttribute("role", "option");
         item.dataset.tag = option.text;
         item.textContent = option.text;
@@ -570,6 +575,7 @@
       const open = matches.length > 0 && document.activeElement === search;
       box.classList.toggle("open", open);
       search.setAttribute("aria-expanded", open ? "true" : "false");
+      search.removeAttribute("aria-activedescendant");
     }
 
     function add(name) {
@@ -727,6 +733,9 @@
 
   function init(root) {
     labelTables(root);
+    setupTables(root);
+    setupRowFocus(root);
+    root.querySelectorAll("textarea[data-cel-suggestions]").forEach(setupCelInput);
     updateRulePreviews(root);
     updateBinaryPreviews(root);
     updateConditional(root);
@@ -759,6 +768,7 @@
     if (!picker) return;
     const count = picker.querySelectorAll("input:checked").length;
     const badge = picker.querySelector("[data-picker-count]");
+    if (!badge) return;
     badge.textContent = count;
     badge.hidden = !count;
   });
@@ -830,6 +840,7 @@
       });
       htmx.process(tbody);
       labelTables(table.closest(".table-scroll") || table);
+      setupRowFocus(document);
       document.querySelectorAll("[data-select-form]").forEach(updateSelection);
       renderPill();
     }
@@ -863,6 +874,390 @@
     setInterval(poll, 10000);
   }
 
+  // Tables with data-table="<name>": column widths by dragging (or ←/→ on the handle), a column chooser, a sticky
+  // header when the table fits the page. Stored per browser; without storage the tables look as before.
+  function tableSettings(table) {
+    try {
+      return JSON.parse(localStorage.getItem(`santa.table.${table.dataset.table}`)) || {};
+    } catch (error) {
+      return {};
+    }
+  }
+
+  function saveTableSettings(table, settings) {
+    try {
+      localStorage.setItem(`santa.table.${table.dataset.table}`, JSON.stringify(settings));
+    } catch (error) {
+      // private window or blocked storage: the change lasts until the next page
+    }
+  }
+
+  const rem = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+
+  function tableColumns(table) {
+    return [...table.tHead.rows[0].cells].map((th, index) => ({ th, index, key: th.dataset.col }))
+      .filter((column) => column.key);
+  }
+
+  function applyWidths(table, settings) {
+    const widths = settings.widths || {};
+    const cells = [...table.tHead.rows[0].cells];
+    // start from the natural layout, so a column shown again gets its own width (hidden, it measures 0)
+    table.classList.remove("fixed");
+    table.style.width = "";
+    cells.forEach((th) => { th.style.width = ""; });
+    if (!Object.keys(widths).length || !tableColumns(table).length) return;
+    // fixed layout: the visible columns keep their natural width, unless one was set; hidden ones get none
+    const visible = cells.filter((th) => th.getClientRects().length);
+    const natural = visible.map((th) => th.getBoundingClientRect().width / rem());
+    visible.forEach((th, index) => {
+      const key = th.dataset.col;
+      th.style.width = `${(key && widths[key]) || natural[index]}rem`;
+    });
+    table.classList.add("fixed");
+    table.style.width = `${visible.reduce((sum, th) => sum + parseFloat(th.style.width), 0)}rem`;
+  }
+
+  function applyHidden(table, settings) {
+    const optional = (table.dataset.optional || "").split(" ").filter(Boolean);
+    const hidden = new Set(settings.hidden || optional);
+    let style = document.getElementById(`table-style-${table.dataset.table}`);
+    if (!style) {
+      style = document.createElement("style");
+      style.id = `table-style-${table.dataset.table}`;
+      document.head.append(style);
+    }
+    const selector = `table[data-table="${table.dataset.table}"]`;
+    // nth-child: also for rows that come later (live updates, toggles)
+    style.textContent = tableColumns(table).filter((column) => hidden.has(column.key))
+      .map((column) => `${selector} tr:not(.empty) > :nth-child(${column.index + 1}) { display: none; }`).join("\n");
+    table.dataset.shown = tableColumns(table).filter((column) => !hidden.has(column.key))
+      .map((column) => column.key).join(" ");
+    return hidden;
+  }
+
+  function updateFits(table) {
+    const box = table.closest(".table-scroll");
+    if (!box) return;
+    box.classList.remove("fits");
+    box.classList.toggle("fits", box.scrollWidth <= box.clientWidth + 1);
+  }
+
+  function setupTable(table) {
+    if (table.dataset.tableReady || !table.tHead) return;
+    table.dataset.tableReady = "1";
+    const texts = document.getElementById("table-texts")?.dataset || {};
+    const settings = tableSettings(table);
+    [...table.tHead.rows[0].cells].forEach((th) => {
+      if (!th.dataset.col && !th.classList.contains("select")) {
+        th.dataset.col = th.textContent.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-") || `col${th.cellIndex}`;
+      }
+    });
+    tableColumns(table).forEach(({ th, key }) => {
+      const handle = document.createElement("span");
+      handle.className = "col-resize";
+      handle.tabIndex = 0;
+      handle.setAttribute("role", "separator");
+      handle.setAttribute("aria-orientation", "vertical");
+      handle.setAttribute("aria-label", `${texts.resize || "Resize column"}: ${th.textContent.trim()}`);
+      th.append(handle);
+      const setWidth = (width) => {
+        settings.widths = { ...(settings.widths || {}), [key]: Math.max(3, Math.round(width * 10) / 10) };
+        applyWidths(table, settings);
+        updateFits(table);
+      };
+      const reset = () => {
+        if (settings.widths) delete settings.widths[key];
+        applyWidths(table, settings);
+        updateFits(table);
+        saveTableSettings(table, settings);
+      };
+      handle.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); });
+      handle.addEventListener("dblclick", reset);
+      handle.addEventListener("keydown", (event) => {
+        if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+          event.preventDefault();
+          const step = (event.shiftKey ? 2 : 0.5) * (event.key === "ArrowLeft" ? -1 : 1);
+          setWidth(th.getBoundingClientRect().width / rem() + step);
+          saveTableSettings(table, settings);
+        } else if (event.key === "Enter") {
+          event.preventDefault();
+          reset();
+        }
+      });
+      handle.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+        handle.setPointerCapture(event.pointerId);
+        const startX = event.clientX;
+        const start = th.getBoundingClientRect().width / rem();
+        const move = (moveEvent) => setWidth(start + (moveEvent.clientX - startX) / rem());
+        const up = () => {
+          handle.removeEventListener("pointermove", move);
+          handle.removeEventListener("pointerup", up);
+          saveTableSettings(table, settings);
+        };
+        handle.addEventListener("pointermove", move);
+        handle.addEventListener("pointerup", up);
+      });
+    });
+    applyHidden(table, settings);
+    applyWidths(table, settings);
+
+    // the column chooser: in the filter row, or above the table
+    const picker = document.createElement("details");
+    picker.className = "picker down columns-picker";
+    picker.dataset.picker = "";
+    const summary = document.createElement("summary");
+    summary.className = "button";
+    summary.textContent = texts.columns || "Columns";
+    const panel = document.createElement("div");
+    panel.className = "picker-panel";
+    const hidden = applyHidden(table, settings);
+    tableColumns(table).forEach(({ th, key }) => {
+      const label = document.createElement("label");
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.checked = !hidden.has(key);
+      box.dataset.columnKey = key;
+      label.append(box, ` ${th.textContent.trim()}`);
+      panel.append(label);
+    });
+    const resetAll = document.createElement("button");
+    resetAll.type = "button";
+    resetAll.className = "button small";
+    resetAll.textContent = texts.reset || "Reset widths and columns";
+    panel.append(resetAll);
+    picker.append(summary, panel);
+    panel.addEventListener("change", (event) => {
+      const box = event.target.closest("[data-column-key]");
+      if (!box) return;
+      settings.hidden = [...panel.querySelectorAll("[data-column-key]")].filter((other) => !other.checked)
+        .map((other) => other.dataset.columnKey);
+      applyHidden(table, settings);
+      applyWidths(table, settings);
+      updateFits(table);
+      saveTableSettings(table, settings);
+    });
+    resetAll.addEventListener("click", () => {
+      Object.keys(settings).forEach((name) => delete settings[name]);
+      saveTableSettings(table, settings);
+      const defaults = applyHidden(table, settings);
+      panel.querySelectorAll("[data-column-key]").forEach((box) => { box.checked = !defaults.has(box.dataset.columnKey); });
+      applyWidths(table, settings);
+      updateFits(table);
+    });
+    const filters = document.querySelector("main form.filters");
+    if (filters) {
+      picker.classList.add("right");
+      filters.append(picker);
+    } else {
+      const tools = document.createElement("div");
+      tools.className = "table-tools";
+      tools.append(picker);
+      (table.closest(".table-scroll") || table).before(tools);
+    }
+    updateFits(table);
+  }
+
+  function setupTables(root) {
+    root.querySelectorAll("table[data-table]").forEach(setupTable);
+  }
+  window.addEventListener("resize", () => document.querySelectorAll("table[data-table]").forEach(updateFits));
+
+  // Keyboard in selectable tables: ↑/↓, Home/End move between rows, Space selects (Shift: a range), Enter opens
+  function focusableRows(form) {
+    return [...form.querySelectorAll("tbody tr")].filter((row) => row.querySelector('td.select input[type="checkbox"]'));
+  }
+
+  function setupRowFocus(root) {
+    root.querySelectorAll("[data-select-form]").forEach((form) => {
+      const rows = focusableRows(form);
+      rows.forEach((row) => { if (!row.hasAttribute("tabindex")) row.tabIndex = -1; });
+      if (rows.length && !rows.some((row) => row.tabIndex === 0)) rows[0].tabIndex = 0;
+    });
+  }
+
+  document.addEventListener("focusin", (event) => {
+    const row = event.target.closest?.("[data-select-form] tbody tr[tabindex]");
+    if (!row) return;
+    const form = row.closest("[data-select-form]");
+    focusableRows(form).forEach((other) => { other.tabIndex = other === row ? 0 : -1; });
+  });
+
+  document.addEventListener("keydown", (event) => {
+    const row = event.target.matches?.("[data-select-form] tbody tr[tabindex]") ? event.target : null;
+    if (!row) return;
+    const rows = focusableRows(row.closest("[data-select-form]"));
+    const index = rows.indexOf(row);
+    let next = null;
+    if (event.key === "ArrowDown") next = rows[index + 1];
+    else if (event.key === "ArrowUp") next = rows[index - 1];
+    else if (event.key === "Home") next = rows[0];
+    else if (event.key === "End") next = rows[rows.length - 1];
+    else if (event.key === " ") {
+      event.preventDefault();
+      // like Ctrl-click (one row on or off) or Shift-click (a range)
+      row.dispatchEvent(new MouseEvent("click", { bubbles: true, ctrlKey: !event.shiftKey, shiftKey: event.shiftKey }));
+      return;
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      row.querySelector("a[hx-get]")?.click();
+      return;
+    }
+    if (next) {
+      event.preventDefault();
+      next.focus();
+    }
+  });
+
+  // CEL expressions: suggestions for the known fields, functions and results while typing. They only complete,
+  // anything else can be typed (newer Santa versions know more).
+  function setupCelInput(textarea) {
+    if (textarea.dataset.celReady) return;
+    textarea.dataset.celReady = "1";
+    let items = [];
+    try {
+      items = JSON.parse(textarea.dataset.celSuggestions);
+    } catch (error) {
+      return;
+    }
+    const wrapper = document.createElement("div");
+    wrapper.className = "combobox";
+    textarea.replaceWith(wrapper);
+    const box = document.createElement("div");
+    box.className = "suggestions";
+    box.id = `${textarea.id || "cel"}-suggestions`;
+    box.setAttribute("role", "listbox");
+    wrapper.append(textarea, box);
+    textarea.setAttribute("autocomplete", "off");
+    textarea.setAttribute("role", "combobox");
+    textarea.setAttribute("aria-autocomplete", "list");
+    textarea.setAttribute("aria-controls", box.id);
+    textarea.setAttribute("aria-expanded", "false");
+    textarea.spellcheck = false;
+    let match = null;
+
+    function setOpen(open) {
+      box.classList.toggle("open", open);
+      textarea.setAttribute("aria-expanded", open ? "true" : "false");
+      const selected = open && box.querySelector(".suggestion[aria-selected=true]");
+      if (selected) textarea.setAttribute("aria-activedescendant", selected.id);
+      else textarea.removeAttribute("aria-activedescendant");
+    }
+
+    function current() {
+      const before = textarea.value.slice(0, textarea.selectionStart);
+      const token = before.match(/[A-Za-z_][A-Za-z0-9_.]*$/)?.[0] || "";
+      return { token, last: token.includes(".") ? token.slice(token.lastIndexOf(".") + 1) : token };
+    }
+
+    function show() {
+      const { token, last } = current();
+      if (!token) {
+        setOpen(false);
+        return;
+      }
+      const lower = token.toLowerCase();
+      const found = items.filter((item) => {
+        const text = item.text.trim().toLowerCase();
+        // functions follow a value: target.signing_id.sta… → startsWith(""), but not target.s…
+        if (item.kind === "function") {
+          const owner = token.includes(".") ? token.slice(0, token.lastIndexOf(".")) : "";
+          return owner && !["target", "ancestors"].includes(owner) && last
+                 && text.startsWith(last.toLowerCase()) && text !== last.toLowerCase();
+        }
+        // global functions (timestamp, duration) start a value, like the fields
+        if (item.kind === "global" && token.includes(".")) return false;
+        return text.startsWith(lower) && text !== lower;
+      }).slice(0, 8);
+      match = { token, last };
+      box.replaceChildren(...found.map((item, index) => {
+        const option = document.createElement("button");
+        option.type = "button";
+        option.className = "suggestion cel-suggestion";
+        option.id = `${box.id}-${index}`;
+        option.setAttribute("role", "option");
+        option.setAttribute("aria-selected", index === 0 ? "true" : "false");
+        option.dataset.text = item.text;
+        option.dataset.kind = item.kind;
+        const text = document.createElement("span");
+        const code = document.createElement("code");
+        code.textContent = item.text.trim();
+        const help = document.createElement("small");
+        help.textContent = item.help;
+        text.append(code, help);
+        option.append(text);
+        return option;
+      }));
+      setOpen(found.length > 0);
+      // in the drawer the list can end below the window
+      if (found.length) box.scrollIntoView({ block: "nearest" });
+    }
+
+    function insert(option) {
+      const replaced = option.dataset.kind === "function" ? match.last : match.token;
+      const end = textarea.selectionStart;
+      const start = end - replaced.length;
+      const text = option.dataset.text;
+      textarea.setRangeText(text, start, end, "end");
+      // the cursor goes into the quotes, the brackets or the parentheses
+      const inner = text.search(/""|\(\)|\[\]|, \)/);
+      if (inner >= 0) {
+        const offset = text.slice(inner, inner + 2) === ", " ? inner + 2 : inner + 1;
+        textarea.selectionStart = textarea.selectionEnd = start + offset;
+      }
+      setOpen(false);
+      textarea.focus();
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+
+    textarea.addEventListener("input", show);
+    textarea.addEventListener("click", show);
+    textarea.addEventListener("keydown", (event) => {
+      if (!box.classList.contains("open")) return;
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        moveSelection(box, event.key === "ArrowDown" ? 1 : -1);
+      } else if (event.key === "Enter" || event.key === "Tab") {
+        const selected = box.querySelector(".suggestion[aria-selected=true]");
+        if (selected) {
+          event.preventDefault();
+          insert(selected);
+        }
+      } else if (event.key === "Escape") {
+        event.stopPropagation();
+        setOpen(false);
+      }
+    });
+    box.addEventListener("mousedown", (event) => {
+      const option = event.target.closest(".suggestion");
+      if (option) {
+        event.preventDefault();
+        insert(option);
+      }
+    });
+    textarea.addEventListener("blur", () => setTimeout(() => setOpen(false), 150));
+  }
+
+  // "Only signing IDs starting with": writes the CEL expression of the Team ID rule, the same as the server
+  // (forms.prefix_expression); an expression written by hand is never replaced
+  const PREFIX_EXPRESSION = /^\(target\.signing_id\.startsWith\("[A-Z0-9]{10}:[A-Za-z0-9._-]+"\)( \|\| target\.signing_id\.startsWith\("[A-Z0-9]{10}:[A-Za-z0-9._-]+"\))*\) \? ALLOWLIST : BLOCKLIST$/;
+
+  document.addEventListener("input", (event) => {
+    const prefixes = event.target.closest?.('textarea[name$="signing_prefixes"]');
+    if (!prefixes) return;
+    const form = prefixes.closest("form");
+    const expression = form.querySelector('textarea[name$="cel_expr"]');
+    const identifier = form.querySelector('input[name$="identifier"]');
+    if (!expression) return;
+    if (expression.value.trim() && !PREFIX_EXPRESSION.test(expression.value.trim())) return;
+    const team = (identifier?.value || "").trim();
+    const values = prefixes.value.split("\n").map((line) => line.trim()).filter((line) => /^[A-Za-z0-9._-]+$/.test(line));
+    expression.value = values.length && team
+      ? `(${values.map((prefix) => `target.signing_id.startsWith("${team}:${prefix}")`).join(" || ")}) ? ALLOWLIST : BLOCKLIST`
+      : "";
+  });
+
   sendTimeZone();
   document.addEventListener("DOMContentLoaded", setupLiveUpdates);
   document.addEventListener("DOMContentLoaded", () => init(document));
@@ -879,6 +1274,7 @@
     setupTagInputs(event.detail.target);
     labelTables(event.detail.target.closest("table") || event.detail.target);
     updateRulePreviews(event.detail.target);
+    setupRowFocus(document);
     document.querySelectorAll("[data-select-form]").forEach(updateSelection);
   });
 
