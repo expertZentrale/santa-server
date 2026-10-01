@@ -1,7 +1,7 @@
 from django import template
 from django.utils.html import format_html
 
-from ..models import AccessRequest, Policy, Tag
+from ..models import AccessRequest, Policy, RuleType, Tag
 
 register = template.Library()
 
@@ -17,6 +17,15 @@ POLICY_CLASSES = {
 @register.filter
 def policy_class(policy):
     return POLICY_CLASSES.get(policy, "")
+
+
+@register.filter
+def identifier_parts(rule):
+    """A signing ID as (team ID with the colon, bundle ID), so the bundle ID stands out; others (None, identifier)"""
+    if rule.rule_type == RuleType.SIGNINGID and ":" in rule.identifier:
+        team, rest = rule.identifier.split(":", 1)
+        return f"{team}:", rest
+    return None, rule.identifier
 
 
 @register.filter
@@ -66,4 +75,6 @@ def sort_th(context, label, name, css_class=""):
         params["sort"], state = name, None
     aria = format_html(' aria-sort="{}"', state) if state else ""
     classes = format_html(' class="{}"', css_class) if css_class else ""
-    return format_html('<th{}{}><a class="sort" href="?{}">{}</a></th>', classes, aria, params.urlencode(), label)
+    # data-col: the column for the widths and the column chooser (console.js)
+    return format_html('<th data-col="{}"{}{}><a class="sort" href="?{}">{}</a></th>', name, classes, aria,
+                       params.urlencode(), label)

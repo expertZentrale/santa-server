@@ -1,4 +1,5 @@
 import json
+import re
 
 from django import forms
 from django.conf import settings
@@ -114,8 +115,68 @@ class MachinesField(forms.CharField):
         return new != old
 
 
+# Suggestions for the CEL field (console.js): fields and global functions start a value, functions follow one (".").
+# They only complete: Santa evaluates the expression, so fields of newer
+# Santa versions work without being listed. Fields: https://northpole.dev/features/binary-authorization/
+CEL_SUGGESTIONS = [
+    ("target.signing_id", "field", _("TEAMID:bundle.id of the binary (cached)")),
+    ("target.team_id", "field", _("Team ID of the binary (cached)")),
+    ("target.signing_time", "field", _("Signing time, as timestamp (cached)")),
+    ("target.secure_signing_time", "field", _("Signing time from a trusted time stamp (cached)")),
+    ("target.is_platform_binary", "field", _("Part of macOS (cached)")),
+    ("path", "field", _("Path of the binary (not cached, slower)")),
+    ("args", "field", _("Arguments, a list (not cached, slower)")),
+    ("envs", "field", _("Environment variables, a map (not cached, slower)")),
+    ("euid", "field", _("Effective user ID (not cached, slower)")),
+    ("cwd", "field", _("Working directory (not cached, slower)")),
+    ("ancestors", "field", _("Parent processes, each with path, signing_id, team_id, cdhash, args (not cached)")),
+    ("ALLOWLIST", "result", _("Allow")),
+    ("BLOCKLIST", "result", _("Block")),
+    ('startsWith("")', "function", _("String starts with")),
+    ('endsWith("")', "function", _("String ends with")),
+    ('contains("")', "function", _("String contains")),
+    ('matches("")', "function", _("Regular expression (RE2)")),
+    ("size()", "function", _("Length of a string or list")),
+    ("exists(x, )", "function", _("Any element of a list matches")),
+    ("all(x, )", "function", _("Every element of a list matches")),
+    ('timestamp("")', "global", _("Time, e.g. timestamp(\"2025-01-01T00:00:00Z\")")),
+    ('duration("")', "global", _("Duration, e.g. duration(\"24h\")")),
+    (" in []", "function", _("Value in a list")),
+]
+
+
+def cel_suggestions_json():
+    return json.dumps([{"text": text, "kind": kind, "help": str(help_text)}
+                       for text, kind, help_text in CEL_SUGGESTIONS])
+
+
+# "Only signing IDs starting with": a Team ID rule with this CEL expression (Santa has no wildcards)
+SIGNING_PREFIX_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+PREFIX_EXPRESSION_RE = re.compile(
+    r'^\(target\.signing_id\.startsWith\("[A-Z0-9]{10}:[A-Za-z0-9._-]+"\)'
+    r'(?: \|\| target\.signing_id\.startsWith\("[A-Z0-9]{10}:[A-Za-z0-9._-]+"\))*\) \? ALLOWLIST : BLOCKLIST$')
+
+
+def prefix_expression(team_id, prefixes):
+    tests = " || ".join(f'target.signing_id.startsWith("{team_id}:{prefix}")' for prefix in prefixes)
+    return f"({tests}) ? ALLOWLIST : BLOCKLIST"
+
+
+def parse_prefix_expression(expression):
+    """The prefixes of an expression written by prefix_expression(), else None"""
+    if not PREFIX_EXPRESSION_RE.match(expression or ""):
+        return None
+    return re.findall(r'startsWith\("[A-Z0-9]{10}:([A-Za-z0-9._-]+)"\)', expression)
+
+
 class RuleForm(TagsMixin, forms.ModelForm):
     machines = MachinesField(label=_("Macs"))
+    signing_prefixes = forms.CharField(
+        required=False, label=_("Only signing IDs starting with"),
+        widget=forms.Textarea(attrs={"rows": 2, "class": "mono", "placeholder": "com.microsoft.teams2"}),
+        help_text=_("One bundle ID prefix per line. Writes the CEL expression: the binaries of this team whose "
+                    "signing ID starts with one of them are allowed, the others are blocked, also in monitor mode. "
+                    "Rules for a signing ID or binary still win."))
 
     class Meta:
         model = Rule
@@ -133,14 +194,30 @@ class RuleForm(TagsMixin, forms.ModelForm):
         self.fields["rule_type"].choices = rule_type_choices()
         self.fields["is_global"].label = _("All Macs (global)")
         self.fields["is_enabled"].label = _("Enabled")
+        self.fields["cel_expr"].widget.attrs["data-cel-suggestions"] = cel_suggestions_json()
         if self.instance.pk:
             self.initial["machines"] = self.instance.machines.all()
+            prefixes = parse_prefix_expression(self.instance.cel_expr)
+            if prefixes:
+                self.initial["signing_prefixes"] = "\n".join(prefixes)
 
     def clean(self):
         cleaned_data = super().clean()
         if (not cleaned_data.get("is_global") and not cleaned_data.get("groups")
                 and not cleaned_data.get("machines")):
             raise ValidationError(gettext("Choose a scope: global, some groups or some Macs."))
+        prefixes = [line.strip() for line in (cleaned_data.get("signing_prefixes") or "").splitlines() if line.strip()]
+        if prefixes and cleaned_data.get("rule_type") == RuleType.TEAMID and cleaned_data.get("policy") == Policy.CEL:
+            invalid = [prefix for prefix in prefixes if not SIGNING_PREFIX_RE.match(prefix)]
+            expression = cleaned_data.get("cel_expr") or ""
+            if invalid:
+                self.add_error("signing_prefixes", gettext("Only letters, digits, dots, hyphens and underscores: "
+                                                           "%(prefixes)s") % {"prefixes": ", ".join(invalid)})
+            elif expression and parse_prefix_expression(expression) is None:
+                # never overwrite an expression written by hand
+                self.add_error("signing_prefixes", gettext("Clear the CEL expression or the prefixes."))
+            else:
+                cleaned_data["cel_expr"] = prefix_expression(cleaned_data.get("identifier", ""), prefixes)
         return cleaned_data
 
 
@@ -230,6 +307,7 @@ class ReleaseSourceForm(TagsMixin, forms.ModelForm):
         self.fields["identifier"].widget.icons = self.instance.identifier_icons or {}
         self.fields["identifier"].label = _("Packages")
         self.fields["kind"].label = _("Catalog")
+        self.fields["cel_expr"].widget.attrs["data-cel-suggestions"] = cel_suggestions_json()
         self.fields["rule_type"].choices = rule_type_choices()
         self.fields["is_global"].label = _("All Macs (global)")
         self.fields["is_enabled"].label = _("Enabled")

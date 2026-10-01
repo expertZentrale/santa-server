@@ -13,7 +13,7 @@
   <select name="status" aria-label="{% translate 'Status' %}"><option value="">{% translate "Any status" %}</option><option value="error" {% if params.status == "error" %}selected{% endif %}>{% translate "With errors" %}</option><option value="disabled" {% if params.status == "disabled" %}selected{% endif %}>{% translate "Disabled" %}</option></select>
   <button class="button">{% translate "Filter" %}</button>
 </form>
-<table class="table">
+<table class="table" data-table="package-rules">
   <thead><tr>{% sort_th _("Package rule") "name" %}{% sort_th _("Catalog") "kind" %}<th>{% translate "Latest versions" %}</th><th>{% translate "Rules" %}</th><th>{% translate "Scope" %}</th>{% sort_th _("Status") "checked" %}<th></th></tr></thead>
   <tbody>
   {% for source in page %}
