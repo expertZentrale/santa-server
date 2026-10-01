@@ -131,6 +131,80 @@ class ConsoleRulesTestCase(ConsoleBase):
         self.assertEqual({t.name for t in rule.tags.all()}, {"dev tools", "cli", "reviewed"})
         self.assertEqual(LogEntry.objects.get().action_flag, ADDITION)
 
+    def post_team_rule(self, pk=None, **data):
+        url = reverse("console:rule", args=(pk,)) if pk else reverse("console:rule_add")
+        return self.client.post(url, {"rule_type": RuleType.TEAMID, "identifier": "UBF8T346G9", "policy": Policy.CEL,
+                                      "is_global": "on", "is_enabled": "on", **data})
+
+    def test_signing_id_prefixes(self):
+        response = self.post_team_rule(signing_prefixes="com.microsoft.teams2\ncom.microsoft.teams2.helper\n")
+        self.assertEqual(response.status_code, 302)
+        rule = Rule.objects.get()
+        self.assertEqual(rule.cel_expr, '(target.signing_id.startsWith("UBF8T346G9:com.microsoft.teams2") || '
+                                        'target.signing_id.startsWith("UBF8T346G9:com.microsoft.teams2.helper")) '
+                                        '? ALLOWLIST : BLOCKLIST')
+        # editing shows the prefixes again, and a changed list writes the expression again
+        response = self.client.get(reverse("console:rule", args=(rule.pk,)))
+        self.assertEqual(response.context["form"]["signing_prefixes"].value(),
+                         "com.microsoft.teams2\ncom.microsoft.teams2.helper")
+        self.post_team_rule(rule.pk, signing_prefixes="com.microsoft.teams2", cel_expr=rule.cel_expr)
+        rule.refresh_from_db()
+        self.assertEqual(rule.cel_expr,
+                         '(target.signing_id.startsWith("UBF8T346G9:com.microsoft.teams2")) ? ALLOWLIST : BLOCKLIST')
+
+    def test_signing_id_prefixes_are_checked(self):
+        response = self.post_team_rule(signing_prefixes='com.x") || true || ("')
+        self.assertContains(response, "Only letters, digits")
+        # an expression written by hand is never replaced
+        response = self.post_team_rule(signing_prefixes="com.microsoft.teams2", cel_expr="args.size() < 3")
+        self.assertContains(response, "Clear the CEL expression or the prefixes.")
+        self.assertFalse(Rule.objects.exists())
+        # without prefixes the expression stays as written, also with fields this list doesn't know
+        self.post_team_rule(cel_expr='target.new_field == "x" ? ALLOWLIST : BLOCKLIST')
+        self.assertEqual(Rule.objects.get().cel_expr, 'target.new_field == "x" ? ALLOWLIST : BLOCKLIST')
+        # other rule types ignore the prefixes
+        self.client.post(reverse("console:rule_add"), {
+            "rule_type": RuleType.SIGNINGID, "identifier": "UBF8T346G9:com.x", "policy": Policy.ALLOWLIST,
+            "is_global": "on", "is_enabled": "on", "signing_prefixes": "com.y"})
+        self.assertEqual(Rule.objects.get(rule_type=RuleType.SIGNINGID).cel_expr, "")
+
+    def test_cel_suggestions(self):
+        response = self.client.get(reverse("console:rule_add"))
+        # the hint of existing rules swaps only itself, not the drawer of the form (that emptied the drawer)
+        self.assertContains(response, 'hx-include="closest form" hx-target="this"')
+        self.assertContains(response, "data-cel-suggestions=")
+        self.assertContains(response, "target.signing_id")
+        self.assertContains(self.client.get(reverse("console:source_add")), "data-cel-suggestions=")
+
+    def test_list_shows_the_full_identifier(self):
+        long_id = "UBF8T346G9:com.microsoft.teams2.notificationcenter.helper"
+        Rule.objects.create(rule_type=RuleType.SIGNINGID, identifier=long_id, is_global=True, description="teams")
+        response = self.client.get(reverse("console:rules"))
+        self.assertContains(response, '<span class="muted">UBF8T346G9:</span>' + long_id.split(":")[1])
+        self.assertContains(response, 'data-table="rules" data-optional="comment created"')
+        self.assertContains(response, '<th data-col="identifier"')
+        self.assertContains(response, '<td data-col="created"')
+
+    def test_export_csv(self):
+        Rule.objects.create(rule_type=RuleType.BINARY, identifier=SHA_A, is_global=True, description="=HYPERLINK()")
+        blocked = Rule.objects.create(rule_type=RuleType.TEAMID, identifier="ABCDE12345", policy=Policy.BLOCKLIST)
+        blocked.groups.add(self.dev)
+        Rule.objects.bulk_create(Rule(rule_type=RuleType.BINARY, identifier=f"{i:064x}", is_global=True)
+                                 for i in range(60))
+        response = self.client.get(reverse("console:rules_export"))
+        self.assertEqual(response["Content-Type"], "text/csv; charset=utf-8")
+        content = response.content.decode("utf-8")
+        self.assertTrue(content.startswith("﻿Type,Identifier,Policy"))
+        # all pages, and no formulas for the spreadsheet
+        self.assertEqual(len(content.strip().splitlines()), 63)
+        self.assertIn("'=HYPERLINK()", content)
+        # the filters of the list
+        content = self.client.get(reverse("console:rules_export"), {"policy": Policy.BLOCKLIST}).content.decode()
+        self.assertEqual(len(content.strip().splitlines()), 2)
+        self.assertIn("ABCDE12345,Block,Development", content)
+        self.client.force_login(User.objects.create_user("viewer", is_staff=True))
+        self.assertEqual(self.client.get(reverse("console:rules_export")).status_code, 403)
+
     def test_rule_needs_a_scope_and_a_valid_identifier(self):
         response = self.client.post(reverse("console:rule_add"), {
             "rule_type": RuleType.BINARY, "identifier": "nope", "policy": Policy.ALLOWLIST, "machines": "unknown"})

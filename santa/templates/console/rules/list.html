@@ -5,6 +5,7 @@
   <h1>{% translate "Execution rules" %}</h1>
   <div class="actions">
     {% if perms.santa.add_rule %}<a class="button" href="{% url 'console:rule_upload' %}">{% translate "Upload binary" %}</a>
+    {% url 'console:rules_export' as export_url %}<a class="button" href="{{ export_url }}{% querystring page=None %}" download>{% translate "Export CSV" %}</a>
     {% url 'console:rule_add' as add_url %}<a class="button primary" href="{{ add_url }}" hx-get="{{ add_url }}" hx-target="#drawer">{% translate "New rule" %}</a>{% endif %}
   </div>
 </div>
@@ -46,13 +47,13 @@
     <button class="button primary" data-confirm-when="action=delete" data-confirm="{% translate 'Delete the selected rules?' %}">{% translate "Apply" %}</button>
     <button type="button" class="bulkbar-clear" data-clear-selection aria-label="{% translate 'Clear selection' %}" title="{% translate 'Clear selection (Esc)' %}">×</button>
   </div>
-  <table class="table">
+  <table class="table" data-table="rules" data-optional="comment created">
     <thead><tr><th class="select"><input type="checkbox" data-select-all aria-label="{% translate 'Select all' %}"></th>
-      {% sort_th _("Identifier") "identifier" %}{% sort_th _("Type") "type" %}{% sort_th _("Policy") "policy" %}<th>{% translate "Scope" %}</th>
-      <th>{% translate "Tags" %}</th><th>{% translate "Origin" %}</th>{% sort_th _("Enabled") "enabled" %}</tr></thead>
+      {% sort_th _("Identifier") "identifier" %}<th data-col="comment">{% translate "Comment" %}</th>{% sort_th _("Type") "type" %}{% sort_th _("Policy") "policy" %}<th data-col="scope">{% translate "Scope" %}</th>
+      <th data-col="tags">{% translate "Tags" %}</th>{% sort_th _("Created") "created" %}<th data-col="origin">{% translate "Origin" %}</th>{% sort_th _("Enabled") "enabled" %}</tr></thead>
     <tbody>
     {% for rule in page %}{% include "console/rules/_row.html" %}{% empty %}
-      <tr class="empty"><td colspan="8">{% translate "No rules for these filters." %}</td></tr>
+      <tr class="empty"><td colspan="10">{% translate "No rules for these filters." %}</td></tr>
     {% endfor %}
     </tbody>
   </table>

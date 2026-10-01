@@ -4,15 +4,17 @@
   <section class="card"><h2>{% translate "Target" %}</h2>
     {% include "console/_field.html" with field=form.rule_type %}
     {% include "console/_field.html" with field=form.identifier %}
-    {% if not rule %}<div hx-get="{% url 'console:rules_existing' %}" hx-include="closest form"
+    {% if not rule %}<div hx-get="{% url 'console:rules_existing' %}" hx-include="closest form" hx-target="this" hx-swap="innerHTML"
          hx-trigger="change from:[name='identifier'], change from:[name='rule_type'], keyup changed delay:400ms from:[name='identifier']"
          aria-live="polite"></div>{% endif %}
     <small class="help">{% blocktranslate %}From <code>santactl fileinfo /path/to/binary</code>, or create the rule from an event.{% endblocktranslate %}</small>
   </section>
   <section class="card"><h2>{% translate "Policy" %}</h2>
     {% include "console/_field.html" with field=form.policy %}
-    <div data-show-when="policy=CEL">{% include "console/_field.html" with field=form.cel_expr %}
-      <small class="help">{% blocktranslate %}Return a policy, e.g. <code>target.signing_time &gt;= timestamp('2025-01-01T00:00:00Z') ? ALLOWLIST : BLOCKLIST</code>. Evaluated by Santa on the Mac.{% endblocktranslate %}</small></div>
+    <div data-show-when="policy=CEL">
+      <div data-show-when="rule_type=TEAMID">{% include "console/_field.html" with field=form.signing_prefixes %}</div>
+      {% include "console/_field.html" with field=form.cel_expr %}
+      <small class="help after-field">{% blocktranslate %}Return a policy, e.g. <code>target.signing_time &gt;= timestamp('2025-01-01T00:00:00Z') ? ALLOWLIST : BLOCKLIST</code>, or for a Team ID rule <code>target.signing_id.startsWith("UBF8T346G9:com.microsoft.teams2") ? ALLOWLIST : BLOCKLIST</code>. Santa has no wildcards in identifiers. Evaluated by Santa on the Mac; suggestions while typing, other fields and functions work too.{% endblocktranslate %}</small></div>
     <div data-show-when="policy=BLOCKLIST|CEL">
       {% include "console/_field.html" with field=form.custom_msg %}
       {% include "console/_field.html" with field=form.custom_url %}</div>

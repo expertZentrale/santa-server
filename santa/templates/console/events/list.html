@@ -22,7 +22,7 @@
     <button type="button" class="bulkbar-clear" data-clear-selection aria-label="{% translate 'Clear selection' %}" title="{% translate 'Clear selection (Esc)' %}">×</button>
   </div>
   {% if view == "all" %}
-    <table class="table" data-live-updates="{% url 'console:event_updates' %}{% querystring page=None sort=None %}" data-after="{{ max_pk }}"{% if live_insert %} data-insert{% endif %}>
+    <table class="table" data-table="events" data-live-updates="{% url 'console:event_updates' %}{% querystring page=None sort=None %}" data-after="{{ max_pk }}"{% if live_insert %} data-insert{% endif %}>
       <thead><tr><th class="select"><input type="checkbox" data-select-all aria-label="{% translate 'Select all' %}"></th>
         {% sort_th _("Time") "time" %}{% sort_th _("Decision") "decision" %}{% sort_th _("File") "file" %}
         {% sort_th _("Mac") "mac" %}{% sort_th _("User") "user" %}{% sort_th _("Signing ID") "signing" %}<th></th></tr></thead>
@@ -32,7 +32,7 @@
       </tbody>
     </table>
   {% else %}
-    <table class="table" data-live-updates="{% url 'console:event_updates' %}{% querystring page=None sort=None %}" data-after="{{ max_pk }}"{% if live_insert %} data-insert{% endif %}>
+    <table class="table" data-table="blocked-apps" data-live-updates="{% url 'console:event_updates' %}{% querystring page=None sort=None %}" data-after="{{ max_pk }}"{% if live_insert %} data-insert{% endif %}>
       <thead><tr><th class="select"><input type="checkbox" data-select-all aria-label="{% translate 'Select all' %}"></th>
         {% sort_th _("Program") "program" %}<th>{% translate "Signing ID / Team ID" %}</th>{% sort_th _("Blocks") "blocks" "num" %}
         {% sort_th _("Macs") "macs" "num" %}{% sort_th _("Users") "users" "num" %}{% sort_th _("Last seen") "last" %}<th></th></tr></thead>

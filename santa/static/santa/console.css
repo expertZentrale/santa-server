@@ -283,6 +283,8 @@ form.stack { margin-bottom: 1rem; }
 .field ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: .25rem 1rem; }
 .field ul label { font-weight: 400; display: flex; gap: .35rem; align-items: center; }
 .help { color: var(--muted); }
+/* a help text after a field, before the next one */
+small.help.after-field { margin: -.5rem 0 .9rem; }
 .error, small.error { color: var(--bad); }
 .has-error input, .has-error select, .has-error textarea { border-color: var(--bad); }
 .errorlist { color: var(--bad); margin: 0; padding-left: 1rem; }
@@ -329,7 +331,8 @@ form.inline { display: inline; margin: 0; }
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-  overflow: hidden;
+  /* clip, not hidden: keeps the rounded corners without breaking the sticky header */
+  overflow: clip;
 }
 .table th, .table td { padding: .55rem .75rem; text-align: left; vertical-align: middle; border-bottom: 1px solid var(--border); }
 .table td > input[type="checkbox"], .table th > input[type="checkbox"] { margin: 0; vertical-align: middle; }
@@ -349,6 +352,34 @@ form.inline { display: inline; margin: 0; }
 /* a table wider than the page grows out of it, centered, up to the window; only then it scrolls */
 .table-scroll { width: max-content; min-width: 100%; max-width: calc(100vw - 3rem); margin-left: 50%; transform: translateX(-50%); }
 .table-scroll > .table { margin-bottom: 0; }
+/* the header stays under the top bar; only when the table fits the page (a scrolling box would hold it) */
+main .table-scroll.fits { overflow: visible; }
+main .table-scroll.fits > .table:not(.compact) > thead th { position: sticky; top: var(--topbar-h); z-index: 2; }
+
+/* Column widths (console.js): a handle at the right edge of each header */
+.table th[data-col] { position: relative; }
+.col-resize { position: absolute; top: 0; right: 0; bottom: 0; width: .6rem; cursor: col-resize; z-index: 3; touch-action: none; }
+.col-resize::after { content: ""; position: absolute; top: 25%; bottom: 25%; left: calc(50% - 1px); width: 2px; border-radius: 1px; background: transparent; }
+.table th:hover .col-resize::after, .col-resize:focus-visible::after { background: var(--border); }
+.col-resize:hover::after, .col-resize:active::after { background: var(--accent); }
+.col-resize:focus-visible { outline: none; }
+.table.fixed { table-layout: fixed; min-width: 100%; }
+.table.fixed td, .table.fixed th { overflow: hidden; text-overflow: ellipsis; }
+.table-tools { display: flex; justify-content: flex-end; margin-bottom: .5rem; }
+.columns-picker.right { margin-left: auto; }
+.picker.down .picker-panel { bottom: auto; top: calc(100% + .5rem); left: auto; right: 0; z-index: 25; }
+.picker-panel > .button { margin: .3rem .3rem .1rem; justify-self: start; }
+
+/* The identifier is cut at the width of its column, the full text is in the title */
+.identifier-cell { display: flex; align-items: center; gap: .25rem; min-width: 0; }
+.identifier-cell .identifier { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.table[data-table="rules"] th[data-col="identifier"] { width: 26rem; }
+.clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+/* with the column "Comment" shown, the comment is not repeated under the identifier */
+.table[data-shown~="comment"] .description-inline { display: none; }
+
+/* Keyboard: the row with the focus */
+[data-select-form] tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 /* The bulk actions float at the bottom of the window, so selecting rows never moves the table */
 .bulkbar {
@@ -531,6 +562,9 @@ body:has(.drawer.open) .bulkbar.visible { opacity: 0; visibility: hidden; pointe
 .suggestion code { color: var(--muted); font-size: .8em; }
 .suggestion small { color: var(--muted); }
 .suggestion-note { padding: .6rem .75rem; color: var(--muted); }
+/* CEL: the completion first, its meaning under it */
+.cel-suggestion code { color: var(--text); font-size: .9em; }
+.cel-suggestion small { font-size: .8em; }
 
 /* Facts and drawer */
 .facts { display: grid; grid-template-columns: 9rem 1fr; gap: .4rem 1rem; margin: 0; }
@@ -684,6 +718,9 @@ form.regenerate { margin: .5rem 0 0; }
   .table:not(.keep) td[data-label=""]::before { content: none; }
   .table:not(.keep) td.num { text-align: left; }
   .table:not(.keep) tr.empty td { display: block; }
+  .table.fixed { table-layout: auto; width: auto !important; }
+  .table:not(.keep) th { width: auto !important; }
+  .col-resize, .table-tools { display: none; }
 }
 
 .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(21.25rem, 100%), 1fr)); gap: 0 1rem; }
