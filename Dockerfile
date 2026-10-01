@@ -35,4 +35,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s \
 
 ENTRYPOINT ["/code/entrypoint.sh"]
 
-CMD [ "gunicorn", "santa_server.wsgi", "-b", "0.0.0.0:8000", "--worker-class", "gthread", "--workers", "2", "--threads", "4", "--timeout", "120", "--access-logfile", "-" ]
+# workers, threads and the rest: gunicorn.conf.py (environment variables GUNICORN_*)
+CMD [ "gunicorn", "santa_server.wsgi" ]

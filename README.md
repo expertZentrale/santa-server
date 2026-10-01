@@ -69,6 +69,10 @@ Das Image (`santa_server/settings.py`) wird über Umgebungsvariablen konfigurier
 | `OIDC_USERNAME_CLAIMS`, `OIDC_SCOPES`, `OIDC_PROVIDER_NAME` | | Standard `preferred_username,upn,email`, `openid email profile`, Text der Anmelde-Schaltfläche |
 | `WAIT_FOR_URL` | | Entrypoint: warten, bis diese URL antwortet, z. B. ein Sidecar |
 | `RUN_MIGRATIONS` | | Entrypoint: `0`, um `migrate` beim Start des Webservers zu überspringen |
+| `GUNICORN_WORKERS`, `GUNICORN_THREADS` | | Standard `2` Worker-Prozesse mit je `4` Threads, siehe [Größe des Webservers](#größe-des-webservers) |
+| `GUNICORN_WORKER_CLASS` | | Standard `gthread`; `sync` nur mit einem Thread je Worker |
+| `GUNICORN_TIMEOUT` | | Standard `120` Sekunden ohne Lebenszeichen, bevor ein Worker neu gestartet wird |
+| `GUNICORN_MAX_REQUESTS` | | Standard `1000`: ein Worker wird nach 1000 bis 1100 Anfragen ersetzt (zufällig bis +10 %), `0` = nie |
 
 Für Einstellungen, die keine Variablen sind, oder Werte, die ein Secret Store in eine Datei schreibt: Legen Sie
 `santa_server/settings_local.py` mit `from .settings import *` und Ihren Änderungen an, binden Sie sie in den
@@ -94,6 +98,26 @@ Benutzer ohne Rechte; SQL Server und Redis laufen separat.
 - **Berechtigungen**: Die SyncBaseURL und die Gruppenprofile enthalten das geheime Sync-Token, die Zugangsdaten der
   Sync-API. Nur Benutzer, die Gruppen ändern dürfen, sehen sie und laden sie herunter; eine reine Leseberechtigung für
   Gruppen genügt dafür nicht.
+
+#### Größe des Webservers
+
+gunicorn läuft als Master (PID 1 im Container) mit Worker-Prozessen. Der Master beantwortet keine Anfragen: Er startet
+die Worker, beendet sie bei `SIGTERM` sauber und startet einen neuen, wenn einer abstürzt oder vom OOM-Killer beendet
+wird (Log: `Worker (pid:…) was sent SIGKILL! Perhaps out of memory?`). Der Container läuft dabei weiter.
+
+- **Standard: 2 Worker × 4 Threads (`gthread`).** Die meisten Anfragen warten auf SQL Server, Redis oder einen
+  Katalog; das erledigen die Threads. Der zweite Prozess hält Konsole, Syncs und `/health` erreichbar, während ein
+  anderer rechnet (Archiv entpacken und hashen bei „Jetzt prüfen“ oder einem Upload).
+- **Speicher:** gemessen etwa 25 MB für den Master und 90 MB je Worker unter Last. Für den Standard sind 512 MiB als
+  Limit angemessen, für einen Worker 256 MiB. Liegt `/tmp` im Speicher (`emptyDir` mit `medium: Memory`), zählen auch
+  die heruntergeladenen Releases dazu.
+- **Skalieren:** lieber mehr Replikas als mehr Worker je Container (höchstens zwei). Bei wenig Speicher
+  `GUNICORN_WORKERS=1` und `GUNICORN_THREADS=8`.
+- **Lange Anfragen:** Die stündliche Paketprüfung läuft als eigener Job, nicht im Webserver. „Jetzt prüfen“ und das
+  Genehmigen einer Paketanfrage laden die Releases in der Anfrage; das belegt nur einen Thread, der Worker bleibt
+  erreichbar. Dauert es länger als das Timeout des Ingress, zeigt der Browser einen Fehler, die Prüfung läuft auf dem
+  Server zu Ende: die Seite neu laden. `gevent` oder `eventlet` passen nicht, der SQL-Server-Treiber würde ihre
+  Ereignisschleife blockieren.
 
 ### Anmeldung
 
@@ -443,6 +467,10 @@ The image (`santa_server/settings.py`) is configured with environment variables:
 | `OIDC_USERNAME_CLAIMS`, `OIDC_SCOPES`, `OIDC_PROVIDER_NAME` | | default `preferred_username,upn,email`, `openid email profile`, button text |
 | `WAIT_FOR_URL` | | entrypoint: wait until this URL answers, e.g. a sidecar |
 | `RUN_MIGRATIONS` | | entrypoint: `0` to skip `migrate` when the web server starts |
+| `GUNICORN_WORKERS`, `GUNICORN_THREADS` | | default `2` worker processes with `4` threads each, see [Sizing the web server](#sizing-the-web-server) |
+| `GUNICORN_WORKER_CLASS` | | default `gthread`; `sync` only with one thread per worker |
+| `GUNICORN_TIMEOUT` | | default `120` seconds without a heartbeat before a worker is restarted |
+| `GUNICORN_MAX_REQUESTS` | | default `1000`: a worker is replaced after 1000 to 1100 requests (randomly up to +10 %), `0` = never |
 
 For settings that aren't variables, or values rendered into a file by a secret store: create
 `santa_server/settings_local.py` with `from .settings import *` and your overrides, mount it into the container and
@@ -466,6 +494,25 @@ separately.
 - Put a TLS terminating proxy or ingress in front, and set `TRUST_X_FORWARDED_PROTO=1`.
 - **Permissions**: the SyncBaseURL and the group profiles contain the secret sync token, the credential of the sync
   API. Only users who may change groups see and download them; a read-only group permission doesn't.
+
+#### Sizing the web server
+
+gunicorn runs as a master (PID 1 in the container) with worker processes. The master answers no requests: it starts
+the workers, stops them cleanly on `SIGTERM`, and starts a new one when one crashes or is ended by the OOM killer
+(log: `Worker (pid:…) was sent SIGKILL! Perhaps out of memory?`). The container keeps running.
+
+- **Default: 2 workers × 4 threads (`gthread`).** Most requests wait for SQL Server, Redis or a catalog; the threads
+  handle that. The second process keeps the console, the syncs and `/health` responsive while another one computes
+  (unpacking and hashing an archive for "Check now" or an upload).
+- **Memory:** measured about 25 MB for the master and 90 MB per worker under load. For the default a limit of 512 MiB
+  is reasonable, for one worker 256 MiB. If `/tmp` is in memory (`emptyDir` with `medium: Memory`), the downloaded
+  releases count too.
+- **Scaling:** prefer more replicas over more workers per container (two at most). With little memory set
+  `GUNICORN_WORKERS=1` and `GUNICORN_THREADS=8`.
+- **Long requests:** the hourly package check runs as its own job, not in the web server. "Check now" and approving a
+  package request download the releases in the request; that holds one thread, the worker stays responsive. If it
+  takes longer than the timeout of the ingress, the browser shows an error while the check finishes on the server:
+  reload the page. `gevent` or `eventlet` don't fit, the SQL Server driver would block their event loop.
 
 ### Sign-in
 
