@@ -41,7 +41,7 @@
       <thead><tr><th>{% translate "Approve" %}</th><th>{% translate "Package" %}</th><th>{% translate "Into" %}</th></tr></thead>
       <tbody>{% for package, approve, target in approve_form.rows %}
         <tr><td>{{ approve }}</td>
-          <td><span class="with-icon">{% if package.icon_url %}<img src="{{ package.icon_url }}" alt="" referrerpolicy="no-referrer">{% else %}<span class="icon-space" aria-hidden="true"></span>{% endif %}
+          <td><span class="with-icon">{% if package.icon_url %}<img src="{{ package.icon_url }}" alt="" referrerpolicy="no-referrer">{% endif %}
             <span class="package-text"><strong>{{ package.name|default:package.identifier }}</strong> <code>{{ package.identifier }}</code><small class="muted">{{ package.get_kind_display }}</small></span></span></td>
           <td>{{ target }}</td></tr>{% endfor %}</tbody>
     </table>

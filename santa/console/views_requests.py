@@ -13,7 +13,17 @@ from .. import catalog
 from ..catalog import update_identifier_icons
 from ..models import AccessRequest, AccessRequestPackage, Event, ReleaseSource, RuleType
 from ..releases import ReleaseError, find_binaries, sync_release_source
-from ..services import allow_identifier, binary_identifiers, existing_rules, machines_for_user, request_kinds_for
+from ..services import (
+    allow_identifier,
+    allowed_packages,
+    binary_identifiers,
+    chunked,
+    existing_rules,
+    latest_binary_requests,
+    latest_package_requests,
+    machines_for_user,
+    request_kinds_for,
+)
 from .forms import (
     REQUESTABLE_PACKAGE_KINDS,
     SCOPE_GLOBAL,
@@ -38,24 +48,33 @@ from .utils import (
     staff_required,
 )
 from .views_events import available_rule_types, default_rule_type, show_rule_preview
-from .views_sources import catalog_results
+from .views_sources import catalog_context
 
 MAX_PENDING_PER_USER = 20
 REQUEST_EVENT_DAYS = 30
+# My requests: the time spans, the first one is the default
+PERIODS = {"week": 7, "month": 30, "year": 365, "all": None}
 FORMS = {AccessRequest.Kind.EVENT: RequestEventForm, AccessRequest.Kind.PACKAGE: RequestPackageForm,
          AccessRequest.Kind.OTHER: RequestOtherForm}
 
 
 def blocked_events_of(user):
-    """The latest open block of every binary on the Macs of the user, last 30 days"""
+    """The latest open block of every binary on the Macs of the user, last 30 days.
+
+    Binaries the user has requested already are left out, unless the request was cancelled.
+    """
     events = (Event.objects.select_related("machine")
                            .filter(machine__in=machines_for_user(user), decision__startswith="BLOCK_",
                                    resolved_at__isnull=True,
                                    execution_time__gte=timezone.now() - timedelta(days=REQUEST_EVENT_DAYS))
                            .order_by("-execution_time")[:500])
+    requested = set(AccessRequest.objects.filter(requester=user, kind=AccessRequest.Kind.EVENT)
+                                         .exclude(status=AccessRequest.Status.CANCELLED)
+                                         .values_list("file_sha256", flat=True))
     latest = {}
     for event in events:
-        latest.setdefault(event.file_sha256, event.pk)
+        if event.file_sha256 not in requested:
+            latest.setdefault(event.file_sha256, event.pk)
     return Event.objects.select_related("machine").filter(pk__in=list(latest.values())[:100]) \
                         .order_by("-execution_time")
 
@@ -65,9 +84,17 @@ def blocked_events_of(user):
 
 @login_required
 def my_requests(request):
-    page = paginate(request, AccessRequest.objects.filter(requester=request.user)
-                                                  .select_related("event", "machine").prefetch_related("packages"))
-    return render(request, "request/list.html", {"page": page, "can_request": bool(request_kinds_for(request.user))})
+    period = request.GET.get("period")
+    if period not in PERIODS:
+        period = next(iter(PERIODS))
+    queryset = AccessRequest.objects.filter(requester=request.user)
+    if PERIODS[period]:
+        queryset = queryset.filter(created_at__gte=timezone.now() - timedelta(days=PERIODS[period]))
+    page = paginate(request, queryset.select_related("event", "machine").prefetch_related("packages"))
+    periods = [("week", gettext("Last 7 days")), ("month", gettext("Last month")), ("year", gettext("Last year")),
+               ("all", gettext("All time"))]
+    return render(request, "request/list.html", {"page": page, "can_request": bool(request_kinds_for(request.user)),
+                                                 "period": period, "periods": periods})
 
 
 @login_required
@@ -81,7 +108,11 @@ def new_request(request):
             raise PermissionDenied
         kind = allowed[0]
     events = blocked_events_of(request.user)
-    kwargs = {"events": events} if kind == AccessRequest.Kind.EVENT else {}
+    kwargs = {}
+    if kind == AccessRequest.Kind.EVENT:
+        # the user's own requests are left out of the events already: these are the requests of others
+        kwargs = {"events": events, "requested": latest_binary_requests(
+            events.values_list("file_sha256", flat=True), exclude_user=request.user)}
     initial = {}
     sha256 = request.GET.get("sha256", "").lower()
     if kind == AccessRequest.Kind.EVENT and sha256:
@@ -139,9 +170,15 @@ def _check_request(user, access_request, packages):
         return gettext("You have %(count)s open requests already. Wait for an answer first.") % {
             "count": MAX_PENDING_PER_USER}
     if access_request.kind == AccessRequest.Kind.PACKAGE:
+        allowed = allowed_packages(user, packages)
+        if allowed:
+            return gettext("%(packages)s: already allowed on your Mac, you don't need to request it.") % {
+                "packages": ", ".join(p["identifier"] for p in packages if (p["kind"], p["identifier"]) in allowed)}
         requested = set()
-        for chunk in _chunked([p["identifier"] for p in packages]):
-            requested.update(AccessRequestPackage.objects.filter(access_request__in=pending, identifier__in=chunk)
+        kinds = {p["kind"] for p in packages}
+        for chunk in chunked([p["identifier"] for p in packages]):
+            requested.update(AccessRequestPackage.objects.filter(access_request__in=pending, kind__in=kinds,
+                                                                 identifier__in=chunk)
                                                          .values_list("kind", "identifier"))
         duplicates = [p["identifier"] for p in packages if (p["kind"], p["identifier"]) in requested]
         if duplicates:
@@ -155,11 +192,6 @@ def _check_request(user, access_request, packages):
     if pending.filter(kind=access_request.kind, **duplicate).exists():
         return gettext("You have already asked for this, the request is open.")
     return None
-
-
-def _chunked(values, size=1000):
-    for start in range(0, len(values), size):
-        yield values[start:start + size]
 
 
 @login_required
@@ -178,7 +210,21 @@ def cancel_request(request, pk):
 def request_catalog_search(request):
     if AccessRequest.Kind.PACKAGE not in request_kinds_for(request.user):
         raise PermissionDenied
-    return catalog_results(request)
+    context = catalog_context(request)
+    kind = request.GET.get("kind", "")
+    packages = [{"kind": kind, "identifier": s.identifier} for s in context["suggestions"]]
+    allowed = allowed_packages(request.user, packages)
+    requested = latest_package_requests(packages)
+    own_pending = latest_package_requests(packages, access_request__requester=request.user,
+                                          access_request__status=AccessRequest.Status.PENDING)
+    for suggestion in context["suggestions"]:
+        key = (kind, suggestion.identifier)
+        suggestion.allowed = key in allowed
+        # the own open request wins over a newer one of someone else: a second one is refused anyway
+        suggestion.own_pending = own_pending.get(key)
+        suggestion.requested = suggestion.own_pending or requested.get(key)
+        suggestion.disabled = suggestion.allowed or bool(suggestion.own_pending)
+    return render(request, "console/widgets/_suggestions.html", context)
 
 
 # The administrators

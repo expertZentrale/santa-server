@@ -1,5 +1,5 @@
 <ul class="plain package-list">{% for package in packages %}
-  <li class="with-icon">{% if package.icon_url %}<img src="{{ package.icon_url }}" alt="" referrerpolicy="no-referrer">{% else %}<span class="icon-space" aria-hidden="true"></span>{% endif %}
+  <li class="with-icon">{% if package.icon_url %}<img src="{{ package.icon_url }}" alt="" referrerpolicy="no-referrer">{% endif %}
     <span class="package-text"><strong>{{ package.name|default:package.identifier }}</strong> <code>{{ package.identifier }}</code>
       <small class="muted">{{ package.get_kind_display }}</small></span>
     <span class="badge {% if package.status == 'APPROVED' %}ok{% elif package.status == 'DENIED' %}bad{% else %}info{% endif %}">{{ package.get_status_display }}</span></li>

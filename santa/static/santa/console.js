@@ -377,7 +377,8 @@
     });
     box.addEventListener("click", (event) => {
       const option = event.target.closest(".suggestion");
-      if (!option) return;
+      // already allowed on the Mac of the user
+      if (!option || option.getAttribute("aria-disabled") === "true") return;
       add(option.dataset.identifier, option.dataset.name, option.dataset.icon);
       search.value = "";
       box.classList.remove("open");
@@ -396,7 +397,7 @@
   }
 
   function moveSelection(box, step) {
-    const options = [...box.querySelectorAll(".suggestion")];
+    const options = [...box.querySelectorAll(".suggestion:not([aria-disabled=true])")];
     if (!options.length) return;
     let index = options.findIndex((option) => option.getAttribute("aria-selected") === "true");
     options.forEach((option) => option.setAttribute("aria-selected", "false"));

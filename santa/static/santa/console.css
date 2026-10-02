@@ -507,15 +507,13 @@ body:has(.drawer.open) .bulkbar.visible { opacity: 0; visibility: hidden; pointe
 .table td.toggle { cursor: pointer; }
 
 /* Icons of the catalog entries */
-.chip img, .suggestion img, .with-icon img, .icon-space {
+.chip img, .suggestion img, .with-icon img {
   flex: none;
   width: 1.5rem;
   height: 1.5rem;
   border-radius: var(--radius-sm);
   object-fit: contain;
 }
-.icon-space { display: inline-block; }
-.with-icon .icon-space { width: 1.75rem; height: 1.75rem; }
 .with-icon { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
 .with-icon img { width: 1.75rem; height: 1.75rem; }
 
@@ -562,6 +560,8 @@ body:has(.drawer.open) .bulkbar.visible { opacity: 0; visibility: hidden; pointe
 .suggestion code { color: var(--muted); font-size: .8em; }
 .suggestion small { color: var(--muted); }
 .suggestion-note { padding: .6rem .75rem; color: var(--muted); }
+.suggestion[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
+.suggestion[aria-disabled="true"]:hover { background: none; }
 /* CEL: the completion first, its meaning under it */
 .cel-suggestion code { color: var(--text); font-size: .9em; }
 .cel-suggestion small { font-size: .8em; }
@@ -731,6 +731,8 @@ a.chip:hover { text-decoration: none; border-color: var(--accent); }
    centered on the text */
 .field > div[id]:has(input[type="checkbox"], input[type="radio"]) { display: flex; flex-wrap: wrap; gap: .35rem 1.25rem; }
 .field > div[id] label { display: inline-flex; align-items: center; gap: .45rem; font-weight: 400; cursor: pointer; }
+/* one choice per line, e.g. the blocked programs of the request form */
+.field > div[id].stacked { flex-direction: column; }
 
 .topbar nav { scrollbar-width: none; }
 .topbar nav::-webkit-scrollbar { display: none; }

@@ -391,9 +391,11 @@ class RequestEventForm(forms.Form):
     justification = forms.CharField(max_length=1000, widget=forms.Textarea(attrs={"rows": 4}),
                                     label=_("Justification"), help_text=_("Why do you need it?"))
 
-    def __init__(self, *args, events=None, **kwargs):
+    def __init__(self, *args, events=None, requested=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["event"].queryset = events
+        # {sha256: request of someone else}, shown as a badge next to the binary
+        self.requested = requested or {}
         self.fields["event"].label_from_instance = (
             lambda e: f"{e.file_name or e.file_path} – {e.machine.hostname or e.machine.serial_number}, "
                       f"{timezone.localtime(e.execution_time):%d.%m.%Y %H:%M}")

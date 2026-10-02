@@ -171,7 +171,7 @@ def catalog_search(request):
     return catalog_results(request)
 
 
-def catalog_results(request):
+def catalog_context(request):
     kind = request.GET.get("kind", "")
     query = request.GET.get("q", "")
     error = None
@@ -179,7 +179,9 @@ def catalog_results(request):
         suggestions = catalog.search(kind, query)
     except catalog.CatalogError as e:
         suggestions, error = [], str(e)
-    return render(request, "console/widgets/_suggestions.html", {
-        "suggestions": suggestions, "error": error, "query": query.strip(),
-        "searchable": kind in catalog.SEARCHABLE_KINDS,
-    })
+    return {"suggestions": suggestions, "error": error, "query": query.strip(),
+            "searchable": kind in catalog.SEARCHABLE_KINDS}
+
+
+def catalog_results(request):
+    return render(request, "console/widgets/_suggestions.html", catalog_context(request))
