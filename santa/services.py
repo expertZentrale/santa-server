@@ -206,10 +206,12 @@ def allowed_packages(user, packages):
 def latest_package_requests(packages, **filters):
     """The newest request of every (kind, identifier), of anyone, not cancelled: {(kind, identifier): package}"""
     wanted = {(package["kind"], package["identifier"]) for package in packages}
+    kinds = {kind for kind, _ in wanted}
     latest = {}
     for chunk in chunked({identifier for _, identifier in wanted}):
+        # kind and identifier: the index of AccessRequestPackage
         found = (AccessRequestPackage.objects.select_related("access_request")
-                                             .filter(identifier__in=chunk, **filters)
+                                             .filter(kind__in=kinds, identifier__in=chunk, **filters)
                                              .exclude(access_request__status=AccessRequest.Status.CANCELLED)
                                              .order_by("-access_request__created_at"))
         for package in found:

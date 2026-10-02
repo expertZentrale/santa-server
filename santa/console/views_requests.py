@@ -175,8 +175,10 @@ def _check_request(user, access_request, packages):
             return gettext("%(packages)s: already allowed on your Mac, you don't need to request it.") % {
                 "packages": ", ".join(p["identifier"] for p in packages if (p["kind"], p["identifier"]) in allowed)}
         requested = set()
+        kinds = {p["kind"] for p in packages}
         for chunk in chunked([p["identifier"] for p in packages]):
-            requested.update(AccessRequestPackage.objects.filter(access_request__in=pending, identifier__in=chunk)
+            requested.update(AccessRequestPackage.objects.filter(access_request__in=pending, kind__in=kinds,
+                                                                 identifier__in=chunk)
                                                          .values_list("kind", "identifier"))
         duplicates = [p["identifier"] for p in packages if (p["kind"], p["identifier"]) in requested]
         if duplicates:

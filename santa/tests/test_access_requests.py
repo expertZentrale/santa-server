@@ -133,7 +133,10 @@ class UserRequestTestCase(ConsoleBase):
         colleague = User.objects.create_user("colleague@example.com")
         requested = AccessRequest.objects.create(requester=colleague, kind="PACKAGE", title="t", justification="x")
         AccessRequestPackage.objects.create(access_request=requested, kind="NPM_PACKAGE", identifier="left-pad")
+        # the same name in another catalog is another package
+        AccessRequestPackage.objects.create(access_request=requested, kind="HOMEBREW_FORMULA", identifier="vite")
         response = self.search("NPM_PACKAGE", "esbuild", "vite", "sales-tool", "off-tool", "bad-tool", "left-pad")
+        self.assertEqual([s.identifier for s in response.context["suggestions"] if s.requested], ["left-pad"])
         allowed = {s.identifier: s.allowed for s in response.context["suggestions"]}
         self.assertEqual(allowed, {"esbuild": True, "vite": True, "sales-tool": False, "off-tool": False,
                                    "bad-tool": False, "left-pad": False})
