@@ -1,11 +1,14 @@
 import json
+from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.admin.models import LogEntry
 from django.contrib.auth.models import Permission, User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
+from django.utils import timezone
 
+from santa.catalog import Suggestion
 from santa.models import AccessRequest, AccessRequestPackage, Event, Policy, ReleaseSource, Rule, RuleType
 from santa.services import machines_for_user
 
@@ -40,10 +43,34 @@ class UserRequestTestCase(ConsoleBase):
         access_request = AccessRequest.objects.get()
         self.assertEqual((access_request.title, access_request.machine, access_request.file_sha256),
                          ("Colima", self.machine, SHA_A))
-        # same binary again
+        # requested: not offered any more
+        self.assertNotIn(event, self.client.get(reverse("requests:new")).context["form"].fields["event"].queryset)
         response = self.client.post(reverse("requests:new"), {"kind": "EVENT", "event": event.pk,
                                                               "justification": "again"})
-        self.assertContains(response, "already asked")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(AccessRequest.objects.count(), 1)
+
+    def test_requested_binaries_are_not_offered_again(self):
+        event = self.make_event()
+        access_request = AccessRequest.objects.create(requester=self.user, kind="EVENT", file_sha256=SHA_A,
+                                                      title="colima", justification="x")
+        for status in ("PENDING", "APPROVED", "DENIED", "CANCELLED"):
+            access_request.status = status
+            access_request.save()
+            events = self.client.get(reverse("requests:new")).context["form"].fields["event"].queryset
+            self.assertEqual(event in events, status == "CANCELLED", status)
+
+    def test_requests_of_others_are_shown_without_the_requester(self):
+        self.make_event()
+        colleague = User.objects.create_user("colleague@example.com")
+        other = AccessRequest.objects.create(requester=colleague, kind="EVENT", file_sha256=SHA_A, title="colima",
+                                             justification="x", status=AccessRequest.Status.DENIED)
+        AccessRequest.objects.create(requester=colleague, kind="EVENT", file_sha256=SHA_A, title="colima",
+                                     justification="x", status=AccessRequest.Status.CANCELLED)
+        response = self.client.get(reverse("requests:new"))
+        date = timezone.localtime(other.created_at).strftime("%d.%m.%Y")
+        self.assertContains(response, f'<span class="badge bad">Requested on {date} · Denied</span>')
+        self.assertNotContains(response, "colleague")
 
     def test_someone_elses_event_cannot_be_requested(self):
         event = self.make_event(machine=self.other_machine)
@@ -78,6 +105,73 @@ class UserRequestTestCase(ConsoleBase):
         self.assertContains(response, "vite")
         self.assertContains(self.post_packages([]), "Add at least one package")
         self.assertContains(self.client.get(reverse("requests:list")), "rust-analyzer")
+
+    def test_allowed_packages_cannot_be_requested(self):
+        ReleaseSource.objects.create(name="dev tools", kind="NPM_PACKAGE", identifier="vite\nesbuild")
+        ReleaseSource.objects.get().groups.set([self.dev])
+        response = self.post_packages([{"kind": "NPM_PACKAGE", "identifier": "esbuild"},
+                                       {"kind": "NPM_PACKAGE", "identifier": "left-pad"}])
+        self.assertContains(response, "esbuild: already allowed on your Mac")
+        self.assertFalse(AccessRequest.objects.exists())
+
+    def search(self, kind, *identifiers):
+        suggestions = [Suggestion(identifier=identifier) for identifier in identifiers]
+        with patch("santa.catalog.search", return_value=suggestions):
+            return self.client.get(reverse("requests:catalog_search"), {"kind": kind, "q": "x"})
+
+    def test_catalog_search_marks_allowed_and_requested_packages(self):
+        ReleaseSource.objects.create(name="global", kind="NPM_PACKAGE", identifier="esbuild", is_global=True)
+        ReleaseSource.objects.create(name="dev", kind="NPM_PACKAGE", identifier="vite").groups.set([self.dev])
+        sales = ReleaseSource.objects.create(name="sales", kind="NPM_PACKAGE", identifier="sales-tool")
+        sales.groups.set([self.sales])
+        ReleaseSource.objects.create(name="off", kind="NPM_PACKAGE", identifier="off-tool", is_global=True,
+                                     is_enabled=False)
+        ReleaseSource.objects.create(name="blocked", kind="NPM_PACKAGE", identifier="bad-tool", is_global=True,
+                                     policy=Policy.BLOCKLIST)
+        ReleaseSource.objects.create(name="other kind", kind="HOMEBREW_FORMULA", identifier="left-pad",
+                                     is_global=True)
+        colleague = User.objects.create_user("colleague@example.com")
+        requested = AccessRequest.objects.create(requester=colleague, kind="PACKAGE", title="t", justification="x")
+        AccessRequestPackage.objects.create(access_request=requested, kind="NPM_PACKAGE", identifier="left-pad")
+        response = self.search("NPM_PACKAGE", "esbuild", "vite", "sales-tool", "off-tool", "bad-tool", "left-pad")
+        allowed = {s.identifier: s.allowed for s in response.context["suggestions"]}
+        self.assertEqual(allowed, {"esbuild": True, "vite": True, "sales-tool": False, "off-tool": False,
+                                   "bad-tool": False, "left-pad": False})
+        self.assertContains(response, 'data-identifier="esbuild" data-name="" data-icon="" aria-disabled="true"')
+        date = timezone.localtime(requested.created_at).strftime("%d.%m.%Y")
+        self.assertContains(response, f'<span class="badge info">Requested on {date} · Pending</span>')
+        self.assertNotContains(response, "colleague")
+        # someone else's request: still selectable
+        self.assertContains(response, 'data-identifier="left-pad" data-name="" data-icon="">')
+        # no room kept for a missing icon
+        self.assertNotContains(response, "icon-space")
+        # the own open request: grayed out
+        own = AccessRequest.objects.create(requester=self.user, kind="PACKAGE", title="t", justification="x")
+        AccessRequestPackage.objects.create(access_request=own, kind="NPM_PACKAGE", identifier="left-pad")
+        response = self.search("NPM_PACKAGE", "left-pad")
+        self.assertContains(response, 'data-identifier="left-pad" data-name="" data-icon="" aria-disabled="true"')
+        self.assertContains(response, "You requested this on")
+        own.status = AccessRequest.Status.CANCELLED
+        own.save()
+        # cancelled requests don't count
+        requested.status = AccessRequest.Status.CANCELLED
+        requested.save()
+        self.assertNotContains(self.search("NPM_PACKAGE", "left-pad"), "Already requested")
+
+    def test_my_requests_by_time_span(self):
+        ages = {"today": 0, "last week": 10, "last month": 100, "long ago": 800}
+        for title, days in ages.items():
+            access_request = AccessRequest.objects.create(requester=self.user, kind="OTHER", title=title,
+                                                          justification="x")
+            AccessRequest.objects.filter(pk=access_request.pk).update(
+                created_at=timezone.now() - timedelta(days=days))
+        for period, expected in [(None, ["today"]), ("bogus", ["today"]), ("month", ["today", "last week"]),
+                                 ("year", ["today", "last week", "last month"]), ("all", list(ages))]:
+            response = self.client.get(reverse("requests:list"), {"period": period} if period else {})
+            self.assertEqual([r.title for r in response.context["page"]], expected, period)
+        self.assertContains(self.client.get(reverse("requests:list")), 'aria-current="true">Last 7 days')
+        AccessRequest.objects.filter(title="today").delete()
+        self.assertContains(self.client.get(reverse("requests:list")), "anything in this time span")
 
     def test_other_requests_and_catalog_search(self):
         self.client.post(reverse("requests:new"), {"kind": "OTHER", "title": "Figma", "justification": "Design",

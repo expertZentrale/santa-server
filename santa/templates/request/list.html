@@ -5,6 +5,11 @@
 <div class="page-head"><h1>{% translate "My requests" %}</h1>
   {% if can_request %}<div class="actions"><a class="button primary" href="{% url 'requests:new' %}">{% translate "Request software" %}</a></div>{% endif %}</div>
 <p class="muted">{% translate "Ask your IT team to allow a program that Santa blocked on your Mac, a package, or anything else." %}</p>
+<div class="filters">
+  <span class="segmented" role="group" aria-label="{% translate 'Time span' %}">
+    {% for value, label in periods %}<a href="{% querystring period=value page=None %}"{% if value == period %} aria-current="true"{% endif %}>{{ label }}</a>{% endfor %}
+  </span>
+</div>
 {% for r in page %}
 <section class="card request">
   <div class="request-head"><strong>{{ r.title }}</strong>
@@ -16,7 +21,7 @@
   {% if r.is_pending %}<form method="post" action="{% url 'requests:cancel' r.pk %}">{% csrf_token %}<button class="link small">{% translate "Cancel request" %}</button></form>{% endif %}
 </section>
 {% empty %}
-<section class="card empty">{% translate "You haven't requested anything yet." %}</section>
+<section class="card empty">{% if period == "all" %}{% translate "You haven't requested anything yet." %}{% else %}{% translate "You haven't requested anything in this time span." %}{% endif %}</section>
 {% endfor %}
 {% include "console/_pagination.html" %}
 {% endblock %}

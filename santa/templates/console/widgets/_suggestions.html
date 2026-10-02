@@ -4,9 +4,9 @@
   {% if query %}<div class="suggestion-note">{% blocktranslate %}No catalog search for this kind, press Enter to add “{{ query }}”.{% endblocktranslate %}</div>{% endif %}
 {% elif suggestions %}
   {% for s in suggestions %}
-  <button type="button" class="suggestion" role="option" data-identifier="{{ s.identifier }}" data-name="{{ s.name }}" data-icon="{{ s.icon_url }}">
-    {% if s.icon_url %}<img src="{{ s.icon_url }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% else %}<span class="icon-space" aria-hidden="true"></span>{% endif %}
-    <span><span class="suggestion-title"><strong>{{ s.name|default:s.identifier }}</strong>{% if s.verified %}<span class="badge ok" title="{% translate 'Verified publisher' %}">✓ {% translate "verified" %}</span>{% endif %}</span>
+  <button type="button" class="suggestion" role="option" data-identifier="{{ s.identifier }}" data-name="{{ s.name }}" data-icon="{{ s.icon_url }}"{% if s.disabled %} aria-disabled="true"{% endif %}>
+    {% if s.icon_url %}<img src="{{ s.icon_url }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% endif %}
+    <span><span class="suggestion-title"><strong>{{ s.name|default:s.identifier }}</strong>{% if s.verified %}<span class="badge ok" title="{% translate 'Verified publisher' %}">✓ {% translate "verified" %}</span>{% endif %}{% if s.allowed %}<span class="badge ok">{% translate "Already allowed" %}</span>{% elif s.requested %}{% include "request/_requested_badge.html" with status=s.requested.status label=s.requested.get_status_display date=s.requested.access_request.created_at own=s.own_pending %}{% endif %}</span>
       <code>{{ s.identifier }}</code>
       {% if s.description %}<small>{{ s.description|truncatechars:110 }}</small>{% endif %}</span>
   </button>

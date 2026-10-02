@@ -1,7 +1,17 @@
 from django.db.models import Q
 from django.utils import timezone
 
-from .models import AccessRequest, Event, Machine, Policy, ReleaseVersion, Rule, RuleType
+from .models import (
+    AccessRequest,
+    AccessRequestPackage,
+    Event,
+    Machine,
+    Policy,
+    ReleaseSource,
+    ReleaseVersion,
+    Rule,
+    RuleType,
+)
 
 EVENT_IDENTIFIER_FIELDS = {
     RuleType.BINARY: "file_sha256",
@@ -167,3 +177,55 @@ def machines_for_user(user):
         return Machine.objects.none()
     local_part = username.split("@", 1)[0]
     return Machine.objects.filter(Q(primary_user__iexact=username) | Q(primary_user__iexact=local_part))
+
+
+def chunked(values, size=1000):
+    """SQL Server: at most 2100 parameters per query"""
+    values = list(values)
+    for start in range(0, len(values), size):
+        yield values[start:start + size]
+
+
+def allowed_packages(user, packages):
+    """The (kind, identifier) of the packages that an enabled allow package rule already covers on the Macs of the user
+
+    Package rules are global or for groups, so the groups of the user's Macs decide.
+    """
+    wanted = {(package["kind"], package["identifier"]) for package in packages}
+    if not wanted:
+        return set()
+    groups = machines_for_user(user).values_list("group_id", flat=True)
+    # identifier is a multi-line TextField: split it here instead of filtering on it
+    sources = (ReleaseSource.objects.filter(kind__in={kind for kind, _ in wanted}, is_enabled=True,
+                                            policy__in=ALLOW_POLICIES)
+                                    .filter(Q(is_global=True) | Q(groups__in=groups))
+                                    .values_list("kind", "identifier"))
+    return {(kind, line.strip()) for kind, identifier in sources for line in identifier.splitlines()} & wanted
+
+
+def latest_package_requests(packages, **filters):
+    """The newest request of every (kind, identifier), of anyone, not cancelled: {(kind, identifier): package}"""
+    wanted = {(package["kind"], package["identifier"]) for package in packages}
+    latest = {}
+    for chunk in chunked({identifier for _, identifier in wanted}):
+        found = (AccessRequestPackage.objects.select_related("access_request")
+                                             .filter(identifier__in=chunk, **filters)
+                                             .exclude(access_request__status=AccessRequest.Status.CANCELLED)
+                                             .order_by("-access_request__created_at"))
+        for package in found:
+            if (package.kind, package.identifier) in wanted:
+                latest.setdefault((package.kind, package.identifier), package)
+    return latest
+
+
+def latest_binary_requests(sha256s, exclude_user=None):
+    """The newest event request of every binary, cancelled ones left out: {sha256: request}"""
+    latest = {}
+    for chunk in chunked(set(sha256s)):
+        found = (AccessRequest.objects.filter(kind=AccessRequest.Kind.EVENT, file_sha256__in=chunk)
+                                      .exclude(status=AccessRequest.Status.CANCELLED).order_by("-created_at"))
+        if exclude_user is not None:
+            found = found.exclude(requester=exclude_user)
+        for access_request in found:
+            latest.setdefault(access_request.file_sha256, access_request)
+    return latest

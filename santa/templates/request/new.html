@@ -1,4 +1,4 @@
-{% extends "console/base.html" %}{% load i18n %}
+{% extends "console/base.html" %}{% load console i18n %}
 {% block title %}{% translate "Request software" %}{% endblock %}
 {% block main_class %}narrow{% endblock %}
 {% block content %}
@@ -18,7 +18,14 @@
     {% if not form.fields.event.queryset.exists %}
       <p class="muted">{% if has_machines %}{% translate "Nothing was blocked on your Mac in the last 30 days." %}{% else %}{% translate "We couldn't find your Mac. Use “Package” or “Other” instead, and name your Mac in the text." %}{% endif %}</p>
     {% else %}
-      {% include "console/_field.html" with field=form.event %}
+      {# the radios by hand: the badge of an earlier request of someone else next to the binary #}
+      <div class="field{% if form.event.errors %} has-error{% endif %}" data-field="event">
+        <label for="{{ form.event.id_for_label }}">{{ form.event.label }}</label>
+        <div id="{{ form.event.auto_id }}" class="stacked">{% for radio in form.event %}{% with other=form.requested|get_item:radio.data.value.instance.file_sha256 %}
+          <div><label for="{{ radio.id_for_label }}">{{ radio.tag }} {{ radio.choice_label }}{% if other %} {% include "request/_requested_badge.html" with status=other.status label=other.get_status_display date=other.created_at %}{% endif %}</label></div>
+        {% endwith %}{% endfor %}</div>
+        {% for error in form.event.errors %}<small class="error">{{ error }}</small>{% endfor %}
+      </div>
       {% include "console/_field.html" with field=form.justification %}
       <button class="button primary">{% translate "Send request" %}</button>
     {% endif %}
