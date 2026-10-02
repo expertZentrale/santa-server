@@ -3,16 +3,10 @@
 {% block content %}
 <div class="page-head">
   <h1>{% translate "Package rules" %}</h1>
+  {% translate "Watch packages in a catalog. Every new version is downloaded, its executables become execution rules." as help %}{% include "console/_help.html" with text=help %}
   <div class="actions">{% if perms.santa.add_releasesource %}{% url 'console:source_add' as add_url %}<a class="button primary" href="{{ add_url }}" hx-get="{{ add_url }}" hx-target="#drawer">{% translate "New package rule" %}</a>{% endif %}</div>
 </div>
-<p class="muted">{% translate "Watch packages in a catalog. Every new version is downloaded, its executables become execution rules." %}</p>
-<form class="filters" method="get">
-  {% if params.sort %}<input type="hidden" name="sort" value="{{ params.sort }}">{% endif %}
-  <input type="search" name="q" value="{{ params.q }}" placeholder="{% translate 'Name or package…' %}" aria-label="{% translate 'Search' %}">
-  <select name="kind" aria-label="{% translate 'Catalog' %}"><option value="">{% translate "All catalogs" %}</option>{% for value, label in kinds %}<option value="{{ value }}" {% if params.kind == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
-  <select name="status" aria-label="{% translate 'Status' %}"><option value="">{% translate "Any status" %}</option><option value="error" {% if params.status == "error" %}selected{% endif %}>{% translate "With errors" %}</option><option value="disabled" {% if params.status == "disabled" %}selected{% endif %}>{% translate "Disabled" %}</option></select>
-  <button class="button">{% translate "Filter" %}</button>
-</form>
+{% include "console/widgets/_filter_bar.html" %}
 <table class="table" data-table="package-rules">
   <thead><tr>{% sort_th _("Package rule") "name" %}{% sort_th _("Catalog") "kind" %}<th>{% translate "Latest versions" %}</th><th>{% translate "Rules" %}</th><th>{% translate "Scope" %}</th>{% sort_th _("Status") "checked" %}<th></th></tr></thead>
   <tbody>

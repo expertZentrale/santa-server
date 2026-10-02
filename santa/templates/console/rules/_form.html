@@ -14,7 +14,7 @@
     <div data-show-when="policy=CEL">
       <div data-show-when="rule_type=TEAMID">{% include "console/_field.html" with field=form.signing_prefixes %}</div>
       {% include "console/_field.html" with field=form.cel_expr %}
-      <small class="help after-field">{% blocktranslate %}Return a policy, e.g. <code>target.signing_time &gt;= timestamp('2025-01-01T00:00:00Z') ? ALLOWLIST : BLOCKLIST</code>, or for a Team ID rule <code>target.signing_id.startsWith("UBF8T346G9:com.microsoft.teams2") ? ALLOWLIST : BLOCKLIST</code>. Santa has no wildcards in identifiers. Evaluated by Santa on the Mac; suggestions while typing, other fields and functions work too.{% endblocktranslate %}</small></div>
+      {% include "console/rules/_cel_help.html" %}</div>
     <div data-show-when="policy=BLOCKLIST|CEL">
       {% include "console/_field.html" with field=form.custom_msg %}
       {% include "console/_field.html" with field=form.custom_url %}</div>

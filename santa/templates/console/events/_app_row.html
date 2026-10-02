@@ -1,11 +1,11 @@
 {% load console i18n %}<tr data-key="{{ row.file_sha256 }}">
           <td class="select"><input type="checkbox" name="shas" value="{{ row.file_sha256 }}" aria-label="{% translate 'Select' %} {{ row.file_name }}"></td>
           <td><a href="{% url 'console:event' row.last_pk %}" hx-get="{% url 'console:event' row.last_pk %}" hx-target="#drawer" class="strong">{{ row.file_name|default:_("(no name)") }}</a>
-            <small class="muted mono" title="{{ row.file_path }}">{{ row.file_path|truncatechars:60 }}</small></td>
+            <small class="muted mono cell-path" title="{{ row.file_path }}">{{ row.file_path }}</small></td>
           <td class="mono small">{{ row.signing_id|default:"–" }}<br><span class="muted">{{ row.team_id|default:_("unsigned") }}</span></td>
           <td class="num">{{ row.event_count }}</td><td class="num">{{ row.machine_count }}</td><td class="num">{{ row.user_count }}</td>
           <td>{{ row.last_seen|date:"d.m.Y H:i" }}</td>
-          <td class="nowrap">{% if row.rules %}{% with first=row.rules.0.rule %}<span class="badge {% if row.rules.0.applies %}{{ first.policy|policy_class }}{% endif %}" title="{% for match in row.rules %}{{ match.rule.get_policy_display }} · {{ match.rule.get_rule_type_display }}{% if not match.applies %} ({% translate "not for these Macs" %}){% endif %}{% if not forloop.last %}; {% endif %}{% endfor %}">{% translate "Rule exists" %}</span>{% endwith %}{% endif %}
-            {% if row.has_request %}<a class="badge info" href="{% url 'console:requests' %}">{% translate "requested" %}</a>{% endif %}
-            <a class="button small" href="{% url 'console:events' %}?view=all&amp;sha256={{ row.file_sha256 }}">{% translate "events" %}</a></td>
+          <td class="nowrap">{% if row.rules %}{% with first=row.rules.0.rule %}{% url 'console:rule' first.pk as rule_url %}<a class="badge {% if row.rules.0.applies %}{{ first.policy|policy_class }}{% endif %}" href="{{ rule_url }}" hx-get="{{ rule_url }}" hx-target="#drawer" title="{% for match in row.rules %}{{ match.rule.get_policy_display }} · {{ match.rule.get_rule_type_display }}{% if not match.applies %} ({% translate "not for these Macs" %}){% endif %}{% if not forloop.last %}; {% endif %}{% endfor %}">{% translate "Rule exists" %}</a>{% endwith %}{% endif %}
+            {% if row.has_request %}<a class="badge info" href="{% url 'console:requests' %}">{% translate "requested" %}</a>{% endif %}</td>
+          <td class="row-actions"><a class="button small" href="{% url 'console:events' %}?view=all&amp;sha256={{ row.file_sha256 }}">{% translate "events" %}</a></td>
         </tr>

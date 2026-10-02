@@ -14,6 +14,7 @@ from ..models import AccessRequest, ClientMode, Event, Group, Machine, Rule, gen
 from ..profiles import base_profile, group_profile
 from ..rules import GLOBAL, GROUP, MACHINE, effective_rule_objects
 from ..services import can_see_sync_token, remove_machine_from_rules, rules_only_for
+from .filters import Facet, any_of, chosen, filter_bar, remember_filters
 from .forms import GroupForm
 from .utils import (
     changed_message,
@@ -148,21 +149,23 @@ def filter_machines(request, machines):
     if q:
         machines = machines.filter(Q(serial_number__icontains=q) | Q(hostname__icontains=q)
                                    | Q(primary_user__icontains=q) | Q(machine_id__iexact=q))
-    if params.get("group", "").isdigit():
-        machines = machines.filter(group_id=params["group"])
-    if params.get("mode") in ClientMode.values:
-        machines = machines.filter(client_mode=params["mode"])
-    if params.get("status") == "stale":
-        machines = machines.filter(Q(last_postflight_at__lt=timezone.now() - STALE_AFTER)
-                                   | Q(last_postflight_at__isnull=True))
-    elif params.get("status") == "clean":
-        machines = machines.filter(clean_sync_requested=True)
+    if groups := [value for value in chosen(params, "group") if value.isdigit()]:
+        machines = machines.filter(group_id__in=groups)
+    if modes := chosen(params, "mode", ClientMode.values):
+        machines = machines.filter(client_mode__in=modes)
+    statuses = {"stale": Q(last_postflight_at__lt=timezone.now() - STALE_AFTER) | Q(last_postflight_at__isnull=True),
+                "clean": Q(clean_sync_requested=True)}
+    status = any_of([statuses[value] for value in chosen(params, "status", statuses)])
+    if status is not None:
+        machines = machines.filter(status)
     return machines
 
 
 @staff_required
 def machines(request):
     require_perms(request, "view_machine")
+    if remembered := remember_filters(request, "machines"):
+        return remembered
     queryset, sort = sort_by(request, filter_machines(request, Machine.objects.select_related("group")), {
         "mac": ["hostname", "serial_number"], "user": "primary_user", "group": "group__name", "mode": "client_mode",
         "santa": "santa_version", "sync": "last_postflight_at",
@@ -172,8 +175,13 @@ def machines(request):
     for machine in page:
         machine.is_stale = not machine.last_postflight_at or machine.last_postflight_at < stale_before
     return render(request, "console/machines/list.html", {
-        "page": page, "sort": sort, "params": request.GET, "groups": Group.objects.order_by("name"),
-        "modes": ClientMode.choices,
+        "page": page, "sort": sort, "params": request.GET,
+        **filter_bar(request, "machines", [
+            Facet("group", gettext("Group"), choices=Group.objects.order_by("name").values_list("pk", "name")),
+            Facet("mode", gettext("Mode"), choices=ClientMode.choices),
+            Facet("status", gettext("Status"), choices=[("stale", gettext("Not synced for 2 days")),
+                                                        ("clean", gettext("Clean sync pending"))]),
+        ], hidden=("sort",), placeholder=gettext("Hostname, serial number, user…")),
     })
 
 

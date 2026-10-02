@@ -745,6 +745,46 @@
     root.querySelectorAll("[data-source-form]").forEach(setupIdentifiers);
     root.querySelectorAll("[data-package-form]").forEach(setupPackageRequest);
     root.querySelectorAll("[data-select-form]").forEach(updateSelection);
+    root.querySelectorAll("[data-filter-form]").forEach(setupFilterBar);
+  }
+
+  // The filter bar (widgets/_filter_bar.html): a chip applies its checkboxes when it closes, a preset or choice
+  // right away, a date range with "Apply"; "+ Filter" shows the chip of a filter and opens it
+  function setupFilterBar(form) {
+    if (form.dataset.filterReady) return;
+    form.dataset.filterReady = "1";
+    const submit = () => (form.requestSubmit ? form.requestSubmit() : form.submit());
+    form.querySelectorAll("details[data-chip]").forEach((chip) => {
+      let changed = false;
+      chip.addEventListener("change", (event) => {
+        if (event.target.type === "radio") {
+          // the date range waits for "Apply"
+          if (!event.target.hasAttribute("data-range")) submit();
+          return;
+        }
+        if (event.target.type === "checkbox") changed = true;
+      });
+      // closed without a change, a chip added with "+ Filter" stays ("all"); it goes with the next search
+      chip.addEventListener("toggle", () => {
+        if (!chip.open && changed) submit();
+      });
+    });
+    form.addEventListener("click", (event) => {
+      const item = event.target.closest("[data-open-facet]");
+      if (!item) return;
+      const chip = form.querySelector(`.filter-chip[data-facet="${item.dataset.openFacet}"]`);
+      if (!chip) return;
+      item.closest("details").open = false;
+      item.hidden = true;
+      chip.hidden = false;
+      chip.querySelector("fieldset")?.removeAttribute("disabled");
+      // after the click: the document closes the pickers the click was not in
+      requestAnimationFrame(() => {
+        const details = chip.querySelector("details");
+        details.open = true;
+        details.querySelector("input")?.focus();
+      });
+    });
   }
 
   // The server shows the times in the time zone of the browser (unless the profile sets one)
@@ -944,14 +984,19 @@
     box.classList.toggle("fits", box.scrollWidth <= box.clientWidth + 1);
   }
 
+  // the column chooser shows at most this many columns without scrolling (the rules have 9)
+  const MAX_COLUMN_ROWS = 9;
+
   function setupTable(table) {
     if (table.dataset.tableReady || !table.tHead) return;
     table.dataset.tableReady = "1";
     const texts = document.getElementById("table-texts")?.dataset || {};
     const settings = tableSettings(table);
     [...table.tHead.rows[0].cells].forEach((th) => {
-      if (!th.dataset.col && !th.classList.contains("select")) {
-        th.dataset.col = th.textContent.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-") || `col${th.cellIndex}`;
+      const name = th.textContent.trim();
+      // a column without a name (e.g. the buttons) can't be chosen or resized: it would be an empty entry
+      if (!th.dataset.col && !th.classList.contains("select") && name) {
+        th.dataset.col = name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || `col${th.cellIndex}`;
       }
     });
     tableColumns(table).forEach(({ th, key }) => {
@@ -963,18 +1008,25 @@
       handle.setAttribute("aria-label", `${texts.resize || "Resize column"}: ${th.textContent.trim()}`);
       th.append(handle);
       const setWidth = (width) => {
-        settings.widths = { ...(settings.widths || {}), [key]: Math.max(3, Math.round(width * 10) / 10) };
+        // rounded up: a cell a fraction of a pixel too narrow shows "…"
+        settings.widths = { ...(settings.widths || {}), [key]: Math.max(3, Math.ceil(width * 10) / 10) };
         applyWidths(table, settings);
         updateFits(table);
       };
-      const reset = () => {
-        if (settings.widths) delete settings.widths[key];
-        applyWidths(table, settings);
-        updateFits(table);
+      // as wide as the widest cell needs (the paths without their ellipsis), at most the window
+      const fit = () => {
+        table.classList.remove("fixed");
+        table.classList.add("measuring");
+        table.style.width = "max-content";
+        [...table.tHead.rows[0].cells].forEach((cell) => { cell.style.width = ""; });
+        // one pixel to spare for the subpixel widths of the text
+        const width = (th.getBoundingClientRect().width + 1) / rem();
+        table.classList.remove("measuring");
+        setWidth(Math.min(width, window.innerWidth / rem() - 4));
         saveTableSettings(table, settings);
       };
       handle.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); });
-      handle.addEventListener("dblclick", reset);
+      handle.addEventListener("dblclick", fit);
       handle.addEventListener("keydown", (event) => {
         if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
           event.preventDefault();
@@ -983,7 +1035,7 @@
           saveTableSettings(table, settings);
         } else if (event.key === "Enter") {
           event.preventDefault();
-          reset();
+          fit();
         }
       });
       handle.addEventListener("pointerdown", (event) => {
@@ -1013,6 +1065,9 @@
     summary.textContent = texts.columns || "Columns";
     const panel = document.createElement("div");
     panel.className = "picker-panel";
+    // the list scrolls, the reset stays at the bottom
+    const list = document.createElement("div");
+    list.className = "picker-list";
     const hidden = applyHidden(table, settings);
     tableColumns(table).forEach(({ th, key }) => {
       const label = document.createElement("label");
@@ -1021,13 +1076,36 @@
       box.checked = !hidden.has(key);
       box.dataset.columnKey = key;
       label.append(box, ` ${th.textContent.trim()}`);
-      panel.append(label);
+      list.append(label);
     });
+    const footer = document.createElement("div");
+    footer.className = "picker-footer";
     const resetAll = document.createElement("button");
     resetAll.type = "button";
-    resetAll.className = "button small";
+    resetAll.className = "menu-item";
     resetAll.textContent = texts.reset || "Reset widths and columns";
-    panel.append(resetAll);
+    footer.append(resetAll);
+    panel.append(list, footer);
+    // The same limit on every list (MAX_COLUMN_ROWS), and at most the room down to the bottom of the window, so the
+    // reset below stays visible. Measured with fractions: a limit rounded below the content shows a scrollbar
+    // that has nothing to scroll.
+    picker.addEventListener("toggle", () => {
+      if (!picker.open) return;
+      list.style.maxHeight = "none";
+      list.style.overflowY = "hidden";
+      const height = list.getBoundingClientRect().height;
+      const style = getComputedStyle(list);
+      const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+      const row = list.querySelector("label")?.getBoundingClientRect().height || 2.4 * rem();
+      const room = window.innerHeight - list.getBoundingClientRect().top - footer.getBoundingClientRect().height - rem();
+      const limit = Math.max(3 * row + padding, Math.min(MAX_COLUMN_ROWS * row + padding, room));
+      if (height <= limit + 0.5) {
+        list.style.maxHeight = "none";
+      } else {
+        list.style.maxHeight = `${Math.floor(limit)}px`;
+        list.style.overflowY = "auto";
+      }
+    });
     picker.append(summary, panel);
     panel.addEventListener("change", (event) => {
       const box = event.target.closest("[data-column-key]");
@@ -1047,9 +1125,14 @@
       applyWidths(table, settings);
       updateFits(table);
     });
+    const tools = document.querySelector("main [data-table-tools]");
     const filters = document.querySelector("main form.filters");
-    if (filters) {
-      picker.classList.add("right");
+    if (tools) {
+      // the right end of the filter bar, after the views
+      tools.append(picker);
+    } else if (filters) {
+      // at the right end; next to a button that is there already (e.g. "New local account"), not apart from it
+      if (!filters.querySelector(":scope > .right")) picker.classList.add("right");
       filters.append(picker);
     } else {
       const tools = document.createElement("div");
@@ -1252,7 +1335,8 @@
     const identifier = form.querySelector('input[name$="identifier"]');
     if (!expression) return;
     if (expression.value.trim() && !PREFIX_EXPRESSION.test(expression.value.trim())) return;
-    const team = (identifier?.value || "").trim();
+    // creating rules from events: the Team ID of the binaries, if they share one (else the server writes it per binary)
+    const team = (identifier?.value || form.querySelector("[data-team-id]")?.dataset.teamId || "").trim();
     const values = prefixes.value.split("\n").map((line) => line.trim()).filter((line) => /^[A-Za-z0-9._-]+$/.test(line));
     expression.value = values.length && team
       ? `(${values.map((prefix) => `target.signing_id.startsWith("${team}:${prefix}")`).join(" || ")}) ? ALLOWLIST : BLOCKLIST`
