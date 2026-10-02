@@ -290,3 +290,18 @@ class RuleTypeFilterTestCase(ConsoleBase):
         chip = {c["facet"].name: c for c in response.context["bar"]["chips"]}["type"]
         self.assertTrue(chip["active"])
         self.assertNotContains(response, 'role="tablist"')
+
+
+class SavedFilterPagesTestCase(ConsoleBase):
+    def test_only_known_lists(self):
+        # the limit is per list: a made-up one would get around it
+        response = self.client.post(reverse("save_filter"), {"page": "made-up-1", "name": "x", "query": "q="},
+                                    follow=True)
+        self.assertContains(response, "Unknown list.")
+        self.assertFalse(SavedFilter.objects.exists())
+        # requesters only have their own list
+        self.client.force_login(self.user)
+        self.client.post(reverse("save_filter"), {"page": "rules", "name": "x", "query": "q="})
+        self.assertFalse(SavedFilter.objects.exists())
+        self.client.post(reverse("save_filter"), {"page": "my-requests", "name": "x", "query": "q="})
+        self.assertEqual(list(SavedFilter.objects.values_list("page", flat=True)), ["my-requests"])

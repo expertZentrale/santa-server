@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: santa-server\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-02 15:03+0000\n"
+"POT-Creation-Date: 2026-10-02 15:16+0000\n"
 "Language: de\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -24,41 +24,41 @@ msgstr ""
 msgid "The catalog could not be searched: %(error)s"
 msgstr "Der Katalog konnte nicht durchsucht werden: %(error)s"
 
-#: santa/console/filters.py:25
+#: santa/console/filters.py:28
 msgid "24 hours"
 msgstr "24 Stunden"
 
-#: santa/console/filters.py:25
+#: santa/console/filters.py:28
 msgid "7 days"
 msgstr "7 Tage"
 
-#: santa/console/filters.py:25
+#: santa/console/filters.py:28
 msgid "30 days"
 msgstr "30 Tage"
 
-#: santa/console/filters.py:25
+#: santa/console/filters.py:28
 msgid "1 year"
 msgstr "1 Jahr"
 
-#: santa/console/filters.py:26 santa/console/views_requests.py:102
+#: santa/console/filters.py:29 santa/console/views_requests.py:107
 msgid "All time"
 msgstr "Gesamter Zeitraum"
 
-#: santa/console/filters.py:192
+#: santa/console/filters.py:195
 #, python-format
 msgid "from %(date)s"
 msgstr "ab %(date)s"
 
-#: santa/console/filters.py:192
+#: santa/console/filters.py:195
 #, python-format
 msgid "until %(date)s"
 msgstr "bis %(date)s"
 
-#: santa/console/filters.py:194
+#: santa/console/filters.py:197
 msgid "any time"
 msgstr "beliebiger Zeitraum"
 
-#: santa/console/filters.py:248
+#: santa/console/filters.py:251
 msgid "all"
 msgstr "alle"
 
@@ -1150,7 +1150,7 @@ msgid "Time range"
 msgstr "Zeitraum"
 
 #: santa/console/views_events.py:124 santa/console/views_groups.py:182
-#: santa/console/views_requests.py:106 santa/console/views_requests.py:274
+#: santa/console/views_requests.py:111 santa/console/views_requests.py:279
 #: santa/console/views_rules.py:97 santa/console/views_sources.py:63
 #: santa/templates/console/events/list.html:28
 #: santa/templates/console/machines/_activity.html:6
@@ -1367,89 +1367,93 @@ msgstr ""
 msgid "Preferences saved."
 msgstr "Einstellungen gespeichert."
 
-#: santa/console/views_profile.py:60 santa/console/views_profile.py:90
+#: santa/console/views_profile.py:61
+msgid "Unknown list."
+msgstr "Unbekannte Liste."
+
+#: santa/console/views_profile.py:64 santa/console/views_profile.py:94
 msgid "Enter a name for the view."
 msgstr "Bitte einen Namen für die Ansicht eingeben."
 
-#: santa/console/views_profile.py:63
+#: santa/console/views_profile.py:67
 msgid "This view is too long to save."
 msgstr "Diese Ansicht ist zu lang zum Speichern."
 
-#: santa/console/views_profile.py:67
+#: santa/console/views_profile.py:71
 #, python-format
 msgid "At most %(count)s saved views per list. Delete one first."
 msgstr ""
 "Höchstens %(count)s gespeicherte Ansichten pro Liste. Löschen Sie zuerst "
 "eine."
 
-#: santa/console/views_profile.py:71
+#: santa/console/views_profile.py:75
 #, python-format
 msgid "View “%(name)s” saved."
 msgstr "Ansicht „%(name)s“ gespeichert."
 
-#: santa/console/views_profile.py:80
+#: santa/console/views_profile.py:84
 #, python-format
 msgid "View “%(name)s” deleted."
 msgstr "Ansicht „%(name)s“ gelöscht."
 
-#: santa/console/views_profile.py:92
+#: santa/console/views_profile.py:96
 #, python-format
 msgid "There is a view “%(name)s” already."
 msgstr "Eine Ansicht „%(name)s“ gibt es bereits."
 
-#: santa/console/views_profile.py:96
+#: santa/console/views_profile.py:100
 #, python-format
 msgid "View renamed to “%(name)s”."
 msgstr "Ansicht in „%(name)s“ umbenannt."
 
-#: santa/console/views_requests.py:101
+#: santa/console/views_requests.py:106
 msgid "Last 7 days"
 msgstr "Letzte 7 Tage"
 
-#: santa/console/views_requests.py:101
+#: santa/console/views_requests.py:106
 msgid "Last month"
 msgstr "Letzter Monat"
 
-#: santa/console/views_requests.py:101
+#: santa/console/views_requests.py:106
 msgid "Last year"
 msgstr "Letztes Jahr"
 
-#: santa/console/views_requests.py:107
+#: santa/console/views_requests.py:112
 msgid "Time span"
 msgstr "Zeitraum"
 
-#: santa/console/views_requests.py:109
+#: santa/console/views_requests.py:114
 #: santa/templates/console/administration/tags.html:7
 #: santa/templates/console/machines/detail.html:14
 #: santa/templates/console/widgets/_filter_bar.html:7
 msgid "Search"
 msgstr "Suche"
 
-#: santa/console/views_requests.py:146
+#: santa/console/views_requests.py:151
 msgid "Your request was sent to your IT team. You'll see the answer here."
 msgstr ""
 "Ihre Anfrage wurde an Ihr IT-Team gesendet. Die Antwort sehen Sie hier."
 
-#: santa/console/views_requests.py:171
+#: santa/console/views_requests.py:176
 #, python-format
 msgid "%(count)s packages: %(names)s"
 msgstr "%(count)s Pakete: %(names)s"
 
-#: santa/console/views_requests.py:183
+#: santa/console/views_requests.py:188
 #, python-format
 msgid "You have %(count)s open requests already. Wait for an answer first."
 msgstr ""
 "Sie haben bereits %(count)s offene Anfragen. Bitte warten Sie zuerst auf "
 "eine Antwort."
 
-#: santa/console/views_requests.py:188
+#: santa/console/views_requests.py:193
 #, python-format
 msgid ""
 "%(packages)s: already allowed on your Mac, you don't need to request it."
 msgstr ""
 "%(packages)s: auf Ihrem Mac bereits erlaubt, Sie müssen es nicht anfragen."
 
-#: santa/console/views_requests.py:198
+#: santa/console/views_requests.py:203
 #, python-format
 msgid ""
 "You have already asked for %(packages)s, the request is open. Remove it here."
@@ -1457,48 +1461,48 @@ msgstr ""
 "Sie haben %(packages)s bereits angefragt, die Anfrage ist offen. Entfernen "
 "Sie es hier."
 
-#: santa/console/views_requests.py:206
+#: santa/console/views_requests.py:211
 msgid "You have already asked for this, the request is open."
 msgstr "Sie haben das bereits angefragt, die Anfrage ist offen."
 
-#: santa/console/views_requests.py:218
+#: santa/console/views_requests.py:223
 msgid "Request cancelled."
 msgstr "Anfrage zurückgezogen."
 
-#: santa/console/views_requests.py:276
+#: santa/console/views_requests.py:281
 #: santa/templates/console/requests/_detail.html:4
 #: santa/templates/console/requests/list.html:7
 msgid "Kind"
 msgstr "Art"
 
-#: santa/console/views_requests.py:277 santa/console/views_rules.py:99
+#: santa/console/views_requests.py:282 santa/console/views_rules.py:99
 #: santa/console/views_rules.py:131
 #: santa/templates/console/requests/list.html:7
 #: santa/templates/console/rules/list.html:39
 msgid "Created"
 msgstr "Erstellt"
 
-#: santa/console/views_requests.py:278
+#: santa/console/views_requests.py:283
 msgid "Title, requester, SHA-256…"
 msgstr "Titel, Antragsteller, SHA-256…"
 
-#: santa/console/views_requests.py:373
+#: santa/console/views_requests.py:378
 #, python-format
 msgid "Request “%(title)s” approved."
 msgstr "Anfrage „%(title)s“ freigegeben."
 
-#: santa/console/views_requests.py:386
+#: santa/console/views_requests.py:391
 msgid "The Mac of the requester is not known, choose groups or all Macs."
 msgstr ""
 "Der Mac des Antragstellers ist nicht bekannt, bitte Gruppen oder alle Macs "
 "wählen."
 
-#: santa/console/views_requests.py:405
+#: santa/console/views_requests.py:410
 #, python-format
 msgid "The binary has no %(rule_type)s."
 msgstr "Das Binary hat keine %(rule_type)s."
 
-#: santa/console/views_requests.py:432
+#: santa/console/views_requests.py:437
 #, python-format
 msgid ""
 "No Mach-O executable with a %(rule_type)s found in this file (unsigned or ad-"
@@ -1508,7 +1512,7 @@ msgstr ""
 "gefunden (unsigniert oder ad-hoc signiert? Verwenden Sie stattdessen eine "
 "Binary-Regel)."
 
-#: santa/console/views_requests.py:510
+#: santa/console/views_requests.py:515
 #, python-format
 msgid "Request “%(title)s” denied."
 msgstr "Anfrage „%(title)s“ abgelehnt."

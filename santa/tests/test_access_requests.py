@@ -187,6 +187,20 @@ class UserRequestTestCase(ConsoleBase):
         response = self.client.get(reverse("requests:list"), {"period": "all", "status": ["PENDING", "APPROVED"]})
         self.assertEqual([r.title for r in response.context["page"]], ["last month", "long ago"])
 
+    def test_search_my_requests(self):
+        AccessRequest.objects.create(requester=self.user, kind="OTHER", title="Figma", justification="for design")
+        AccessRequest.objects.create(requester=self.user, kind="OTHER", title="Sketch", justification="mockups")
+        package = AccessRequest.objects.create(requester=self.user, kind="PACKAGE", title="2 packages: a, b",
+                                               justification="x")
+        AccessRequestPackage.objects.create(access_request=package, kind="NPM_PACKAGE", identifier="esbuild",
+                                            name="esbuild")
+        AccessRequestPackage.objects.create(access_request=package, kind="NPM_PACKAGE", identifier="esbuild-wasm")
+        AccessRequest.objects.create(requester=self.admin, kind="OTHER", title="Figma", justification="for design")
+        for q, expected in [("figma", ["Figma"]), ("DESIGN", ["Figma"]), ("esbuild", ["2 packages: a, b"]),
+                            ("nothing", [])]:
+            response = self.client.get(reverse("requests:list"), {"q": q, "period": "all"})
+            self.assertEqual([r.title for r in response.context["page"]], expected, q)
+
     def test_other_requests_and_catalog_search(self):
         self.client.post(reverse("requests:new"), {"kind": "OTHER", "title": "Figma", "justification": "Design",
                                                    "link": "https://figma.example"})

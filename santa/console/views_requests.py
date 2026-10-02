@@ -97,6 +97,11 @@ def my_requests(request):
     queryset = in_range(queryset, "created_at", start, end)
     if statuses := chosen(params, "status", AccessRequest.Status.values):
         queryset = queryset.filter(status__in=statuses)
+    if q := params.get("q", "").strip():
+        # the packages as a subquery: no join, no duplicate rows
+        packages = AccessRequestPackage.objects.filter(Q(identifier__icontains=q) | Q(name__icontains=q))
+        queryset = queryset.filter(Q(title__icontains=q) | Q(justification__icontains=q)
+                                   | Q(pk__in=packages.values("access_request")))
     page = paginate(request, queryset.select_related("event", "machine").prefetch_related("packages"))
     periods = [("week", gettext("Last 7 days")), ("month", gettext("Last month")), ("year", gettext("Last year")),
                ("all", gettext("All time"))]

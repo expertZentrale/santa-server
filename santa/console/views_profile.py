@@ -7,7 +7,7 @@ from django.views.decorators.http import require_POST
 
 from ..models import SavedFilter, UserProfile
 from ..users import gravatar_url, profile_for
-from .filters import MAX_QUERY_LENGTH, MAX_SAVED_FILTERS, filter_query
+from .filters import FILTER_PAGES, MAX_QUERY_LENGTH, MAX_SAVED_FILTERS, filter_query
 from .forms import ProfileForm
 from .utils import safe_next
 
@@ -56,7 +56,11 @@ def save_filter(request):
     name = request.POST.get("name", "").strip()[:100]
     query = filter_query(QueryDict(request.POST.get("query", "").lstrip("?")))
     back = safe_next(request, "home")
-    if not page or not name:
+    # only the lists there are: the limit is per list
+    if page not in FILTER_PAGES or (FILTER_PAGES[page] and not request.user.is_staff):
+        messages.error(request, translation.gettext("Unknown list."))
+        return redirect(back)
+    if not name:
         messages.error(request, translation.gettext("Enter a name for the view."))
         return redirect(back)
     if len(query) > MAX_QUERY_LENGTH:
