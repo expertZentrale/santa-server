@@ -625,9 +625,29 @@ class UserProfile(models.Model):
     time_zone = models.CharField(max_length=64, blank=True)
     # OIDC_ADMIN_ROLE was in the ID token of the last sign-in: keeps "Santa admins" when the roles are recomputed
     has_admin_role = models.BooleanField(default=False, editable=False)
+    # {list: query string} of the last used filter of each list, a document only (never filtered on)
+    last_filters = models.JSONField(default=dict, blank=True, editable=False)
 
     def __str__(self):
         return f"Profile of {self.user}"
+
+
+class SavedFilter(models.Model):
+    """A filter of a console list, saved by a user under a name"""
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="saved_filters")
+    # the list: rules, events-blocked, machines, …
+    page = models.CharField(max_length=32)
+    name = models.CharField(max_length=100)
+    query = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["name"]
+        constraints = [models.UniqueConstraint(fields=["user", "page", "name"], name="unique_saved_filter_name")]
+
+    def __str__(self):
+        return f"{self.name} ({self.page}, {self.user})"
 
 
 class SignInGroup(models.Model):

@@ -11,6 +11,17 @@ from django.views.decorators.http import require_POST
 from ..models import Group, Machine, Policy, Rule, RuleType, Tag
 from ..releases import ReleaseError, find_binaries
 from ..services import allow_identifier, binary_identifiers, set_rules_enabled, set_rules_policy
+from .filters import (
+    TIME_DAYS,
+    TIME_PRESETS,
+    Facet,
+    any_of,
+    chosen,
+    date_range,
+    filter_bar,
+    in_range,
+    remember_filters,
+)
 from .forms import RuleBulkForm, RuleForm, UploadBinaryForm
 from .utils import (
     changed_message,
@@ -31,29 +42,32 @@ RULE_COLUMNS = {"identifier": "identifier", "type": "rule_type", "policy": "poli
                 "enabled": "is_enabled"}
 
 
+# the scopes of the filter besides the groups (their pks)
+SCOPE_CONDITIONS = {"global": Q(is_global=True), "machines": Q(is_global=False, machines__isnull=False)}
+
+
 def filter_rules(request, rules):
+    """The rules of the list filters; several values of one filter are alternatives (OR)"""
     params = request.GET
-    if params.get("type") in RuleType.values:
-        rules = rules.filter(rule_type=params["type"])
-    if params.get("policy") in Policy.values:
-        rules = rules.filter(policy=params["policy"])
-    scope = params.get("scope", "")
-    if scope == "global":
-        rules = rules.filter(is_global=True)
-    elif scope.isdigit():
-        rules = rules.filter(groups__id=scope)
-    elif scope == "machines":
-        rules = rules.filter(is_global=False, machines__isnull=False)
-    if params.get("tag", "").isdigit():
-        rules = rules.filter(tags__id=params["tag"])
-    if params.get("enabled") == "yes":
-        rules = rules.filter(is_enabled=True)
-    elif params.get("enabled") == "no":
-        rules = rules.filter(is_enabled=False)
-    if params.get("origin") == "manual":
-        rules = rules.filter(release_source__isnull=True)
-    elif params.get("origin") == "package":
-        rules = rules.filter(release_source__isnull=False)
+    if rule_types := chosen(params, "type", RuleType.values):
+        rules = rules.filter(rule_type__in=rule_types)
+    if policies := chosen(params, "policy", Policy.values):
+        rules = rules.filter(policy__in=policies)
+    scope = any_of([SCOPE_CONDITIONS[value] if value in SCOPE_CONDITIONS else Q(groups__id=value)
+                    for value in chosen(params, "scope") if value in SCOPE_CONDITIONS or value.isdigit()])
+    if scope is not None:
+        rules = rules.filter(scope)
+    if tags := [value for value in chosen(params, "tag") if value.isdigit()]:
+        rules = rules.filter(tags__id__in=tags)
+    # both ticked is the same as none
+    enabled = chosen(params, "enabled", ["yes", "no"])
+    if len(enabled) == 1:
+        rules = rules.filter(is_enabled=enabled[0] == "yes")
+    origin = chosen(params, "origin", ["manual", "package"])
+    if len(origin) == 1:
+        rules = rules.filter(release_source__isnull=origin[0] == "manual")
+    start, end = date_range(params, "created", TIME_DAYS, "", "created_from", "created_to")
+    rules = in_range(rules, "created_at", start, end)
     if params.get("version", "").isdigit():
         rules = rules.filter(release_version_id=params["version"])
     q = params.get("q", "").strip()
@@ -65,12 +79,31 @@ def filter_rules(request, rules):
 @staff_required
 def rules(request):
     require_perms(request, "view_rule")
+    if remembered := remember_filters(request, "rules"):
+        return remembered
     queryset, sort = sort_by(request, filter_rules(request, Rule.objects.all()), RULE_COLUMNS, "-created")
     page = paginate(request, queryset.select_related("release_source", "created_by")
                                      .prefetch_related("groups", "tags", "machines"))
+    groups = Group.objects.order_by("name")
+    facets = [
+        Facet("type", gettext("Type"), choices=RuleType.choices),
+        Facet("policy", gettext("Policy"), choices=Policy.choices),
+        Facet("scope", gettext("Scope"), choices=[
+            ("global", gettext("Global")), ("machines", gettext("Individual Macs")),
+            *((group.pk, group.name) for group in groups)]),
+        Facet("tag", gettext("Tag"), choices=Tag.objects.order_by("name").values_list("pk", "name")),
+        Facet("origin", gettext("Origin"), choices=[("manual", gettext("Manual")),
+                                                    ("package", gettext("From package rules"))]),
+        Facet("enabled", gettext("Status"), choices=[("yes", gettext("Enabled")),
+                                                      ("no", gettext("Disabled / waiting"))]),
+        Facet("created", gettext("Created"), kind="time", choices=TIME_PRESETS, from_name="created_from",
+              to_name="created_to"),
+    ]
     return render(request, "console/rules/list.html", {
-        "page": page, "sort": sort, "params": request.GET, "rule_types": RuleType.choices, "policies": Policy.choices,
-        "groups": Group.objects.order_by("name"), "tags": Tag.objects.order_by("name"),
+        "page": page, "sort": sort, "params": request.GET, "policies": Policy.choices,
+        "groups": groups,
+        **filter_bar(request, "rules", facets, hidden=("sort",),
+                     placeholder=gettext("Identifier, description, tag…")),
     })
 
 

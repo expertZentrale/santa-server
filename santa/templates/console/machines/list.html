@@ -1,20 +1,9 @@
 {% extends "console/base.html" %}{% load console i18n %}
 {% block title %}{% translate "Macs" %}{% endblock %}
 {% block content %}
-<div class="page-head"><h1>{% translate "Macs" %}</h1></div>
-<p class="muted">{% translate "Macs enroll themselves at their first sync with the profile of their group." %}</p>
-<form class="filters" method="get">
-  {% if params.sort %}<input type="hidden" name="sort" value="{{ params.sort }}">{% endif %}
-  <input type="search" name="q" value="{{ params.q }}" placeholder="{% translate 'Hostname, serial number, user…' %}" aria-label="{% translate 'Search' %}">
-  <select name="group" aria-label="{% translate 'Group' %}"><option value="">{% translate "All groups" %}</option>
-    {% for group in groups %}<option value="{{ group.pk }}" {% if params.group == group.pk|stringformat:"s" %}selected{% endif %}>{{ group.name }}</option>{% endfor %}</select>
-  <select name="mode" aria-label="{% translate 'Mode' %}"><option value="">{% translate "Any mode" %}</option>
-    {% for value, label in modes %}<option value="{{ value }}" {% if params.mode == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
-  <select name="status" aria-label="{% translate 'Status' %}"><option value="">{% translate "Any status" %}</option>
-    <option value="stale" {% if params.status == "stale" %}selected{% endif %}>{% translate "Not synced for 2 days" %}</option>
-    <option value="clean" {% if params.status == "clean" %}selected{% endif %}>{% translate "Clean sync pending" %}</option></select>
-  <button class="button">{% translate "Filter" %}</button>
-</form>
+<div class="page-head"><h1>{% translate "Macs" %}</h1>
+  {% translate "Macs enroll themselves at their first sync with the profile of their group." as help %}{% include "console/_help.html" with text=help %}</div>
+{% include "console/widgets/_filter_bar.html" %}
 <table class="table" data-table="macs">
   <thead><tr>{% sort_th _("Mac") "mac" %}{% sort_th _("User") "user" %}{% sort_th _("Group") "group" %}{% sort_th _("Mode") "mode" %}{% sort_th _("Santa / macOS") "santa" %}<th class="num">{% translate "Rules" %}</th>{% sort_th _("Last sync") "sync" %}</tr></thead>
   <tbody>

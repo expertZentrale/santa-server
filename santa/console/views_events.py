@@ -1,5 +1,4 @@
 import json
-from datetime import timedelta
 
 from django.contrib import messages
 from django.db.models import Count, Max, Q
@@ -8,11 +7,11 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import gettext, ngettext
-from django.utils.translation import gettext_lazy as _
 from django.views.decorators.http import require_POST
 
-from ..models import AccessRequest, Event, Group, RuleType
+from ..models import AccessRequest, Event, Group, Machine, RuleType
 from ..services import allow_identifier, existing_rules, is_allowed
+from .filters import TIME_DAYS, TIME_PRESETS, Facet, chosen, date_range, filter_bar, in_range, remember_filters
 from .forms import SCOPE_GLOBAL, SCOPE_GROUPS, SCOPE_MACHINES, EventRuleForm
 from .utils import (
     drawer_done,
@@ -32,7 +31,6 @@ EVENT_COLUMNS = {"time": "execution_time", "decision": "decision", "file": "file
                  "mac": "machine__hostname", "user": "executing_user", "signing": "signing_id"}
 APP_COLUMNS = {"program": "file_name", "blocks": "event_count", "macs": "machine_count", "users": "user_count",
                "last": "last_seen"}
-DAYS_CHOICES = [("1", _("24 hours")), ("7", _("7 days")), ("30", _("30 days")), ("", _("All time"))]
 
 
 def chunked(values, size=1000):
@@ -94,19 +92,18 @@ def filter_events(request, events):
             | Q(machine__hostname__icontains=q) | Q(machine__serial_number__iexact=q)
             | Q(executing_user__iexact=q)
         )
-    if params.get("group", "").isdigit():
-        events = events.filter(group_id=params["group"])
-    if params.get("decision"):
-        events = events.filter(decision=params["decision"])
+    if groups := [value for value in chosen(params, "group") if value.isdigit()]:
+        events = events.filter(group_id__in=groups)
+    if decisions := chosen(params, "decision"):
+        events = events.filter(decision__in=decisions)
     if params.get("machine", "").isdigit():
         events = events.filter(machine_id=params["machine"])
     if params.get("user"):
         events = events.filter(executing_user=params["user"])
     if params.get("sha256"):
         events = events.filter(file_sha256=params["sha256"].lower())
-    days = params.get("days", "7")
-    if days.isdigit():
-        events = events.filter(execution_time__gte=timezone.now() - timedelta(days=int(days)))
+    start, end = date_range(params, "days", TIME_DAYS, "7")
+    events = in_range(events, "execution_time", start, end)
     resolved = params.get("resolved", "open")
     if resolved == "open":
         events = events.filter(resolved_at__isnull=True)
@@ -115,11 +112,35 @@ def filter_events(request, events):
     return events
 
 
+def event_facets(request, view):
+    """The filters of the bar; sha256, machine and user come from links (e.g. "events" of a blocked app)"""
+    params = request.GET
+    facets = [Facet("group", gettext("Group"), choices=Group.objects.order_by("name").values_list("pk", "name"))]
+    if view == "all":
+        decisions = Event.objects.order_by("decision").values_list("decision", flat=True).distinct()
+        facets.append(Facet("decision", gettext("Decision"), choices=[(d, d) for d in decisions]))
+    facets += [
+        Facet("days", gettext("Time range"), kind="time", choices=TIME_PRESETS, default="7"),
+        Facet("resolved", gettext("Status"), kind="choice", default="open", unfiltered="all",
+              choices=[("open", gettext("Open")), ("resolved", gettext("Resolved")),
+                       ("all", gettext("Open and resolved"))]),
+    ]
+    if sha256 := params.get("sha256", ""):
+        facets.append(Facet("sha256", gettext("Binary"), kind="fixed", text=f"{sha256[:12]}…"))
+    if (machine := params.get("machine", "")).isdigit():
+        found = Machine.objects.filter(pk=machine).first()
+        facets.append(Facet("machine", gettext("Mac"), kind="fixed",
+                            text=(found.hostname or found.serial_number) if found else machine))
+    if params.get("user"):
+        facets.append(Facet("user", gettext("User"), kind="fixed"))
+    return facets
+
+
 def filter_context(request):
+    resolved = request.GET.get("resolved", "open")
     return {
-        "groups": Group.objects.order_by("name"),
-        "decisions": (Event.objects.order_by("decision").values_list("decision", flat=True).distinct()),
-        "days_choices": DAYS_CHOICES,
+        # the hidden field of the selection: "open", "resolved" or "all", like the filter
+        "resolved": resolved if resolved in ("open", "resolved", "all") else "open",
         "params": request.GET,
     }
 
@@ -128,8 +149,13 @@ def filter_context(request):
 def events(request):
     require_perms(request, "view_event")
     view = request.GET.get("view", "blocked")
+    page_key = f"events-{'all' if view == 'all' else 'blocked'}"
+    if remembered := remember_filters(request, page_key, keep=("view",)):
+        return remembered
     events = filter_events(request, Event.objects.all())
-    context = {**filter_context(request), "view": view, "max_pk": Event.objects.aggregate(m=Max("pk"))["m"] or 0}
+    context = {**filter_context(request), "view": view, "max_pk": Event.objects.aggregate(m=Max("pk"))["m"] or 0,
+               **filter_bar(request, page_key, event_facets(request, view), hidden=("view", "sort"), keep=("view",),
+                            placeholder=gettext("File, signing ID, SHA-256, Mac, user…"))}
     if view == "all":
         queryset, context["sort"] = sort_by(request, events.select_related("machine", "group"), EVENT_COLUMNS,
                                             "-time")
@@ -235,7 +261,7 @@ def rule_type_for(event, rule_type):
     return rule_type if rule_type in available_rule_types(event) else default_rule_type(event)
 
 
-def rule_from_event(user, event, rule_type, policy, scope, groups, tags, description, machines=None):
+def rule_from_event(user, event, rule_type, policy, scope, groups, tags, description, machines=None, cel_expr=""):
     """Create (or widen) the rule of any policy for the binary of an event.
 
     Returns (rule, created), or None without identifier.
@@ -247,7 +273,7 @@ def rule_from_event(user, event, rule_type, policy, scope, groups, tags, descrip
     rule, created = allow_identifier(
         rule_type, identifier, policy, scope == SCOPE_GLOBAL, groups if scope == SCOPE_GROUPS else [], user,
         description or f"{event.file_name} ({event.file_path})", tags,
-        machines=machines if scope == SCOPE_MACHINES else [],
+        machines=machines if scope == SCOPE_MACHINES else [], cel_expr=cel_expr,
     )
     if created:
         log_addition(user, rule, f"Created from event {event.pk}")
@@ -263,7 +289,7 @@ def save_event_rules(user, form):
     for row in form.included_rows():
         result = rule_from_event(user, row[0], rule_type_for(row[0], data["rule_type"]), data["policy"],
                                  data["scope"], data["groups"], form.all_tags(), data["description"],
-                                 machines=list({event.machine for event in row}))
+                                 machines=list({event.machine for event in row}), cel_expr=form.cel_expr_for(row[0]))
         if result:
             saved += 1
             created += result[1]
@@ -281,7 +307,8 @@ def event_create_rule(request, pk):
     else:
         data = form.cleaned_data
         rule, created = rule_from_event(request.user, event, data["rule_type"], data["policy"], data["scope"],
-                                        data["groups"], form.all_tags(), data["description"])
+                                        data["groups"], form.all_tags(), data["description"],
+                                        cel_expr=form.cel_expr_for(event))
         message = gettext("Rule created: %(rule)s.") if created else gettext("Rule updated: %(rule)s.")
         messages.success(request, (message % {"rule": rule}) + " " + gettext("The Macs get it at their next sync."))
     return redirect(safe_next(request, "console:events"))
@@ -307,7 +334,7 @@ def _binaries(rows, matches):
 
 
 # the fields of the rule form kept when the selection changes while the drawer is open
-KEPT_FIELDS = ("rule_type", "policy", "scope", "new_tags", "description")
+KEPT_FIELDS = ("rule_type", "policy", "signing_prefixes", "cel_expr", "scope", "new_tags", "description")
 KEPT_LISTS = ("groups", "tags")
 
 
