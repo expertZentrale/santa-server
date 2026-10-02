@@ -67,7 +67,9 @@ Das Image (`santa_server/settings.py`) wird über Umgebungsvariablen konfigurier
 | `OIDC_ADMIN_ROLE`, `OIDC_ROLES_CLAIM` | | Standard `Santa.Admin` im Claim `roles` (Pfad mit Punkten für verschachtelte Claims) |
 | `OIDC_GROUPS_CLAIM` | | Standard `groups` (Pfad mit Punkten): der Claim, der mit den [Anmeldegruppen](#anmeldegruppen-und-rollen) verglichen wird |
 | `OIDC_USERNAME_CLAIMS`, `OIDC_SCOPES`, `OIDC_PROVIDER_NAME` | | Standard `preferred_username,upn,email`, `openid email profile`, Text der Anmelde-Schaltfläche |
-| `WAIT_FOR_URL` | | Entrypoint: warten, bis diese URL antwortet, z. B. ein Sidecar |
+| `WAIT_FOR_URL` | | Entrypoint: vor dem Webserver warten, bis diese URL antwortet, z. B. ein Sidecar; andere Befehle (die geplanten Jobs) starten sofort |
+| `WAIT_FOR_URL_JOBS` | | Entrypoint: `1`, um auch vor anderen Befehlen zu warten, wenn die Jobs den Sidecar ebenfalls haben |
+| `WAIT_FOR_TIMEOUT` | | Entrypoint: nach so vielen Sekunden Warten mit Fehler beenden, damit die Plattform neu startet; Standard `0` = ohne Grenze |
 | `RUN_MIGRATIONS` | | Entrypoint: `0`, um `migrate` beim Start des Webservers zu überspringen |
 | `GUNICORN_WORKERS`, `GUNICORN_THREADS` | | Standard `2` Worker-Prozesse mit je `4` Threads, siehe [Größe des Webservers](#größe-des-webservers) |
 | `GUNICORN_WORKER_CLASS` | | Standard `gthread`; `sync` nur mit einem Thread je Worker |
@@ -87,7 +89,8 @@ Benutzer ohne Rechte; SQL Server und Redis laufen separat.
 - **Webserver**: der Standardbefehl (gunicorn auf Port 8000). Der Entrypoint führt zuerst `migrate` aus; bei mehreren
   Replikas `RUN_MIGRATIONS=0` setzen und `python manage.py migrate` vor dem Rollout als Job ausführen.
 - **Statische Dateien** sind im Image und werden von gunicorn ausgeliefert (WhiteNoise); kein nginx, kein Bucket.
-- **Geplante Jobs**, dasselbe Image mit einem anderen Befehl:
+- **Geplante Jobs**, dasselbe Image mit einem anderen Befehl (sie warten nicht auf `WAIT_FOR_URL`, außer mit
+  `WAIT_FOR_URL_JOBS=1`):
   - stündlich: `python manage.py sync_release_sources` (neue Releases der Paketregeln, verzögerte Freigaben)
   - täglich: `python manage.py cleanup_events --days 90`
 - **Endpunkte**: `/health` (Liveness, ohne Datenbank), `/ready` (prüft die Datenbank), `/metrics` (Prometheus).
@@ -508,7 +511,9 @@ The image (`santa_server/settings.py`) is configured with environment variables:
 | `OIDC_ADMIN_ROLE`, `OIDC_ROLES_CLAIM` | | default `Santa.Admin` in the claim `roles` (dotted path for nested claims) |
 | `OIDC_GROUPS_CLAIM` | | default `groups` (dotted path): the claim matched against the [sign-in groups](#sign-in-groups-and-roles) |
 | `OIDC_USERNAME_CLAIMS`, `OIDC_SCOPES`, `OIDC_PROVIDER_NAME` | | default `preferred_username,upn,email`, `openid email profile`, button text |
-| `WAIT_FOR_URL` | | entrypoint: wait until this URL answers, e.g. a sidecar |
+| `WAIT_FOR_URL` | | entrypoint: before the web server, wait until this URL answers, e.g. a sidecar; other commands (the scheduled jobs) start at once |
+| `WAIT_FOR_URL_JOBS` | | entrypoint: `1` to wait before other commands too, when the jobs have the sidecar as well |
+| `WAIT_FOR_TIMEOUT` | | entrypoint: exit with an error after waiting this many seconds, so the platform restarts; default `0` = no limit |
 | `RUN_MIGRATIONS` | | entrypoint: `0` to skip `migrate` when the web server starts |
 | `GUNICORN_WORKERS`, `GUNICORN_THREADS` | | default `2` worker processes with `4` threads each, see [Sizing the web server](#sizing-the-web-server) |
 | `GUNICORN_WORKER_CLASS` | | default `gthread`; `sync` only with one thread per worker |
@@ -528,7 +533,8 @@ separately.
 - **Web server**: the default command (gunicorn on port 8000). The entrypoint runs `migrate` first; with several
   replicas set `RUN_MIGRATIONS=0` and run `python manage.py migrate` as a job before the rollout.
 - **Static files** are in the image and served by gunicorn (WhiteNoise); no nginx, no bucket.
-- **Scheduled jobs**, the same image with another command:
+- **Scheduled jobs**, the same image with another command (they don't wait for `WAIT_FOR_URL`, unless
+  `WAIT_FOR_URL_JOBS=1`):
   - hourly: `python manage.py sync_release_sources` (new releases of the package rules, delayed approvals)
   - daily: `python manage.py cleanup_events --days 90`
 - **Endpoints**: `/health` (liveness, no database), `/ready` (checks the database), `/metrics` (Prometheus).
