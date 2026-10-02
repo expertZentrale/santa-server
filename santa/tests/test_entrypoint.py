@@ -55,6 +55,20 @@ class EntrypointTestCase(SimpleTestCase):
         self.assertIn("Gave up waiting", result.stderr)
         self.assertNotIn("done", result.stdout)
 
+    def test_the_timeout_bounds_a_stalled_request(self):
+        # connections are queued but never accepted: the request hangs until its own timeout
+        stalled = socket.socket()
+        stalled.bind(("127.0.0.1", 0))
+        stalled.listen()
+        self.addCleanup(stalled.close)
+        started = time.monotonic()
+        result = self.run_entrypoint(str(self.gunicorn), WAIT_FOR_URL=f"http://127.0.0.1:{stalled.getsockname()[1]}/",
+                                     WAIT_FOR_TIMEOUT="1")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Gave up waiting", result.stderr)
+        self.assertNotIn("web server started", result.stdout)
+        self.assertLess(time.monotonic() - started, 3)
+
     def test_web_server_waits(self):
         result = self.run_entrypoint(str(self.gunicorn), WAIT_FOR_URL=f"http://127.0.0.1:{free_port()}/ready",
                                      WAIT_FOR_TIMEOUT="2")

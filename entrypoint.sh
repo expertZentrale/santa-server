@@ -25,15 +25,33 @@ esac
 # jobs often run without the sidecar of the web pod: waiting for it there would never end
 if [ -n "$WAIT_FOR_URL" ] && { [ "$web_server" = 1 ] || [ "${WAIT_FOR_URL_JOBS:-0}" = 1 ]; }; then
     echo "Waiting for $WAIT_FOR_URL"
-    start=$(date +%s)
-    until python -c "import sys, urllib.request; urllib.request.urlopen(sys.argv[1], timeout=5)" "$WAIT_FOR_URL" \
-            2>/dev/null; do
-        if [ "$timeout" -gt 0 ] && [ $(($(date +%s) - start)) -ge "$timeout" ]; then
-            echo "Gave up waiting for $WAIT_FOR_URL after $timeout s" >&2
-            exit 1
-        fi
-        sleep 2
-    done
+    # one deadline for the requests and the pauses: a stalled request or a late answer can't exceed the limit
+    python - "$WAIT_FOR_URL" "$timeout" <<'EOF' || exit 1
+import sys
+import time
+import urllib.request
+
+url, limit = sys.argv[1], int(sys.argv[2])
+deadline = time.monotonic() + limit if limit else None
+
+
+def time_left():
+    return deadline - time.monotonic() if deadline is not None else float("inf")
+
+
+while (left := time_left()) > 0:
+    try:
+        urllib.request.urlopen(url, timeout=min(5, left))
+    except Exception:
+        pass
+    else:
+        if time_left() > 0:
+            sys.exit(0)
+        break
+    time.sleep(max(0, min(2, time_left())))
+print(f"Gave up waiting for {url} after {limit} s", file=sys.stderr)
+sys.exit(1)
+EOF
 fi
 
 if [ "$web_server" = 1 ] && [ "${RUN_MIGRATIONS:-1}" != "0" ]; then
