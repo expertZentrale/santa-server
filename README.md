@@ -430,7 +430,7 @@ santa/
   profiles.py          die Konfigurationsprofile (Basisprofil, eines je Gruppe)
   config_io.py         Export / Import der Konfiguration (JSON)
   console/             die Konsole und das Anfrageformular (Views, Forms, URLs)
-  templates/, static/  Templates; htmx, console.js, console.css
+  templates/, static/  Templates; htmx, console/*.js und *.css (eine Datei je Aufgabe)
   admin.py, forms.py   der Django-Admin
   management/commands  sync_release_sources, cleanup_events, export_config, import_config
   locale/              deutsche Übersetzung
@@ -848,7 +848,7 @@ santa/
   profiles.py          the configuration profiles (base profile, one per group)
   config_io.py         export / import of the configuration (JSON)
   console/             the console and the request form (views, forms, urls)
-  templates/, static/  templates; htmx, console.js, console.css
+  templates/, static/  templates; htmx, console/*.js and *.css (one file per task)
   admin.py, forms.py   the Django admin
   management/commands  sync_release_sources, cleanup_events, export_config, import_config
   locale/              German translation

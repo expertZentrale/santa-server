@@ -13,7 +13,9 @@ Read this file before changing anything. If a request conflicts with these rules
 - Only copy code from projects with a compatible license (Apache-2.0, MIT, BSD), and say so in the commit.
 - Keep the project a **normal Django application** that a Django developer understands without studying it:
   - The day-to-day UI is the console (`santa/console/`, `/console/`): plain Django views, forms and templates,
-    with htmx (vendored in `santa/static/santa/htmx.min.js`) and a small `console.js`. No build step.
+    with htmx (vendored in `santa/static/santa/htmx.min.js`) and small scripts and stylesheets per task in
+    `santa/static/santa/console/` (`core.js` first, `drawer.js`, `table.js`, …, loaded in order by `console/base.html`).
+    No build step.
     Details and forms open in the side drawer (`#drawer`): links keep their `href` and add
     `hx-get … hx-target="#drawer"`, the views use `render_drawer()` / `drawer_done()` of `santa/console/utils.py`
     (a page and a drawer template around the same body partial). The request form for the users is `/request/`.
@@ -136,7 +138,7 @@ Every model and query must work on SQL Server (mssql-django 2.x, `mssql_python` 
 - Admin actions and console views that change rules must check permissions and write an admin log entry
   (`log_addition` / `log_change`, in the console the helpers of `santa/console/utils.py`).
 - Catalog icons are shown as `<img>` from the catalogs: only `https://` URLs, with `referrerpolicy="no-referrer"`.
-  Text from the catalogs and the users is always escaped (templates, `textContent` in `console.js`).
+  Text from the catalogs and the users is always escaped (templates, `textContent` in the console scripts).
 - Redirects to `?next=` go through `safe_next()`.
 
 ## Languages (English, German)

@@ -1,0 +1,47 @@
+/* Facts and drawer */
+.facts { display: grid; grid-template-columns: 9rem 1fr; gap: .4rem 1rem; margin: 0; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; overflow-wrap: anywhere; }
+.facts.inline { grid-template-columns: repeat(auto-fill, minmax(8rem, max-content) minmax(10rem, 1fr)); }
+
+.drawer {
+  position: fixed;
+  top: var(--topbar-h);
+  right: 0;
+  bottom: 0;
+  width: min(32.5rem, 100vw);
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  box-shadow: -8px 0 24px rgb(0 0 0 / 15%);
+  transform: translateX(100%);
+  /* hidden when closed, else its shadow shows at the edge of every page */
+  visibility: hidden;
+  transition: transform .2s ease, visibility 0s linear .2s;
+  overflow-y: auto;
+  z-index: 15;
+}
+.drawer.open { transform: none; visibility: visible; transition: transform .2s ease; }
+.drawer-panel { padding: 1.25rem; }
+.drawer-head { display: flex; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
+.drawer-head h2 { margin: 0 0 .25rem; font-size: 1.2rem; }
+.drawer-head h2:focus { outline: none; }
+.drawer-tools { display: flex; align-items: center; gap: .25rem; flex: none; margin: -.25rem -.5rem 0 0; }
+/* square buttons with only an icon (and a label for screen readers) */
+/* forms and package rules need more room than an event */
+.drawer:has(.drawer-panel.wide) { width: min(47.5rem, 100vw); }
+/* the cards of a page are plain sections in the drawer */
+.drawer .card { background: none; border: 0; box-shadow: none; padding: 0; margin: 0 0 1.5rem; }
+.drawer .card > h2 { font-size: 1rem; }
+/* long badges wrap in the narrow columns of the drawer */
+.drawer .facts .badge { white-space: normal; }
+.drawer .page-head { margin-bottom: 1rem; }
+.detail-actions { margin-bottom: 1.25rem; }
+
+@media (max-width: 45em) {
+  .facts { grid-template-columns: 1fr; }
+  .facts dt { margin-top: .4rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drawer, .drawer.open { transition: none; }
+}

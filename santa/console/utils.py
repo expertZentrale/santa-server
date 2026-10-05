@@ -40,7 +40,7 @@ def render_drawer(request, page_template, drawer_template, context):
 
 
 def drawer_done(request, url):
-    """After a form was saved in the drawer: console.js goes back to the previous view of the drawer and updates it,
+    """After a form was saved in the drawer: drawer.js goes back to the previous view of the drawer and updates it,
     or reloads the page behind it (both show the change and the message)"""
     if is_htmx(request):
         response = HttpResponse(status=204)

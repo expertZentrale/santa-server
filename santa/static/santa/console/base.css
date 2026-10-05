@@ -1,0 +1,428 @@
+/* Santa Server console: theme, layout, buttons and forms. The other files of console/ build on it. */
+/* light-dark(): one value per theme. data-theme="auto" follows the system, "light" / "dark" force one. */
+:root {
+  color-scheme: light dark;
+  --bg: light-dark(#f6f7f9, #111418);
+  --surface: light-dark(#ffffff, #1a1e24);
+  --surface-2: light-dark(#f0f2f5, #232830);
+  --border: light-dark(#dde1e7, #2f3640);
+  --text: light-dark(#1c2129, #e6e9ee);
+  --muted: light-dark(#5f6b7a, #9aa5b3);
+  --accent: light-dark(#2459d6, #6d9bff);
+  --accent-text: light-dark(#ffffff, #0d1117);
+  --ok: light-dark(#1f7a4d, #5fd39a);
+  --ok-bg: light-dark(#e3f4ea, #143324);
+  --bad: light-dark(#b42318, #ff8a80);
+  --bad-bg: light-dark(#fde7e5, #3a1a18);
+  --info: light-dark(#1d5fa8, #8ab8ff);
+  --info-bg: light-dark(#e3eefb, #182a44);
+  --warn-bg: light-dark(#fff4d6, #3a3017);
+  --scrollbar: light-dark(#c3c9d2, #46505d);
+  --scrollbar-hover: light-dark(#9aa3af, #66717f);
+  /* sizes in rem so they follow the text size of the browser; px only for hairlines, outlines and shadows */
+  --radius: .5rem;
+  --radius-sm: .375rem;
+  --control-h: 2.25rem;
+  --control-h-sm: 1.75rem;
+  --topbar-h: 3.5rem;
+  --shadow: 0 1px 2px rgb(16 24 40 / 6%), 0 1px 3px rgb(16 24 40 / 8%);
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; --shadow: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --shadow: none; }
+}
+
+* { box-sizing: border-box; }
+/* the room of the scrollbar is always kept: a long page doesn't move the content (and the avatar) to the left */
+html { scrollbar-gutter: stable; }
+
+/* Scrollbars in the colors of the theme: thin, a rounded thumb on a transparent track */
+* { scrollbar-width: thin; scrollbar-color: var(--scrollbar) transparent; }
+/* Safari has no scrollbar-color; the browsers that have it ignore these */
+@supports not (scrollbar-color: auto) {
+  ::-webkit-scrollbar { width: .625rem; height: .625rem; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--scrollbar); border: 2px solid transparent; border-radius: 999px; background-clip: padding-box; }
+  ::-webkit-scrollbar-thumb:hover { background-color: var(--scrollbar-hover); }
+  ::-webkit-scrollbar-corner { background: transparent; }
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: .875rem/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+a { color: var(--accent); text-decoration: none; text-underline-offset: .15em; }
+a:hover { text-decoration: underline; }
+/* links that look like controls never get the underline */
+.brand:hover, .back:hover, .button:hover, .icon-button:hover, a.chip:hover, .tabs a:hover, .topbar nav a:hover,
+.table th a.sort:hover, .user-menu .menu a:hover, .segmented a:hover { text-decoration: none; }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+h1 { font-size: 1.5rem; margin: 0 0 .75rem; }
+h2 { font-size: 1.05rem; margin: 0 0 .75rem; }
+h3 { font-size: .95rem; margin: 1.25rem 0 .5rem; }
+code, .mono { font-family: var(--mono); font-size: .9em; }
+.muted { color: var(--muted); }
+.small, small { font-size: .85em; }
+small.muted, small.help { display: block; }
+.strong { font-weight: 600; }
+.nowrap { white-space: nowrap; }
+.prewrap { white-space: pre-wrap; }
+.right { margin-left: auto; }
+[hidden] { display: none !important; }
+
+/* Layout */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0 1.5rem;
+  height: var(--topbar-h);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.brand { font-weight: 700; color: var(--text); white-space: nowrap; padding-block: .3rem; }
+.brand:hover { color: var(--accent); }
+.topbar nav { display: flex; gap: .25rem; flex: 1; overflow-x: auto; scrollbar-width: none; }
+.topbar nav::-webkit-scrollbar { display: none; }
+.topbar nav a {
+  padding: .4rem .7rem;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.topbar nav a:hover { background: var(--surface-2); text-decoration: none; }
+.topbar nav a.active { color: var(--text); background: var(--surface-2); font-weight: 600; }
+.topbar .count {
+  display: inline-block;
+  min-width: 1.4em;
+  padding: 0 .35em;
+  border-radius: 999px;
+  background: var(--bad);
+  color: #fff;
+  font-size: .75em;
+  text-align: center;
+}
+.burger { display: none; border: 0; background: none; color: var(--text); padding: .25rem; cursor: pointer; border-radius: var(--radius-sm); }
+.burger .icon { width: 1.4rem; height: 1.4rem; }
+.burger:hover { background: var(--surface-2); }
+
+.user-menu { position: relative; margin-left: auto; }
+/* New rows of the events list: a pill in the top bar, it never covers the list */
+.live-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  margin-left: auto;
+  padding: .3rem .75rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: 0 4px 12px rgb(16 24 40 / 14%);
+  color: var(--text);
+  font-weight: 600;
+  font-size: .85rem;
+  white-space: nowrap;
+}
+.live-pill:hover { border-color: var(--accent); }
+.live-pill .dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--accent); animation: pulse 2s ease-in-out infinite; }
+.live-pill:not([hidden]) + .user-menu { margin-left: 0; }
+@keyframes pulse { 50% { opacity: .35; } }
+@media (max-width: 40em) { .live-pill-text { display: none; } }
+.user-menu summary { list-style: none; cursor: pointer; border-radius: 50%; display: block; }
+.user-menu summary::-webkit-details-marker { display: none; }
+.user-menu summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.avatar { border-radius: 50%; display: block; background: var(--surface-2); object-fit: cover; width: 2rem; height: 2rem; }
+.avatar.large { width: 6rem; height: 6rem; }
+.user-menu .menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + .5rem);
+  min-width: 15rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+  padding: .35rem;
+  display: grid;
+  z-index: 30;
+}
+.menu-head { padding: .5rem .6rem; border-bottom: 1px solid var(--border); margin-bottom: .25rem; display: grid; }
+.user-menu .menu a, .menu-item {
+  display: block;
+  width: 100%;
+  padding: .45rem .6rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.user-menu .menu a:hover, .menu-item:hover { background: var(--surface-2); text-decoration: none; }
+.user-menu form { margin: 0; }
+.menu-row { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .35rem .6rem; }
+.segmented { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+.segmented button, .segmented a {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  padding: .25rem .5rem;
+  cursor: pointer;
+  font: inherit;
+  font-size: .8rem;
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.5rem;
+}
+.segmented > * + * { border-left: 1px solid var(--border); }
+.segmented a:hover, .segmented button:hover { background: var(--surface-2); color: var(--text); }
+.segmented [aria-pressed="true"], .segmented [aria-current] { background: var(--accent); color: var(--accent-text); }
+.segmented [aria-pressed="true"]:hover, .segmented [aria-current]:hover { background: var(--accent); color: var(--accent-text); }
+/* the icons follow the text next to them */
+.icon { flex: none; vertical-align: middle; width: 1.15em; height: 1.15em; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.profile-card { display: flex; gap: 1.25rem; align-items: flex-start; }
+.profile-card h2 { margin-top: 0; }
+
+@media (max-width: 56.25em) {
+  .burger { display: inline-flex; }
+  .topbar { padding: 0 1rem; gap: .5rem; }
+  .topbar nav {
+    display: none;
+    position: absolute;
+    top: var(--topbar-h);
+    left: 0;
+    right: 0;
+    flex-direction: column;
+    padding: .5rem;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    box-shadow: 0 8px 24px rgb(0 0 0 / 15%);
+  }
+  .topbar.nav-open nav { display: flex; }
+  .topbar nav a { padding: .65rem .8rem; }
+}
+
+main { padding: 1.5rem; max-width: 87.5rem; margin: 0 auto; }
+main.narrow { max-width: 51.25rem; }
+
+/* one height for every page head (title, tabs or buttons), so the lists below start at the same place */
+.page-head { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: .75rem; min-height: 2.5rem; }
+.page-head h1 { margin: 0; display: flex; align-items: center; gap: .5rem; }
+.page-head .actions { margin-left: auto; display: flex; gap: .5rem; }
+/* the description of a page behind an ⓘ next to its title (console/_help.html) */
+.help-tip { position: relative; margin-left: -.5rem; }
+.help-tip > summary { list-style: none; }
+.help-tip > summary::-webkit-details-marker { display: none; }
+.help-tip[open] > summary { background: var(--surface-2); color: var(--text); }
+.help-pop { position: absolute; top: calc(100% + .4rem); left: 0; z-index: 25; width: max-content; max-width: min(24rem, calc(100vw - 2rem));
+  padding: .6rem .75rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 18%); color: var(--text); font-size: .875rem; line-height: 1.45; }
+.page-head .actions form { margin: 0; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1.1rem 1.25rem;
+  margin-bottom: 1rem;
+}
+.card.subtle { background: var(--surface-2); box-shadow: none; }
+.card.empty { color: var(--muted); text-align: center; }
+
+/* Messages */
+.messages { list-style: none; padding: 0; margin: 0 0 1rem; display: grid; gap: .5rem; }
+.messages li { padding: .6rem .9rem; border-radius: var(--radius); background: var(--info-bg); color: var(--text); }
+.messages .success { background: var(--ok-bg); }
+.messages .warning { background: var(--warn-bg); }
+.messages .error { background: var(--bad-bg); }
+
+/* Buttons and controls */
+.button, button.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .35rem;
+  min-height: var(--control-h);
+  padding: .3rem .9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+}
+.button:hover { background: var(--surface-2); text-decoration: none; }
+.button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.button.primary:hover { filter: brightness(1.08); }
+.button.danger { color: var(--bad); border-color: var(--bad); }
+.button.small { min-height: var(--control-h-sm); padding: .15rem .6rem; font-size: .85em; }
+.button:disabled, .button[aria-disabled="true"] { opacity: .5; cursor: default; pointer-events: none; }
+.button.wide { width: 100%; justify-content: center; }
+button.link { background: none; border: 0; color: var(--accent); cursor: pointer; font: inherit; padding: 0; }
+
+input, select, textarea {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: .3rem .55rem;
+  max-width: 100%;
+}
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), select:not([multiple]) { min-height: var(--control-h); }
+input:focus-visible, select:focus-visible, textarea:focus-visible, .button:focus-visible, button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+textarea { width: 100%; }
+input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); width: 1rem; height: 1rem; margin: 0; flex: none; }
+
+/* Forms */
+.stack { display: grid; gap: .25rem; }
+.stack > .button, .stack > button { justify-self: start; }
+/* room for the cards after a form (e.g. the members of a role) */
+form.stack { margin-bottom: 1rem; }
+.stack.compact .field { margin-bottom: .5rem; }
+.field { display: grid; gap: .25rem; margin-bottom: .9rem; }
+.field > label { font-weight: 600; }
+.field.check > label { font-weight: 500; display: flex; gap: .45rem; align-items: center; }
+.field input:not([type="checkbox"]):not([type="radio"]), .field select, .field textarea { width: 100%; }
+.field select[multiple] { min-height: 5rem; }
+.field ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: .25rem 1rem; }
+.field ul label { font-weight: 400; display: flex; gap: .35rem; align-items: center; }
+.help { color: var(--muted); }
+/* a help text after a field, before the next one */
+small.help.after-field { margin: -.5rem 0 .9rem; }
+.error, small.error { color: var(--bad); }
+.has-error input, .has-error select, .has-error textarea { border-color: var(--bad); }
+.errorlist { color: var(--bad); margin: 0; padding-left: 1rem; }
+.actions { display: flex; gap: .75rem; align-items: center; }
+.login { max-width: 26.25rem; margin: 3rem auto; }
+.login details { margin-top: 1rem; }
+.login label { display: grid; gap: .25rem; margin-bottom: .6rem; }
+.login input { width: 100%; }
+form.inline { display: inline; margin: 0; }
+
+/* Tabs and filters */
+/* the line under the tabs is an inset shadow: the underline of the active tab covers it without overflowing,
+   which would add a scrollbar to the horizontally scrollable bar */
+.tabs {
+  display: flex;
+  gap: .25rem;
+  box-shadow: inset 0 -1px 0 var(--border);
+  margin-bottom: 1rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.tabs::-webkit-scrollbar { display: none; }
+.tabs a {
+  padding: .5rem .8rem;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+.tabs a:hover { color: var(--text); text-decoration: none; }
+.tabs a.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+.page-head .tabs { box-shadow: none; margin: 0 0 0 1rem; }
+
+.filters { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-bottom: 1rem; }
+.filters input[type="search"] { min-width: 16.25rem; flex: 1 1 16.25rem; max-width: 26.25rem; }
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.icon-button:hover { background: var(--surface-2); color: var(--text); }
+.icon-button .icon { width: 1.15rem; height: 1.15rem; }
+/* the link back to the list or the object, above the title */
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: .15rem;
+  min-height: 2rem;
+  margin: 0 0 .5rem -.35rem;
+  padding: 0 .55rem 0 .25rem;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+}
+.back:hover { color: var(--text); background: var(--surface-2); }
+.drawer-head .back { margin-bottom: .25rem; }
+
+.error-box { background: var(--bad-bg); color: var(--bad); padding: .75rem 1rem; border-radius: var(--radius); white-space: pre-wrap; }
+ul.plain { list-style: none; padding: 0; margin: 0; display: grid; gap: .3rem; }
+.card-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .75rem; }
+.card-head h2 { margin: 0; }
+form.regenerate { margin: .5rem 0 0; }
+
+.request .request-head { display: flex; justify-content: space-between; gap: 1rem; }
+.request .note { background: var(--surface-2); padding: .5rem .75rem; border-radius: var(--radius-sm); }
+
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(21.25rem, 100%), 1fr)); gap: 0 1rem; }
+fieldset.plain { border: 0; margin: 0; padding: 0; min-width: 0; }
+/* Django's checkbox and radio lists (<div id><div><label><input> text</label></div></div>): one row, the boxes
+   centered on the text */
+.field > div[id]:has(input[type="checkbox"], input[type="radio"]) { display: flex; flex-wrap: wrap; gap: .35rem 1.25rem; }
+.field > div[id] label { display: inline-flex; align-items: center; gap: .45rem; font-weight: 400; cursor: pointer; }
+/* one choice per line, e.g. the blocked programs of the request form */
+.field > div[id].stacked { flex-direction: column; }
+.filters > p { margin: 0; flex: 1 1 20rem; }
+details.upload { margin: 0 0 1rem; }
+details.upload summary { cursor: pointer; color: var(--muted); margin-bottom: .5rem; }
+
+@media (max-width: 45em) {
+  main { padding: 1rem; }
+  .page-head .actions { margin-left: 0; flex-wrap: wrap; }
+  .filters input[type="search"] { min-width: 0; max-width: none; flex-basis: 100%; }
+  .filters select { flex: 1 1 45%; }
+  .profile-card { flex-direction: column; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-pill .dot { animation: none; }
+}
+
+/* Selects look like the suggestion lists where the browser allows it (customizable select), else native */
+@supports (appearance: base-select) {
+  select:not([multiple]), select:not([multiple])::picker(select) { appearance: base-select; }
+  select:not([multiple]) { display: inline-flex; align-items: center; gap: .5rem; cursor: pointer; }
+  select:not([multiple])::picker-icon { content: ""; width: .45em; height: .45em; border: solid var(--muted); border-width: 0 1.5px 1.5px 0; transform: translateY(-.15em) rotate(45deg); transition: transform .15s; margin-left: auto; }
+  select:not([multiple]):open::picker-icon { transform: translateY(.1em) rotate(-135deg); }
+  select:not([multiple])::picker(select) {
+    margin-block: .25rem;
+    padding: .3rem;
+    max-height: 22.5rem;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+  }
+  select:not([multiple]) option { padding: .45rem .6rem; border-radius: var(--radius-sm); gap: .5rem; }
+  select:not([multiple]) option:hover, select:not([multiple]) option:focus-visible { background: var(--surface-2); outline: none; }
+  select:not([multiple]) option:checked { font-weight: 600; background: none; }
+  select:not([multiple]) option::checkmark { color: var(--accent); }
+}

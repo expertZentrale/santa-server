@@ -283,7 +283,7 @@ class ConsoleRulesTestCase(ConsoleBase):
         response = self.client.get(reverse("console:rule_add"))
         # Santa shows the message and the URL only in the block dialog, a silent block has none
         self.assertContains(response, 'data-show-when="policy=BLOCKLIST|CEL"')
-        # the tags become chips (console.js), with the translated texts
+        # the tags become chips (console/tags.js), with the translated texts
         self.assertContains(response, 'data-placeholder="Add a tag, Enter creates a new one"')
 
     def test_package_rules_are_read_only(self):

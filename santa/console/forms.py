@@ -116,7 +116,7 @@ class MachinesField(forms.CharField):
         return new != old
 
 
-# Suggestions for the CEL field (console.js): fields and global functions start a value, functions follow one (".").
+# Suggestions for the CEL field (cel.js): fields and global functions start a value, functions follow one (".").
 # They only complete: Santa evaluates the expression, so fields of newer
 # Santa versions work without being listed. Fields: https://northpole.dev/features/binary-authorization/
 CEL_SUGGESTIONS = [
@@ -282,7 +282,7 @@ class UploadBinaryForm(TagsMixin):
 
 
 class IdentifiersWidget(forms.Textarea):
-    """The identifiers of a release source as chips, with catalog suggestions (console.js)"""
+    """The identifiers of a release source as chips, with catalog suggestions (console/suggestions.js)"""
     template_name = "console/widgets/identifiers.html"
 
     def __init__(self, attrs=None):
@@ -465,7 +465,7 @@ def clean_icon_url(value):
 
 
 class RequestPackageForm(forms.Form):
-    # [{"kind": …, "identifier": …, "name": …, "icon_url": …}], filled by console.js
+    # [{"kind": …, "identifier": …, "name": …, "icon_url": …}], filled by console/suggestions.js
     packages = forms.CharField(widget=forms.HiddenInput, required=False)
     justification = forms.CharField(max_length=1000, widget=forms.Textarea(attrs={"rows": 4}),
                                     label=_("Justification"), help_text=_("Why do you need them?"))

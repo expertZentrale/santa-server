@@ -70,7 +70,7 @@ def available_rule_types(event):
 
 
 def show_rule_preview(field, event):
-    """The identifier of the binary for every rule type, console.js shows the one of the chosen type"""
+    """The identifier of the binary for every rule type, forms.js shows the one of the chosen type"""
     field.widget.attrs.update({
         "data-identifiers": json.dumps({rule_type: event.identifier_for(rule_type)
                                         for rule_type in available_rule_types(event)}),
@@ -166,7 +166,7 @@ def events(request):
         page = paginate(request, binaries)
         annotate_app_rows(page)
         context["page"] = page
-    # new rows are added on top by console.js, in the default order on the first page
+    # new rows are added on top by live.js, in the default order on the first page
     context["live_insert"] = page.number == 1 and context["sort"] == ("-time" if view == "all" else "-last")
     return render(request, "console/events/list.html", context)
 
@@ -199,7 +199,7 @@ def annotate_app_rows(rows):
 def event_updates(request):
     """The rows of the list that changed since ?after=<pk>: new events, or the blocked apps with new blocks.
 
-    console.js adds them to the list without a reload, so the selection and an open drawer stay.
+    live.js adds them to the list without a reload, so the selection and an open drawer stay.
     """
     require_perms(request, "view_event")
     after = request.GET.get("after", "0")
@@ -323,7 +323,7 @@ def _rows_for(events):
 
 
 def _binaries(rows, matches):
-    """The binaries of the form with what their rule would use for every rule type (console.js shows the chosen one)"""
+    """The binaries of the form with what their rule would use for every rule type (forms.js shows the chosen one)"""
     return [{
         "matches": matches.get(row[0].file_sha256, []),
         "event": row[0], "events": len(row), "macs": len({event.machine_id for event in row}),
