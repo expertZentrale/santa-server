@@ -3,11 +3,18 @@ from zoneinfo import ZoneInfo
 
 from django.contrib.auth.models import User
 from django.http import QueryDict
-from django.test import SimpleTestCase
-from django.urls import reverse
+from django.test import RequestFactory, SimpleTestCase
+from django.urls import resolve, reverse
 from django.utils import timezone
 
-from santa.console.filters import MAX_SAVED_FILTERS, TIME_DAYS, chosen, date_range, filter_query
+from santa.console.filters import (
+    MAX_SAVED_FILTERS,
+    TIME_DAYS,
+    chosen,
+    date_range,
+    filter_query,
+    remember_filters,
+)
 from santa.models import AccessRequest, Machine, Policy, ReleaseSource, Rule, RuleType, SavedFilter
 
 from .test_console import SHA_A, SHA_B, ConsoleBase
@@ -61,6 +68,18 @@ class SavedAndLastFiltersTestCase(ConsoleBase):
         self.client.force_login(self.admin)
         self.assertRedirects(self.client.get(url, {"reset": "1"}), url)
         self.assertEqual(self.client.get(url).status_code, 200)
+
+    def test_remembered_filter_never_redirects_to_another_site(self):
+        self.client.get(reverse("console:rules"), {"q": "x", "scope": "global"})
+        # the path of the request is not used: a // path would be a URL of another host
+        request = RequestFactory().get("//evil.example/console/rules/")
+        request.user = self.admin
+        request.resolver_match = resolve(reverse("console:rules"))
+        self.assertEqual(remember_filters(request, "rules")["Location"], "/console/rules/?q=x&scope=global")
+        request = RequestFactory().get("//evil.example/console/rules/", {"reset": "1"})
+        request.user = self.admin
+        request.resolver_match = resolve(reverse("console:rules"))
+        self.assertEqual(remember_filters(request, "rules")["Location"], "/console/rules/")
 
     def test_save_overwrite_and_delete_filters(self):
         url = reverse("console:rules")

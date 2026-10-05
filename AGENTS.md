@@ -13,10 +13,14 @@ Read this file before changing anything. If a request conflicts with these rules
 - Only copy code from projects with a compatible license (Apache-2.0, MIT, BSD), and say so in the commit.
 - Keep the project a **normal Django application** that a Django developer understands without studying it:
   - The day-to-day UI is the console (`santa/console/`, `/console/`): plain Django views, forms and templates,
-    with htmx (vendored in `santa/static/santa/htmx.min.js`) and a small `console.js`. No build step.
+    with htmx (vendored in `santa/static/santa/htmx.min.js`) and small scripts and stylesheets per task in
+    `santa/static/santa/console/` (`core.js` first, `drawer.js`, `table.js`, …, loaded in order by `console/base.html`).
+    No build step.
     Details and forms open in the side drawer (`#drawer`): links keep their `href` and add
     `hx-get … hx-target="#drawer"`, the views use `render_drawer()` / `drawer_done()` of `santa/console/utils.py`
-    (a page and a drawer template around the same body partial). The request form for the users is `/request/`.
+    (a page and a drawer template around the same body partial).
+    Every view of the drawer is an entry of the browser history (`drawer.js`, the URL from `data-drawer-url` of
+    `_drawer.html`), so Back / Forward step through it. The request form for the users is `/request/`.
     The Django admin (`santa/admin.py`) stays for low-level editing; configuration belongs in the console
     (*Administration*), not only in the admin.
     Both use the same functions in `services.py`; don't duplicate business logic in the views.
@@ -94,6 +98,10 @@ Every model and query must work on SQL Server (mssql-django 2.x, `mssql_python` 
 - Keys the sync server sends (client mode, regexes, USB, intervals, transitive rules, event detail URL, …) never go
   into the group profile: the server must stay the only source. Only profile-only keys belong there.
 - `SyncEnableProtoTransfer` stays `false`: the server only implements the JSON protocol.
+- File access rules (`FileAccessRule`) reach Santa only through the group profile (`FileAccessPolicy`, built by
+  `file_access_policy()`): the JSON sync protocol has no file access rules. Only the override
+  (`override_file_access_action`) is sent at every sync. After a change, the console names the groups whose profile
+  changed.
 - The base profile payloads (team ID `ZMCG7MLDV9`, code requirements) come from https://northpole.dev/deployment/.
   Compare with those pages before changing them.
 - Profile identifiers and UUIDs are derived from `SANTA_PROFILE_IDENTIFIER_PREFIX` and the group pk, so a new
@@ -102,8 +110,8 @@ Every model and query must work on SQL Server (mssql-django 2.x, `mssql_python` 
 
 ## Export / import (`santa/config_io.py`)
 
-- A new field on `Group`, `ReleaseSource` or `Rule` that is configuration (not state) must be added to the field
-  lists of `config_io.py`, with a round trip test. Bump `VERSION` only for incompatible format changes.
+- A new field on `Group`, `ReleaseSource`, `Rule` or `FileAccessRule` that is configuration (not state) must be added
+  to the field lists of `config_io.py`, with a round trip test. Bump `VERSION` only for incompatible format changes.
 - Match by natural keys only (names, rule type + identifier + policy, serial numbers), never by pk.
 - Never export the sync tokens or other secrets.
 
@@ -136,7 +144,7 @@ Every model and query must work on SQL Server (mssql-django 2.x, `mssql_python` 
 - Admin actions and console views that change rules must check permissions and write an admin log entry
   (`log_addition` / `log_change`, in the console the helpers of `santa/console/utils.py`).
 - Catalog icons are shown as `<img>` from the catalogs: only `https://` URLs, with `referrerpolicy="no-referrer"`.
-  Text from the catalogs and the users is always escaped (templates, `textContent` in `console.js`).
+  Text from the catalogs and the users is always escaped (templates, `textContent` in the console scripts).
 - Redirects to `?next=` go through `safe_next()`.
 
 ## Languages (English, German)

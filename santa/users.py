@@ -21,7 +21,7 @@ def gravatar_url(user, size=64):
     return f"https://gravatar.com/avatar/{digest}?{urlencode({'s': size * 2, 'd': 'mp'})}"
 
 
-# the browser sends its time zone in this cookie (console.js)
+# the browser sends its time zone in this cookie (console/core.js)
 TIME_ZONE_COOKIE = "santa_tz"
 
 

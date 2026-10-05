@@ -1,3 +1,4 @@
+import base64
 import json
 import re
 
@@ -8,21 +9,30 @@ from django.contrib.auth.models import Group as AuthGroup
 from django.contrib.auth.models import Permission, User
 from django.core.exceptions import ValidationError
 from django.utils import timezone
+from django.utils.text import format_lazy
 from django.utils.translation import gettext
 from django.utils.translation import gettext_lazy as _
 
 from ..catalog import update_identifier_icons
 from ..models import (
+    BRANDING_LOGO_MAX_BYTES,
+    BRANDING_LOGO_TYPES,
     AccessRequest,
+    FileAccessProcess,
+    FileAccessRule,
+    FileAccessRuleType,
     Group,
     Machine,
+    OnStartUSBOption,
     Policy,
     ReleaseSource,
+    RemovableMediaAction,
     Rule,
     RuleType,
     SignInGroup,
     Tag,
     UserProfile,
+    validate_logo_url,
 )
 from ..users import time_zone_names
 from ..validators import validate_identifier
@@ -116,7 +126,7 @@ class MachinesField(forms.CharField):
         return new != old
 
 
-# Suggestions for the CEL field (console.js): fields and global functions start a value, functions follow one (".").
+# Suggestions for the CEL field (cel.js): fields and global functions start a value, functions follow one (".").
 # They only complete: Santa evaluates the expression, so fields of newer
 # Santa versions work without being listed. Fields: https://northpole.dev/features/binary-authorization/
 CEL_SUGGESTIONS = [
@@ -282,7 +292,7 @@ class UploadBinaryForm(TagsMixin):
 
 
 class IdentifiersWidget(forms.Textarea):
-    """The identifiers of a release source as chips, with catalog suggestions (console.js)"""
+    """The identifiers of a release source as chips, with catalog suggestions (console/suggestions.js)"""
     template_name = "console/widgets/identifiers.html"
 
     def __init__(self, attrs=None):
@@ -465,7 +475,7 @@ def clean_icon_url(value):
 
 
 class RequestPackageForm(forms.Form):
-    # [{"kind": …, "identifier": …, "name": …, "icon_url": …}], filled by console.js
+    # [{"kind": …, "identifier": …, "name": …, "icon_url": …}], filled by console/suggestions.js
     packages = forms.CharField(widget=forms.HiddenInput, required=False)
     justification = forms.CharField(max_length=1000, widget=forms.Textarea(attrs={"rows": 4}),
                                     label=_("Justification"), help_text=_("Why do you need them?"))
@@ -715,13 +725,33 @@ class RequestFilterForm(forms.Form):
     status = forms.ChoiceField(choices=[("", _("All"))] + AccessRequest.Status.choices, required=False)
 
 
+class LogoField:
+    """A logo of the group form: an upload (stored as data: URL), or a file:/// URL of an image on the Macs"""
+
+    is_logo = True
+
+    def __init__(self, form, name):
+        self.name = name
+        self.label = form.LOGO_LABELS[name]
+        self.help_text = Group._meta.get_field(name).help_text
+        self.file = form[f"{name}_file"]
+        self.url = form[f"{name}_url"]
+        self.clear = form[f"{name}_clear"]
+        value = getattr(form.instance, name)
+        self.preview = value if value.startswith("data:") else ""
+        self.errors = [*self.file.errors, *self.url.errors]
+
+
 class GroupForm(forms.ModelForm):
     class Meta:
         model = Group
         fields = ("name", "description", "client_mode", "batch_size", "full_sync_interval", "allowed_path_regex",
                   "blocked_path_regex", "enable_transitive_rules", "enable_bundles", "enable_all_event_upload",
-                  "block_usb_mount", "remount_usb_mode", "event_detail_url", "event_detail_text",
-                  "unknown_block_message", "banned_block_message", "enable_bad_signature_protection")
+                  "removable_media_action", "removable_media_remount_flags", "encrypted_removable_media_action",
+                  "encrypted_removable_media_remount_flags", "override_file_access_action", "event_detail_url",
+                  "event_detail_text", "unknown_block_message", "banned_block_message",
+                  "enable_bad_signature_protection", "file_access_block_message", "on_start_usb_options",
+                  "branding_company_name")
         widgets = {
             "description": forms.Textarea(attrs={"rows": 2}),
             "client_mode": forms.RadioSelect,
@@ -729,18 +759,29 @@ class GroupForm(forms.ModelForm):
             "blocked_path_regex": forms.Textarea(attrs={"rows": 3, "class": "mono"}),
             "unknown_block_message": forms.Textarea(attrs={"rows": 2}),
             "banned_block_message": forms.Textarea(attrs={"rows": 2}),
+            "file_access_block_message": forms.Textarea(attrs={"rows": 2}),
         }
         labels = {
             "name": _("Name"), "description": _("Description"), "client_mode": _("Client mode"),
             "batch_size": _("Batch size"), "full_sync_interval": _("Full sync interval"),
             "allowed_path_regex": _("Allowed path regexes"), "blocked_path_regex": _("Blocked path regexes"),
             "enable_transitive_rules": _("Enable transitive rules"), "enable_bundles": _("Enable bundles"),
-            "enable_all_event_upload": _("Enable all event upload"), "block_usb_mount": _("Block USB mass storage"),
-            "remount_usb_mode": _("Remount USB with flags"), "event_detail_url": _("Block dialog URL"),
+            "enable_all_event_upload": _("Enable all event upload"),
+            "removable_media_action": _("Removable media"), "removable_media_remount_flags": _("Remount flags"),
+            "encrypted_removable_media_action": _("Encrypted removable media"),
+            "encrypted_removable_media_remount_flags": _("Remount flags of encrypted media"),
+            "event_detail_url": _("Block dialog URL"),
             "event_detail_text": _("Block dialog button text"), "unknown_block_message": _("Unknown block message"),
             "banned_block_message": _("Banned block message"),
             "enable_bad_signature_protection": _("Enable bad signature protection"),
+            "override_file_access_action": _("File access override"),
+            "file_access_block_message": _("File access block message"),
+            "on_start_usb_options": _("Removable media mounted when Santa starts"),
+            "branding_company_name": _("Company name"),
         }
+
+    LOGO_LABELS = {"branding_company_logo": _("Company logo"),
+                   "branding_company_logo_dark": _("Company logo in dark mode")}
 
     # the sections of the form page, like in the admin
     SECTIONS = [
@@ -750,16 +791,99 @@ class GroupForm(forms.ModelForm):
         (_("Path regexes"), _("One per line, combined into one regex for Santa. Rules always win over the regexes."),
          ("allowed_path_regex", "blocked_path_regex")),
         (_("Advanced"), "", ("enable_transitive_rules", "enable_bundles", "enable_all_event_upload")),
-        ("USB", "", ("block_usb_mount", "remount_usb_mode")),
+        (_("Removable media"), _("Sent at every sync, no profile change needed."),
+         ("removable_media_action", "removable_media_remount_flags", "encrypted_removable_media_action",
+          "encrypted_removable_media_remount_flags")),
+        (_("File access"), _("The file access rules are in the profile of the group, the override is sent at "
+                             "every sync."),
+         ("override_file_access_action",)),
         (_("Block dialog"), _("Sent at every sync, no profile change needed."),
          ("event_detail_url", "event_detail_text")),
         (_("Profile only"), _("Only in the .mobileconfig: after a change, download the profile again and "
                               "replace it in your MDM."),
-         ("unknown_block_message", "banned_block_message", "enable_bad_signature_protection")),
+         ("unknown_block_message", "banned_block_message", "enable_bad_signature_protection",
+          "file_access_block_message", "on_start_usb_options")),
+        (_("Branding"), _("Profile only, Santa 2026.1 and newer: after a change, download the profile again and "
+                          "replace it in your MDM."),
+         ("branding_company_name", "branding_company_logo", "branding_company_logo_dark")),
     ]
+    # a change of these needs a new profile (the logo fields: _file, _url, _clear)
+    PROFILE_FIELDS = ("unknown_block_message", "banned_block_message", "enable_bad_signature_protection",
+                      "file_access_block_message", "on_start_usb_options", "branding_company_name",
+                      "branding_company_logo")
+    SHOW_WHEN = {
+        "removable_media_remount_flags": "removable_media_action=REMOUNT",
+        "encrypted_removable_media_remount_flags": "encrypted_removable_media_action=REMOUNT",
+    }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["encrypted_removable_media_action"].choices = [
+            ("", _("The same as removable media")), *RemovableMediaAction.choices]
+        self.fields["on_start_usb_options"].choices = [("", _("Leave them")), *OnStartUSBOption.choices]
+        for name in self.LOGO_LABELS:
+            value = getattr(self.instance, name)
+            self.fields[f"{name}_file"] = forms.FileField(
+                required=False, label=_("Upload an image"),
+                help_text=format_lazy(_("PNG or JPEG, at most {size} KB. It goes into the profile."),
+                                      size=BRANDING_LOGO_MAX_BYTES // 1024),
+                widget=forms.ClearableFileInput(attrs={"accept": ",".join(BRANDING_LOGO_TYPES)}))
+            self.fields[f"{name}_url"] = forms.CharField(
+                required=False, label=_("Or an image on the Macs"),
+                initial=value if value.startswith("file://") else "",
+                widget=forms.TextInput(attrs={"placeholder": "file:///Library/Company/logo.png", "class": "mono"}))
+            self.fields[f"{name}_clear"] = forms.BooleanField(required=False, label=_("Remove the logo"))
+
+    def clean(self):
+        cleaned = super().clean()
+        for name in self.LOGO_LABELS:
+            upload = cleaned.get(f"{name}_file")
+            url = cleaned.get(f"{name}_url", "").strip()
+            current = getattr(self.instance, name)
+            if upload:
+                try:
+                    value = logo_data_url(upload)
+                except ValidationError as e:
+                    self.add_error(f"{name}_file", e)
+                    continue
+            elif url:
+                try:
+                    validate_logo_url(url)
+                except ValidationError as e:
+                    self.add_error(f"{name}_url", e)
+                    continue
+                value = url
+            elif cleaned.get(f"{name}_clear") or current.startswith("file://"):
+                # an emptied URL removes it too
+                value = ""
+            else:
+                value = current
+            setattr(self.instance, name, value)
+        return cleaned
+
+    def profile_changed(self):
+        return any(name.startswith(self.PROFILE_FIELDS) for name in self.changed_data)
 
     def sections(self):
-        return [(title, help_text, [self[name] for name in names]) for title, help_text, names in self.SECTIONS]
+        def field(name):
+            return LogoField(self, name) if name in self.LOGO_LABELS else self[name]
+        return [(title, help_text, [(field(name), self.SHOW_WHEN.get(name, "")) for name in names])
+                for title, help_text, names in self.SECTIONS]
+
+
+def logo_data_url(upload):
+    """An uploaded logo as data: URL, for the profile: only PNG and JPEG (by their first bytes), size limited"""
+    content = upload.read(BRANDING_LOGO_MAX_BYTES + 1)
+    if len(content) > BRANDING_LOGO_MAX_BYTES:
+        raise ValidationError(gettext("The image is too large (at most %(size)s KB).")
+                              % {"size": BRANDING_LOGO_MAX_BYTES // 1024})
+    if content.startswith(b"\x89PNG\r\n\x1a\n"):
+        kind = "image/png"
+    elif content.startswith(b"\xff\xd8\xff"):
+        kind = "image/jpeg"
+    else:
+        raise ValidationError(gettext("Only PNG or JPEG images."))
+    return f"data:{kind};base64,{base64.b64encode(content).decode()}"
 
 
 class ProfileForm(forms.ModelForm):
@@ -884,11 +1008,66 @@ class TagForm(forms.ModelForm):
         labels = {"name": _("Name"), "description": _("Description")}
 
 
+class FileAccessRuleForm(forms.ModelForm):
+    class Meta:
+        model = FileAccessRule
+        fields = ("name", "description", "is_enabled", "rule_type", "paths", "path_prefixes", "allow_read_access",
+                  "audit_only", "block_message", "event_detail_url", "event_detail_text", "enable_silent_mode",
+                  "enable_silent_tty_mode", "is_global", "groups")
+        widgets = {
+            "description": forms.Textarea(attrs={"rows": 2}),
+            "rule_type": forms.RadioSelect,
+            "paths": forms.Textarea(attrs={"rows": 3, "class": "mono"}),
+            "path_prefixes": forms.Textarea(attrs={"rows": 3, "class": "mono"}),
+            "block_message": forms.Textarea(attrs={"rows": 2}),
+            "groups": forms.CheckboxSelectMultiple,
+        }
+        labels = {
+            "name": _("Name"), "description": _("Description"), "is_enabled": _("Enabled"),
+            "rule_type": _("Rule type"), "paths": _("Paths"), "path_prefixes": _("Paths with everything below them"),
+            "allow_read_access": _("Allow reading"), "audit_only": _("Audit only"),
+            "block_message": _("Block message"), "event_detail_url": _("Block dialog URL"),
+            "event_detail_text": _("Block dialog button text"), "enable_silent_mode": _("Silent"),
+            "enable_silent_tty_mode": _("Silent in the terminal"), "is_global": _("All groups"),
+            "groups": _("Groups"),
+        }
+
+
+class FileAccessProcessForm(forms.ModelForm):
+    class Meta:
+        model = FileAccessProcess
+        fields = ("signing_id", "team_id", "platform_binary", "binary_path", "cdhash", "certificate_sha256")
+        labels = {
+            "signing_id": _("Signing ID"), "team_id": _("Team ID"), "platform_binary": _("Platform binary"),
+            "binary_path": _("Binary path"), "cdhash": _("CDHash"), "certificate_sha256": _("Certificate SHA-256"),
+        }
+        widgets = {name: forms.TextInput(attrs={"class": "mono"})
+                   for name in ("signing_id", "team_id", "binary_path", "cdhash", "certificate_sha256")}
+
+
+class BaseFileAccessProcessFormSet(forms.BaseInlineFormSet):
+    def clean(self):
+        super().clean()
+        if any(self.errors):
+            return
+        # an empty extra row has no cleaned_data
+        count = sum(1 for form in self.forms if form.cleaned_data and not form.cleaned_data.get("DELETE"))
+        rule_type = self.instance.rule_type
+        if count == 0 and rule_type in (FileAccessRuleType.PROCESSES_WITH_ALLOWED_PATHS,
+                                        FileAccessRuleType.PROCESSES_WITH_DENIED_PATHS):
+            raise ValidationError(gettext("This rule type needs at least one process."))
+
+
+FileAccessProcessFormSet = forms.inlineformset_factory(
+    FileAccessRule, FileAccessProcess, form=FileAccessProcessForm, formset=BaseFileAccessProcessFormSet, extra=1,
+    can_delete=True)
+
+
 class ConfigImportForm(forms.Form):
     file = forms.FileField(label=_("File"), help_text=_("JSON file of “Export configuration”, e.g. from the test "
                                                         "server, or of the export_config command."))
     delete_missing = forms.BooleanField(
         required=False, label=_("Delete what is not in the file"),
-        help_text=_("Deletes the manual rules and package rules that are not in the file."))
+        help_text=_("Deletes the manual rules, package rules and file access rules that are not in the file."))
     dry_run = forms.BooleanField(required=False, initial=True, label=_("Dry run"),
                                  help_text=_("Only show what would change. Uncheck to import."))

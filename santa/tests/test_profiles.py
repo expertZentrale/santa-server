@@ -32,6 +32,21 @@ class ProfileTestCase(TestCase):
                     "EnableBadSignatureProtection"):
             self.assertNotIn(key, payload)
 
+    def test_profile_only_keys(self):
+        self.group.on_start_usb_options = "ForceUnmount"
+        self.group.branding_company_name = "Example Corp"
+        self.group.branding_company_logo = "file:///Library/Example/logo.png"
+        self.group.branding_company_logo_dark = "data:image/png;base64,iVBORw0KGgo="
+        self.group.removable_media_action = "BLOCK"
+        payload, = plistlib.loads(group_profile(self.group))["PayloadContent"]
+        self.assertEqual(payload["OnStartUSBOptions"], "ForceUnmount")
+        self.assertEqual(payload["BrandingCompanyName"], "Example Corp")
+        self.assertEqual(payload["BrandingCompanyLogo"], "file:///Library/Example/logo.png")
+        self.assertEqual(payload["BrandingCompanyLogoDark"], "data:image/png;base64,iVBORw0KGgo=")
+        # the sync sends the removable media settings
+        for key in ("RemovableMediaAction", "BlockUSBMount", "RemountUSBMode"):
+            self.assertNotIn(key, payload)
+
     def test_group_profile_identifiers_are_stable(self):
         first = plistlib.loads(group_profile(self.group))
         self.group.sync_token = "new-token"

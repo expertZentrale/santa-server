@@ -1,2 +1,2 @@
-{# The changed rows of the list for console.js: new events, or the blocked apps with new blocks #}
+{# The changed rows of the list for console/live.js: new events, or the blocked apps with new blocks #}
 <template data-max-pk="{{ max_pk }}">{% if view == "all" %}{% for event in events %}{% include "console/events/_row.html" %}{% endfor %}{% else %}{% for row in rows %}{% include "console/events/_app_row.html" %}{% endfor %}{% endif %}</template>

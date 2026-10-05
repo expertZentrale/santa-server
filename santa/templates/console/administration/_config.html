@@ -1,0 +1,11 @@
+{% load i18n %}<div class="grid-2">
+  <section class="card"><h2>{% translate "Export" %}</h2>
+    <p>{% translate "The groups, the package rules and the manual rules as a JSON file, e.g. to move them from the test server to production. The sync URLs are not part of it." %}</p>
+    <a class="button primary" href="{% url 'console:admin_config_export' %}">{% translate "Export configuration" %}</a>
+  </section>
+  <section class="card"><h2>{% translate "Import" %}</h2>
+    <p class="small">{% translate "Everything is matched by name (groups, package rules) or by rule type, identifier and policy (rules). Existing groups keep their sync URL, new groups get a new one. The rules of the package rules are built by checking the package rules." %}</p>
+    {% if can_import %}{% url 'console:admin_config_import' as import_url %}<a class="button" href="{{ import_url }}" hx-get="{{ import_url }}" hx-target="#drawer">{% translate "Import configuration" %}</a>
+    {% else %}<p class="muted">{% translate "Importing needs the permissions to add, change and delete groups, rules and package rules." %}</p>{% endif %}
+  </section>
+</div>

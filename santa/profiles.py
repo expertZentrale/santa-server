@@ -2,14 +2,20 @@
 
 - the base profile, the same for every Mac: system extension, full disk access, background item, notifications.
   The payloads are the ones documented by North Pole Security (https://northpole.dev/deployment/).
-- one Santa configuration profile per group, with its SyncBaseURL.
+- one Santa configuration profile per group, with its SyncBaseURL and its file access rules (FileAccessPolicy: the
+  JSON sync protocol has no file access rules).
 
 The identifiers and UUIDs are derived from the group, so a downloaded profile replaces the previous one in the MDM.
 """
+import hashlib
+import json
 import plistlib
 import uuid
 
 from django.conf import settings
+from django.db.models import Q
+
+from .models import FileAccessRule
 
 SANTA_TEAM_ID = "ZMCG7MLDV9"
 PROFILE_NAMESPACE = uuid.UUID("9b4f1f3e-6a57-4a0c-9d59-3b8f1d0c5a21")
@@ -116,7 +122,35 @@ def group_configuration(group):
         config["BannedBlockMessage"] = group.banned_block_message
     if group.enable_bad_signature_protection:
         config["EnableBadSignatureProtection"] = True
+    if policy := file_access_policy(group):
+        config["FileAccessPolicy"] = policy
+    if group.file_access_block_message:
+        config["FileAccessBlockMessage"] = group.file_access_block_message
+    if group.on_start_usb_options:
+        config["OnStartUSBOptions"] = group.on_start_usb_options
+    # Santa 2026.1 and newer; older versions ignore the keys
+    if group.branding_company_name:
+        config["BrandingCompanyName"] = group.branding_company_name
+    if group.branding_company_logo:
+        config["BrandingCompanyLogo"] = group.branding_company_logo
+    if group.branding_company_logo_dark:
+        config["BrandingCompanyLogoDark"] = group.branding_company_logo_dark
     return config
+
+
+def file_access_rules(group):
+    return (FileAccessRule.objects.filter(Q(is_global=True) | Q(groups=group), is_enabled=True).distinct()
+                                  .prefetch_related("processes").order_by("name"))
+
+
+def file_access_policy(group):
+    """The FileAccessPolicy of the group (https://northpole.dev/configuration/faa/), None without rules"""
+    watch_items = {rule.name: rule.watch_item() for rule in file_access_rules(group)}
+    if not watch_items:
+        return None
+    # reported by Santa in the file access events: shows which policy a Mac has
+    version = hashlib.sha256(json.dumps(watch_items, sort_keys=True).encode()).hexdigest()[:12]
+    return {"Version": version, "WatchItems": watch_items}
 
 
 def group_profile(group):

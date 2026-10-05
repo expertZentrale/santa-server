@@ -1,6 +1,15 @@
 from django.urls import path
 
-from . import views_admin, views_events, views_groups, views_history, views_requests, views_rules, views_sources
+from . import (
+    views_admin,
+    views_events,
+    views_file_access,
+    views_groups,
+    views_history,
+    views_requests,
+    views_rules,
+    views_sources,
+)
 
 app_name = "console"
 
@@ -20,6 +29,7 @@ urlpatterns = [
     path("rules/upload/", views_rules.rule_upload, name="rule_upload"),
     path("rules/<int:pk>/", views_rules.rule_form, name="rule"),
     path("rules/<int:pk>/toggle/", views_rules.rule_toggle, name="rule_toggle"),
+    path("rules/<int:pk>/delete/", views_rules.rule_delete, name="rule_delete"),
 
     path("packages/", views_sources.sources, name="sources"),
     path("packages/add/", views_sources.source_form, name="source_add"),
@@ -32,6 +42,11 @@ urlpatterns = [
          name="version_approve"),
     path("packages/versions/<int:pk>/disable/", views_sources.version_set_enabled, {"enabled": False},
          name="version_disable"),
+
+    path("file-access/", views_file_access.file_access_rules, name="file_access_rules"),
+    path("file-access/add/", views_file_access.file_access_rule_form, name="file_access_rule_add"),
+    path("file-access/<int:pk>/", views_file_access.file_access_rule_form, name="file_access_rule"),
+    path("file-access/<int:pk>/delete/", views_file_access.file_access_rule_delete, name="file_access_rule_delete"),
 
     path("groups/", views_groups.groups, name="groups"),
     path("groups/add/", views_groups.group_form, name="group_add"),
@@ -72,4 +87,5 @@ urlpatterns = [
     path("administration/tags/<int:pk>/delete/", views_admin.tag_delete, name="admin_tag_delete"),
     path("administration/configuration/", views_admin.config, name="admin_config"),
     path("administration/configuration/export/", views_admin.config_export, name="admin_config_export"),
+    path("administration/configuration/import/", views_admin.config_import, name="admin_config_import"),
 ]

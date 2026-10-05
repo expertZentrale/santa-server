@@ -4,35 +4,5 @@
 {% block content %}
 {% url 'console:admin_users' as back_url %}{% include "console/_back.html" with url=back_url label=_("Users") %}
 <div class="page-head"><h1>{% if edited_user %}{{ edited_user.get_full_name|default:edited_user.username }}{% else %}{% translate "New local account" %}{% endif %}</h1></div>
-{% if edited_user %}
-<section class="card">
-  <dl class="facts">
-    <dt>{% translate "Username" %}</dt><dd class="mono">{{ edited_user.username }}</dd>
-    <dt>{% translate "Account" %}</dt><dd>{% if from_sign_in %}{% translate "Sign-in: name, e-mail, console access and the roles of the sign-in groups are updated at every sign-in." %}{% else %}{% translate "Local account with a password (break-glass access)." %}{% endif %}</dd>
-    {% if from_sign_in %}<dt>{% translate "Sign-in groups" %}</dt><dd>{% for group in sign_in_groups %}<a class="chip small" href="{% url 'console:admin_sign_in_group' group.pk %}">{{ group.name }}</a>{% empty %}–{% endfor %}
-      <small class="muted">{% translate "At the last sign-in." %}</small></dd>
-    <dt>{% translate "Console access" %}</dt><dd>{{ edited_user.is_staff|yesno:_("yes,no") }}</dd>{% endif %}
-    <dt>{% translate "Last sign-in" %}</dt><dd>{{ edited_user.last_login|date:"d.m.Y H:i"|default:"–" }}</dd>
-  </dl>
-</section>
-{% endif %}
-<form method="post" class="stack">
-  {% csrf_token %}
-  {% if form.non_field_errors %}<div class="error">{{ form.non_field_errors }}</div>{% endif %}
-  <fieldset class="plain"{% if edited_user and not perms.auth.change_user %} disabled{% endif %}>
-  <section class="card"><h2>{% translate "Account" %}</h2>
-    {% for field in form %}{% if field.name != "roles" %}{% include "console/_field.html" %}{% endif %}{% endfor %}
-  </section>
-  <section class="card"><h2>{% translate "Roles" %}</h2>
-    {% if sign_in_roles %}
-    <p class="help small">{% translate "From the sign-in (change them in the sign-in groups):" %}</p>
-    <ul class="plain">{% for role, sources in sign_in_roles %}<li><span class="chip small">{{ role.name }}</span> <small class="muted">{% if sources %}{{ sources|join:", " }}{% else %}{% translate "admin role of the sign-in" %}{% endif %}</small></li>{% endfor %}</ul>
-    {% endif %}
-    {% include "console/_field.html" with field=form.roles %}
-  </section>
-  </fieldset>
-  <div class="actions"><button class="button primary">{% if edited_user %}{% translate "Save" %}{% else %}{% translate "Create account" %}{% endif %}</button>
-    <a class="button" href="{% url 'console:admin_users' %}">{% translate "Cancel" %}</a>
-    {% if edited_user %}{% url 'console:history' 'user' edited_user.pk as history_url %}<a class="button right" href="{{ history_url }}" hx-get="{{ history_url }}" hx-target="#drawer">{% translate "History" %}</a>{% endif %}</div>
-</form>
+{% include "console/administration/_user_form.html" %}
 {% endblock %}

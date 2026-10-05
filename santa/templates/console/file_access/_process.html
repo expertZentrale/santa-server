@@ -1,0 +1,16 @@
+{% load i18n %}{# One process of a file access rule (formset row) #}
+<fieldset class="process-row{% if process.errors %} has-error{% endif %}">
+  {% for hidden in process.hidden_fields %}{{ hidden }}{% endfor %}
+  {% for error in process.non_field_errors %}<div class="error">{{ error }}</div>{% endfor %}
+  <div class="process-fields">
+    {% include "console/_field.html" with field=process.signing_id %}
+    {% include "console/_field.html" with field=process.team_id %}
+    {% include "console/_field.html" with field=process.binary_path %}
+    {% include "console/_field.html" with field=process.cdhash %}
+    {% include "console/_field.html" with field=process.certificate_sha256 %}
+    <div class="process-checks">
+      {% include "console/_field.html" with field=process.platform_binary %}
+      {% if process.DELETE %}{% include "console/_field.html" with field=process.DELETE %}{% endif %}
+    </div>
+  </div>
+</fieldset>

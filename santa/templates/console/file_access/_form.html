@@ -1,0 +1,50 @@
+{% load i18n %}<form method="post" class="stack" action="{{ request.get_full_path }}"{% if in_drawer %} hx-post="{{ request.get_full_path }}" hx-target="#drawer"{% endif %}>
+  {% csrf_token %}
+  {% if form.non_field_errors %}<div class="error">{{ form.non_field_errors }}</div>{% endif %}
+  <fieldset class="plain"{% if not can_change %} disabled{% endif %}>
+  <section class="card"><h2>{% translate "Rule" %}</h2>
+    {% include "console/_field.html" with field=form.name %}
+    {% include "console/_field.html" with field=form.description %}
+    {% include "console/_field.html" with field=form.rule_type %}
+    {% include "console/_field.html" with field=form.is_enabled %}
+  </section>
+  <section class="card"><h2>{% translate "Paths" %}</h2>
+    {% include "console/_field.html" with field=form.paths %}
+    {% include "console/_field.html" with field=form.path_prefixes %}
+    {% include "console/_field.html" with field=form.allow_read_access %}
+  </section>
+  <section class="card" data-formset="{{ formset.prefix }}"><h2>{% translate "Processes" %}</h2>
+    <p class="help small">{% translate "Every field filled in must match, e.g. Signing ID and Team ID. Find them with santactl fileinfo /path/to/binary." %}</p>
+    {{ formset.management_form }}
+    {% for error in formset.non_form_errors %}<div class="error">{{ error }}</div>{% endfor %}
+    <div class="process-rows" data-formset-rows>
+      {% for process in formset %}{% include "console/file_access/_process.html" %}{% endfor %}
+    </div>
+    <template data-formset-empty>{% include "console/file_access/_process.html" with process=formset.empty_form %}</template>
+    <button type="button" class="button small" data-formset-add>{% translate "Add a process" %}</button>
+  </section>
+  <section class="card"><h2>{% translate "Enforcement" %}</h2>
+    {% include "console/_field.html" with field=form.audit_only %}
+    <div data-hide-when="audit_only">
+      {% include "console/_field.html" with field=form.block_message %}
+      {% include "console/_field.html" with field=form.event_detail_url %}
+      {% include "console/_field.html" with field=form.event_detail_text %}
+      {% include "console/_field.html" with field=form.enable_silent_mode %}
+      {% include "console/_field.html" with field=form.enable_silent_tty_mode %}
+    </div>
+  </section>
+  <section class="card"><h2>{% translate "Scope" %}</h2>
+    {% include "console/_field.html" with field=form.is_global %}
+    <div data-hide-when="is_global">{% include "console/_field.html" with field=form.groups %}</div>
+  </section>
+  </fieldset>
+  {% if can_change %}
+  <div class="actions"><button class="button primary">{% translate "Save" %}</button>
+    {% if in_drawer %}<button type="button" class="button" data-drawer-close>{% translate "Cancel" %}</button>{% else %}<a class="button" href="{% url 'console:file_access_rules' %}">{% translate "Cancel" %}</a>{% endif %}
+    {% if rule %}{% url 'console:history' 'fileaccessrule' rule.pk as history_url %}<a class="button right" href="{{ history_url }}" hx-get="{{ history_url }}" hx-target="#drawer">{% translate "History" %}</a>{% endif %}
+    {% if rule and perms.santa.delete_fileaccessrule %}<button class="button danger" form="file-access-delete-form">{% translate "Delete" %}</button>{% endif %}</div>
+  {% endif %}
+</form>
+{% if rule and perms.santa.delete_fileaccessrule %}
+<form id="file-access-delete-form" method="post" action="{% url 'console:file_access_rule_delete' rule.pk %}" data-confirm="{% blocktranslate with name=rule.name %}Delete the file access rule {{ name }}? It stays on the Macs until their profile is replaced.{% endblocktranslate %}">{% csrf_token %}</form>
+{% endif %}

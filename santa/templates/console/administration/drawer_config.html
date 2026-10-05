@@ -1,0 +1,6 @@
+{% extends "console/_drawer.html" %}{% load i18n %}
+{% block drawer_class %} wide{% endblock %}
+{% block drawer_title %}{% translate "Export / import" %}{% endblock %}
+{% block drawer_body %}
+{% include "console/administration/_config.html" %}
+{% endblock %}

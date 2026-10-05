@@ -21,7 +21,11 @@ class ConfigIOTestCase(TestCase):
     def setUp(self):
         self.dev = Group.objects.create(name="Development", client_mode="LOCKDOWN",
                                         allowed_path_regex="^/opt/tools/\n^/Applications/Internal\\.app/")
-        self.sales = Group.objects.create(name="Sales", unknown_block_message="Ask the IT")
+        self.sales = Group.objects.create(name="Sales", unknown_block_message="Ask the IT",
+                                          removable_media_action="REMOUNT", removable_media_remount_flags="rdonly",
+                                          encrypted_removable_media_action="ALLOW", on_start_usb_options="Unmount",
+                                          branding_company_name="Example Corp",
+                                          branding_company_logo="data:image/png;base64,iVBORw0KGgo=")
         self.machine = Machine.objects.create(machine_id="M1", serial_number="C02TEST", group=self.dev)
         source = ReleaseSource.objects.create(name="colima", kind=ReleaseSource.Kind.GITHUB_RELEASE,
                                               identifier="abiosoft/colima\nlima-vm/lima", asset_pattern="Darwin",
@@ -69,7 +73,12 @@ class ConfigIOTestCase(TestCase):
         dev = Group.objects.get(name="Development")
         self.assertEqual(dev.client_mode, "LOCKDOWN")
         self.assertEqual(dev.allowed_path_regex, "^/opt/tools/\n^/Applications/Internal\\.app/")
-        self.assertEqual(Group.objects.get(name="Sales").unknown_block_message, "Ask the IT")
+        sales = Group.objects.get(name="Sales")
+        self.assertEqual((sales.unknown_block_message, sales.removable_media_action,
+                          sales.removable_media_remount_flags, sales.encrypted_removable_media_action,
+                          sales.on_start_usb_options, sales.branding_company_name, sales.branding_company_logo),
+                         ("Ask the IT", "REMOUNT", "rdonly", "ALLOW", "Unmount", "Example Corp",
+                          "data:image/png;base64,iVBORw0KGgo="))
         rule = Rule.objects.get(identifier=SHA_A)
         self.assertEqual({g.name for g in rule.groups.all()}, {"Development", "Sales"})
         self.assertEqual(Rule.objects.get(policy=Policy.CEL).cel_expr, CEL_EXPR)
@@ -78,6 +87,19 @@ class ConfigIOTestCase(TestCase):
         self.assertEqual(source.identifiers, ["abiosoft/colima", "lima-vm/lima"])
         self.assertEqual((source.version_pattern, source.rule_type, source.policy, source.cel_expr, source.custom_msg),
                          ("^v1\\.", RuleType.SIGNINGID, Policy.CEL, CEL_EXPR, "Ask the IT"))
+
+    def test_import_of_the_old_usb_settings(self):
+        data = json.loads(json.dumps(export_config()))
+        for group in data["groups"]:
+            for field in ("removable_media_action", "removable_media_remount_flags"):
+                del group[field]
+        data["groups"][0].update({"block_usb_mount": True, "remount_usb_mode": ""})
+        data["groups"][1].update({"block_usb_mount": True, "remount_usb_mode": "rdonly,noexec"})
+        import_config(data)
+        self.assertEqual(Group.objects.get(name="Development").removable_media_action, "BLOCK")
+        sales = Group.objects.get(name="Sales")
+        self.assertEqual((sales.removable_media_action, sales.removable_media_remount_flags),
+                         ("REMOUNT", "rdonly,noexec"))
 
     def test_import_keeps_the_sync_tokens(self):
         token = self.dev.sync_token

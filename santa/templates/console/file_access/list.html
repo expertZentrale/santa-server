@@ -1,0 +1,31 @@
+{% extends "console/base.html" %}{% load console i18n %}
+{% block title %}{% translate "File access" %}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{% translate "File access" %}</h1>
+  {% translate "Which processes may read or write which files, e.g. only ssh may read the SSH keys. The rules are in the configuration profile of the groups: after a change, download the profiles again and replace them in your MDM." as help %}{% include "console/_help.html" with text=help %}
+  <div class="actions">{% if perms.santa.add_fileaccessrule %}{% url 'console:file_access_rule_add' as add_url %}<a class="button primary" href="{{ add_url }}" hx-get="{{ add_url }}" hx-target="#drawer">{% translate "New file access rule" %}</a>{% endif %}</div>
+</div>
+{% include "console/widgets/_filter_bar.html" %}
+<table class="table" data-table="file-access">
+  <thead><tr>{% sort_th _("Rule") "name" %}{% sort_th _("Rule type") "type" %}<th>{% translate "Paths" %}</th><th class="num">{% translate "Processes" %}</th><th>{% translate "Mode" %}</th><th>{% translate "Scope" %}</th>{% sort_th _("Changed") "changed" %}</tr></thead>
+  <tbody>
+  {% for rule in page %}
+    <tr{% if not rule.is_enabled %} class="disabled"{% endif %}>
+      <td>{% url 'console:file_access_rule' rule.pk as rule_url %}<a class="strong" href="{{ rule_url }}" hx-get="{{ rule_url }}" hx-target="#drawer">{{ rule.name }}</a>
+        {% if rule.description %}<small class="muted">{{ rule.description|truncatechars:90 }}</small>{% endif %}</td>
+      <td class="small">{{ rule.get_rule_type_display }}</td>
+      <td class="small">{% for path in rule.path_list|slice:":3" %}<div class="mono">{{ path.Path }}{% if path.IsPrefix %} <span class="muted">…</span>{% endif %}</div>{% endfor %}
+        {% if rule.path_list|length > 3 %}<span class="muted">{% blocktranslate with count=rule.path_list|length|add:"-3" %}+{{ count }} more{% endblocktranslate %}</span>{% endif %}</td>
+      <td class="num">{{ rule.process_count }}</td>
+      <td>{% if not rule.is_enabled %}<span class="badge">{% translate "disabled" %}</span>{% elif rule.audit_only %}<span class="badge info">{% translate "audit only" %}</span>{% else %}<span class="badge bad">{% translate "blocks" %}</span>{% endif %}</td>
+      <td>{% if rule.is_global %}<span class="chip small">{% translate "All groups" %}</span>{% else %}{% for group in rule.groups.all %}<span class="chip small">{{ group.name }}</span>{% empty %}<span class="badge bad">{% translate "no scope" %}</span>{% endfor %}{% endif %}</td>
+      <td>{% blocktranslate with since=rule.updated_at|timesince %}{{ since }} ago{% endblocktranslate %}</td>
+    </tr>
+  {% empty %}
+    <tr class="empty"><td colspan="7">{% translate "No file access rules for these filters." %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% include "console/_pagination.html" %}
+{% endblock %}

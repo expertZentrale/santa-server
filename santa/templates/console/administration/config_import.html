@@ -1,0 +1,8 @@
+{% extends "console/base.html" %}{% load i18n %}
+{% block title %}{% translate "Import configuration" %}{% endblock %}
+{% block main_class %}narrow{% endblock %}
+{% block content %}
+{% url 'console:admin_config' as back_url %}{% include "console/_back.html" with url=back_url label=_("Export / import") %}
+<div class="page-head"><h1>{% translate "Import configuration" %}</h1></div>
+{% include "console/administration/_config_import.html" %}
+{% endblock %}

@@ -13,7 +13,8 @@ class Command(BaseCommand):
         parser.add_argument("file", help="JSON file, - for stdin")
         parser.add_argument("--dry-run", action="store_true", help="Show the changes without saving them")
         parser.add_argument("--delete-missing", action="store_true",
-                            help="Delete the manual rules and release sources that are not in the file")
+                            help="Delete the manual rules, release sources and file access rules that are not in "
+                                 "the file")
 
     def handle(self, *args, **options):
         try:

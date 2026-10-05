@@ -1,0 +1,4 @@
+{% extends "console/_drawer.html" %}{% load i18n %}
+{% block drawer_class %} wide{% endblock %}
+{% block drawer_title %}{% if rule %}{{ rule.name }}{% else %}{% translate "New file access rule" %}{% endif %}{% endblock %}
+{% block drawer_body %}{% include "console/file_access/_form.html" with in_drawer=True %}{% endblock %}

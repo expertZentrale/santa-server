@@ -1,0 +1,8 @@
+{% extends "console/base.html" %}{% load i18n %}
+{% block title %}{% if rule %}{{ rule.name }}{% else %}{% translate "New file access rule" %}{% endif %}{% endblock %}
+{% block main_class %}narrow{% endblock %}
+{% block content %}
+{% url 'console:file_access_rules' as back_url %}{% include "console/_back.html" with url=back_url label=_("File access") %}
+<div class="page-head"><h1>{% if rule %}{{ rule.name }}{% else %}{% translate "New file access rule" %}{% endif %}</h1></div>
+{% include "console/file_access/_form.html" %}
+{% endblock %}

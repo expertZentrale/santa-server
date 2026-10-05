@@ -1,0 +1,5 @@
+{% extends "console/_drawer.html" %}{% load i18n %}
+{% block drawer_title %}{% if tag %}{{ tag.name }}{% else %}{% translate "New tag" %}{% endif %}{% endblock %}
+{% block drawer_body %}
+{% include "console/administration/_tag_form.html" with in_drawer=True %}
+{% endblock %}

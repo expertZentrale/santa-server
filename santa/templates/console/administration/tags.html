@@ -6,7 +6,7 @@
   {% if params.sort %}<input type="hidden" name="sort" value="{{ params.sort }}">{% endif %}
   <input type="search" name="q" value="{{ params.q }}" placeholder="{% translate 'Name, description…' %}" aria-label="{% translate 'Search' %}">
   <button class="button">{% translate "Filter" %}</button>
-  {% if perms.santa.add_tag %}<a class="button right" href="{% url 'console:admin_tag_add' %}">{% translate "New tag" %}</a>{% endif %}
+  {% if perms.santa.add_tag %}{% url 'console:admin_tag_add' as add_url %}<a class="button right" href="{{ add_url }}" hx-get="{{ add_url }}" hx-target="#drawer">{% translate "New tag" %}</a>{% endif %}
 </form>
 <p class="muted small">{% translate "Only labels to find the rules, no effect on the Macs." %}</p>
 <table class="table">
@@ -14,7 +14,7 @@
   <tbody>
   {% for tag in page %}
     <tr>
-      <td><a class="strong" href="{% url 'console:admin_tag' tag.pk %}">{{ tag.name }}</a></td>
+      <td>{% url 'console:admin_tag' tag.pk as tag_url %}<a class="strong" href="{{ tag_url }}" hx-get="{{ tag_url }}" hx-target="#drawer">{{ tag.name }}</a></td>
       <td>{{ tag.description|default:"–" }}</td>
       <td class="num"><a href="{% url 'console:rules' %}?tag={{ tag.pk }}">{{ tag.rule_count }}</a></td>
       <td class="num">{{ tag.source_count }}</td>

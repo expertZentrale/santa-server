@@ -15,12 +15,14 @@ from django.utils.safestring import mark_safe
 from django.utils.text import slugify
 
 from .auth import delete_sign_in_group, sign_in_group_changed
-from .config_io import ConfigImportError, export_config, import_config
+from .config_io import EXPORT_PERMS, IMPORT_PERMS, ConfigImportError, export_config, import_config
 from .forms import AddGroupsForm, AllowEventsForm, ImportConfigForm, RuleAdminForm, TagActionForm, UploadBinaryForm
 from .models import (
     AccessRequest,
     AccessRequestPackage,
     Event,
+    FileAccessProcess,
+    FileAccessRule,
     Group,
     Machine,
     ReleaseSource,
@@ -72,13 +74,23 @@ class GroupAdmin(admin.ModelAdmin):
         ("Advanced options", {
             "fields": ("enable_transitive_rules", "enable_bundles", "enable_all_event_upload"),
         }),
-        ("USB", {"fields": ("block_usb_mount", "remount_usb_mode")}),
+        ("Removable media", {
+            "fields": ("removable_media_action", "removable_media_remount_flags", "encrypted_removable_media_action",
+                       "encrypted_removable_media_remount_flags"),
+            "description": "Sent at every sync, no profile change needed.",
+        }),
+        ("File access", {
+            "fields": ("override_file_access_action",),
+            "description": "Sent at every sync. The file access rules are in the profile of the group.",
+        }),
         ("Block dialog", {
             "fields": ("event_detail_url", "event_detail_text"),
             "description": "Sent at every sync, no profile change needed.",
         }),
         ("Profile only", {
-            "fields": ("unknown_block_message", "banned_block_message", "enable_bad_signature_protection"),
+            "fields": ("unknown_block_message", "banned_block_message", "enable_bad_signature_protection",
+                       "file_access_block_message", "on_start_usb_options", "branding_company_name",
+                       "branding_company_logo", "branding_company_logo_dark"),
             "description": "These settings are only in the .mobileconfig: after a change, download the profile "
                            "again and replace it in your MDM.",
         }),
@@ -136,7 +148,7 @@ class GroupAdmin(admin.ModelAdmin):
         ] + super().get_urls()
 
     def export_view(self, request):
-        if not all(request.user.has_perm(f"santa.view_{m}") for m in ("group", "rule", "releasesource")):
+        if not request.user.has_perms(EXPORT_PERMS):
             raise PermissionDenied
         response = HttpResponse(json.dumps(export_config(), indent=2, ensure_ascii=False),
                                 content_type="application/json")
@@ -145,8 +157,7 @@ class GroupAdmin(admin.ModelAdmin):
         return response
 
     def import_view(self, request):
-        if not all(request.user.has_perm(f"santa.{action}_{model}")
-                   for action in ("add", "change", "delete") for model in ("group", "rule", "releasesource")):
+        if not request.user.has_perms(IMPORT_PERMS):
             raise PermissionDenied
         form = ImportConfigForm(request.POST or None, request.FILES or None)
         report = errors = None
@@ -584,6 +595,33 @@ class ReleaseSourceAdmin(admin.ModelAdmin):
                 self.message_user(request, message + ".", messages.SUCCESS)
             if not release_versions:
                 self.message_user(request, f"{source}: already up to date.")
+
+
+class FileAccessProcessInline(admin.TabularInline):
+    model = FileAccessProcess
+    extra = 0
+
+
+@admin.register(FileAccessRule)
+class FileAccessRuleAdmin(admin.ModelAdmin):
+    list_display = ("name", "rule_type", "audit_only", "is_global", "is_enabled", "updated_at")
+    list_filter = ("rule_type", "audit_only", "is_global", "is_enabled")
+    search_fields = ("name", "description", "paths", "path_prefixes")
+    filter_horizontal = ("groups",)
+    readonly_fields = ("created_at", "updated_at")
+    inlines = [FileAccessProcessInline]
+    fieldsets = (
+        (None, {
+            "fields": ("name", "description", "is_enabled"),
+            "description": "In the configuration profile of the groups (FileAccessPolicy): after a change, download "
+                           "their profiles again and replace them in your MDM.",
+        }),
+        ("Rule", {"fields": ("rule_type", "paths", "path_prefixes", "allow_read_access", "audit_only")}),
+        ("Block dialog", {"fields": ("block_message", "event_detail_url", "event_detail_text", "enable_silent_mode",
+                                     "enable_silent_tty_mode")}),
+        ("Scope", {"fields": ("is_global", "groups")}),
+        ("Info", {"fields": ("created_at", "updated_at")}),
+    )
 
 
 @admin.register(Tag)

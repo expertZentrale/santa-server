@@ -4,9 +4,22 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Santa{% endblock %} · Santa Server</title>
-  <link rel="stylesheet" href="{% static 'santa/console.css' %}">
+  {# one file per task; the order counts (defer keeps it): core.js first, then filterbar, drawer, table (Escape) #}
+  <link rel="stylesheet" href="{% static 'santa/console/base.css' %}">
+  <link rel="stylesheet" href="{% static 'santa/console/filterbar.css' %}">
+  <link rel="stylesheet" href="{% static 'santa/console/table.css' %}">
+  <link rel="stylesheet" href="{% static 'santa/console/widgets.css' %}">
+  <link rel="stylesheet" href="{% static 'santa/console/drawer.css' %}">
   <script src="{% static 'santa/htmx.min.js' %}" defer></script>
-  <script src="{% static 'santa/console.js' %}" defer></script>
+  <script src="{% static 'santa/console/core.js' %}" defer></script>
+  <script src="{% static 'santa/console/filterbar.js' %}" defer></script>
+  <script src="{% static 'santa/console/drawer.js' %}" defer></script>
+  <script src="{% static 'santa/console/table.js' %}" defer></script>
+  <script src="{% static 'santa/console/live.js' %}" defer></script>
+  <script src="{% static 'santa/console/forms.js' %}" defer></script>
+  <script src="{% static 'santa/console/suggestions.js' %}" defer></script>
+  <script src="{% static 'santa/console/tags.js' %}" defer></script>
+  <script src="{% static 'santa/console/cel.js' %}" defer></script>
 </head>
 <body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
 <header class="topbar" data-topbar>
@@ -20,6 +33,7 @@
       <a href="{% url 'console:events' %}" {% if request.path|slice:":16" == "/console/events/" %}class="active" aria-current="page"{% endif %}>{% translate "Events" %}</a>
       <a href="{% url 'console:rules' %}" {% if request.path|slice:":15" == "/console/rules/" %}class="active" aria-current="page"{% endif %}>{% translate "Execution rules" %}</a>
       <a href="{% url 'console:sources' %}" {% if request.path|slice:":18" == "/console/packages/" %}class="active" aria-current="page"{% endif %}>{% translate "Package rules" %}</a>
+      {% if perms.santa.view_fileaccessrule %}<a href="{% url 'console:file_access_rules' %}" {% if request.path|slice:":21" == "/console/file-access/" %}class="active" aria-current="page"{% endif %}>{% translate "File access" %}</a>{% endif %}
       {% pending_requests as pending %}
       <a href="{% url 'console:requests' %}" {% if request.path|slice:":18" == "/console/requests/" %}class="active" aria-current="page"{% endif %}>{% translate "Requests" %}{% if pending %} <span class="count">{{ pending }}</span>{% endif %}</a>
       <a href="{% url 'console:machines' %}" {% if request.path|slice:":13" == "/console/macs" %}class="active" aria-current="page"{% endif %}>{% translate "Macs" %}</a>
