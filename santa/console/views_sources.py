@@ -1,4 +1,5 @@
 from django.contrib import messages
+from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -9,6 +10,7 @@ from .. import catalog
 from ..models import ReleaseSource, ReleaseVersion
 from ..releases import ReleaseError, sync_release_source
 from ..services import set_rules_enabled
+from .filters import Facet, any_of, chosen, filter_bar, remember_filters
 from .forms import ReleaseSourceForm
 from .utils import (
     changed_message,
@@ -37,15 +39,15 @@ def latest_versions(source):
 @staff_required
 def sources(request):
     require_perms(request, "view_releasesource")
+    if remembered := remember_filters(request, "sources"):
+        return remembered
     queryset = ReleaseSource.objects.prefetch_related("groups", "versions")
-    kind = request.GET.get("kind", "")
-    if kind in ReleaseSource.Kind.values:
-        queryset = queryset.filter(kind=kind)
-    status = request.GET.get("status", "")
-    if status == "error":
-        queryset = queryset.exclude(last_error="")
-    elif status == "disabled":
-        queryset = queryset.filter(is_enabled=False)
+    if kinds := chosen(request.GET, "kind", ReleaseSource.Kind.values):
+        queryset = queryset.filter(kind__in=kinds)
+    statuses = {"error": ~Q(last_error=""), "disabled": Q(is_enabled=False)}
+    status = any_of([statuses[value] for value in chosen(request.GET, "status", statuses)])
+    if status is not None:
+        queryset = queryset.filter(status)
     q = request.GET.get("q", "").strip()
     if q:
         queryset = queryset.filter(name__icontains=q) | queryset.filter(identifier__icontains=q)
@@ -54,8 +56,14 @@ def sources(request):
     page = paginate(request, queryset)
     for source in page:
         source.latest = latest_versions(source)
-    return render(request, "console/sources/list.html", {"page": page, "params": request.GET, "sort": sort,
-                                                         "kinds": ReleaseSource.Kind.choices})
+    return render(request, "console/sources/list.html", {
+        "page": page, "params": request.GET, "sort": sort,
+        **filter_bar(request, "sources", [
+            Facet("kind", gettext("Catalog"), choices=ReleaseSource.Kind.choices),
+            Facet("status", gettext("Status"), choices=[("error", gettext("With errors")),
+                                                        ("disabled", gettext("Disabled"))]),
+        ], hidden=("sort",), placeholder=gettext("Name or package…")),
+    })
 
 
 @staff_required

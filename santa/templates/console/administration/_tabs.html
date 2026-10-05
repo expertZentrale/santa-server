@@ -1,5 +1,6 @@
 {% load i18n %}<div class="page-head">
   <h1>{% translate "Administration" %}</h1>
+  {% if help %}{% include "console/_help.html" with text=help %}{% endif %}
   <div class="tabs" role="tablist">
     {% for key, label, url in sections %}<a href="{% url url %}" role="tab" {% if key == section %}class="active" aria-selected="true"{% endif %}>{{ label }}</a>{% endfor %}
   </div>

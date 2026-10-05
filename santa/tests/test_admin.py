@@ -9,7 +9,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from santa.forms import AllowEventsForm, UploadBinaryForm
-from santa.models import Event, Group, Machine, Policy, Rule, RuleType, Tag
+from santa.models import Event, Group, Machine, Policy, Rule, RuleType, SavedFilter, Tag
 
 from .utils import build_macho
 
@@ -36,7 +36,9 @@ class AdminTestCase(TestCase):
         rule = Rule.objects.create(rule_type=RuleType.BINARY, identifier="a" * 64)
         rule.groups.add(self.dev)
         rule.tags.add(tag)
-        for name in ("group", "machine", "rule", "event", "releasesource", "tag", "accessrequest", "signingroup"):
+        SavedFilter.objects.create(user=User.objects.first(), page="rules", name="Global", query="scope=global")
+        for name in ("group", "machine", "rule", "event", "releasesource", "tag", "accessrequest", "signingroup",
+                     "savedfilter"):
             for params in ({}, {"_facets": "True"}):
                 response = self.client.get(reverse(f"admin:santa_{name}_changelist"), params)
                 self.assertEqual(response.status_code, 200, (name, params))

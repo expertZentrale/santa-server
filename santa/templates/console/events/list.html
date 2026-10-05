@@ -14,7 +14,7 @@
 <form method="post" class="table-form" data-select-form>
   {% csrf_token %}
   <input type="hidden" name="next" value="{{ request.get_full_path }}">
-  <input type="hidden" name="resolved" value="{{ params.resolved|default:'open' }}">
+  <input type="hidden" name="resolved" value="{{ resolved }}">
   <div class="bulkbar" data-bulkbar hidden>
     <span class="count" title="{% translate 'Click selects a row, Ctrl-click adds or removes one, Shift-click selects a range.' %}">{% blocktranslate %}<span data-selected-count>0</span> selected{% endblocktranslate %}</span>
     {% url 'console:events_create_rules' as create_rules_url %}<button class="button primary" formaction="{{ create_rules_url }}" hx-post="{{ create_rules_url }}" hx-target="#drawer">{% translate "Create rules…" %}</button>
@@ -24,8 +24,8 @@
   {% if view == "all" %}
     <table class="table" data-table="events" data-live-updates="{% url 'console:event_updates' %}{% querystring page=None sort=None %}" data-after="{{ max_pk }}"{% if live_insert %} data-insert{% endif %}>
       <thead><tr><th class="select"><input type="checkbox" data-select-all aria-label="{% translate 'Select all' %}"></th>
-        {% sort_th _("Time") "time" %}{% sort_th _("Decision") "decision" %}{% sort_th _("File") "file" %}
-        {% sort_th _("Mac") "mac" %}{% sort_th _("User") "user" %}{% sort_th _("Signing ID") "signing" %}<th></th></tr></thead>
+        {% sort_th _("Time") "time" %}{% sort_th _("Decision") "decision" %}{% sort_th _("File") "file" "grow" %}
+        {% sort_th _("Mac") "mac" %}{% sort_th _("User") "user" %}{% sort_th _("Signing ID") "signing" %}<th data-col="status">{% translate "Status" %}</th></tr></thead>
       <tbody>
         {% for event in page %}{% include "console/events/_row.html" %}{% empty %}
         <tr class="empty"><td colspan="8">{% translate "No events for these filters." %}</td></tr>{% endfor %}
@@ -34,12 +34,12 @@
   {% else %}
     <table class="table" data-table="blocked-apps" data-live-updates="{% url 'console:event_updates' %}{% querystring page=None sort=None %}" data-after="{{ max_pk }}"{% if live_insert %} data-insert{% endif %}>
       <thead><tr><th class="select"><input type="checkbox" data-select-all aria-label="{% translate 'Select all' %}"></th>
-        {% sort_th _("Program") "program" %}<th>{% translate "Signing ID / Team ID" %}</th>{% sort_th _("Blocks") "blocks" "num" %}
-        {% sort_th _("Macs") "macs" "num" %}{% sort_th _("Users") "users" "num" %}{% sort_th _("Last seen") "last" %}<th></th></tr></thead>
+        {% sort_th _("Program") "program" "grow" %}<th>{% translate "Signing ID / Team ID" %}</th>{% sort_th _("Blocks") "blocks" "num" %}
+        {% sort_th _("Macs") "macs" "num" %}{% sort_th _("Users") "users" "num" %}{% sort_th _("Last seen") "last" %}<th data-col="rules">{% translate "Rules / requests" %}</th><th></th></tr></thead>
       <tbody>
       {% for row in page %}{% include "console/events/_app_row.html" %}
       {% empty %}
-        <tr class="empty"><td colspan="8">{% translate "Nothing blocked for these filters." %}</td></tr>
+        <tr class="empty"><td colspan="9">{% translate "Nothing blocked for these filters." %}</td></tr>
       {% endfor %}
       </tbody>
     </table>
