@@ -40,7 +40,8 @@ RULE_TYPE_HELP = {
 }
 ALLOW_POLICIES = [(Policy.ALLOWLIST, _("Allow")), (Policy.ALLOWLIST_COMPILER, _("Allow compiler"))]
 # rules from events can also block; CEL needs an expression per rule, that is the rule form
-EVENT_POLICIES = [*ALLOW_POLICIES, (Policy.BLOCKLIST, _("Block")), (Policy.SILENT_BLOCKLIST, _("Block silently"))]
+EVENT_POLICIES = [*ALLOW_POLICIES, (Policy.BLOCKLIST, _("Block")), (Policy.SILENT_BLOCKLIST, _("Block silently")),
+                  (Policy.CEL, Policy.CEL.label)]
 # labels of the model fields the console forms show (the admin keeps the English field names)
 RULE_LABELS = {
     "rule_type": _("Rule type"), "identifier": _("Identifier"), "policy": _("Policy"), "description": _("Comment"),
@@ -169,14 +170,29 @@ def parse_prefix_expression(expression):
     return re.findall(r'startsWith\("[A-Z0-9]{10}:([A-Za-z0-9._-]+)"\)', expression)
 
 
-class RuleForm(TagsMixin, forms.ModelForm):
-    machines = MachinesField(label=_("Macs"))
-    signing_prefixes = forms.CharField(
+def signing_prefixes_field():
+    return forms.CharField(
         required=False, label=_("Only signing IDs starting with"),
         widget=forms.Textarea(attrs={"rows": 2, "class": "mono", "placeholder": "com.microsoft.teams2"}),
         help_text=_("One bundle ID prefix per line. Writes the CEL expression: the binaries of this team whose "
                     "signing ID starts with one of them are allowed, the others are blocked, also in monitor mode. "
                     "Rules for a signing ID or binary still win."))
+
+
+def clean_signing_prefixes(form, value):
+    """The prefixes of the field as a list; an error on the field for invalid ones"""
+    prefixes = [line.strip() for line in (value or "").splitlines() if line.strip()]
+    invalid = [prefix for prefix in prefixes if not SIGNING_PREFIX_RE.match(prefix)]
+    if invalid:
+        form.add_error("signing_prefixes", gettext("Only letters, digits, dots, hyphens and underscores: "
+                                                   "%(prefixes)s") % {"prefixes": ", ".join(invalid)})
+        return []
+    return prefixes
+
+
+class RuleForm(TagsMixin, forms.ModelForm):
+    machines = MachinesField(label=_("Macs"))
+    signing_prefixes = signing_prefixes_field()
 
     class Meta:
         model = Rule
@@ -206,14 +222,13 @@ class RuleForm(TagsMixin, forms.ModelForm):
         if (not cleaned_data.get("is_global") and not cleaned_data.get("groups")
                 and not cleaned_data.get("machines")):
             raise ValidationError(gettext("Choose a scope: global, some groups or some Macs."))
-        prefixes = [line.strip() for line in (cleaned_data.get("signing_prefixes") or "").splitlines() if line.strip()]
-        if prefixes and cleaned_data.get("rule_type") == RuleType.TEAMID and cleaned_data.get("policy") == Policy.CEL:
-            invalid = [prefix for prefix in prefixes if not SIGNING_PREFIX_RE.match(prefix)]
+        if cleaned_data.get("rule_type") == RuleType.TEAMID and cleaned_data.get("policy") == Policy.CEL:
+            prefixes = clean_signing_prefixes(self, cleaned_data.get("signing_prefixes"))
+        else:
+            prefixes = []
+        if prefixes:
             expression = cleaned_data.get("cel_expr") or ""
-            if invalid:
-                self.add_error("signing_prefixes", gettext("Only letters, digits, dots, hyphens and underscores: "
-                                                           "%(prefixes)s") % {"prefixes": ", ".join(invalid)})
-            elif expression and parse_prefix_expression(expression) is None:
+            if expression and parse_prefix_expression(expression) is None:
                 # never overwrite an expression written by hand
                 self.add_error("signing_prefixes", gettext("Clear the CEL expression or the prefixes."))
             else:
@@ -344,10 +359,14 @@ class EventRuleForm(TagsMixin):
     rows: the events grouped by binary. With several binaries the rule type can stay "suggested per binary",
     and a type a binary doesn't have falls back to its suggestion (the view decides, see rule_type_for).
     """
-    field_order = ["rule_type", "policy", "scope", "groups", "tags", "new_tags", "description", "include"]
+    field_order = ["rule_type", "policy", "signing_prefixes", "cel_expr", "scope", "groups", "tags", "new_tags",
+                   "description", "include"]
 
     rule_type = forms.ChoiceField(label=_("Rule type"), required=False)
     policy = forms.ChoiceField(choices=EVENT_POLICIES, initial=Policy.ALLOWLIST, label=_("Policy"))
+    signing_prefixes = signing_prefixes_field()
+    cel_expr = forms.CharField(required=False, label=_("CEL expression"),
+                               widget=forms.Textarea(attrs={"rows": 3, "class": "mono"}))
     scope = forms.ChoiceField(choices=[(SCOPE_MACHINES, _("The Macs of these events")), (SCOPE_GROUPS, _("Groups")),
                                        (SCOPE_GLOBAL, _("All Macs"))],
                               initial=SCOPE_GROUPS, widget=forms.RadioSelect, label=_("Scope"))
@@ -371,6 +390,7 @@ class EventRuleForm(TagsMixin):
         if len({event.machine_id for row in rows for event in row}) == 1:
             self.fields["scope"].choices = [(SCOPE_MACHINES, _("This Mac")), (SCOPE_GROUPS, _("Groups")),
                                             (SCOPE_GLOBAL, _("All Macs"))]
+        self.fields["cel_expr"].widget.attrs["data-cel-suggestions"] = cel_suggestions_json()
         # a binary is its SHA-256: the ids of its events change with every new event
         self.fields["include"].choices = [(row[0].file_sha256, row[0].file_name or row[0].file_sha256) for row in rows]
 
@@ -378,7 +398,37 @@ class EventRuleForm(TagsMixin):
         cleaned_data = super().clean()
         if cleaned_data.get("scope") == SCOPE_GROUPS and not cleaned_data.get("groups"):
             self.add_error("groups", gettext("Choose at least one group."))
+        cel = cleaned_data.get("policy") == Policy.CEL
+        cel_expr = (cleaned_data.get("cel_expr") or "").strip()
+        prefixes = []
+        if cel and cleaned_data.get("rule_type") == RuleType.TEAMID:
+            prefixes = clean_signing_prefixes(self, cleaned_data.get("signing_prefixes"))
+        if prefixes:
+            # the expression is written per binary, from its own Team ID (see cel_expr_for)
+            if cel_expr and parse_prefix_expression(cel_expr) is None:
+                self.add_error("signing_prefixes", gettext("Clear the CEL expression or the prefixes."))
+            chosen = set(cleaned_data.get("include") or [])
+            unsigned = [row[0].file_name or row[0].file_sha256 for row in self.rows
+                        if row[0].file_sha256 in chosen and not row[0].team_id]
+            if unsigned:
+                self.add_error("include", gettext("No Team ID, so no signing ID prefixes: %(binaries)s") % {
+                    "binaries": ", ".join(unsigned)})
+        elif cel and not cel_expr:
+            self.add_error("cel_expr", gettext("Required for the CEL policy."))
+        # only the CEL policy uses them: a leftover of another choice is dropped
+        cleaned_data["cel_expr"] = cel_expr if cel else ""
+        cleaned_data["signing_prefixes"] = prefixes
         return cleaned_data
+
+    @property
+    def team_id(self):
+        """The Team ID of the binaries if they all have the same one: the expression can be shown while typing"""
+        teams = {row[0].team_id for row in self.rows}
+        return teams.pop() if len(teams) == 1 else ""
+
+    def cel_expr_for(self, event):
+        prefixes = self.cleaned_data["signing_prefixes"]
+        return prefix_expression(event.team_id, prefixes) if prefixes else self.cleaned_data["cel_expr"]
 
     def included_rows(self):
         chosen = set(self.cleaned_data.get("include") or [])

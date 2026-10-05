@@ -2,10 +2,7 @@
 {% block title %}{% translate "Requests" %}{% endblock %}
 {% block content %}
 <div class="page-head"><h1>{% translate "Access requests" %}</h1></div>
-<div class="tabs" role="tablist">
-  {% for value, label in statuses %}<a href="?status={{ value }}" {% if status == value %}class="active"{% endif %}>{{ label }}</a>{% endfor %}
-  <a href="?status=all" {% if status == "all" %}class="active"{% endif %}>{% translate "All" %}</a>
-</div>
+{% include "console/widgets/_filter_bar.html" %}
 <table class="table" data-table="requests">
   <thead><tr>{% sort_th _("Request") "request" %}{% sort_th _("Kind") "kind" %}{% sort_th _("Requester") "requester" %}<th>{% translate "Mac" %}</th>{% sort_th _("Created") "created" %}{% sort_th _("Status") "status" %}</tr></thead>
   <tbody>

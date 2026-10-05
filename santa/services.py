@@ -22,19 +22,22 @@ EVENT_IDENTIFIER_FIELDS = {
 }
 
 
-def allow_identifier(rule_type, identifier, policy, is_global, groups, user, description="", tags=(), machines=()):
+def allow_identifier(rule_type, identifier, policy, is_global, groups, user, description="", tags=(), machines=(),
+                     cel_expr=""):
     """Create the rule (of any policy, allow or block), or widen the scope of the manual rule that already exists
-    for this identifier and policy.
+    for this identifier and policy (and, for CEL, the same expression).
 
     Returns (rule, created).
     """
-    rule = (Rule.objects.filter(rule_type=rule_type, identifier=identifier, policy=policy,
-                                release_source__isnull=True)
-                        .order_by("pk").first())
+    candidates = (Rule.objects.filter(rule_type=rule_type, identifier=identifier, policy=policy,
+                                      release_source__isnull=True)
+                              .order_by("pk"))
+    # cel_expr is a TextField: compared here, not in the query
+    rule = next((rule for rule in candidates if policy != Policy.CEL or rule.cel_expr == cel_expr), None)
     created = rule is None
     if created:
         rule = Rule(rule_type=rule_type, identifier=identifier, policy=policy, created_by=user,
-                    description=description[:500])
+                    description=description[:500], cel_expr=cel_expr if policy == Policy.CEL else "")
         rule.full_clean(exclude=["groups", "machines"])
     rule.is_global = rule.is_global or is_global
     rule.is_enabled = True

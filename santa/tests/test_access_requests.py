@@ -172,9 +172,34 @@ class UserRequestTestCase(ConsoleBase):
                                  ("year", ["today", "last week", "last month"]), ("all", list(ages))]:
             response = self.client.get(reverse("requests:list"), {"period": period} if period else {})
             self.assertEqual([r.title for r in response.context["page"]], expected, period)
-        self.assertContains(self.client.get(reverse("requests:list")), 'aria-current="true">Last 7 days')
+        # the last time span is remembered; "reset" goes back to 7 days
+        response = self.client.get(reverse("requests:list"), follow=True)
+        self.assertEqual([r.title for r in response.context["page"]], list(ages))
+        response = self.client.get(reverse("requests:list"), {"reset": "1"}, follow=True)
+        self.assertContains(response, '<input type="radio" name="period" value="week" checked>', html=True)
         AccessRequest.objects.filter(title="today").delete()
         self.assertContains(self.client.get(reverse("requests:list")), "anything in this time span")
+        # a date range, both days included, and the status
+        AccessRequest.objects.filter(title="last week").update(status=AccessRequest.Status.DENIED)
+        day = (timezone.localtime() - timedelta(days=10)).date().isoformat()
+        response = self.client.get(reverse("requests:list"), {"period": "range", "from": day, "to": day})
+        self.assertEqual([r.title for r in response.context["page"]], ["last week"])
+        response = self.client.get(reverse("requests:list"), {"period": "all", "status": ["PENDING", "APPROVED"]})
+        self.assertEqual([r.title for r in response.context["page"]], ["last month", "long ago"])
+
+    def test_search_my_requests(self):
+        AccessRequest.objects.create(requester=self.user, kind="OTHER", title="Figma", justification="for design")
+        AccessRequest.objects.create(requester=self.user, kind="OTHER", title="Sketch", justification="mockups")
+        package = AccessRequest.objects.create(requester=self.user, kind="PACKAGE", title="2 packages: a, b",
+                                               justification="x")
+        AccessRequestPackage.objects.create(access_request=package, kind="NPM_PACKAGE", identifier="esbuild",
+                                            name="esbuild")
+        AccessRequestPackage.objects.create(access_request=package, kind="NPM_PACKAGE", identifier="esbuild-wasm")
+        AccessRequest.objects.create(requester=self.admin, kind="OTHER", title="Figma", justification="for design")
+        for q, expected in [("figma", ["Figma"]), ("DESIGN", ["Figma"]), ("esbuild", ["2 packages: a, b"]),
+                            ("nothing", [])]:
+            response = self.client.get(reverse("requests:list"), {"q": q, "period": "all"})
+            self.assertEqual([r.title for r in response.context["page"]], expected, q)
 
     def test_other_requests_and_catalog_search(self):
         self.client.post(reverse("requests:new"), {"kind": "OTHER", "title": "Figma", "justification": "Design",

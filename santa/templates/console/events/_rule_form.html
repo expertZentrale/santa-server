@@ -1,6 +1,9 @@
 {# The fields of a rule from events: the drawer of one event and the rules for several binaries #}
 {% include "console/_field.html" with field=form.rule_type %}
 {% include "console/_field.html" with field=form.policy %}
+<div data-show-when="policy=CEL"{% if form.team_id %} data-team-id="{{ form.team_id }}"{% endif %}>
+  <div data-show-when="rule_type=TEAMID">{% include "console/_field.html" with field=form.signing_prefixes %}</div>
+  {% include "console/_field.html" with field=form.cel_expr %}{% include "console/rules/_cel_help.html" %}</div>
 {% include "console/_field.html" with field=form.scope %}
 <div data-show-when="scope=groups">{% include "console/_field.html" with field=form.groups %}</div>
 {% include "console/_field.html" with field=form.tags %}

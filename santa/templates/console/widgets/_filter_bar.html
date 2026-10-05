@@ -1,0 +1,75 @@
+{% load i18n %}{% comment %}The filter bar of a list (filters.filter_bar): search, "+ Filter", the views, the chips of the active
+filters. action_url / action_label: a button of the page at the right (e.g. "New local account").{% endcomment %}
+<form class="filter-bar" method="get" data-filter-form>
+  {% for name, value in bar.hidden %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+  <div class="filter-toolbar">
+    <input type="search" name="q" value="{{ bar.q }}" placeholder="{{ bar.placeholder }}" aria-label="{% translate 'Search' %}">
+    <noscript><button class="button">{% translate "Filter" %}</button></noscript>
+    <div class="filter-tools" data-table-tools>
+      {% if action_url %}<a class="button" href="{{ action_url }}">{{ action_label }}</a>{% endif %}
+      <details class="picker down views-picker" data-picker>
+        <summary class="button">{% if bar.active_view %}{{ bar.active_view.name }}{% else %}{% translate "Views" %}{% endif %}</summary>
+        <div class="picker-panel">
+          {% for view in bar.views %}<div class="saved-filter{% if view == bar.active_view %} current{% endif %}">
+            <a href="?{{ view.query }}"{% if view == bar.active_view %} aria-current="true"{% endif %}>{{ view.name }}</a>
+            <details class="rename-view"><summary class="icon-button small" title="{% translate 'Rename' %}" aria-label="{% translate 'Rename' %} {{ view.name }}">✎</summary>
+              <span class="saved-filter-new"><input name="name" form="rename-filter-{{ view.pk }}" value="{{ view.name }}" maxlength="100" required aria-label="{% translate 'New name' %}">
+                <button class="button small" form="rename-filter-{{ view.pk }}">{% translate "Rename" %}</button></span></details>
+            <button class="icon-button small" form="delete-filter-form" formaction="{% url 'delete_filter' view.pk %}" title="{% translate 'Delete' %}" aria-label="{% translate 'Delete' %} {{ view.name }}">×</button></div>
+          {% empty %}<p class="muted small">{% translate "No saved views yet." %}</p>{% endfor %}
+          <div class="saved-filter-new">
+            <input name="name" form="save-filter-form" maxlength="100" placeholder="{% translate 'Name of the view' %}" aria-label="{% translate 'Name of the view' %}" required>
+            <button class="button small" form="save-filter-form">{% translate "Save current view" %}</button>
+          </div>
+          <small class="muted">{% translate "An existing name is overwritten with the current filter." %}</small>
+        </div>
+      </details>
+    </div>
+  </div>
+  {# always there, so the table starts at the same place with and without chips #}
+  <div class="filter-chips">
+    <details class="picker down filter-add" data-picker>
+      <summary class="button small">{% translate "+ Filter" %}</summary>
+      <div class="picker-panel" role="menu">
+        {% for chip in bar.chips %}{% if chip.facet.kind != "fixed" %}<button type="button" class="menu-item" role="menuitem" data-open-facet="{{ chip.facet.name }}"{% if chip.shown %} hidden{% endif %}>{{ chip.facet.label }}</button>{% endif %}{% endfor %}
+        <p class="muted small" data-all-shown>{% translate "All filters are shown." %}</p>
+      </div>
+    </details>
+    {% for chip in bar.chips %}{% with facet=chip.facet %}
+    {# blue: filters; grey: chosen, but "all"; hidden: not chosen (its fields are disabled, so not sent) #}
+    <span class="filter-chip" data-facet="{{ facet.name }}"{% if chip.active %} data-active{% endif %}{% if not chip.shown %} hidden{% endif %}>
+      {% if facet.kind == "fixed" %}
+        <span class="filter-chip-label">{{ facet.label }}: <strong>{{ chip.text }}</strong></span>
+        {% if chip.value %}<input type="hidden" name="{{ facet.name }}" value="{{ chip.value }}">{% endif %}
+      {% else %}
+      <details class="picker down filter-chip-picker" data-picker data-chip>
+        <summary class="filter-chip-label">{{ facet.label }}: <strong>{{ chip.text }}</strong></summary>
+        <fieldset class="picker-panel"{% if not chip.shown %} disabled{% endif %}><legend class="sr-only">{{ facet.label }}</legend>
+          {% if facet.kind == "multi" %}<input type="hidden" name="{{ facet.name }}" value="">
+            {% for value, label in facet.choices %}<label><input type="checkbox" name="{{ facet.name }}" value="{{ value }}"{% if value in chip.value %} checked{% endif %}> {{ label }}</label>{% empty %}<span class="muted small">–</span>{% endfor %}
+          {% else %}
+            {% for value, label in facet.choices %}<label><input type="radio" name="{{ facet.name }}" value="{{ value }}"{% if value == chip.value %} checked{% endif %}> {{ label }}</label>{% endfor %}
+            {% if facet.kind == "time" %}
+            <label><input type="radio" name="{{ facet.name }}" value="range"{% if chip.value == "range" %} checked{% endif %} data-range> {% translate "Date range…" %}</label>
+            <div class="time-range">
+              <input type="date" name="{{ facet.from_name }}" value="{{ chip.date_from }}" aria-label="{% translate 'From' %}">
+              <span aria-hidden="true">–</span>
+              <input type="date" name="{{ facet.to_name }}" value="{{ chip.date_to }}" aria-label="{% translate 'To' %}">
+              <button class="button small primary">{% translate "Apply" %}</button>
+            </div>
+            {% endif %}
+          {% endif %}
+        </fieldset>
+      </details>
+      {% endif %}
+      {% if chip.shown %}<a class="filter-chip-remove" href="{{ chip.remove_url }}" title="{% translate 'Remove filter' %}" aria-label="{% translate 'Remove filter' %} {{ facet.label }}">×</a>{% endif %}
+    </span>
+    {% endwith %}{% endfor %}
+    {% if not bar.is_default %}<a class="button small filter-reset" href="{{ bar.reset_url }}">{% translate "Reset all" %}</a>{% endif %}
+  </div>
+</form>
+<form id="save-filter-form" method="post" action="{% url 'save_filter' %}" hidden>{% csrf_token %}
+  <input type="hidden" name="page" value="{{ bar.page }}"><input type="hidden" name="query" value="{{ bar.query }}">
+  <input type="hidden" name="next" value="{{ request.get_full_path }}"></form>
+<form id="delete-filter-form" method="post" hidden>{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"></form>
+{% for view in bar.views %}<form id="rename-filter-{{ view.pk }}" method="post" action="{% url 'rename_filter' view.pk %}" hidden>{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"></form>{% endfor %}

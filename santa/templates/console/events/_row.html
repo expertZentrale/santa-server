@@ -3,7 +3,7 @@
   <td class="nowrap">{{ event.execution_time|date:"d.m.Y H:i:s" }}</td>
   <td><span class="badge {{ event.decision|decision_class }}">{{ event.decision }}</span></td>
   <td><a href="{% url 'console:event' event.pk %}" hx-get="{% url 'console:event' event.pk %}" hx-target="#drawer" class="strong">{{ event.file_name|default:_("(no name)") }}</a>
-    <small class="muted mono" title="{{ event.file_path }}">{{ event.file_path|truncatechars:60 }}</small></td>
+    <small class="muted mono cell-path" title="{{ event.file_path }}">{{ event.file_path }}</small></td>
   <td>{% url 'console:machine' event.machine_id as machine_url %}<a href="{{ machine_url }}" hx-get="{{ machine_url }}" hx-target="#drawer">{{ event.machine.hostname|default:event.machine.serial_number }}</a><br><small class="muted">{{ event.group.name }}</small></td>
   <td>{{ event.executing_user|default:"–" }}</td>
   <td class="mono small">{{ event.signing_id|default:"–" }}</td>
