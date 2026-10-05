@@ -39,6 +39,11 @@
         const current = [...tbody.rows].find((other) => other.dataset.key === row.dataset.key);
         const box = current?.querySelector('td.select input[type="checkbox"]');
         if (box?.checked) row.querySelector('td.select input[type="checkbox"]').checked = true;
+        if (current) {
+          // the new row takes its place in the count, the old one is gone
+          unseen.delete(current);
+          seen.unobserve(current);
+        }
         if (current && !("insert" in table.dataset)) {
           current.replaceWith(row);
         } else if ("insert" in table.dataset) {

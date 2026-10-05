@@ -22,7 +22,7 @@ from ..auth import (
     roles_managed_by_sign_in,
     sign_in_group_changed,
 )
-from ..config_io import ConfigImportError, export_config, import_config
+from ..config_io import EXPORT_PERMS, IMPORT_PERMS, ConfigImportError, export_config, import_config
 from ..models import SignInGroup, Tag
 from .filters import Facet, chosen, filter_bar, remember_filters
 from .forms import ConfigImportForm, RoleForm, SignInGroupForm, TagForm, UserForm
@@ -41,9 +41,6 @@ from .utils import (
 
 logger = logging.getLogger(__name__)
 
-CONFIG_MODELS = ("group", "rule", "releasesource")
-EXPORT_PERMS = [f"view_{model}" for model in CONFIG_MODELS]
-IMPORT_PERMS = [f"{action}_{model}" for action in ("add", "change", "delete") for model in CONFIG_MODELS]
 
 # (key, label, URL name, permissions to see it)
 SECTIONS = [
@@ -355,7 +352,7 @@ def tag_delete(request, pk):
 
 
 def can_import_config(user):
-    return user.has_perms([f"santa.{perm}" for perm in IMPORT_PERMS])
+    return user.has_perms(IMPORT_PERMS)
 
 
 @staff_required

@@ -40,7 +40,8 @@ def file_access_rules(request):
     require_perms(request, "view_fileaccessrule")
     if remembered := remember_filters(request, "file-access"):
         return remembered
-    queryset = FileAccessRule.objects.prefetch_related("groups").annotate(process_count=Count("processes"))
+    queryset = (FileAccessRule.objects.prefetch_related("groups")
+                                      .annotate(process_count=Count("processes", distinct=True)))
     if groups := [value for value in chosen(request.GET, "group") if value.isdigit()]:
         queryset = queryset.filter(Q(is_global=True) | Q(groups__id__in=groups)).distinct()
     if rule_types := chosen(request.GET, "type", FileAccessRuleType.values):

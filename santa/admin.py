@@ -15,7 +15,7 @@ from django.utils.safestring import mark_safe
 from django.utils.text import slugify
 
 from .auth import delete_sign_in_group, sign_in_group_changed
-from .config_io import ConfigImportError, export_config, import_config
+from .config_io import EXPORT_PERMS, IMPORT_PERMS, ConfigImportError, export_config, import_config
 from .forms import AddGroupsForm, AllowEventsForm, ImportConfigForm, RuleAdminForm, TagActionForm, UploadBinaryForm
 from .models import (
     AccessRequest,
@@ -148,7 +148,7 @@ class GroupAdmin(admin.ModelAdmin):
         ] + super().get_urls()
 
     def export_view(self, request):
-        if not all(request.user.has_perm(f"santa.view_{m}") for m in ("group", "rule", "releasesource")):
+        if not request.user.has_perms(EXPORT_PERMS):
             raise PermissionDenied
         response = HttpResponse(json.dumps(export_config(), indent=2, ensure_ascii=False),
                                 content_type="application/json")
@@ -157,8 +157,7 @@ class GroupAdmin(admin.ModelAdmin):
         return response
 
     def import_view(self, request):
-        if not all(request.user.has_perm(f"santa.{action}_{model}")
-                   for action in ("add", "change", "delete") for model in ("group", "rule", "releasesource")):
+        if not request.user.has_perms(IMPORT_PERMS):
             raise PermissionDenied
         form = ImportConfigForm(request.POST or None, request.FILES or None)
         report = errors = None

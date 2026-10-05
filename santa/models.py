@@ -6,6 +6,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.core.validators import MaxLengthValidator
 from django.db import models
 from django.utils.text import format_lazy
 from django.utils.translation import gettext
@@ -589,7 +590,9 @@ class Rule(models.Model):
         return rule
 
 
-FILE_ACCESS_RULE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.-]*$")
+# Santa ignores a rule with another name (WatchItems.mm: kValidRuleNamePattern, kMaxRuleNameLength)
+FILE_ACCESS_RULE_NAME_RE = re.compile(r"^[A-Za-z0-9._:-]+\Z")
+FILE_ACCESS_BLOCK_MESSAGE_MAX_LENGTH = 2048
 
 
 class FileAccessRuleType(models.TextChoices):
@@ -607,8 +610,9 @@ class FileAccessRule(models.Model):
     """
 
     name = models.CharField(
-        max_length=200, unique=True,
-        help_text=_("Shown in the logs and in the block dialog. Letters, digits, spaces and . _ -"),
+        max_length=64, unique=True,
+        help_text=_("Shown in the logs and in the block dialog, e.g. SSH-keys. Letters, digits and . _ : - "
+                  "(no spaces)."),
     )
     description = models.TextField(blank=True)
     rule_type = models.CharField(max_length=32, choices=FileAccessRuleType.choices,
@@ -628,8 +632,10 @@ class FileAccessRule(models.Model):
         default=True,
         help_text=_("Only log the access, don't block it. Start with it, check the events, then turn it off."),
     )
-    block_message = models.TextField(blank=True, help_text=_("Shown when the rule blocks. Empty = the message of "
-                                                             "the group, or Santa's default text."))
+    block_message = models.TextField(
+        blank=True, validators=[MaxLengthValidator(FILE_ACCESS_BLOCK_MESSAGE_MAX_LENGTH)],
+        help_text=_("Shown when the rule blocks. Empty = the message of the group, or Santa's default text."),
+    )
     event_detail_url = models.URLField(_("block dialog URL"), max_length=800, blank=True)
     event_detail_text = models.CharField(_("block dialog button text"), max_length=48, blank=True)
     enable_silent_mode = models.BooleanField(default=False, help_text=_("Block without the dialog."))
@@ -650,7 +656,7 @@ class FileAccessRule(models.Model):
     def clean(self):
         errors = {}
         if self.name and not FILE_ACCESS_RULE_NAME_RE.match(self.name):
-            errors["name"] = gettext("Only letters, digits, spaces and . _ -")
+            errors["name"] = gettext("Only letters, digits and . _ : - (no spaces).")
         for field in ("paths", "path_prefixes"):
             for line in split_lines(getattr(self, field)):
                 if not line.startswith("/"):

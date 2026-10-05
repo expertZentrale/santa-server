@@ -16,6 +16,10 @@ from django.utils import timezone
 from .models import FileAccessProcess, FileAccessRule, Group, Machine, ReleaseSource, Rule, Tag
 
 FORMAT = "santa-server-config"
+# the models in the file: exporting needs their view permission, importing add / change / delete
+CONFIG_MODELS = ("group", "rule", "releasesource", "fileaccessrule")
+EXPORT_PERMS = [f"santa.view_{model}" for model in CONFIG_MODELS]
+IMPORT_PERMS = [f"santa.{action}_{model}" for action in ("add", "change", "delete") for model in CONFIG_MODELS]
 VERSION = 1
 
 GROUP_FIELDS = (
@@ -274,7 +278,8 @@ class _Importer:
             invalid = False
             for process in processes:
                 try:
-                    process.clean()
+                    # the field lengths too: an overlong value would fail in the database, not here
+                    process.full_clean(exclude=["rule"])
                 except ValidationError as e:
                     self.errors.append(f"{label}: {' '.join(e.messages)}")
                     invalid = True

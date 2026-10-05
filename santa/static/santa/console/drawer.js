@@ -83,8 +83,9 @@
   function showState(state) {
     const drawer = getDrawer();
     if (!state || !("drawer" in state)) {
-      shown = state ? state.index : 0;
+      // kept under its own index, so that Forward brings it back with what was entered
       if (isOpen()) hideDrawer(drawer);
+      shown = state ? state.index : 0;
       return;
     }
     if (isOpen()) keepView(drawer);

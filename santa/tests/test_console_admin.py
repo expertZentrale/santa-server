@@ -152,6 +152,16 @@ class AdministrationTestCase(ConsoleBase):
         viewer.user_permissions.set(Permission.objects.filter(codename__in=["view_group", "view_rule",
                                                                             "view_releasesource"]))
         self.client.force_login(viewer)
+        # the file has the file access rules too: exporting needs their view permission
+        self.assertEqual(self.client.get(reverse("console:admin_config_export")).status_code, 403)
+        viewer.user_permissions.add(Permission.objects.get(codename="view_fileaccessrule"))
+        self.assertEqual(self.client.get(reverse("console:admin_config_export")).status_code, 200)
         self.assertEqual(self.client.get(reverse("console:admin_config")).status_code, 200)
+        upload = SimpleUploadedFile("config.json", b"{}", content_type="application/json")
+        self.assertEqual(self.client.post(reverse("console:admin_config_import"), {"file": upload}).status_code, 403)
+        # every model of the file, the file access rules included
+        codenames = [f"{action}_{model}" for action in ("add", "change", "delete")
+                     for model in ("group", "rule", "releasesource")]
+        viewer.user_permissions.add(*Permission.objects.filter(codename__in=codenames))
         upload = SimpleUploadedFile("config.json", b"{}", content_type="application/json")
         self.assertEqual(self.client.post(reverse("console:admin_config_import"), {"file": upload}).status_code, 403)

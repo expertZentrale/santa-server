@@ -37,7 +37,7 @@ class AdminTestCase(TestCase):
         rule.groups.add(self.dev)
         rule.tags.add(tag)
         SavedFilter.objects.create(user=User.objects.first(), page="rules", name="Global", query="scope=global")
-        file_access = FileAccessRule.objects.create(name="SSH keys", paths="/Users/*/.ssh/id_rsa")
+        file_access = FileAccessRule.objects.create(name="SSH-keys", paths="/Users/*/.ssh/id_rsa")
         file_access.processes.create(signing_id="com.openssh.ssh", platform_binary=True)
         for name in ("group", "machine", "rule", "event", "releasesource", "tag", "accessrequest", "signingroup",
                      "savedfilter", "fileaccessrule"):

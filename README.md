@@ -241,7 +241,7 @@ ersetzen es im MDM. Die Identifier bleiben gleich, das Profil wird also an Ort u
 **Wechseldatenträger** (USB-Sticks, externe Festplatten, SD-Karten): *Erlauben*, *Blockieren* oder *Mit Flags neu
 einhängen* (z. B. `rdonly,noexec`: nur lesen, nichts ausführbar), für verschlüsselte Datenträger optional anders. Der
 Server sendet es bei jeder Synchronisierung (`removable_media_policy`, für ältere Santa-Versionen zusätzlich
-`block_usb_mount` / `remount_usb_mode`). Was mit beim Start von Santa schon eingehängten Datenträgern passiert
+`block_usb_mount` / `remount_usb_mode`). Was mit den beim Start von Santa schon eingehängten Datenträgern passiert
 (`OnStartUSBOptions`), steht nur im Profil.
 
 **Branding** (ab Santa 2026.1): Firmenname und Logo in den Dialogen von Santa. Ein hochgeladenes Logo (PNG oder JPEG,

@@ -6,7 +6,7 @@ from django.contrib.auth.models import Permission, User
 from django.core.exceptions import ValidationError
 from django.urls import reverse
 
-from santa.config_io import export_config, import_config
+from santa.config_io import ConfigImportError, export_config, import_config
 from santa.models import FileAccessProcess, FileAccessRule, FileAccessRuleType, Group
 from santa.profiles import file_access_policy, group_profile
 
@@ -27,7 +27,7 @@ def process_formset(*processes, prefix="processes"):
 class FileAccessTestCase(ConsoleBase):
     def setUp(self):
         super().setUp()
-        self.ssh = FileAccessRule.objects.create(name="SSH keys", paths="/Users/*/.ssh/id_rsa",
+        self.ssh = FileAccessRule.objects.create(name="SSH-keys", paths="/Users/*/.ssh/id_rsa",
                                                  path_prefixes="/Users/*/.ssh/keys/", audit_only=False,
                                                  block_message="Only ssh may read the keys.")
         self.ssh.groups.add(self.dev)
@@ -35,10 +35,16 @@ class FileAccessTestCase(ConsoleBase):
         self.ssh.processes.create(team_id="EQHXZ8M8AV", signing_id="com.google.Chrome")
 
     def test_validation(self):
-        rule = FileAccessRule(name="bad/name", paths="relative/path\n/Users/**/x")
+        rule = FileAccessRule(name="SSH keys", paths="relative/path\n/Users/**/x",
+                              block_message="x" * 2049)
         with self.assertRaises(ValidationError) as cm:
             rule.full_clean()
-        self.assertEqual(set(cm.exception.message_dict), {"name", "paths"})
+        # Santa ignores rules with spaces in their name, and longer block messages
+        self.assertEqual(set(cm.exception.message_dict), {"name", "paths", "block_message"})
+        with self.assertRaises(ValidationError) as cm:
+            FileAccessRule(name="a" * 65, paths="/etc/hosts").full_clean()
+        self.assertIn("name", cm.exception.message_dict)
+        FileAccessRule(name="Corp:ssh_keys-1.0", paths="/etc/hosts").full_clean()
         with self.assertRaises(ValidationError) as cm:
             FileAccessRule(name="empty").full_clean()
         self.assertIn("At least one path.", cm.exception.message_dict["paths"])
@@ -60,7 +66,7 @@ class FileAccessTestCase(ConsoleBase):
         payload, = plistlib.loads(group_profile(self.dev))["PayloadContent"]
         policy = payload["FileAccessPolicy"]
         self.assertEqual(payload["FileAccessBlockMessage"], "Ask the IT")
-        item = policy["WatchItems"]["SSH keys"]
+        item = policy["WatchItems"]["SSH-keys"]
         self.assertEqual(item["Paths"], [{"Path": "/Users/*/.ssh/id_rsa", "IsPrefix": False},
                                          {"Path": "/Users/*/.ssh/keys/", "IsPrefix": True}])
         self.assertEqual(item["Options"], {"RuleType": "PathsWithAllowedProcesses", "AllowReadAccess": False,
@@ -84,13 +90,17 @@ class FileAccessTestCase(ConsoleBase):
         FileAccessRule.objects.create(name="Cookies", path_prefixes="/Users/*/Library/Cookies/", is_global=True)
         url = reverse("console:file_access_rules")
         response = self.client.get(url)
-        self.assertContains(response, "SSH keys")
+        self.assertContains(response, "SSH-keys")
         rule_url = reverse("console:file_access_rule", args=(self.ssh.pk,))
         self.assertContains(response, f'href="{rule_url}" hx-get="{rule_url}" hx-target="#drawer"')
         names = [rule.name for rule in self.client.get(url, {"group": self.sales.pk}).context["page"]]
         self.assertEqual(names, ["Cookies"])
+        # several groups join the groups: the processes are still counted once
+        self.ssh.groups.add(self.sales)
+        page = self.client.get(url, {"group": [self.dev.pk, self.sales.pk]}).context["page"]
+        self.assertEqual({rule.name: rule.process_count for rule in page}, {"Cookies": 0, "SSH-keys": 2})
         names = [rule.name for rule in self.client.get(url, {"mode": "block"}).context["page"]]
-        self.assertEqual(names, ["SSH keys"])
+        self.assertEqual(names, ["SSH-keys"])
         names = [rule.name for rule in self.client.get(url, {"q": "cookies"}).context["page"]]
         self.assertEqual(names, ["Cookies"])
         # the group shows how many rules its profile has (its own and the global one)
@@ -98,7 +108,7 @@ class FileAccessTestCase(ConsoleBase):
 
     def test_create_in_the_drawer(self):
         self.assertContains(self.client.get(reverse("console:file_access_rule_add"), **HTMX), "data-formset-add")
-        data = {"name": "Browser cookies", "rule_type": FileAccessRuleType.PATHS_WITH_ALLOWED_PROCESSES,
+        data = {"name": "Browser-cookies", "rule_type": FileAccessRuleType.PATHS_WITH_ALLOWED_PROCESSES,
                 "path_prefixes": "/Users/*/Library/Cookies/", "audit_only": "on", "is_enabled": "on",
                 "groups": [self.sales.pk],
                 **process_formset({"team_id": "EQHXZ8M8AV", "signing_id": "com.google.Chrome"},
@@ -106,7 +116,7 @@ class FileAccessTestCase(ConsoleBase):
         response = self.client.post(reverse("console:file_access_rule_add"), data, **HTMX)
         self.assertEqual(response.status_code, 204, getattr(response, "context", None) and
                          [response.context["form"].errors, response.context["formset"].errors])
-        rule = FileAccessRule.objects.get(name="Browser cookies")
+        rule = FileAccessRule.objects.get(name="Browser-cookies")
         self.assertEqual(rule.processes.count(), 2)
         self.assertEqual(list(rule.groups.all()), [self.sales])
         self.assertTrue(LogEntry.objects.filter(object_id=str(rule.pk), action_flag=ADDITION).exists())
@@ -117,7 +127,7 @@ class FileAccessTestCase(ConsoleBase):
     def test_change_and_remove_a_process(self):
         url = reverse("console:file_access_rule", args=(self.ssh.pk,))
         first, second = self.ssh.processes.all()
-        data = {"name": "SSH keys", "rule_type": self.ssh.rule_type, "paths": self.ssh.paths, "is_enabled": "on",
+        data = {"name": "SSH-keys", "rule_type": self.ssh.rule_type, "paths": self.ssh.paths, "is_enabled": "on",
                 "groups": [self.dev.pk],
                 "processes-TOTAL_FORMS": "2", "processes-INITIAL_FORMS": "2", "processes-MIN_NUM_FORMS": "0",
                 "processes-MAX_NUM_FORMS": "1000",
@@ -150,7 +160,7 @@ class FileAccessTestCase(ConsoleBase):
         self.assertContains(response, "Development")
         self.assertFalse(FileAccessRule.objects.exists())
         self.assertFalse(FileAccessProcess.objects.exists())
-        self.assertTrue(LogEntry.objects.filter(object_repr="SSH keys", action_flag=DELETION).exists())
+        self.assertTrue(LogEntry.objects.filter(object_repr="SSH-keys", action_flag=DELETION).exists())
 
     def test_permissions(self):
         viewer = User.objects.create_user("viewer", is_staff=True)
@@ -175,15 +185,20 @@ class FileAccessTestCase(ConsoleBase):
         data = json.loads(json.dumps(export_config()))
         exported = data["file_access_rules"][0]
         self.assertEqual((exported["name"], exported["groups"], len(exported["processes"])),
-                         ("SSH keys", ["Development"], 2))
+                         ("SSH-keys", ["Development"], 2))
         FileAccessRule.objects.all().delete()
         report = import_config(data)
-        self.assertIn(("created", "file access rule", "SSH keys"), report["changes"])
+        self.assertIn(("created", "file access rule", "SSH-keys"), report["changes"])
         rule = FileAccessRule.objects.get()
         self.assertEqual((rule.block_message, list(rule.groups.all()), rule.processes.count()),
                          ("Only ssh may read the keys.", [self.dev], 2))
         # idempotent
         self.assertFalse([change for change in import_config(data)["changes"] if change[1] == "file access rule"])
+        # an overlong process field is an error of the file, nothing is saved
+        broken = json.loads(json.dumps(data))
+        broken["file_access_rules"][0]["processes"][0]["signing_id"] = "x" * 301
+        with self.assertRaises(ConfigImportError):
+            import_config(broken)
         # an old file without file access rules deletes none of them
         del data["file_access_rules"]
         import_config(data, delete_missing=True)
