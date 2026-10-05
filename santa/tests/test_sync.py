@@ -5,7 +5,7 @@ import zlib
 
 from django.test import TestCase
 
-from santa.models import Event, Group, Machine, Policy, Rule, RuleType
+from santa.models import Event, Group, Machine, Policy, RemovableMediaAction, Rule, RuleType
 
 SHA_A = "a" * 64
 SHA_B = "b" * 64
@@ -100,13 +100,29 @@ class SyncTestCase(TestCase):
         self.assertEqual(response["event_detail_url"], "https://tickets.example.com/new?sha=%file_sha%")
         self.assertEqual(response["event_detail_text"], "Request access")
 
-    def test_usb_remount(self):
-        self.dev.block_usb_mount = True
-        self.dev.remount_usb_mode = "rdonly, noexec"
+    def test_removable_media(self):
+        response = self.preflight()
+        self.assertEqual(response["removable_media_policy"], {"allow": True})
+        self.assertIs(response["block_usb_mount"], False)
+        self.assertNotIn("encrypted_removable_media_policy", response)
+        self.dev.removable_media_action = RemovableMediaAction.BLOCK
         self.dev.save()
         response = self.preflight()
+        self.assertEqual(response["removable_media_policy"], {"block": True})
+        # older Santa versions only know these keys
+        self.assertIs(response["block_usb_mount"], True)
+        self.assertEqual(response["remount_usb_mode"], [])
+
+    def test_removable_media_remount(self):
+        self.dev.removable_media_action = RemovableMediaAction.REMOUNT
+        self.dev.removable_media_remount_flags = "rdonly, noexec"
+        self.dev.encrypted_removable_media_action = RemovableMediaAction.ALLOW
+        self.dev.save()
+        response = self.preflight()
+        self.assertEqual(response["removable_media_policy"], {"remount": {"flags": ["rdonly", "noexec"]}})
         self.assertIs(response["block_usb_mount"], True)
         self.assertEqual(response["remount_usb_mode"], ["rdonly", "noexec"])
+        self.assertEqual(response["encrypted_removable_media_policy"], {"allow": True})
 
     def test_compressed_body(self):
         response = self.post("preflight", {"serial_num": "C02ZLIB", "santa_version": "2025.8"}, compress=True)

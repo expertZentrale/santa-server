@@ -204,3 +204,10 @@ ol.history > li:last-child { border-bottom: 0; }
 @media (prefers-reduced-motion: reduce) {
   .switch, .switch::after { transition: none; }
 }
+
+/* A logo of the group profile: the current one on a checkered background (light and dark logos) */
+.logo-field { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: .6rem .8rem .2rem; }
+.logo-field > legend { padding: 0 .3rem; }
+.logo-preview { display: inline-flex; justify-self: start; width: fit-content; padding: .5rem; margin-bottom: .6rem; border-radius: var(--radius-sm);
+  background: repeating-conic-gradient(var(--surface-2) 0 25%, var(--surface) 0 50%) 0 0 / 1rem 1rem; }
+.logo-preview img { display: block; max-width: 10.5rem; max-height: 3.5rem; }

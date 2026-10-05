@@ -169,7 +169,8 @@ class DrawerTestCase(ConsoleBase):
                              reverse("console:admin_tags"))
 
     def test_new_group_opens_in_the_drawer(self):
-        data = {"name": "Design", "client_mode": "MONITOR", "batch_size": 50, "full_sync_interval": 600}
+        data = {"name": "Design", "client_mode": "MONITOR", "batch_size": 50, "full_sync_interval": 600,
+                "removable_media_action": "ALLOW"}
         response = self.client.post(reverse("console:group_add"), data, **HTMX)
         group = Group.objects.get(name="Design")
         url = reverse("console:group", args=(group.pk,))

@@ -72,13 +72,19 @@ class GroupAdmin(admin.ModelAdmin):
         ("Advanced options", {
             "fields": ("enable_transitive_rules", "enable_bundles", "enable_all_event_upload"),
         }),
-        ("USB", {"fields": ("block_usb_mount", "remount_usb_mode")}),
+        ("Removable media", {
+            "fields": ("removable_media_action", "removable_media_remount_flags", "encrypted_removable_media_action",
+                       "encrypted_removable_media_remount_flags"),
+            "description": "Sent at every sync, no profile change needed.",
+        }),
         ("Block dialog", {
             "fields": ("event_detail_url", "event_detail_text"),
             "description": "Sent at every sync, no profile change needed.",
         }),
         ("Profile only", {
-            "fields": ("unknown_block_message", "banned_block_message", "enable_bad_signature_protection"),
+            "fields": ("unknown_block_message", "banned_block_message", "enable_bad_signature_protection",
+                       "on_start_usb_options", "branding_company_name", "branding_company_logo",
+                       "branding_company_logo_dark"),
             "description": "These settings are only in the .mobileconfig: after a change, download the profile "
                            "again and replace it in your MDM.",
         }),

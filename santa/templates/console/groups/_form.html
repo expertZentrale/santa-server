@@ -16,15 +16,16 @@
   </dl>
 </section>
 {% endif %}
-<form method="post" class="stack"{% if in_drawer %} action="{{ request.get_full_path }}" hx-post="{{ request.get_full_path }}" hx-target="#drawer"{% endif %}>
+<form method="post" enctype="multipart/form-data" class="stack"{% if in_drawer %} action="{{ request.get_full_path }}" hx-post="{{ request.get_full_path }}" hx-target="#drawer" hx-encoding="multipart/form-data"{% endif %}>
   {% csrf_token %}
   {% if form.non_field_errors %}<div class="error">{{ form.non_field_errors }}</div>{% endif %}
   <fieldset class="plain"{% if not can_change %} disabled{% endif %}>
   {% for title, help_text, fields in form.sections %}
     <section class="card"><h2>{{ title }}</h2>
       {% if help_text %}<p class="help small">{{ help_text }}</p>{% endif %}
-      {% for field in fields %}
-        {% if field.name == "remount_usb_mode" %}<div data-show-when="block_usb_mount=on">{% include "console/_field.html" %}</div>
+      {% for field, show_when in fields %}
+        {% if field.is_logo %}{% include "console/groups/_logo_field.html" with logo=field %}
+        {% elif show_when %}<div data-show-when="{{ show_when }}">{% include "console/_field.html" %}</div>
         {% else %}{% include "console/_field.html" %}{% endif %}
       {% endfor %}
     </section>

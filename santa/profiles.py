@@ -116,6 +116,15 @@ def group_configuration(group):
         config["BannedBlockMessage"] = group.banned_block_message
     if group.enable_bad_signature_protection:
         config["EnableBadSignatureProtection"] = True
+    if group.on_start_usb_options:
+        config["OnStartUSBOptions"] = group.on_start_usb_options
+    # Santa 2026.1 and newer; older versions ignore the keys
+    if group.branding_company_name:
+        config["BrandingCompanyName"] = group.branding_company_name
+    if group.branding_company_logo:
+        config["BrandingCompanyLogo"] = group.branding_company_logo
+    if group.branding_company_logo_dark:
+        config["BrandingCompanyLogoDark"] = group.branding_company_logo_dark
     return config
 
 

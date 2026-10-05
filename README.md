@@ -223,19 +223,30 @@ Jamf Pro, Kandji, Mosyle, …):
    der Gruppe zu. Es enthält:
    - `SyncBaseURL`: die geheime Sync-URL der Gruppe.
    - `SyncEnableProtoTransfer = false`: Dieser Server spricht nur das JSON-Sync-Protokoll.
-   - optional `UnknownBlockMessage`, `BannedBlockMessage`, `EnableBadSignatureProtection` (Abschnitt
-     *Nur im Profil*) und `MachineOwner` (siehe unten).
+   - optional `UnknownBlockMessage`, `BannedBlockMessage`, `EnableBadSignatureProtection`, `OnStartUSBOptions`
+     (Abschnitt *Nur im Profil*), `BrandingCompanyName`, `BrandingCompanyLogo`, `BrandingCompanyLogoDark`
+     (Abschnitt *Branding*, ab Santa 2026.1) und `MachineOwner` (siehe unten).
 3. Installieren Sie das Santa-Paket mit Ihrem MDM.
 
 **Jeder Mac darf genau ein Gruppenprofil erhalten**: Zwei Santa-Profile auf demselben Mac stehen im Konflikt. Um
 einen Mac in eine andere Gruppe zu verschieben, weisen Sie ihm das Profil der anderen Gruppe zu; bei seiner nächsten
 Synchronisierung macht er einen Clean Sync mit den neuen Regeln.
 
-Alles, was der Server bei jeder Synchronisierung sendet (Client-Modus, Pfad-Regexe, USB, Sync-Intervall, transitive
-Regeln, Schaltfläche im Blockierdialog, …), steht absichtlich **nicht** im Profil: Ändern Sie es in der Konsole, und
-die Macs übernehmen es bei ihrer nächsten Synchronisierung. Nur nach einer Änderung in *Nur im Profil* oder nach
-*Sync-URL neu erzeugen* laden Sie das Gruppenprofil erneut herunter und ersetzen es im MDM. Die Identifier bleiben
-gleich, das Profil wird also an Ort und Stelle aktualisiert.
+Alles, was der Server bei jeder Synchronisierung sendet (Client-Modus, Pfad-Regexe, Wechseldatenträger,
+Sync-Intervall, transitive Regeln, Schaltfläche im Blockierdialog, …), steht absichtlich **nicht** im Profil: Ändern
+Sie es in der Konsole, und die Macs übernehmen es bei ihrer nächsten Synchronisierung. Nur nach einer Änderung in
+*Nur im Profil* oder *Branding* oder nach *Sync-URL neu erzeugen* laden Sie das Gruppenprofil erneut herunter und
+ersetzen es im MDM. Die Identifier bleiben gleich, das Profil wird also an Ort und Stelle aktualisiert.
+
+**Wechseldatenträger** (USB-Sticks, externe Festplatten, SD-Karten): *Erlauben*, *Blockieren* oder *Mit Flags neu
+einhängen* (z. B. `rdonly,noexec`: nur lesen, nichts ausführbar), für verschlüsselte Datenträger optional anders. Der
+Server sendet es bei jeder Synchronisierung (`removable_media_policy`, für ältere Santa-Versionen zusätzlich
+`block_usb_mount` / `remount_usb_mode`). Was mit beim Start von Santa schon eingehängten Datenträgern passiert
+(`OnStartUSBOptions`), steht nur im Profil.
+
+**Branding** (ab Santa 2026.1): Firmenname und Logo in den Dialogen von Santa. Ein hochgeladenes Logo (PNG oder JPEG,
+höchstens 256 KB) kommt als `data:`-URL ins Profil; alternativ eine `file:///`-URL eines Bildes, das Ihr MDM auf die
+Macs verteilt. `https://`-URLs unterstützt Santa nicht.
 
 **`MachineOwner`** (optional, `SANTA_PROFILE_MACHINE_OWNER`): die MDM-Variable des Hauptbenutzers, damit das
 Anfrageformular die Macs des angemeldeten Benutzers findet. Zum Beispiel `{{userprincipalname}}` (Intune) oder
@@ -657,17 +668,27 @@ as custom profiles:
    It contains:
    - `SyncBaseURL`: the secret sync URL of the group.
    - `SyncEnableProtoTransfer = false`: this server only speaks the JSON sync protocol.
-   - optionally `UnknownBlockMessage`, `BannedBlockMessage`, `EnableBadSignatureProtection` (section
-     *Profile only*), and `MachineOwner` (below).
+   - optionally `UnknownBlockMessage`, `BannedBlockMessage`, `EnableBadSignatureProtection`, `OnStartUSBOptions`
+     (section *Profile only*), `BrandingCompanyName`, `BrandingCompanyLogo`, `BrandingCompanyLogoDark` (section
+     *Branding*, Santa 2026.1 and newer), and `MachineOwner` (below).
 3. Install the Santa package with your MDM.
 
 **Each Mac must get exactly one group profile**: two Santa profiles on the same Mac conflict. Moving a Mac to another
 group means assigning the other group's profile; at its next sync it does a clean sync with the new rules.
 
-Everything the server sends at every sync (client mode, path regexes, USB, sync interval, transitive rules, block
-dialog button, …) is deliberately **not** in the profile: change it in the console and the Macs pick it up at their
-next sync. Only after a change in *Profile only*, or after *Regenerate the sync URL*, download the group profile again
-and replace it in the MDM. The identifiers stay the same, so it updates in place.
+Everything the server sends at every sync (client mode, path regexes, removable media, sync interval, transitive rules,
+block dialog button, …) is deliberately **not** in the profile: change it in the console and the Macs pick it up at
+their next sync. Only after a change in *Profile only* or *Branding*, or after *Regenerate the sync URL*, download the
+group profile again and replace it in the MDM. The identifiers stay the same, so it updates in place.
+
+**Removable media** (USB sticks, external disks, SD cards): *Allow*, *Block* or *Remount with flags* (e.g.
+`rdonly,noexec`: read only, nothing executable), optionally different for encrypted media. The server sends it at every
+sync (`removable_media_policy`, plus `block_usb_mount` / `remount_usb_mode` for older Santa versions). What happens to
+the media already mounted when Santa starts (`OnStartUSBOptions`) is only in the profile.
+
+**Branding** (Santa 2026.1 and newer): company name and logo in the dialogs of Santa. An uploaded logo (PNG or JPEG,
+at most 256 KB) goes into the profile as a `data:` URL; or a `file:///` URL of an image your MDM puts on the Macs.
+Santa doesn't support `https://` URLs.
 
 **`MachineOwner`** (optional, `SANTA_PROFILE_MACHINE_OWNER`): the MDM variable of the primary user, so that the
 request form finds the Macs of the signed-in user. For example `{{userprincipalname}}` (Intune) or `$EMAIL`

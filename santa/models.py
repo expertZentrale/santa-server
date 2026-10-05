@@ -26,6 +26,52 @@ class ClientMode(models.TextChoices):
 # mount flags Santa accepts for the USB remount
 USB_REMOUNT_FLAGS = {"rdonly", "noexec", "nosuid", "nobrowse", "noowners", "nodev", "async", "-j"}
 
+# the logos are in the configuration profile (data: URL): keep the profile small
+BRANDING_LOGO_MAX_BYTES = 256 * 1024
+BRANDING_LOGO_TYPES = ("image/png", "image/jpeg")
+
+
+class RemovableMediaAction(models.TextChoices):
+    ALLOW = "ALLOW", _("Allow")
+    BLOCK = "BLOCK", _("Block")
+    REMOUNT = "REMOUNT", _("Remount with flags")
+
+
+class OnStartUSBOption(models.TextChoices):
+    # the values of OnStartUSBOptions
+    UNMOUNT = "Unmount", _("Unmount")
+    FORCE_UNMOUNT = "ForceUnmount", _("Force unmount")
+    REMOUNT = "Remount", _("Remount")
+    FORCE_REMOUNT = "ForceRemount", _("Force remount")
+
+
+def remount_flags_help(text):
+    flags = format_lazy(_("Comma separated, e.g. rdonly,noexec (read only, nothing executable). Allowed: {flags}."),
+                        flags=", ".join(sorted(USB_REMOUNT_FLAGS)))
+    return format_lazy("{text} {flags}", text=text, flags=flags)
+
+
+def split_flags(value):
+    return [flag.strip() for flag in value.split(",") if flag.strip()]
+
+
+def removable_media_policy(action, flags):
+    """RemovableMediaPolicy of the sync protocol: {"allow": true}, {"block": true} or {"remount": {"flags": […]}}"""
+    if action == RemovableMediaAction.REMOUNT:
+        return {"remount": {"flags": split_flags(flags)}}
+    return {action.lower(): True}
+
+
+def validate_logo_url(value):
+    """file:// (a file on the Macs) or data: with a PNG / JPEG; Santa doesn't load https:// logos"""
+    if value.startswith("file:///"):
+        return
+    if not value.startswith(tuple(f"data:{kind};base64," for kind in BRANDING_LOGO_TYPES)):
+        raise ValidationError(gettext("A file:///… URL of an image on the Macs, or an uploaded PNG or JPEG."))
+    if len(value) > BRANDING_LOGO_MAX_BYTES * 4 // 3 + 100:
+        raise ValidationError(gettext("The image is too large (at most %(size)s KB).")
+                              % {"size": BRANDING_LOGO_MAX_BYTES // 1024})
+
 
 class Group(models.Model):
     """A group of Macs with its own Santa configuration and sync URL (one configuration profile per group)."""
@@ -78,17 +124,24 @@ class Group(models.Model):
         help_text=_("Upload an event for every execution, including the allowed ones, not only for the blocked / "
                   "unknown ones. Useful to see what runs before switching a group to lockdown, but very noisy."),
     )
-    block_usb_mount = models.BooleanField(
-        _("block USB mass storage"), default=False,
-        help_text=_("Block the mounting of USB mass storage devices (sticks, external disks)."),
+    removable_media_action = models.CharField(
+        _("removable media"), max_length=16, choices=RemovableMediaAction.choices,
+        default=RemovableMediaAction.ALLOW,
+        help_text=_("USB sticks, external disks, SD cards: allow them, block them, or remount them with the flags "
+                  "below (e.g. read only). Sent at every sync."),
     )
-    remount_usb_mode = models.CharField(
-        _("remount USB with flags"), max_length=200, blank=True,
-        help_text=format_lazy(
-            _("Only with “Block USB mass storage”: instead of blocking, remount the device with these flags, "
-              "comma separated, e.g. rdonly,noexec (read only, nothing executable). Allowed: {flags}."),
-            flags=", ".join(sorted(USB_REMOUNT_FLAGS)),
-        ),
+    removable_media_remount_flags = models.CharField(
+        _("remount flags"), max_length=200, blank=True,
+        help_text=remount_flags_help(_("Only with “Remount with flags”.")),
+    )
+    encrypted_removable_media_action = models.CharField(
+        _("encrypted removable media"), max_length=16, choices=RemovableMediaAction.choices, blank=True,
+        help_text=_("Encrypted disks (e.g. APFS encrypted) can get another action. Empty = the same as above. "
+                  "Santa 2026.1 and newer."),
+    )
+    encrypted_removable_media_remount_flags = models.CharField(
+        _("remount flags of encrypted media"), max_length=200, blank=True,
+        help_text=remount_flags_help(_("Only with “Remount with flags” for encrypted media.")),
     )
     event_detail_url = models.URLField(
         _("block dialog URL"), max_length=800, blank=True,
@@ -115,6 +168,24 @@ class Group(models.Model):
         help_text=_("Profile only. Also block, in monitor mode, the binaries with a broken code signature "
                   "(tampered files), unless a rule allows them."),
     )
+    on_start_usb_options = models.CharField(
+        _("removable media mounted when Santa starts"), max_length=16, choices=OnStartUSBOption.choices,
+        blank=True,
+        help_text=_("Profile only. What Santa does with the removable media already mounted when it starts, when "
+                  "they are blocked or remounted. Empty = leave them."),
+    )
+    branding_company_name = models.CharField(
+        max_length=200, blank=True,
+        help_text=_("Profile only. Your company name in the dialogs and messages of Santa (Santa 2026.1 and newer)."),
+    )
+    branding_company_logo = models.TextField(
+        blank=True, validators=[validate_logo_url],
+        help_text=_("Profile only. Shown instead of the company name (84 × 28 points)."),
+    )
+    branding_company_logo_dark = models.TextField(
+        blank=True, validators=[validate_logo_url],
+        help_text=_("Profile only. The logo in dark mode. Empty = the logo above."),
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -135,12 +206,19 @@ class Group(models.Model):
             regex_errors = validate_path_regexes(getattr(self, field))
             if regex_errors:
                 errors[field] = regex_errors
-        unknown_flags = set(self.remount_usb_mode_list()) - USB_REMOUNT_FLAGS
-        if unknown_flags:
-            errors["remount_usb_mode"] = gettext("Unknown flag(s): %(flags)s.") % {
-                "flags": ", ".join(sorted(unknown_flags))}
-        elif self.remount_usb_mode_list() and not self.block_usb_mount:
-            errors["remount_usb_mode"] = gettext("Only used with “Block USB mass storage”.")
+        for action_field, flags_field in (("removable_media_action", "removable_media_remount_flags"),
+                                          ("encrypted_removable_media_action",
+                                           "encrypted_removable_media_remount_flags")):
+            flags = split_flags(getattr(self, flags_field))
+            unknown_flags = set(flags) - USB_REMOUNT_FLAGS
+            remount = getattr(self, action_field) == RemovableMediaAction.REMOUNT
+            if unknown_flags:
+                errors[flags_field] = gettext("Unknown flag(s): %(flags)s.") % {
+                    "flags": ", ".join(sorted(unknown_flags))}
+            elif flags and not remount:
+                errors[flags_field] = gettext("Only used with “Remount with flags”.")
+            elif remount and not flags:
+                errors[flags_field] = gettext("Remounting needs at least one flag.")
         if errors:
             raise ValidationError(errors)
 
@@ -155,8 +233,14 @@ class Group(models.Model):
     def blocked_path_regex_for_santa(self):
         return combine_path_regexes(self.blocked_path_regex)
 
-    def remount_usb_mode_list(self):
-        return [flag.strip() for flag in self.remount_usb_mode.split(",") if flag.strip()]
+    def removable_media_policy(self):
+        return removable_media_policy(self.removable_media_action, self.removable_media_remount_flags)
+
+    def encrypted_removable_media_policy(self):
+        if not self.encrypted_removable_media_action:
+            return None
+        return removable_media_policy(self.encrypted_removable_media_action,
+                                      self.encrypted_removable_media_remount_flags)
 
 
 class Machine(models.Model):

@@ -61,7 +61,7 @@ def group_form(request, pk=None):
     group = get_object_or_404(Group, pk=pk) if pk else None
     require_perms(request, "view_group")
     can_change = request.user.has_perm("santa.change_group" if group else "santa.add_group")
-    form = GroupForm(request.POST or None, instance=group)
+    form = GroupForm(request.POST or None, request.FILES or None, instance=group)
     if request.method == "POST":
         require_perms(request, "change_group" if group else "add_group")
         if form.is_valid():
@@ -74,7 +74,7 @@ def group_form(request, pk=None):
             else:
                 log_change(request.user, group, changed_message(form))
                 message = gettext("Group %(group)s saved.") % {"group": group} + " "
-                if any(name in form.changed_data for name in GroupForm.SECTIONS[-1][2]):
+                if form.profile_changed():
                     message += gettext("Profile settings changed: download the profile again and replace it in "
                                        "your MDM.")
                 else:

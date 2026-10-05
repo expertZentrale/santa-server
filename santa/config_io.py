@@ -20,9 +20,11 @@ VERSION = 1
 
 GROUP_FIELDS = (
     "description", "client_mode", "batch_size", "full_sync_interval", "allowed_path_regex", "blocked_path_regex",
-    "enable_bundles", "enable_transitive_rules", "enable_all_event_upload", "block_usb_mount", "remount_usb_mode",
+    "enable_bundles", "enable_transitive_rules", "enable_all_event_upload", "removable_media_action",
+    "removable_media_remount_flags", "encrypted_removable_media_action", "encrypted_removable_media_remount_flags",
     "event_detail_url", "event_detail_text", "unknown_block_message", "banned_block_message",
-    "enable_bad_signature_protection",
+    "enable_bad_signature_protection", "on_start_usb_options", "branding_company_name", "branding_company_logo",
+    "branding_company_logo_dark",
 )
 RELEASE_SOURCE_FIELDS = (
     "kind", "identifier", "version_pattern", "asset_pattern", "binary_pattern", "include_prereleases", "rule_type",
@@ -31,6 +33,15 @@ RELEASE_SOURCE_FIELDS = (
 )
 RULE_KEY_FIELDS = ("rule_type", "identifier", "policy")
 RULE_FIELDS = ("custom_msg", "custom_url", "cel_expr", "description", "is_global", "is_enabled")
+
+
+def legacy_usb(item):
+    """Files of older versions have block_usb_mount / remount_usb_mode instead of removable_media_action"""
+    if "block_usb_mount" not in item or "removable_media_action" in item:
+        return item
+    flags = item.get("remount_usb_mode", "") if item["block_usb_mount"] else ""
+    action = ("REMOUNT" if flags else "BLOCK") if item["block_usb_mount"] else "ALLOW"
+    return {**item, "removable_media_action": action, "removable_media_remount_flags": flags}
 
 
 class ConfigImportError(Exception):
@@ -149,7 +160,7 @@ class _Importer:
             created = group is None
             if created:
                 group = Group(name=name)
-            if self._apply(group, item, GROUP_FIELDS) or created:
+            if self._apply(group, legacy_usb(item), GROUP_FIELDS) or created:
                 if not self.save(group, f"Group {name}"):
                     continue
                 self.record("created" if created else "updated", group)

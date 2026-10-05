@@ -1,0 +1,9 @@
+{% load i18n %}{# A logo of the profile (forms.LogoField): the current one, an upload or a file:/// URL, remove #}
+<fieldset class="field logo-field{% if logo.errors %} has-error{% endif %}" data-field="{{ logo.name }}">
+  <legend><strong>{{ logo.label }}</strong></legend>
+  {% if logo.preview %}<div class="logo-preview"><img src="{{ logo.preview }}" alt="{{ logo.label }}"></div>{% endif %}
+  {% include "console/_field.html" with field=logo.file %}
+  {% include "console/_field.html" with field=logo.url %}
+  {% if logo.preview or logo.url.value %}{% include "console/_field.html" with field=logo.clear %}{% endif %}
+  <small class="help">{{ logo.help_text }}</small>
+</fieldset>

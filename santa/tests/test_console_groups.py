@@ -1,7 +1,9 @@
+import base64
 from datetime import timedelta
 
 from django.contrib.admin.models import DELETION, LogEntry
 from django.contrib.auth.models import Permission, User
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 from django.utils import timezone
 
@@ -21,7 +23,7 @@ class ConsoleGroupsTestCase(ConsoleBase):
 
     def test_create_and_change_group(self):
         data = {"name": "Design", "client_mode": "LOCKDOWN", "batch_size": 100, "full_sync_interval": 600,
-                "allowed_path_regex": "^/opt/tools/\n^/Applications/Figma\\.app/"}
+                "allowed_path_regex": "^/opt/tools/\n^/Applications/Figma\\.app/", "removable_media_action": "ALLOW"}
         response = self.client.post(reverse("console:group_add"), data)
         group = Group.objects.get(name="Design")
         self.assertRedirects(response, reverse("console:group", args=(group.pk,)))
@@ -155,3 +157,49 @@ class ConsoleGroupsTestCase(ConsoleBase):
     def test_new_rule_from_the_mac_page(self):
         response = self.client.get(reverse("console:rule_add"), {"machine": self.machine.pk})
         self.assertContains(response, "C02TEST")
+
+    def test_removable_media_and_branding(self):
+        url = reverse("console:group", args=(self.dev.pk,))
+        data = {"name": self.dev.name, "client_mode": "MONITOR", "batch_size": 100, "full_sync_interval": 600,
+                "removable_media_action": "REMOUNT", "removable_media_remount_flags": "rdonly,noexec",
+                "encrypted_removable_media_action": "ALLOW", "on_start_usb_options": "ForceRemount",
+                "branding_company_name": "Example Corp"}
+        png = b"\x89PNG\r\n\x1a\n" + b"\0" * 20
+        response = self.client.post(url, {**data, "branding_company_logo_file": SimpleUploadedFile("logo.png", png),
+                                          "branding_company_logo_dark_url": "file:///Library/Example/dark.png"},
+                                    follow=True)
+        self.assertContains(response, "download the profile again")
+        self.dev.refresh_from_db()
+        self.assertEqual((self.dev.removable_media_action, self.dev.removable_media_remount_flags,
+                          self.dev.encrypted_removable_media_action, self.dev.on_start_usb_options),
+                         ("REMOUNT", "rdonly,noexec", "ALLOW", "ForceRemount"))
+        self.assertEqual(self.dev.branding_company_logo, "data:image/png;base64," + base64.b64encode(png).decode())
+        self.assertEqual(self.dev.branding_company_logo_dark, "file:///Library/Example/dark.png")
+        # the form shows the logo, saving without a new one keeps it
+        response = self.client.get(url)
+        self.assertContains(response, f'src="{self.dev.branding_company_logo}"')
+        self.assertContains(response, 'value="file:///Library/Example/dark.png"')
+        self.client.post(url, {**data, "branding_company_logo_dark_url": "file:///Library/Example/dark.png"})
+        self.dev.refresh_from_db()
+        self.assertTrue(self.dev.branding_company_logo.startswith("data:image/png"))
+        # removed, and an emptied file URL removes it too
+        self.client.post(url, {**data, "branding_company_logo_clear": "on"})
+        self.dev.refresh_from_db()
+        self.assertEqual((self.dev.branding_company_logo, self.dev.branding_company_logo_dark), ("", ""))
+
+    def test_logo_upload_is_checked(self):
+        url = reverse("console:group", args=(self.dev.pk,))
+        data = {"name": self.dev.name, "client_mode": "MONITOR", "batch_size": 100, "full_sync_interval": 600,
+                "removable_media_action": "ALLOW"}
+        response = self.client.post(url, {**data, "branding_company_logo_file": SimpleUploadedFile(
+            "logo.svg", b"<svg onload='alert(1)'/>")})
+        self.assertContains(response, "Only PNG or JPEG images.")
+        response = self.client.post(url, {**data, "branding_company_logo_file": SimpleUploadedFile(
+            "logo.png", b"\x89PNG\r\n\x1a\n" + b"\0" * (300 * 1024))})
+        self.assertContains(response, "The image is too large")
+        response = self.client.post(url, {**data, "branding_company_logo_url": "https://example.com/logo.png"})
+        self.assertContains(response, "A file:///… URL")
+        response = self.client.post(url, {**data, "removable_media_action": "REMOUNT"})
+        self.assertContains(response, "Remounting needs at least one flag.")
+        self.dev.refresh_from_db()
+        self.assertEqual(self.dev.branding_company_logo, "")
