@@ -20,6 +20,7 @@ urlpatterns = [
     path("rules/upload/", views_rules.rule_upload, name="rule_upload"),
     path("rules/<int:pk>/", views_rules.rule_form, name="rule"),
     path("rules/<int:pk>/toggle/", views_rules.rule_toggle, name="rule_toggle"),
+    path("rules/<int:pk>/delete/", views_rules.rule_delete, name="rule_delete"),
 
     path("packages/", views_sources.sources, name="sources"),
     path("packages/add/", views_sources.source_form, name="source_add"),
@@ -72,4 +73,5 @@ urlpatterns = [
     path("administration/tags/<int:pk>/delete/", views_admin.tag_delete, name="admin_tag_delete"),
     path("administration/configuration/", views_admin.config, name="admin_config"),
     path("administration/configuration/export/", views_admin.config_export, name="admin_config_export"),
+    path("administration/configuration/import/", views_admin.config_import, name="admin_config_import"),
 ]

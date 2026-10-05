@@ -6,8 +6,8 @@
   {% translate "A group is a set of Macs with one Santa configuration and one sync URL. Every Mac gets the base profile (same for all) and the profile of its group from your MDM." as help %}{% include "console/_help.html" with text=help %}
   <div class="actions">
     <a class="button" href="{% url 'console:base_profile' %}">{% translate "Base profile (.mobileconfig)" %}</a>
-    {% if perms.santa.view_rule and perms.santa.view_releasesource %}<a class="button" href="{% url 'console:admin_config' %}">{% translate "Export / import" %}</a>{% endif %}
-    {% if perms.santa.add_group %}<a class="button primary" href="{% url 'console:group_add' %}">{% translate "New group" %}</a>{% endif %}
+    {% if perms.santa.view_rule and perms.santa.view_releasesource %}{% url 'console:admin_config' as config_url %}<a class="button" href="{{ config_url }}" hx-get="{{ config_url }}" hx-target="#drawer">{% translate "Export / import" %}</a>{% endif %}
+    {% if perms.santa.add_group %}{% url 'console:group_add' as add_url %}<a class="button primary" href="{{ add_url }}" hx-get="{{ add_url }}" hx-target="#drawer">{% translate "New group" %}</a>{% endif %}
   </div>
 </div>
 <table class="table">

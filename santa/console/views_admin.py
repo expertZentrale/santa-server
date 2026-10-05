@@ -9,6 +9,7 @@ from django.core.exceptions import PermissionDenied
 from django.db.models import Count, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import gettext, ngettext
 from django.utils.translation import gettext_lazy as _
@@ -27,10 +28,12 @@ from .filters import Facet, chosen, filter_bar, remember_filters
 from .forms import ConfigImportForm, RoleForm, SignInGroupForm, TagForm, UserForm
 from .utils import (
     changed_message,
+    drawer_done,
     log_addition,
     log_change,
     log_deletion,
     paginate,
+    render_drawer,
     require_perms,
     sort_by,
     staff_required,
@@ -86,6 +89,12 @@ def visible_sections(user):
 
 def render_section(request, template, section, context):
     return render(request, template, {**context, "section": section, "sections": visible_sections(request.user)})
+
+
+def render_form(request, name, section, context):
+    """console/administration/<name>.html as a page, drawer_<name>.html in the drawer (both include _<name>.html)"""
+    return render_drawer(request, f"console/administration/{name}.html", f"console/administration/drawer_{name}.html",
+                         {**context, "section": section, "sections": visible_sections(request.user)})
 
 
 @staff_required
@@ -153,7 +162,7 @@ def user_form(request, pk=None):
             else:
                 log_change(request.user, user, changed_message(form))
             messages.success(request, gettext("User %(user)s saved.") % {"user": user})
-            return redirect("console:admin_users")
+            return drawer_done(request, reverse("console:admin_users"))
     sign_in_roles = []
     if user and managed:
         # which sign-in group gives each role, to explain why it can't be changed here
@@ -162,7 +171,7 @@ def user_form(request, pk=None):
             if role in managed:
                 sources = [group.name for group in groups if role in group.roles.all()]
                 sign_in_roles.append((role, sources))
-    return render_section(request, "console/administration/user_form.html", "users", {
+    return render_form(request, "user_form", "users", {
         "form": form, "edited_user": user, "sign_in_roles": sign_in_roles,
         "sign_in_groups": user.sign_in_groups.all() if user else [],
         "from_sign_in": bool(user and is_sign_in_user(user)),
@@ -220,9 +229,9 @@ def role_form(request, pk=None):
         else:
             log_change(request.user, role, changed_message(form))
         messages.success(request, gettext("Role %(role)s saved.") % {"role": role})
-        return redirect("console:admin_roles")
+        return drawer_done(request, reverse("console:admin_roles"))
     rows, request_permissions = permission_matrix(form)
-    return render_section(request, "console/administration/role_form.html", "roles", {
+    return render_form(request, "role_form", "roles", {
         "form": form, "role": role, "rows": rows, "request_permissions": request_permissions,
         "actions": PERMISSION_ACTIONS, "is_protected": role is not None and role.name == ADMIN_GROUP_NAME,
         "members": role.user_set.order_by("username")[:50] if role else [],
@@ -274,8 +283,8 @@ def sign_in_group_form(request, pk=None):
             log_change(request.user, sign_in_group, changed_message(form))
         messages.success(request, gettext("Sign-in group %(group)s saved. It applies to its members now, new "
                                           "members get it at their next sign-in.") % {"group": sign_in_group})
-        return redirect("console:admin_sign_in_groups")
-    return render_section(request, "console/administration/sign_in_group_form.html", "sign_in_groups", {
+        return drawer_done(request, reverse("console:admin_sign_in_groups"))
+    return render_form(request, "sign_in_group_form", "sign_in_groups", {
         "form": form, "sign_in_group": sign_in_group,
         "members": sign_in_group.members.order_by("username")[:50] if sign_in_group else [],
     })
@@ -324,8 +333,8 @@ def tag_form(request, pk=None):
         else:
             log_change(request.user, tag, changed_message(form))
         messages.success(request, gettext("Tag %(tag)s saved.") % {"tag": tag})
-        return redirect("console:admin_tags")
-    return render_section(request, "console/administration/tag_form.html", "tags", {"form": form, "tag": tag})
+        return drawer_done(request, reverse("console:admin_tags"))
+    return render_form(request, "tag_form", "tags", {"form": form, "tag": tag})
 
 
 @staff_required
@@ -343,10 +352,20 @@ def tag_delete(request, pk):
 # Export / import
 
 
+def can_import_config(user):
+    return user.has_perms([f"santa.{perm}" for perm in IMPORT_PERMS])
+
+
 @staff_required
 def config(request):
     require_perms(request, *EXPORT_PERMS)
-    can_import = request.user.has_perms([f"santa.{perm}" for perm in IMPORT_PERMS])
+    return render_form(request, "config", "config", {"can_import": can_import_config(request.user)})
+
+
+@staff_required
+def config_import(request):
+    require_perms(request, *EXPORT_PERMS)
+    can_import = can_import_config(request.user)
     form = ConfigImportForm(request.POST or None, request.FILES or None)
     report = errors = None
     if request.method == "POST":
@@ -370,9 +389,11 @@ def config(request):
                         count = len(report["changes"])
                         messages.success(request, ngettext("Imported: %(count)s change.",
                                                            "Imported: %(count)s changes.", count) % {"count": count})
-    return render_section(request, "console/administration/config.html", "config", {
-        "form": form, "can_import": can_import, "report": report, "errors": errors,
-        "dry_run": form.is_bound and form.is_valid() and form.cleaned_data["dry_run"],
+    dry_run = form.is_bound and form.is_valid() and form.cleaned_data["dry_run"]
+    return render_form(request, "config_import", "config", {
+        "form": form, "can_import": can_import, "report": report, "errors": errors, "dry_run": dry_run,
+        # the lists behind the drawer show the imported configuration after it closes
+        "imported": report is not None and not dry_run,
     })
 
 

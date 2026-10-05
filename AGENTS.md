@@ -18,7 +18,9 @@ Read this file before changing anything. If a request conflicts with these rules
     No build step.
     Details and forms open in the side drawer (`#drawer`): links keep their `href` and add
     `hx-get … hx-target="#drawer"`, the views use `render_drawer()` / `drawer_done()` of `santa/console/utils.py`
-    (a page and a drawer template around the same body partial). The request form for the users is `/request/`.
+    (a page and a drawer template around the same body partial).
+    Every view of the drawer is an entry of the browser history (`drawer.js`, the URL from `data-drawer-url` of
+    `_drawer.html`), so Back / Forward step through it. The request form for the users is `/request/`.
     The Django admin (`santa/admin.py`) stays for low-level editing; configuration belongs in the console
     (*Administration*), not only in the admin.
     Both use the same functions in `services.py`; don't duplicate business logic in the views.

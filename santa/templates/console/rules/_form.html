@@ -33,5 +33,11 @@
   </section>
   <div class="actions"><button class="button primary">{% translate "Save" %}</button>
     {% if in_drawer %}<button type="button" class="button" data-drawer-close>{% translate "Cancel" %}</button>{% else %}<a class="button" href="{% url 'console:rules' %}">{% translate "Cancel" %}</a>{% endif %}
-    {% if rule %}{% url 'console:history' 'rule' rule.pk as history_url %}<a class="button right" href="{{ history_url }}" hx-get="{{ history_url }}" hx-target="#drawer">{% translate "History" %}</a>{% endif %}</div>
+    {% if rule %}{% url 'console:history' 'rule' rule.pk as history_url %}<a class="button right" href="{{ history_url }}" hx-get="{{ history_url }}" hx-target="#drawer">{% translate "History" %}</a>{% endif %}
+    {% if rule and perms.santa.delete_rule %}<button class="button danger" form="rule-delete-form">{% translate "Delete" %}</button>{% endif %}</div>
 </form>
+{% if rule and perms.santa.delete_rule %}
+{% blocktranslate asvar confirm_text %}Delete this rule? The Macs remove it at their next sync.{% endblocktranslate %}
+{# in the drawer the page behind it stays (e.g. a Mac): drawer.js reloads it #}
+<form id="rule-delete-form" method="post" action="{% url 'console:rule_delete' rule.pk %}"{% if in_drawer %} hx-post="{% url 'console:rule_delete' rule.pk %}" hx-confirm="{{ confirm_text }}"{% else %} data-confirm="{{ confirm_text }}"{% endif %}>{% csrf_token %}</form>
+{% endif %}

@@ -80,7 +80,7 @@ def group_form(request, pk=None):
                 else:
                     message += gettext("The Macs get the changes at their next sync.")
                 messages.success(request, message)
-            return drawer_done(request, reverse("console:group", args=[group.pk]))
+            return drawer_done(request, reverse("console:group", args=[group.pk]), open_in_drawer=created)
     context = {"form": form, "group": group, "can_change": can_change,
                "can_see_sync_token": can_see_sync_token(request.user)}
     if group:

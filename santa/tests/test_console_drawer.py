@@ -1,8 +1,13 @@
+import json
+
 from django.contrib.admin.models import LogEntry
+from django.contrib.auth.models import Group as AuthGroup
 from django.contrib.auth.models import Permission, User
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 
-from santa.models import AccessRequest, Policy, ReleaseSource, ReleaseVersion, Rule, RuleType
+from santa.config_io import export_config
+from santa.models import AccessRequest, Group, Policy, ReleaseSource, ReleaseVersion, Rule, RuleType, Tag
 
 from .test_console import SHA_A, ConsoleBase
 
@@ -117,3 +122,85 @@ class DrawerTestCase(ConsoleBase):
         self.assertEqual(self.client.get(reverse("console:history", args=("rule", self.rule.pk))).status_code, 200)
         self.assertEqual(self.client.get(reverse("console:history", args=("group", self.dev.pk))).status_code, 403)
         self.assertEqual(self.client.get(reverse("console:history", args=("user", self.user.pk))).status_code, 403)
+
+    def test_administration_and_groups_in_the_drawer(self):
+        role = AuthGroup.objects.create(name="Viewers")
+        tag = Tag.objects.create(name="team")
+        for url, text in [(reverse("console:admin_user", args=(self.user.pk,)), self.user.username),
+                          (reverse("console:admin_user_add"), "New local account"),
+                          (reverse("console:admin_role", args=(role.pk,)), "Viewers"),
+                          (reverse("console:admin_role_add"), "New role"),
+                          (reverse("console:admin_sign_in_group_add"), "New sign-in group"),
+                          (reverse("console:admin_tag", args=(tag.pk,)), "team"),
+                          (reverse("console:admin_tag_add"), "New tag"),
+                          (reverse("console:admin_config"), "Export configuration"),
+                          (reverse("console:admin_config_import"), 'hx-encoding="multipart/form-data"'),
+                          (reverse("console:group_add"), "New group")]:
+            self.assertDrawer(self.client.get(url, **HTMX), text)
+            page = self.client.get(url)
+            self.assertContains(page, "<html")
+        # the forms of the drawer post into it, "Cancel" closes it
+        response = self.client.get(reverse("console:admin_tag", args=(tag.pk,)), **HTMX)
+        self.assertContains(response, 'hx-target="#drawer"')
+        self.assertContains(response, "data-drawer-close")
+
+    def test_administration_links_open_the_drawer(self):
+        role = AuthGroup.objects.create(name="Viewers")
+        tag = Tag.objects.create(name="team")
+        for list_name, url in [("admin_users", reverse("console:admin_user", args=(self.user.pk,))),
+                               ("admin_users", reverse("console:admin_user_add")),
+                               ("admin_roles", reverse("console:admin_role", args=(role.pk,))),
+                               ("admin_roles", reverse("console:admin_role_add")),
+                               ("admin_sign_in_groups", reverse("console:admin_sign_in_group_add")),
+                               ("admin_tags", reverse("console:admin_tag", args=(tag.pk,))),
+                               ("admin_tags", reverse("console:admin_tag_add")),
+                               ("admin_config", reverse("console:admin_config_import")),
+                               ("groups", reverse("console:group_add")),
+                               ("groups", reverse("console:admin_config"))]:
+            self.assertContains(self.client.get(reverse(f"console:{list_name}")),
+                                f'href="{url}" hx-get="{url}" hx-target="#drawer"', msg_prefix=list_name)
+
+    def test_saving_administration_in_the_drawer(self):
+        response = self.client.post(reverse("console:admin_tag_add"), {"name": "new-tag"}, **HTMX)
+        self.assertEqual(response["HX-Trigger"], "drawerSaved")
+        response = self.client.post(reverse("console:admin_role_add"), {"name": "Auditors"}, **HTMX)
+        self.assertEqual(response["HX-Trigger"], "drawerSaved")
+        self.assertRedirects(self.client.post(reverse("console:admin_tag_add"), {"name": "page-tag"}),
+                             reverse("console:admin_tags"))
+
+    def test_new_group_opens_in_the_drawer(self):
+        data = {"name": "Design", "client_mode": "MONITOR", "batch_size": 50, "full_sync_interval": 600}
+        response = self.client.post(reverse("console:group_add"), data, **HTMX)
+        group = Group.objects.get(name="Design")
+        url = reverse("console:group", args=(group.pk,))
+        self.assertEqual(json.loads(response["HX-Trigger"]), {"drawerSaved": {"open": url}})
+        # the message comes with the group in the drawer
+        self.assertDrawer(self.client.get(url, **HTMX), "Download its configuration profile below")
+
+    def test_import_in_the_drawer(self):
+        upload = SimpleUploadedFile("config.json", json.dumps(export_config()).encode(),
+                                    content_type="application/json")
+        response = self.client.post(reverse("console:admin_config_import"), {"file": upload}, **HTMX)
+        self.assertDrawer(response, "Imported")
+        # the lists behind the drawer show the import after it closes
+        self.assertContains(response, "data-refresh-on-close")
+
+    def test_delete_rule(self):
+        url = reverse("console:rule", args=(self.rule.pk,))
+        self.assertContains(self.client.get(url, **HTMX), reverse("console:rule_delete", args=(self.rule.pk,)))
+        response = self.client.post(reverse("console:rule_delete", args=(self.rule.pk,)), **HTMX)
+        self.assertEqual(response["HX-Trigger"], "drawerSaved")
+        self.assertFalse(Rule.objects.filter(pk=self.rule.pk).exists())
+        self.assertTrue(LogEntry.objects.filter(object_repr=str(self.rule), action_flag=3).exists())
+        # the rules of a package rule are disabled there, not deleted
+        version = ReleaseVersion.objects.create(source=self.source, identifier="abiosoft/colima", version="v1")
+        package_rule = Rule.objects.create(rule_type=RuleType.BINARY, identifier="b" * 64, is_global=True,
+                                           release_source=self.source, release_version=version)
+        self.assertEqual(self.client.post(reverse("console:rule_delete", args=(package_rule.pk,))).status_code, 404)
+        # without the permission
+        viewer = User.objects.create_user("viewer", is_staff=True)
+        viewer.user_permissions.set(Permission.objects.filter(codename__in=["view_rule", "change_rule"]))
+        self.client.force_login(viewer)
+        other = Rule.objects.create(rule_type=RuleType.BINARY, identifier="c" * 64, is_global=True)
+        self.assertNotContains(self.client.get(reverse("console:rule", args=(other.pk,))), "rule-delete-form")
+        self.assertEqual(self.client.post(reverse("console:rule_delete", args=(other.pk,))).status_code, 403)

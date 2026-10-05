@@ -232,6 +232,19 @@ def rule_toggle(request, pk):
 
 
 @staff_required
+@require_POST
+def rule_delete(request, pk):
+    require_perms(request, "view_rule", "delete_rule")
+    # the rules of a package rule are managed by it: disabled there, not deleted
+    rule = get_object_or_404(Rule, pk=pk, release_source__isnull=True)
+    log_deletion(request.user, rule)
+    rule.delete()
+    messages.success(request, gettext("Rule deleted: %(rule)s. The Macs remove it at their next sync.")
+                     % {"rule": rule})
+    return drawer_done(request, "console:rules")
+
+
+@staff_required
 def rules_existing(request):
     """The rules with the identifier typed in "New rule" (htmx partial)"""
     require_perms(request, "view_rule")
