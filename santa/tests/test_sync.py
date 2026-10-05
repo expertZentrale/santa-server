@@ -113,6 +113,12 @@ class SyncTestCase(TestCase):
         self.assertIs(response["block_usb_mount"], True)
         self.assertEqual(response["remount_usb_mode"], [])
 
+    def test_file_access_override(self):
+        self.assertEqual(self.preflight()["override_file_access_action"], "NONE")
+        self.dev.override_file_access_action = "AUDIT_ONLY"
+        self.dev.save()
+        self.assertEqual(self.preflight()["override_file_access_action"], "AUDIT_ONLY")
+
     def test_removable_media_remount(self):
         self.dev.removable_media_action = RemovableMediaAction.REMOUNT
         self.dev.removable_media_remount_flags = "rdonly, noexec"

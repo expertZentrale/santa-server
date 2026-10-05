@@ -271,6 +271,21 @@ Kennung auf einem Mac, gewinnt der spezifischste Geltungsbereich (Mac > Gruppe >
 Geltungsbereich gewinnt Blockieren über Erlauben. Deaktivierte Regeln werden bei der nächsten Synchronisierung von
 den Macs entfernt.
 
+#### Dateizugriffsregeln
+
+*Dateizugriff* legt fest, welche Prozesse welche Dateien lesen oder schreiben dürfen (File Access Authorization von
+Santa), zum Beispiel: Nur `ssh` darf die SSH-Schlüssel lesen, nur die Browser ihre Cookies. Eine Regel hat Pfade (mit
+`*`, `?` und `[ ]`, oder ein Pfad mit allem darunter), einen Regeltyp (*nur die genannten Prozesse dürfen* /
+*die genannten Prozesse dürfen nicht* auf die Pfade zugreifen, oder umgekehrt *die Prozesse dürfen nur auf* / *nicht
+auf* die Pfade zugreifen) und Prozesse (Signing ID mit Team ID oder *Plattform-Binary*, Team ID, Pfad, CDHash oder
+Zertifikat; alle ausgefüllten Felder müssen passen).
+
+- Santa erhält die Regeln **über das Gruppenprofil** (`FileAccessPolicy`), das JSON-Sync-Protokoll kennt sie nicht:
+  Laden Sie nach einer Änderung die Profile der betroffenen Gruppen erneut herunter (die Konsole nennt sie).
+- Beginnen Sie mit *Nur protokollieren* und prüfen Sie die Ereignisse auf den Macs, bevor eine Regel blockiert.
+- *Dateizugriff überschreiben* in der Gruppe (*Nur protokollieren*, *Deaktiviert*) wird bei jeder Synchronisierung
+  gesendet und gilt sofort für alle Regeln der Gruppe, ohne neues Profil.
+
 ### Im Alltag
 
 Alles ist in der Konsole (`/console/`). Der Django-Admin (`/admin/`) hat weiterhin jedes Modell für Änderungen auf
@@ -284,10 +299,12 @@ Profil des Benutzers gespeichert. Auf dem Smartphone liegt die Navigation hinter
 wählt sie aus, Strg-Klick fügt eine hinzu oder entfernt sie, Umschalt-Klick wählt einen Bereich. Die Aktionen für die
 Auswahl erscheinen unten im Fenster; Esc hebt die Auswahl auf.
 
-**Seitenleiste**: Ereignisse, Ausführungsregeln, Paketregeln, Anfragen und der Verlauf öffnen sich in einer Leiste
-rechts, auch zum Anlegen und Bearbeiten. Nach dem Speichern wird die Liste dahinter neu geladen. Esc oder ein Klick
-daneben schließt sie, *Seite ↗* öffnet dasselbe als eigene Seite. *Verlauf* zeigt jede Änderung an einer Regel,
-Paketregel, Gruppe, einem Mac, einer Anmeldegruppe, Rolle, einem Tag oder Benutzer.
+**Seitenleiste**: Ereignisse, Regeln, Paketregeln, Dateizugriffsregeln, Anfragen, Macs, Gruppen, alles unter
+*Administration* und der Verlauf öffnen sich in einer Leiste rechts, auch zum Anlegen und Bearbeiten. Nach dem
+Speichern wird die Liste dahinter neu geladen. Zurück und Vor des Browsers (auch die Maustasten) wechseln zwischen den
+Ansichten der Leiste. Esc oder ein Klick daneben schließt sie, *Seite ↗* öffnet dasselbe als eigene Seite. *Verlauf*
+zeigt jede Änderung an einer Regel, Paketregel, Dateizugriffsregel, Gruppe, einem Mac, einer Anmeldegruppe, Rolle,
+einem Tag oder Benutzer.
 
 **Gruppen**: die Santa-Konfiguration jeder Gruppe, ihre geheime SyncBaseURL, der Download ihres
 Konfigurationsprofils, *Sync-URL neu erzeugen* und in der Liste das Basisprofil.
@@ -370,8 +387,9 @@ Um den Blockierdialog mit dem Formular zu verbinden, setzen Sie die *URL im Bloc
 
 ### Konfiguration exportieren und importieren
 
-Gruppen, Paketregeln und manuelle Regeln können als JSON exportiert und auf einem anderen Server importiert werden,
-z. B. von einem Test- auf einen Produktivserver. In der Konsole: *Administration* → *Export / Import*. Oder:
+Gruppen, Paketregeln, manuelle Regeln und Dateizugriffsregeln können als JSON exportiert und auf einem anderen Server
+importiert werden, z. B. von einem Test- auf einen Produktivserver. In der Konsole: *Administration* →
+*Export / Import*. Oder:
 
 ```bash
 python manage.py export_config -o santa-config.json
@@ -384,8 +402,9 @@ python manage.py import_config - < santa-config.json            # importieren, "
   ersetzt.
 - **Die Sync-Tokens werden nie exportiert**: Eine bestehende Gruppe behält ihr Token, ihr Profil bleibt also gültig.
 - Nicht exportiert: Macs, Ereignisse und die Regeln der Paketregeln (das Ziel baut sie selbst).
-- `--delete-missing` löscht die manuellen Regeln und Paketregeln, die nicht in der Datei sind. Gruppen werden nie
-  gelöscht.
+- Die Dateizugriffsregeln werden über den **Namen** zugeordnet, ihre Gruppen über deren Namen.
+- `--delete-missing` löscht die manuellen Regeln, Paketregeln und Dateizugriffsregeln, die nicht in der Datei sind.
+  Gruppen werden nie gelöscht.
 - Alles oder nichts: Ist ein einziger Eintrag ungültig, wird nichts importiert und jeder Fehler aufgelistet.
 
 ### Entwicklung
@@ -429,7 +448,7 @@ geschrieben.
 santa_server/          settings.py (Image, Umgebungsvariablen), settings_common.py, settings_dev.py, urls.py
 santa/
   models.py            Group, Machine, Rule, Event, ReleaseSource (Paketregel), ReleaseVersion, AccessRequest,
-                       SignInGroup (Anmeldegruppe)
+                       SignInGroup (Anmeldegruppe), FileAccessRule (Dateizugriffsregel)
   sync_views.py        Santa-Sync-Protokoll (preflight, eventupload, ruledownload, postflight)
   rules.py             welche Regeln für einen Mac gelten, und der inkrementelle Regel-Sync
   events.py            Speichern der hochgeladenen Ereignisse
@@ -711,6 +730,21 @@ A rule applies to every Mac (*global*), to groups, or to individual Macs. If sev
 identifier on a Mac, the most specific scope wins (Mac > group > global), and on the same scope a block wins over an
 allow. Disabled rules are removed from the Macs at their next sync.
 
+#### File access rules
+
+*File access* decides which processes may read or write which files (File Access Authorization of Santa), for
+example: only `ssh` may read the SSH keys, only the browsers their cookies. A rule has paths (with `*`, `?` and `[ ]`,
+or a path with everything below it), a rule type (*only the listed processes may* / *the listed processes may not*
+access the paths, or the other way round *the processes may only* / *may not* access the paths) and processes
+(Signing ID with Team ID or *Platform binary*, Team ID, path, CDHash or certificate; every field filled in must
+match).
+
+- Santa gets the rules **through the group profile** (`FileAccessPolicy`), the JSON sync protocol doesn't have them:
+  after a change, download the profiles of the groups concerned again (the console names them).
+- Start with *Audit only* and check the events on the Macs before a rule blocks.
+- *File access override* of the group (*Audit only*, *Disabled*) is sent at every sync and applies to every rule of
+  the group right away, without a new profile.
+
 ### Daily use
 
 Everything is in the console (`/console/`). The Django admin (`/admin/`) still has every model for low-level editing
@@ -724,10 +758,11 @@ navigation is behind the menu button.
 **Lists**: click a column header to sort, again to reverse. A click on a row selects it, Ctrl-click adds or removes
 one, Shift-click selects a range. The actions for the selection appear at the bottom of the window; Esc clears it.
 
-**Side panel**: events, execution rules, package rules, requests and the history open in a panel on the right, also
-to create and edit them. After saving, the list behind it reloads. Esc or a click next to it closes it, *Page ↗* opens
-the same as a page of its own. *History* shows every change of a rule, package rule, group, Mac, sign-in group, role,
-tag or user.
+**Side panel**: events, rules, package rules, file access rules, requests, Macs, groups, everything under
+*Administration* and the history open in a panel on the right, also to create and edit them. After saving, the list
+behind it reloads. Back and Forward of the browser (also the mouse buttons) step through the views of the panel. Esc
+or a click next to it closes it, *Page ↗* opens the same as a page of its own. *History* shows every change of a rule,
+package rule, file access rule, group, Mac, sign-in group, role, tag or user.
 
 **Groups**: the Santa configuration of each group, its secret SyncBaseURL, the download of its configuration
 profile, *Regenerate the sync URL*, and the base profile on the list.
@@ -802,8 +837,8 @@ To link the block dialog to the form, set the group's *block dialog URL* to
 
 ### Export and import the configuration
 
-Groups, package rules and manual rules can be exported as JSON and imported on another server, e.g. from a test to a
-production server. In the console: *Administration* → *Export / import*. Or:
+Groups, package rules, manual rules and file access rules can be exported as JSON and imported on another server, e.g.
+from a test to a production server. In the console: *Administration* → *Export / import*. Or:
 
 ```bash
 python manage.py export_config -o santa-config.json
@@ -815,7 +850,9 @@ python manage.py import_config - < santa-config.json            # import, "-" re
   **serial number**. The scopes of a rule are replaced by the ones in the file.
 - **The sync tokens are never exported**: an existing group keeps its token, so its profile stays valid.
 - Not exported: Macs, events, and the rules created by package rules (the target builds them).
-- `--delete-missing` deletes the manual rules and package rules that are not in the file. Groups are never deleted.
+- File access rules are matched by **name**, their groups by their names.
+- `--delete-missing` deletes the manual rules, package rules and file access rules that are not in the file. Groups
+  are never deleted.
 - Everything or nothing: if a single entry is invalid, nothing is imported and every error is listed.
 
 ### Development
@@ -857,7 +894,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for pull requests, and [AGENTS.md](AGENTS
 santa_server/          settings.py (image, env vars), settings_common.py, settings_dev.py, urls.py
 santa/
   models.py            Group, Machine, Rule, Event, ReleaseSource (package rule), ReleaseVersion, AccessRequest,
-                       SignInGroup
+                       SignInGroup, FileAccessRule
   sync_views.py        Santa sync protocol (preflight, eventupload, ruledownload, postflight)
   rules.py             which rules apply to a Mac, and the incremental rule sync
   events.py            storage of the uploaded events

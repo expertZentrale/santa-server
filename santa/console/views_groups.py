@@ -11,7 +11,7 @@ from django.utils.translation import gettext, ngettext
 from django.views.decorators.http import require_POST
 
 from ..models import AccessRequest, ClientMode, Event, Group, Machine, Rule, generate_sync_token
-from ..profiles import base_profile, group_profile
+from ..profiles import base_profile, file_access_rules, group_profile
 from ..rules import GLOBAL, GROUP, MACHINE, effective_rule_objects
 from ..services import can_see_sync_token, remove_machine_from_rules, rules_only_for
 from .filters import Facet, any_of, chosen, filter_bar, remember_filters
@@ -91,6 +91,7 @@ def group_form(request, pk=None):
                                            | Q(last_postflight_at__isnull=True)).count(),
             "lockdown_count": machines.filter(client_mode=ClientMode.LOCKDOWN).count(),
             "rule_count": group.rules.count(),
+            "file_access_count": file_access_rules(group).count(),
             "open_blocks": Event.objects.filter(group=group, resolved_at__isnull=True,
                                                 decision__startswith="BLOCK_").count(),
         })

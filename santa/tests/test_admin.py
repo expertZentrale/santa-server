@@ -9,7 +9,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from santa.forms import AllowEventsForm, UploadBinaryForm
-from santa.models import Event, Group, Machine, Policy, Rule, RuleType, SavedFilter, Tag
+from santa.models import Event, FileAccessRule, Group, Machine, Policy, Rule, RuleType, SavedFilter, Tag
 
 from .utils import build_macho
 
@@ -37,8 +37,10 @@ class AdminTestCase(TestCase):
         rule.groups.add(self.dev)
         rule.tags.add(tag)
         SavedFilter.objects.create(user=User.objects.first(), page="rules", name="Global", query="scope=global")
+        file_access = FileAccessRule.objects.create(name="SSH keys", paths="/Users/*/.ssh/id_rsa")
+        file_access.processes.create(signing_id="com.openssh.ssh", platform_binary=True)
         for name in ("group", "machine", "rule", "event", "releasesource", "tag", "accessrequest", "signingroup",
-                     "savedfilter"):
+                     "savedfilter", "fileaccessrule"):
             for params in ({}, {"_facets": "True"}):
                 response = self.client.get(reverse(f"admin:santa_{name}_changelist"), params)
                 self.assertEqual(response.status_code, 200, (name, params))

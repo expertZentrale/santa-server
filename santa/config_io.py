@@ -13,7 +13,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
-from .models import Group, Machine, ReleaseSource, Rule, Tag
+from .models import FileAccessProcess, FileAccessRule, Group, Machine, ReleaseSource, Rule, Tag
 
 FORMAT = "santa-server-config"
 VERSION = 1
@@ -24,13 +24,19 @@ GROUP_FIELDS = (
     "removable_media_remount_flags", "encrypted_removable_media_action", "encrypted_removable_media_remount_flags",
     "event_detail_url", "event_detail_text", "unknown_block_message", "banned_block_message",
     "enable_bad_signature_protection", "on_start_usb_options", "branding_company_name", "branding_company_logo",
-    "branding_company_logo_dark",
+    "branding_company_logo_dark", "override_file_access_action", "file_access_block_message",
 )
 RELEASE_SOURCE_FIELDS = (
     "kind", "identifier", "version_pattern", "asset_pattern", "binary_pattern", "include_prereleases", "rule_type",
     "policy", "custom_msg", "custom_url", "cel_expr", "is_global", "auto_approve", "auto_approve_delay_days",
     "keep_versions", "is_enabled",
 )
+FILE_ACCESS_RULE_FIELDS = (
+    "description", "rule_type", "paths", "path_prefixes", "allow_read_access", "audit_only", "block_message",
+    "event_detail_url", "event_detail_text", "enable_silent_mode", "enable_silent_tty_mode", "is_global", "is_enabled",
+)
+FILE_ACCESS_PROCESS_FIELDS = ("signing_id", "team_id", "platform_binary", "binary_path", "cdhash",
+                              "certificate_sha256")
 RULE_KEY_FIELDS = ("rule_type", "identifier", "policy")
 RULE_FIELDS = ("custom_msg", "custom_url", "cel_expr", "description", "is_global", "is_enabled")
 
@@ -68,8 +74,15 @@ def export_config():
                               .prefetch_related("groups", "machines", "tags")
                               .order_by("rule_type", "identifier", "policy", "pk"))
     ]
+    file_access_rules = [
+        {"name": r.name, **{f: getattr(r, f) for f in FILE_ACCESS_RULE_FIELDS},
+         "groups": sorted(g.name for g in r.groups.all()),
+         "processes": [{f: getattr(p, f) for f in FILE_ACCESS_PROCESS_FIELDS} for p in r.processes.all()]}
+        for r in FileAccessRule.objects.prefetch_related("groups", "processes").order_by("name")
+    ]
     return {"format": FORMAT, "version": VERSION, "exported_at": timezone.now().isoformat(),
-            "groups": groups, "tags": tags, "release_sources": release_sources, "rules": rules}
+            "groups": groups, "tags": tags, "release_sources": release_sources, "rules": rules,
+            "file_access_rules": file_access_rules}
 
 
 class _Importer:
@@ -241,6 +254,49 @@ class _Importer:
             for start in range(0, len(to_delete), 1000):
                 Rule.objects.filter(pk__in=[rule.pk for rule in to_delete[start:start + 1000]]).delete()
 
+    def import_file_access_rules(self):
+        names = set()
+        for item in self.data.get("file_access_rules", []):
+            name = item.get("name")
+            if not name:
+                self.errors.append("File access rule without name")
+                continue
+            names.add(name)
+            label = f"File access rule {name}"
+            rule = FileAccessRule.objects.filter(name=name).first()
+            created = rule is None
+            if created:
+                rule = FileAccessRule(name=name)
+            changed = self._apply(rule, item, FILE_ACCESS_RULE_FIELDS) or created
+            processes = [FileAccessProcess(**{f: process.get(f, False if f == "platform_binary" else "")
+                                              for f in FILE_ACCESS_PROCESS_FIELDS})
+                         for process in item.get("processes") or []]
+            invalid = False
+            for process in processes:
+                try:
+                    process.clean()
+                except ValidationError as e:
+                    self.errors.append(f"{label}: {' '.join(e.messages)}")
+                    invalid = True
+            if invalid or (changed and not self.save(rule, label)):
+                continue
+            old = [{f: getattr(p, f) for f in FILE_ACCESS_PROCESS_FIELDS} for p in rule.processes.all()]
+            if old != [{f: getattr(p, f) for f in FILE_ACCESS_PROCESS_FIELDS} for p in processes]:
+                rule.processes.all().delete()
+                for process in processes:
+                    process.rule = rule
+                    process.save()
+                changed = True
+            changed = self.set_m2m(rule.groups, self.resolve_groups(item.get("groups"), label)) or changed
+            if changed:
+                self.record("created" if created else "updated", rule)
+        # files of older versions have no file access rules: nothing to compare with
+        if self.delete_missing and "file_access_rules" in self.data:
+            for rule in FileAccessRule.objects.all():
+                if rule.name not in names:
+                    self.record("deleted", rule)
+                    rule.delete()
+
     def run(self):
         if self.data.get("format") != FORMAT:
             raise ConfigImportError(["Not a santa-server configuration file"])
@@ -250,6 +306,7 @@ class _Importer:
         self.import_tags()
         self.import_release_sources()
         self.import_rules()
+        self.import_file_access_rules()
         if self.errors:
             raise ConfigImportError(self.errors)
 

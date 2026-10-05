@@ -22,7 +22,7 @@ NOT_FILTERS = ("page", "per_page", "reset")
 MAX_SAVED_FILTERS = 30
 # the lists with a filter bar (the page of filter_bar()), and whether they belong to the console (staff only)
 FILTER_PAGES = {"rules": True, "events-blocked": True, "events-all": True, "machines": True, "sources": True,
-                "users": True, "requests": True, "my-requests": False}
+                "file-access": True, "users": True, "requests": True, "my-requests": False}
 MAX_QUERY_LENGTH = 4000
 # the time filters of the lists ("" = all time), and their days for date_range()
 TIME_PRESETS = [("1", _("24 hours")), ("7", _("7 days")), ("30", _("30 days")), ("365", _("1 year")),

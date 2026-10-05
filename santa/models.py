@@ -11,7 +11,15 @@ from django.utils.text import format_lazy
 from django.utils.translation import gettext
 from django.utils.translation import gettext_lazy as _
 
-from .validators import combine_path_regexes, validate_identifier, validate_path_regexes
+from .validators import (
+    CDHASH_RE,
+    SHA256_RE,
+    TEAM_ID_RE,
+    combine_path_regexes,
+    split_lines,
+    validate_identifier,
+    validate_path_regexes,
+)
 
 
 def generate_sync_token():
@@ -71,6 +79,13 @@ def validate_logo_url(value):
     if len(value) > BRANDING_LOGO_MAX_BYTES * 4 // 3 + 100:
         raise ValidationError(gettext("The image is too large (at most %(size)s KB).")
                               % {"size": BRANDING_LOGO_MAX_BYTES // 1024})
+
+
+class FileAccessOverride(models.TextChoices):
+    # override_file_access_action of the preflight
+    NONE = "NONE", _("None, the rules apply")
+    AUDIT_ONLY = "AUDIT_ONLY", _("Audit only")
+    DISABLE = "DISABLE", _("Disabled")
 
 
 class Group(models.Model):
@@ -143,6 +158,11 @@ class Group(models.Model):
         _("remount flags of encrypted media"), max_length=200, blank=True,
         help_text=remount_flags_help(_("Only with “Remount with flags” for encrypted media.")),
     )
+    override_file_access_action = models.CharField(
+        _("file access override"), max_length=16, choices=FileAccessOverride.choices, default=FileAccessOverride.NONE,
+        help_text=_("Overrides every file access rule of the group, e.g. to switch them off for a moment: "
+                  "“Audit only” logs instead of blocking, “Disabled” turns them off. Sent at every sync."),
+    )
     event_detail_url = models.URLField(
         _("block dialog URL"), max_length=800, blank=True,
         help_text=_("Button in the block dialog, e.g. a ticket form of your IT team. Santa replaces placeholders "
@@ -167,6 +187,11 @@ class Group(models.Model):
         default=False,
         help_text=_("Profile only. Also block, in monitor mode, the binaries with a broken code signature "
                   "(tampered files), unless a rule allows them."),
+    )
+    file_access_block_message = models.TextField(
+        blank=True,
+        help_text=_("Profile only. Shown when a file access rule blocks, unless the rule has its own message. "
+                  "Empty = Santa's default text."),
     )
     on_start_usb_options = models.CharField(
         _("removable media mounted when Santa starts"), max_length=16, choices=OnStartUSBOption.choices,
@@ -562,6 +587,143 @@ class Rule(models.Model):
         if self.policy == Policy.CEL:
             rule["cel_expr"] = self.cel_expr
         return rule
+
+
+FILE_ACCESS_RULE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.-]*$")
+
+
+class FileAccessRuleType(models.TextChoices):
+    PATHS_WITH_ALLOWED_PROCESSES = "PathsWithAllowedProcesses", _("Paths: only the listed processes may access them")
+    PATHS_WITH_DENIED_PROCESSES = "PathsWithDeniedProcesses", _("Paths: the listed processes may not access them")
+    PROCESSES_WITH_ALLOWED_PATHS = "ProcessesWithAllowedPaths", _("Processes: may only access the listed paths")
+    PROCESSES_WITH_DENIED_PATHS = "ProcessesWithDeniedPaths", _("Processes: may not access the listed paths")
+
+
+class FileAccessRule(models.Model):
+    """A rule of File Access Authorization: which processes may read or write which paths.
+
+    Santa takes them from the configuration profile (FileAccessPolicy), not from the sync: after a change, the profiles
+    of the groups are downloaded again.
+    """
+
+    name = models.CharField(
+        max_length=200, unique=True,
+        help_text=_("Shown in the logs and in the block dialog. Letters, digits, spaces and . _ -"),
+    )
+    description = models.TextField(blank=True)
+    rule_type = models.CharField(max_length=32, choices=FileAccessRuleType.choices,
+                                 default=FileAccessRuleType.PATHS_WITH_ALLOWED_PROCESSES)
+    paths = models.TextField(
+        blank=True,
+        help_text=_("One path per line, e.g. /Users/*/.ssh/id_rsa. Glob patterns (* ? [ ]) work, ** doesn't."),
+    )
+    path_prefixes = models.TextField(
+        blank=True,
+        help_text=_("One path per line: the path and everything below it, e.g. /Users/*/Library/Cookies/"),
+    )
+    allow_read_access = models.BooleanField(
+        default=False, help_text=_("Only writes are checked, everyone may read."),
+    )
+    audit_only = models.BooleanField(
+        default=True,
+        help_text=_("Only log the access, don't block it. Start with it, check the events, then turn it off."),
+    )
+    block_message = models.TextField(blank=True, help_text=_("Shown when the rule blocks. Empty = the message of "
+                                                             "the group, or Santa's default text."))
+    event_detail_url = models.URLField(_("block dialog URL"), max_length=800, blank=True)
+    event_detail_text = models.CharField(_("block dialog button text"), max_length=48, blank=True)
+    enable_silent_mode = models.BooleanField(default=False, help_text=_("Block without the dialog."))
+    enable_silent_tty_mode = models.BooleanField(default=False,
+                                                 help_text=_("Block without the message in the terminal."))
+    is_global = models.BooleanField(_("all groups"), default=False)
+    groups = models.ManyToManyField(Group, blank=True, related_name="file_access_rules")
+    is_enabled = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+    def clean(self):
+        errors = {}
+        if self.name and not FILE_ACCESS_RULE_NAME_RE.match(self.name):
+            errors["name"] = gettext("Only letters, digits, spaces and . _ -")
+        for field in ("paths", "path_prefixes"):
+            for line in split_lines(getattr(self, field)):
+                if not line.startswith("/"):
+                    errors[field] = gettext("Line %(line)s: an absolute path, starting with /.") % {"line": line}
+                elif "**" in line:
+                    errors[field] = gettext("Line %(line)s: Santa doesn't support **.") % {"line": line}
+        if not split_lines(self.paths) and not split_lines(self.path_prefixes):
+            errors["paths"] = gettext("At least one path.")
+        if errors:
+            raise ValidationError(errors)
+
+    def path_list(self):
+        return ([{"Path": path, "IsPrefix": False} for path in split_lines(self.paths)]
+                + [{"Path": path, "IsPrefix": True} for path in split_lines(self.path_prefixes)])
+
+    def watch_item(self):
+        """The rule as an entry of WatchItems of the FileAccessPolicy"""
+        options = {"RuleType": self.rule_type, "AllowReadAccess": self.allow_read_access,
+                   "AuditOnly": self.audit_only, "EnableSilentMode": self.enable_silent_mode,
+                   "EnableSilentTTYMode": self.enable_silent_tty_mode}
+        for key, value in (("BlockMessage", self.block_message), ("EventDetailURL", self.event_detail_url),
+                           ("EventDetailText", self.event_detail_text)):
+            if value:
+                options[key] = value
+        return {"Paths": self.path_list(), "Options": options,
+                "Processes": [process.policy_entry() for process in self.processes.all()]}
+
+
+class FileAccessProcess(models.Model):
+    """A process of a file access rule: every field set must match (e.g. Signing ID and Team ID)"""
+
+    rule = models.ForeignKey(FileAccessRule, on_delete=models.CASCADE, related_name="processes")
+    signing_id = models.CharField(_("signing ID"), max_length=300, blank=True,
+                                  help_text=_("e.g. com.apple.ssh-agent, with the Team ID or “Platform binary”"))
+    team_id = models.CharField(_("team ID"), max_length=10, blank=True)
+    platform_binary = models.BooleanField(default=False, help_text=_("Part of macOS"))
+    binary_path = models.CharField(max_length=1024, blank=True)
+    cdhash = models.CharField(_("CDHash"), max_length=40, blank=True)
+    certificate_sha256 = models.CharField(_("certificate SHA-256"), max_length=64, blank=True)
+
+    class Meta:
+        ordering = ["pk"]
+
+    def __str__(self):
+        return ", ".join(f"{key}={value}" for key, value in self.policy_entry().items())
+
+    def clean(self):
+        self.team_id = self.team_id.strip().upper()
+        self.cdhash = self.cdhash.strip().lower()
+        self.certificate_sha256 = self.certificate_sha256.strip().lower()
+        errors = {}
+        if self.team_id and not TEAM_ID_RE.match(self.team_id):
+            errors["team_id"] = gettext("Must be a 10 character Team ID, e.g. EQHXZ8M8AV.")
+        if self.cdhash and not CDHASH_RE.match(self.cdhash):
+            errors["cdhash"] = gettext("Must be a CDHash (40 hex characters).")
+        if self.certificate_sha256 and not SHA256_RE.match(self.certificate_sha256):
+            errors["certificate_sha256"] = gettext("Must be a SHA-256 hex digest (64 characters).")
+        if self.binary_path and not self.binary_path.startswith("/"):
+            errors["binary_path"] = gettext("An absolute path, starting with /.")
+        if self.signing_id and not (self.team_id or self.platform_binary):
+            errors["signing_id"] = gettext("A Signing ID needs the Team ID, or “Platform binary”.")
+        if not errors and not self.policy_entry():
+            raise ValidationError(gettext("Fill in at least one field of the process."))
+        if errors:
+            raise ValidationError(errors)
+
+    def policy_entry(self):
+        entry = {key: value for key, value in (
+            ("SigningID", self.signing_id), ("TeamID", self.team_id), ("BinaryPath", self.binary_path),
+            ("CDHash", self.cdhash), ("CertificateSha256", self.certificate_sha256)) if value}
+        if self.platform_binary:
+            entry["PlatformBinary"] = True
+        return entry
 
 
 def payload_hash(payload):

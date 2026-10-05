@@ -135,6 +135,24 @@
     });
   }
 
+  // Formsets (data-formset="<prefix>"): "add" copies the <template> of an empty form, with the next index
+  document.addEventListener("click", (event) => {
+    const add = event.target.closest("[data-formset-add]");
+    if (!add) return;
+    const container = add.closest("[data-formset]");
+    const prefix = container.dataset.formset;
+    const total = container.querySelector(`input[name="${prefix}-TOTAL_FORMS"]`);
+    const template = container.querySelector("template[data-formset-empty]");
+    const rows = container.querySelector("[data-formset-rows]");
+    if (!total || !template || !rows) return;
+    const index = Number(total.value);
+    const fragment = document.createRange().createContextualFragment(
+      template.innerHTML.replaceAll("__prefix__", String(index)));
+    rows.append(fragment);
+    total.value = String(index + 1);
+    rows.lastElementChild?.querySelector("input, select, textarea")?.focus();
+  });
+
   SantaConsole.onInit((root) => {
     updateRulePreviews(root);
     updateBinaryPreviews(root);

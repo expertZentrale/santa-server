@@ -33,6 +33,7 @@
       <a href="{% url 'console:events' %}" {% if request.path|slice:":16" == "/console/events/" %}class="active" aria-current="page"{% endif %}>{% translate "Events" %}</a>
       <a href="{% url 'console:rules' %}" {% if request.path|slice:":15" == "/console/rules/" %}class="active" aria-current="page"{% endif %}>{% translate "Execution rules" %}</a>
       <a href="{% url 'console:sources' %}" {% if request.path|slice:":18" == "/console/packages/" %}class="active" aria-current="page"{% endif %}>{% translate "Package rules" %}</a>
+      {% if perms.santa.view_fileaccessrule %}<a href="{% url 'console:file_access_rules' %}" {% if request.path|slice:":21" == "/console/file-access/" %}class="active" aria-current="page"{% endif %}>{% translate "File access" %}</a>{% endif %}
       {% pending_requests as pending %}
       <a href="{% url 'console:requests' %}" {% if request.path|slice:":18" == "/console/requests/" %}class="active" aria-current="page"{% endif %}>{% translate "Requests" %}{% if pending %} <span class="count">{{ pending }}</span>{% endif %}</a>
       <a href="{% url 'console:machines' %}" {% if request.path|slice:":13" == "/console/macs" %}class="active" aria-current="page"{% endif %}>{% translate "Macs" %}</a>

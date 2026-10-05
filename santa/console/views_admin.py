@@ -59,6 +59,7 @@ PERMISSION_ROWS = [
     ("santa", "rule", _("Execution rules")),
     ("santa", "releasesource", _("Package rules")),
     ("santa", "releaseversion", _("Package versions")),
+    ("santa", "fileaccessrule", _("File access rules")),
     ("santa", "event", _("Events")),
     ("santa", "accessrequest", _("Requests")),
     ("santa", "machine", _("Macs")),
@@ -69,7 +70,8 @@ PERMISSION_ROWS = [
     ("auth", "group", _("Roles")),
 ]
 # internal models without a page of their own: nothing to grant
-HIDDEN_PERMISSION_MODELS = {("santa", "accessrequestpackage"), ("santa", "userprofile")}
+HIDDEN_PERMISSION_MODELS = {("santa", "accessrequestpackage"), ("santa", "userprofile"),
+                            ("santa", "fileaccessprocess")}
 PERMISSION_ACTIONS = [("view", _("View")), ("add", _("Add")), ("change", _("Change")), ("delete", _("Delete"))]
 REQUEST_PERMISSION_LABELS = {
     "request_event": _("Request apps blocked on their Macs"),

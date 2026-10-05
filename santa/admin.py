@@ -21,6 +21,8 @@ from .models import (
     AccessRequest,
     AccessRequestPackage,
     Event,
+    FileAccessProcess,
+    FileAccessRule,
     Group,
     Machine,
     ReleaseSource,
@@ -77,14 +79,18 @@ class GroupAdmin(admin.ModelAdmin):
                        "encrypted_removable_media_remount_flags"),
             "description": "Sent at every sync, no profile change needed.",
         }),
+        ("File access", {
+            "fields": ("override_file_access_action",),
+            "description": "Sent at every sync. The file access rules are in the profile of the group.",
+        }),
         ("Block dialog", {
             "fields": ("event_detail_url", "event_detail_text"),
             "description": "Sent at every sync, no profile change needed.",
         }),
         ("Profile only", {
             "fields": ("unknown_block_message", "banned_block_message", "enable_bad_signature_protection",
-                       "on_start_usb_options", "branding_company_name", "branding_company_logo",
-                       "branding_company_logo_dark"),
+                       "file_access_block_message", "on_start_usb_options", "branding_company_name",
+                       "branding_company_logo", "branding_company_logo_dark"),
             "description": "These settings are only in the .mobileconfig: after a change, download the profile "
                            "again and replace it in your MDM.",
         }),
@@ -590,6 +596,33 @@ class ReleaseSourceAdmin(admin.ModelAdmin):
                 self.message_user(request, message + ".", messages.SUCCESS)
             if not release_versions:
                 self.message_user(request, f"{source}: already up to date.")
+
+
+class FileAccessProcessInline(admin.TabularInline):
+    model = FileAccessProcess
+    extra = 0
+
+
+@admin.register(FileAccessRule)
+class FileAccessRuleAdmin(admin.ModelAdmin):
+    list_display = ("name", "rule_type", "audit_only", "is_global", "is_enabled", "updated_at")
+    list_filter = ("rule_type", "audit_only", "is_global", "is_enabled")
+    search_fields = ("name", "description", "paths", "path_prefixes")
+    filter_horizontal = ("groups",)
+    readonly_fields = ("created_at", "updated_at")
+    inlines = [FileAccessProcessInline]
+    fieldsets = (
+        (None, {
+            "fields": ("name", "description", "is_enabled"),
+            "description": "In the configuration profile of the groups (FileAccessPolicy): after a change, download "
+                           "their profiles again and replace them in your MDM.",
+        }),
+        ("Rule", {"fields": ("rule_type", "paths", "path_prefixes", "allow_read_access", "audit_only")}),
+        ("Block dialog", {"fields": ("block_message", "event_detail_url", "event_detail_text", "enable_silent_mode",
+                                     "enable_silent_tty_mode")}),
+        ("Scope", {"fields": ("is_global", "groups")}),
+        ("Info", {"fields": ("created_at", "updated_at")}),
+    )
 
 
 @admin.register(Tag)

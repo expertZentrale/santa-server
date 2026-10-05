@@ -23,7 +23,8 @@ class ConsoleGroupsTestCase(ConsoleBase):
 
     def test_create_and_change_group(self):
         data = {"name": "Design", "client_mode": "LOCKDOWN", "batch_size": 100, "full_sync_interval": 600,
-                "allowed_path_regex": "^/opt/tools/\n^/Applications/Figma\\.app/", "removable_media_action": "ALLOW"}
+                "allowed_path_regex": "^/opt/tools/\n^/Applications/Figma\\.app/", "removable_media_action": "ALLOW",
+                "override_file_access_action": "NONE"}
         response = self.client.post(reverse("console:group_add"), data)
         group = Group.objects.get(name="Design")
         self.assertRedirects(response, reverse("console:group", args=(group.pk,)))
@@ -162,6 +163,7 @@ class ConsoleGroupsTestCase(ConsoleBase):
         url = reverse("console:group", args=(self.dev.pk,))
         data = {"name": self.dev.name, "client_mode": "MONITOR", "batch_size": 100, "full_sync_interval": 600,
                 "removable_media_action": "REMOUNT", "removable_media_remount_flags": "rdonly,noexec",
+                "override_file_access_action": "NONE",
                 "encrypted_removable_media_action": "ALLOW", "on_start_usb_options": "ForceRemount",
                 "branding_company_name": "Example Corp"}
         png = b"\x89PNG\r\n\x1a\n" + b"\0" * 20
@@ -190,7 +192,7 @@ class ConsoleGroupsTestCase(ConsoleBase):
     def test_logo_upload_is_checked(self):
         url = reverse("console:group", args=(self.dev.pk,))
         data = {"name": self.dev.name, "client_mode": "MONITOR", "batch_size": 100, "full_sync_interval": 600,
-                "removable_media_action": "ALLOW"}
+                "removable_media_action": "ALLOW", "override_file_access_action": "NONE"}
         response = self.client.post(url, {**data, "branding_company_logo_file": SimpleUploadedFile(
             "logo.svg", b"<svg onload='alert(1)'/>")})
         self.assertContains(response, "Only PNG or JPEG images.")

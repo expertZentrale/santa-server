@@ -165,6 +165,8 @@ def preflight(request, group, machine_id, data):
     }
     if encrypted := group.encrypted_removable_media_policy():
         response["encrypted_removable_media_policy"] = encrypted
+    # always sent: a cleared override must reach the Macs too
+    response["override_file_access_action"] = group.override_file_access_action
     if group.event_detail_url:
         response["event_detail_url"] = group.event_detail_url
         if group.event_detail_text:

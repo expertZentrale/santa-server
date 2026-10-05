@@ -98,6 +98,10 @@ Every model and query must work on SQL Server (mssql-django 2.x, `mssql_python` 
 - Keys the sync server sends (client mode, regexes, USB, intervals, transitive rules, event detail URL, …) never go
   into the group profile: the server must stay the only source. Only profile-only keys belong there.
 - `SyncEnableProtoTransfer` stays `false`: the server only implements the JSON protocol.
+- File access rules (`FileAccessRule`) reach Santa only through the group profile (`FileAccessPolicy`, built by
+  `file_access_policy()`): the JSON sync protocol has no file access rules. Only the override
+  (`override_file_access_action`) is sent at every sync. After a change, the console names the groups whose profile
+  changed.
 - The base profile payloads (team ID `ZMCG7MLDV9`, code requirements) come from https://northpole.dev/deployment/.
   Compare with those pages before changing them.
 - Profile identifiers and UUIDs are derived from `SANTA_PROFILE_IDENTIFIER_PREFIX` and the group pk, so a new
@@ -106,8 +110,8 @@ Every model and query must work on SQL Server (mssql-django 2.x, `mssql_python` 
 
 ## Export / import (`santa/config_io.py`)
 
-- A new field on `Group`, `ReleaseSource` or `Rule` that is configuration (not state) must be added to the field
-  lists of `config_io.py`, with a round trip test. Bump `VERSION` only for incompatible format changes.
+- A new field on `Group`, `ReleaseSource`, `Rule` or `FileAccessRule` that is configuration (not state) must be added
+  to the field lists of `config_io.py`, with a round trip test. Bump `VERSION` only for incompatible format changes.
 - Match by natural keys only (names, rule type + identifier + policy, serial numbers), never by pk.
 - Never export the sync tokens or other secrets.
 

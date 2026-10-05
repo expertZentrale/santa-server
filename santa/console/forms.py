@@ -18,6 +18,9 @@ from ..models import (
     BRANDING_LOGO_MAX_BYTES,
     BRANDING_LOGO_TYPES,
     AccessRequest,
+    FileAccessProcess,
+    FileAccessRule,
+    FileAccessRuleType,
     Group,
     Machine,
     OnStartUSBOption,
@@ -745,9 +748,10 @@ class GroupForm(forms.ModelForm):
         fields = ("name", "description", "client_mode", "batch_size", "full_sync_interval", "allowed_path_regex",
                   "blocked_path_regex", "enable_transitive_rules", "enable_bundles", "enable_all_event_upload",
                   "removable_media_action", "removable_media_remount_flags", "encrypted_removable_media_action",
-                  "encrypted_removable_media_remount_flags", "event_detail_url", "event_detail_text",
-                  "unknown_block_message", "banned_block_message", "enable_bad_signature_protection",
-                  "on_start_usb_options", "branding_company_name")
+                  "encrypted_removable_media_remount_flags", "override_file_access_action", "event_detail_url",
+                  "event_detail_text", "unknown_block_message", "banned_block_message",
+                  "enable_bad_signature_protection", "file_access_block_message", "on_start_usb_options",
+                  "branding_company_name")
         widgets = {
             "description": forms.Textarea(attrs={"rows": 2}),
             "client_mode": forms.RadioSelect,
@@ -755,6 +759,7 @@ class GroupForm(forms.ModelForm):
             "blocked_path_regex": forms.Textarea(attrs={"rows": 3, "class": "mono"}),
             "unknown_block_message": forms.Textarea(attrs={"rows": 2}),
             "banned_block_message": forms.Textarea(attrs={"rows": 2}),
+            "file_access_block_message": forms.Textarea(attrs={"rows": 2}),
         }
         labels = {
             "name": _("Name"), "description": _("Description"), "client_mode": _("Client mode"),
@@ -769,6 +774,8 @@ class GroupForm(forms.ModelForm):
             "event_detail_text": _("Block dialog button text"), "unknown_block_message": _("Unknown block message"),
             "banned_block_message": _("Banned block message"),
             "enable_bad_signature_protection": _("Enable bad signature protection"),
+            "override_file_access_action": _("File access override"),
+            "file_access_block_message": _("File access block message"),
             "on_start_usb_options": _("Removable media mounted when Santa starts"),
             "branding_company_name": _("Company name"),
         }
@@ -787,19 +794,23 @@ class GroupForm(forms.ModelForm):
         (_("Removable media"), _("Sent at every sync, no profile change needed."),
          ("removable_media_action", "removable_media_remount_flags", "encrypted_removable_media_action",
           "encrypted_removable_media_remount_flags")),
+        (_("File access"), _("The file access rules are in the profile of the group, the override is sent at "
+                             "every sync."),
+         ("override_file_access_action",)),
         (_("Block dialog"), _("Sent at every sync, no profile change needed."),
          ("event_detail_url", "event_detail_text")),
         (_("Profile only"), _("Only in the .mobileconfig: after a change, download the profile again and "
                               "replace it in your MDM."),
          ("unknown_block_message", "banned_block_message", "enable_bad_signature_protection",
-          "on_start_usb_options")),
+          "file_access_block_message", "on_start_usb_options")),
         (_("Branding"), _("Profile only, Santa 2026.1 and newer: after a change, download the profile again and "
                           "replace it in your MDM."),
          ("branding_company_name", "branding_company_logo", "branding_company_logo_dark")),
     ]
     # a change of these needs a new profile (the logo fields: _file, _url, _clear)
     PROFILE_FIELDS = ("unknown_block_message", "banned_block_message", "enable_bad_signature_protection",
-                      "on_start_usb_options", "branding_company_name", "branding_company_logo")
+                      "file_access_block_message", "on_start_usb_options", "branding_company_name",
+                      "branding_company_logo")
     SHOW_WHEN = {
         "removable_media_remount_flags": "removable_media_action=REMOUNT",
         "encrypted_removable_media_remount_flags": "encrypted_removable_media_action=REMOUNT",
@@ -997,11 +1008,66 @@ class TagForm(forms.ModelForm):
         labels = {"name": _("Name"), "description": _("Description")}
 
 
+class FileAccessRuleForm(forms.ModelForm):
+    class Meta:
+        model = FileAccessRule
+        fields = ("name", "description", "is_enabled", "rule_type", "paths", "path_prefixes", "allow_read_access",
+                  "audit_only", "block_message", "event_detail_url", "event_detail_text", "enable_silent_mode",
+                  "enable_silent_tty_mode", "is_global", "groups")
+        widgets = {
+            "description": forms.Textarea(attrs={"rows": 2}),
+            "rule_type": forms.RadioSelect,
+            "paths": forms.Textarea(attrs={"rows": 3, "class": "mono"}),
+            "path_prefixes": forms.Textarea(attrs={"rows": 3, "class": "mono"}),
+            "block_message": forms.Textarea(attrs={"rows": 2}),
+            "groups": forms.CheckboxSelectMultiple,
+        }
+        labels = {
+            "name": _("Name"), "description": _("Description"), "is_enabled": _("Enabled"),
+            "rule_type": _("Rule type"), "paths": _("Paths"), "path_prefixes": _("Paths with everything below them"),
+            "allow_read_access": _("Allow reading"), "audit_only": _("Audit only"),
+            "block_message": _("Block message"), "event_detail_url": _("Block dialog URL"),
+            "event_detail_text": _("Block dialog button text"), "enable_silent_mode": _("Silent"),
+            "enable_silent_tty_mode": _("Silent in the terminal"), "is_global": _("All groups"),
+            "groups": _("Groups"),
+        }
+
+
+class FileAccessProcessForm(forms.ModelForm):
+    class Meta:
+        model = FileAccessProcess
+        fields = ("signing_id", "team_id", "platform_binary", "binary_path", "cdhash", "certificate_sha256")
+        labels = {
+            "signing_id": _("Signing ID"), "team_id": _("Team ID"), "platform_binary": _("Platform binary"),
+            "binary_path": _("Binary path"), "cdhash": _("CDHash"), "certificate_sha256": _("Certificate SHA-256"),
+        }
+        widgets = {name: forms.TextInput(attrs={"class": "mono"})
+                   for name in ("signing_id", "team_id", "binary_path", "cdhash", "certificate_sha256")}
+
+
+class BaseFileAccessProcessFormSet(forms.BaseInlineFormSet):
+    def clean(self):
+        super().clean()
+        if any(self.errors):
+            return
+        # an empty extra row has no cleaned_data
+        count = sum(1 for form in self.forms if form.cleaned_data and not form.cleaned_data.get("DELETE"))
+        rule_type = self.instance.rule_type
+        if count == 0 and rule_type in (FileAccessRuleType.PROCESSES_WITH_ALLOWED_PATHS,
+                                        FileAccessRuleType.PROCESSES_WITH_DENIED_PATHS):
+            raise ValidationError(gettext("This rule type needs at least one process."))
+
+
+FileAccessProcessFormSet = forms.inlineformset_factory(
+    FileAccessRule, FileAccessProcess, form=FileAccessProcessForm, formset=BaseFileAccessProcessFormSet, extra=1,
+    can_delete=True)
+
+
 class ConfigImportForm(forms.Form):
     file = forms.FileField(label=_("File"), help_text=_("JSON file of “Export configuration”, e.g. from the test "
                                                         "server, or of the export_config command."))
     delete_missing = forms.BooleanField(
         required=False, label=_("Delete what is not in the file"),
-        help_text=_("Deletes the manual rules and package rules that are not in the file."))
+        help_text=_("Deletes the manual rules, package rules and file access rules that are not in the file."))
     dry_run = forms.BooleanField(required=False, initial=True, label=_("Dry run"),
                                  help_text=_("Only show what would change. Uncheck to import."))

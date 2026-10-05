@@ -211,3 +211,11 @@ ol.history > li:last-child { border-bottom: 0; }
 .logo-preview { display: inline-flex; justify-self: start; width: fit-content; padding: .5rem; margin-bottom: .6rem; border-radius: var(--radius-sm);
   background: repeating-conic-gradient(var(--surface-2) 0 25%, var(--surface) 0 50%) 0 0 / 1rem 1rem; }
 .logo-preview img { display: block; max-width: 10.5rem; max-height: 3.5rem; }
+
+/* The processes of a file access rule (a formset): one box per process */
+.process-rows { display: grid; gap: .75rem; margin-bottom: .75rem; }
+.process-row { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: .7rem .8rem .1rem; margin: 0; min-width: 0; }
+.process-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr)); gap: 0 1rem;
+  align-items: start; }
+.process-fields .field { align-content: start; }
+.process-checks { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 0 1.5rem; align-items: center; }

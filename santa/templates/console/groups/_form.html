@@ -5,6 +5,7 @@
       {% if lockdown_count %} · {% blocktranslate count count=lockdown_count %}{{ count }} in lockdown{% plural %}{{ count }} in lockdown{% endblocktranslate %}{% endif %}
       {% if stale_count %} · <a href="{% url 'console:machines' %}?group={{ group.pk }}&amp;status=stale"><span class="badge bad">{% blocktranslate count count=stale_count %}{{ count }} not synced for 2 days{% plural %}{{ count }} not synced for 2 days{% endblocktranslate %}</span></a>{% endif %}</dd>
     <dt>{% translate "Rules" %}</dt><dd><a href="{% url 'console:rules' %}?scope={{ group.pk }}">{% blocktranslate count count=rule_count %}{{ count }} for this group{% plural %}{{ count }} for this group{% endblocktranslate %}</a> {% translate "(plus the global ones)" %}</dd>
+    {% if perms.santa.view_fileaccessrule %}<dt>{% translate "File access rules" %}</dt><dd><a href="{% url 'console:file_access_rules' %}?group={{ group.pk }}">{% blocktranslate count count=file_access_count %}{{ count }} in the profile{% plural %}{{ count }} in the profile{% endblocktranslate %}</a></dd>{% endif %}
     <dt>{% translate "Open blocks" %}</dt><dd><a href="{% url 'console:events' %}?group={{ group.pk }}">{{ open_blocks }}</a></dd>
     {% if can_see_sync_token %}
     <dt>SyncBaseURL</dt><dd><code>{{ group.sync_base_url }}</code> {% include "console/_copy.html" with value=group.sync_base_url %}
