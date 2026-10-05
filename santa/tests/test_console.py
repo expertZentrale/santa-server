@@ -95,8 +95,10 @@ class ConsolePaginationTestCase(ConsoleBase):
         self.assertContains(response, 'href="?per_page=100&amp;policy=ALLOWLIST"')
         self.assertContains(response, '<a href="?per_page=25&amp;policy=ALLOWLIST" aria-current="true">25</a>',
                             html=True)
-        # every list keeps the size of the session
-        self.assertEqual(self.client.get(reverse("console:rules")).context["page"].paginator.per_page, 25)
+        # every list keeps the size of the session (the rules come back with their last filter)
+        response = self.client.get(reverse("console:rules"), follow=True)
+        self.assertEqual(response.redirect_chain, [("/console/rules/?policy=ALLOWLIST", 302)])
+        self.assertEqual(response.context["page"].paginator.per_page, 25)
         self.assertEqual(self.client.get(reverse("console:machines")).context["page"].paginator.per_page, 25)
 
     def test_unknown_page_size_is_ignored(self):
@@ -492,8 +494,80 @@ class ConsoleEventsTestCase(ConsoleBase):
         response = self.create_rules([a], include=[])
         self.assertContains(response, "Choose at least one binary.")
         response = self.create_rules([a], include=[SHA_A], policy=Policy.CEL)
-        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Required for the CEL policy.")
         self.assertFalse(Rule.objects.exists())
+
+    def test_create_cel_rules_from_events(self):
+        a = self.make_event()
+        b = self.make_event(sha256=SHA_B, file_name="other", minutes_ago=5)
+        expression = "target.signing_time >= timestamp('2025-01-01T00:00:00Z') ? ALLOWLIST : BLOCKLIST"
+        response = self.create_rules([a, b], include=[SHA_A, SHA_B], policy=Policy.CEL, cel_expr=f" {expression} ")
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(sorted(Rule.objects.values_list("policy", "cel_expr")), [(Policy.CEL, expression)] * 2)
+        # another expression for the same binary is another rule, the same one widens the rule
+        one = {"include": [SHA_A], "rule_type": RuleType.BINARY, "policy": Policy.CEL}
+        self.create_rules([a], cel_expr="ALLOWLIST", scope="global", **one)
+        self.create_rules([a], cel_expr=expression, groups=[self.sales.pk], **one)
+        rules = Rule.objects.filter(identifier=SHA_A).order_by("pk")
+        self.assertEqual([r.cel_expr for r in rules], [expression, "ALLOWLIST"])
+        self.assertEqual({g.name for g in rules[0].groups.all()}, {"Development", "Sales"})
+        # an expression left over from a CEL choice is dropped for other policies
+        self.create_rules([b], include=[SHA_B], rule_type=RuleType.BINARY, policy=Policy.BLOCKLIST,
+                          cel_expr="ALLOWLIST", scope="global")
+        self.assertEqual(Rule.objects.get(identifier=SHA_B, policy=Policy.BLOCKLIST).cel_expr, "")
+
+    def test_team_id_rules_with_signing_id_prefixes_from_events(self):
+        a = self.make_event(signing_id="ABCDE12345:com.example.a", team_id="ABCDE12345")
+        b = self.make_event(sha256=SHA_B, file_name="other team", minutes_ago=5,
+                            signing_id="ZYXWV98765:com.other.b", team_id="ZYXWV98765")
+        unsigned = self.make_event(sha256="c" * 64, file_name="unsigned", minutes_ago=10)
+        prefixes = {"rule_type": RuleType.TEAMID, "policy": Policy.CEL, "signing_prefixes": "com.example\ncom.other"}
+        # the binaries share no Team ID: the expression is written per binary
+        response = self.client.post(reverse("console:events_create_rules"), {"ids": [a.pk, b.pk]},
+                                    headers={"HX-Request": "true"})
+        self.assertNotContains(response, "data-team-id")
+        response = self.create_rules([a, b, unsigned], include=[SHA_A, SHA_B, "c" * 64], **prefixes)
+        self.assertContains(response, "No Team ID, so no signing ID prefixes: unsigned")
+        response = self.create_rules([a, b], include=[SHA_A, SHA_B], signing_prefixes="com.ex ample",
+                                     rule_type=RuleType.TEAMID, policy=Policy.CEL)
+        self.assertContains(response, "Only letters, digits, dots, hyphens and underscores")
+        response = self.create_rules([a, b], include=[SHA_A, SHA_B], cel_expr="ALLOWLIST", **prefixes)
+        self.assertContains(response, "Clear the CEL expression or the prefixes.")
+        self.assertFalse(Rule.objects.exists())
+        response = self.create_rules([a, b], include=[SHA_A, SHA_B], **prefixes)
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(dict(Rule.objects.values_list("identifier", "cel_expr")), {
+            team: f'(target.signing_id.startsWith("{team}:com.example") || '
+                  f'target.signing_id.startsWith("{team}:com.other")) ? ALLOWLIST : BLOCKLIST'
+            for team in ("ABCDE12345", "ZYXWV98765")})
+        # one binary: the drawer knows its Team ID and shows the expression while typing
+        response = self.client.get(reverse("console:event", args=(unsigned.pk,)), HTTP_HX_REQUEST="true")
+        self.assertNotContains(response, "data-team-id")
+        response = self.client.get(reverse("console:event", args=(a.pk,)), HTTP_HX_REQUEST="true")
+        self.assertContains(response, 'data-team-id="ABCDE12345"')
+        self.assertContains(response, 'name="signing_prefixes"')
+
+    def test_create_cel_rule_from_the_drawer(self):
+        event = self.make_event()
+        response = self.client.get(reverse("console:event", args=(event.pk,)), HTTP_HX_REQUEST="true")
+        self.assertContains(response, 'value="CEL"')
+        self.assertContains(response, "data-cel-suggestions")
+        self.client.post(reverse("console:event_create_rule", args=(event.pk,)), {
+            "rule_type": RuleType.BINARY, "policy": Policy.CEL, "cel_expr": "ALLOWLIST", "scope": "machines",
+            "include": SHA_A})
+        self.assertEqual(Rule.objects.get().cel_expr, "ALLOWLIST")
+
+    def test_blocked_app_row_links_the_rule_and_shows_the_whole_path(self):
+        path = "/Applications/Microsoft Teams.app/Contents/XPCServices/com.microsoft.teams2.notificationcenter.xpc"
+        Event.objects.create(machine=self.machine, group=self.dev, execution_time=timezone.now(),
+                             decision="BLOCK_UNKNOWN", file_sha256=SHA_A, file_name="teams", file_path=path)
+        rule = Rule.objects.create(rule_type=RuleType.BINARY, identifier=SHA_A, policy=Policy.BLOCKLIST,
+                                   is_global=True)
+        response = self.client.get(reverse("console:events"))
+        rule_url = reverse("console:rule", args=(rule.pk,))
+        self.assertContains(response, f'href="{rule_url}" hx-get="{rule_url}" hx-target="#drawer"')
+        self.assertContains(response, f">{path}</small>")
+        self.assertContains(response, '<td class="row-actions">')
 
     def test_create_rules_without_js(self):
         a = self.make_event()

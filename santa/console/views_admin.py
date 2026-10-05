@@ -23,6 +23,7 @@ from ..auth import (
 )
 from ..config_io import ConfigImportError, export_config, import_config
 from ..models import SignInGroup, Tag
+from .filters import Facet, chosen, filter_bar, remember_filters
 from .forms import ConfigImportForm, RoleForm, SignInGroupForm, TagForm, UserForm
 from .utils import (
     changed_message,
@@ -105,22 +106,31 @@ def is_sign_in_user(user):
 @staff_required
 def users(request):
     require_perms(request, "auth.view_user")
+    if remembered := remember_filters(request, "users"):
+        return remembered
     queryset = User.objects.prefetch_related("groups")
     q = request.GET.get("q", "").strip()
     if q:
         queryset = queryset.filter(Q(username__icontains=q) | Q(first_name__icontains=q)
                                    | Q(last_name__icontains=q) | Q(email__icontains=q))
-    if request.GET.get("role", "").isdigit():
-        queryset = queryset.filter(groups__id=request.GET["role"])
-    if request.GET.get("staff") == "yes":
-        queryset = queryset.filter(is_staff=True)
+    if roles := [value for value in chosen(request.GET, "role") if value.isdigit()]:
+        queryset = queryset.filter(groups__id__in=roles).distinct()
+    # both ticked is the same as none
+    staff = chosen(request.GET, "staff", ["yes", "no"])
+    if len(staff) == 1:
+        queryset = queryset.filter(is_staff=staff[0] == "yes")
     queryset, sort = sort_by(request, queryset, {"user": "username", "name": ["last_name", "first_name"],
                                                  "login": "last_login"}, "user")
     page = paginate(request, queryset)
     for user in page:
         user.from_sign_in = is_sign_in_user(user)
     return render_section(request, "console/administration/users.html", "users", {
-        "page": page, "sort": sort, "params": request.GET, "roles": AuthGroup.objects.order_by("name"),
+        "page": page, "sort": sort, "params": request.GET,
+        **filter_bar(request, "users", [
+            Facet("role", gettext("Role"), choices=AuthGroup.objects.order_by("name").values_list("pk", "name")),
+            Facet("staff", gettext("Console access"), choices=[("yes", gettext("With console access")),
+                                                               ("no", gettext("Without console access"))]),
+        ], hidden=("sort",), placeholder=gettext("Name, username, e-mail…")),
     })
 
 

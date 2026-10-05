@@ -4,6 +4,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
+from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.translation import gettext
@@ -24,6 +25,7 @@ from ..services import (
     machines_for_user,
     request_kinds_for,
 )
+from .filters import TIME_DAYS, TIME_PRESETS, Facet, chosen, date_range, filter_bar, in_range, remember_filters
 from .forms import (
     REQUESTABLE_PACKAGE_KINDS,
     SCOPE_GLOBAL,
@@ -52,7 +54,7 @@ from .views_sources import catalog_context
 
 MAX_PENDING_PER_USER = 20
 REQUEST_EVENT_DAYS = 30
-# My requests: the time spans, the first one is the default
+# My requests: the time spans (days), the first one is the default
 PERIODS = {"week": 7, "month": 30, "year": 365, "all": None}
 FORMS = {AccessRequest.Kind.EVENT: RequestEventForm, AccessRequest.Kind.PACKAGE: RequestPackageForm,
          AccessRequest.Kind.OTHER: RequestOtherForm}
@@ -84,17 +86,33 @@ def blocked_events_of(user):
 
 @login_required
 def my_requests(request):
-    period = request.GET.get("period")
-    if period not in PERIODS:
+    if remembered := remember_filters(request, "my-requests"):
+        return remembered
+    params = request.GET
+    period = params.get("period")
+    if period not in PERIODS and period != "range":
         period = next(iter(PERIODS))
     queryset = AccessRequest.objects.filter(requester=request.user)
-    if PERIODS[period]:
-        queryset = queryset.filter(created_at__gte=timezone.now() - timedelta(days=PERIODS[period]))
+    start, end = date_range(params, "period", PERIODS, next(iter(PERIODS)))
+    queryset = in_range(queryset, "created_at", start, end)
+    if statuses := chosen(params, "status", AccessRequest.Status.values):
+        queryset = queryset.filter(status__in=statuses)
+    if q := params.get("q", "").strip():
+        # the packages as a subquery: no join, no duplicate rows
+        packages = AccessRequestPackage.objects.filter(Q(identifier__icontains=q) | Q(name__icontains=q))
+        queryset = queryset.filter(Q(title__icontains=q) | Q(justification__icontains=q)
+                                   | Q(pk__in=packages.values("access_request")))
     page = paginate(request, queryset.select_related("event", "machine").prefetch_related("packages"))
     periods = [("week", gettext("Last 7 days")), ("month", gettext("Last month")), ("year", gettext("Last year")),
                ("all", gettext("All time"))]
-    return render(request, "request/list.html", {"page": page, "can_request": bool(request_kinds_for(request.user)),
-                                                 "period": period, "periods": periods})
+    return render(request, "request/list.html", {
+        "page": page, "can_request": bool(request_kinds_for(request.user)), "period": period,
+        **filter_bar(request, "my-requests", [
+            Facet("status", gettext("Status"), choices=AccessRequest.Status.choices),
+            Facet("period", gettext("Time span"), kind="time", choices=periods, default=next(iter(PERIODS)),
+                  unfiltered="all"),
+        ], placeholder=gettext("Search")),
+    })
 
 
 @login_required
@@ -233,15 +251,36 @@ def request_catalog_search(request):
 @staff_required
 def admin_requests(request):
     require_perms(request, "view_accessrequest")
-    status = request.GET.get("status", AccessRequest.Status.PENDING)
+    if remembered := remember_filters(request, "requests"):
+        return remembered
+    params = request.GET
     queryset = AccessRequest.objects.select_related("requester", "machine", "decided_by").prefetch_related("packages")
-    if status in AccessRequest.Status.values:
-        queryset = queryset.filter(status=status)
+    # opened without a filter: the open requests; a submitted form without a status: all (as the facet below)
+    if "status" in params or "q" in params:
+        statuses = chosen(params, "status", AccessRequest.Status.values)
+    else:
+        statuses = [AccessRequest.Status.PENDING]
+    if statuses:
+        queryset = queryset.filter(status__in=statuses)
+    if kinds := chosen(params, "kind", AccessRequest.Kind.values):
+        queryset = queryset.filter(kind__in=kinds)
+    if q := params.get("q", "").strip():
+        queryset = queryset.filter(Q(title__icontains=q) | Q(justification__icontains=q)
+                                   | Q(requester__username__icontains=q) | Q(requester__first_name__icontains=q)
+                                   | Q(requester__last_name__icontains=q) | Q(file_sha256__iexact=q.lower()))
+    start, end = date_range(params, "created", TIME_DAYS, "")
+    queryset = in_range(queryset, "created_at", start, end)
     columns = {"request": "title", "kind": "kind", "requester": "requester__username", "created": "created_at",
                "status": "status"}
     queryset, sort = sort_by(request, queryset, columns, "-created")
     return render(request, "console/requests/list.html", {
-        "page": paginate(request, queryset), "status": status, "statuses": AccessRequest.Status.choices, "sort": sort,
+        "page": paginate(request, queryset), "sort": sort, "params": params,
+        **filter_bar(request, "requests", [
+            Facet("status", gettext("Status"), choices=AccessRequest.Status.choices,
+                  default=[AccessRequest.Status.PENDING]),
+            Facet("kind", gettext("Kind"), choices=AccessRequest.Kind.choices),
+            Facet("created", gettext("Created"), kind="time", choices=TIME_PRESETS),
+        ], hidden=("sort",), placeholder=gettext("Title, requester, SHA-256…")),
     })
 
 
