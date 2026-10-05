@@ -1,0 +1,6 @@
+{% extends "console/_drawer.html" %}{% load i18n %}
+{% block drawer_class %} wide{% endblock %}
+{% block drawer_title %}{% if role %}{{ role.name }}{% else %}{% translate "New role" %}{% endif %}{% endblock %}
+{% block drawer_body %}
+{% include "console/administration/_role_form.html" with in_drawer=True %}
+{% endblock %}

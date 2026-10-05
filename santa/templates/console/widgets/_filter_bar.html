@@ -1,12 +1,12 @@
 {% load i18n %}{% comment %}The filter bar of a list (filters.filter_bar): search, "+ Filter", the views, the chips of the active
-filters. action_url / action_label: a button of the page at the right (e.g. "New local account").{% endcomment %}
+filters. action_url / action_label: a button of the page at the right (e.g. "New local account"), opens in the drawer.{% endcomment %}
 <form class="filter-bar" method="get" data-filter-form>
   {% for name, value in bar.hidden %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
   <div class="filter-toolbar">
     <input type="search" name="q" value="{{ bar.q }}" placeholder="{{ bar.placeholder }}" aria-label="{% translate 'Search' %}">
     <noscript><button class="button">{% translate "Filter" %}</button></noscript>
     <div class="filter-tools" data-table-tools>
-      {% if action_url %}<a class="button" href="{{ action_url }}">{{ action_label }}</a>{% endif %}
+      {% if action_url %}<a class="button" href="{{ action_url }}" hx-get="{{ action_url }}" hx-target="#drawer">{{ action_label }}</a>{% endif %}
       <details class="picker down views-picker" data-picker>
         <summary class="button">{% if bar.active_view %}{{ bar.active_view.name }}{% else %}{% translate "Views" %}{% endif %}</summary>
         <div class="picker-panel">

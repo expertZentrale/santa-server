@@ -1,3 +1,4 @@
+import json
 from functools import wraps
 
 from django.contrib.admin.models import ADDITION, CHANGE, DELETION, LogEntry
@@ -39,12 +40,13 @@ def render_drawer(request, page_template, drawer_template, context):
     return render(request, drawer_template if is_htmx(request) else page_template, context)
 
 
-def drawer_done(request, url):
-    """After a form was saved in the drawer: console.js goes back to the previous view of the drawer and updates it,
-    or reloads the page behind it (both show the change and the message)"""
+def drawer_done(request, url, open_in_drawer=False):
+    """After a form was saved in the drawer: drawer.js goes back to the previous view of the drawer and updates it,
+    or reloads the page behind it (both show the change and the message). With open_in_drawer the drawer shows
+    the page of url instead (e.g. a new group, with its profile)."""
     if is_htmx(request):
         response = HttpResponse(status=204)
-        response["HX-Trigger"] = "drawerSaved"
+        response["HX-Trigger"] = json.dumps({"drawerSaved": {"open": url}}) if open_in_drawer else "drawerSaved"
         return response
     return redirect(url)
 

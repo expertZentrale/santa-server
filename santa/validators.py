@@ -32,8 +32,12 @@ def validate_identifier(rule_type, identifier):
     return identifier
 
 
-def split_path_regexes(value):
+def split_lines(value):
     return [line.strip() for line in (value or "").splitlines() if line.strip()]
+
+
+def split_path_regexes(value):
+    return split_lines(value)
 
 
 def validate_path_regexes(value):

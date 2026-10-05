@@ -16,7 +16,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from .events import store_events
-from .models import RULE_COUNT_PREFIXES, ClientMode, Group, Machine
+from .models import RULE_COUNT_PREFIXES, ClientMode, Group, Machine, RemovableMediaAction, split_flags
 from .rules import commit_sync_session, get_rule_batch
 
 logger = logging.getLogger(__name__)
@@ -157,9 +157,16 @@ def preflight(request, group, machine_id, data):
         "enable_bundles": group.enable_bundles,
         "enable_transitive_rules": group.enable_transitive_rules,
         "enable_all_event_upload": group.enable_all_event_upload,
-        "block_usb_mount": group.block_usb_mount,
-        "remount_usb_mode": group.remount_usb_mode_list(),
+        "removable_media_policy": group.removable_media_policy(),
+        # the same for Santa versions before removable_media_policy (they ignore the keys they don't know)
+        "block_usb_mount": group.removable_media_action != RemovableMediaAction.ALLOW,
+        "remount_usb_mode": (split_flags(group.removable_media_remount_flags)
+                             if group.removable_media_action == RemovableMediaAction.REMOUNT else []),
     }
+    if encrypted := group.encrypted_removable_media_policy():
+        response["encrypted_removable_media_policy"] = encrypted
+    # always sent: a cleared override must reach the Macs too
+    response["override_file_access_action"] = group.override_file_access_action
     if group.event_detail_url:
         response["event_detail_url"] = group.event_detail_url
         if group.event_detail_text:

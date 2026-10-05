@@ -75,6 +75,6 @@ def sort_th(context, label, name, css_class=""):
         params["sort"], state = name, None
     aria = format_html(' aria-sort="{}"', state) if state else ""
     classes = format_html(' class="{}"', css_class) if css_class else ""
-    # data-col: the column for the widths and the column chooser (console.js)
+    # data-col: the column for the widths and the column chooser (console/table.js)
     return format_html('<th data-col="{}"{}{}><a class="sort" href="?{}">{}</a></th>', name, classes, aria,
                        params.urlencode(), label)

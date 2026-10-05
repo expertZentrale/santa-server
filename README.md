@@ -223,19 +223,30 @@ Jamf Pro, Kandji, Mosyle, …):
    der Gruppe zu. Es enthält:
    - `SyncBaseURL`: die geheime Sync-URL der Gruppe.
    - `SyncEnableProtoTransfer = false`: Dieser Server spricht nur das JSON-Sync-Protokoll.
-   - optional `UnknownBlockMessage`, `BannedBlockMessage`, `EnableBadSignatureProtection` (Abschnitt
-     *Nur im Profil*) und `MachineOwner` (siehe unten).
+   - optional `UnknownBlockMessage`, `BannedBlockMessage`, `EnableBadSignatureProtection`, `OnStartUSBOptions`
+     (Abschnitt *Nur im Profil*), `BrandingCompanyName`, `BrandingCompanyLogo`, `BrandingCompanyLogoDark`
+     (Abschnitt *Branding*, ab Santa 2026.1) und `MachineOwner` (siehe unten).
 3. Installieren Sie das Santa-Paket mit Ihrem MDM.
 
 **Jeder Mac darf genau ein Gruppenprofil erhalten**: Zwei Santa-Profile auf demselben Mac stehen im Konflikt. Um
 einen Mac in eine andere Gruppe zu verschieben, weisen Sie ihm das Profil der anderen Gruppe zu; bei seiner nächsten
 Synchronisierung macht er einen Clean Sync mit den neuen Regeln.
 
-Alles, was der Server bei jeder Synchronisierung sendet (Client-Modus, Pfad-Regexe, USB, Sync-Intervall, transitive
-Regeln, Schaltfläche im Blockierdialog, …), steht absichtlich **nicht** im Profil: Ändern Sie es in der Konsole, und
-die Macs übernehmen es bei ihrer nächsten Synchronisierung. Nur nach einer Änderung in *Nur im Profil* oder nach
-*Sync-URL neu erzeugen* laden Sie das Gruppenprofil erneut herunter und ersetzen es im MDM. Die Identifier bleiben
-gleich, das Profil wird also an Ort und Stelle aktualisiert.
+Alles, was der Server bei jeder Synchronisierung sendet (Client-Modus, Pfad-Regexe, Wechseldatenträger,
+Sync-Intervall, transitive Regeln, Schaltfläche im Blockierdialog, …), steht absichtlich **nicht** im Profil: Ändern
+Sie es in der Konsole, und die Macs übernehmen es bei ihrer nächsten Synchronisierung. Nur nach einer Änderung in
+*Nur im Profil* oder *Branding* oder nach *Sync-URL neu erzeugen* laden Sie das Gruppenprofil erneut herunter und
+ersetzen es im MDM. Die Identifier bleiben gleich, das Profil wird also an Ort und Stelle aktualisiert.
+
+**Wechseldatenträger** (USB-Sticks, externe Festplatten, SD-Karten): *Erlauben*, *Blockieren* oder *Mit Flags neu
+einhängen* (z. B. `rdonly,noexec`: nur lesen, nichts ausführbar), für verschlüsselte Datenträger optional anders. Der
+Server sendet es bei jeder Synchronisierung (`removable_media_policy`, für ältere Santa-Versionen zusätzlich
+`block_usb_mount` / `remount_usb_mode`). Was mit den beim Start von Santa schon eingehängten Datenträgern passiert
+(`OnStartUSBOptions`), steht nur im Profil.
+
+**Branding** (ab Santa 2026.1): Firmenname und Logo in den Dialogen von Santa. Ein hochgeladenes Logo (PNG oder JPEG,
+höchstens 256 KB) kommt als `data:`-URL ins Profil; alternativ eine `file:///`-URL eines Bildes, das Ihr MDM auf die
+Macs verteilt. `https://`-URLs unterstützt Santa nicht.
 
 **`MachineOwner`** (optional, `SANTA_PROFILE_MACHINE_OWNER`): die MDM-Variable des Hauptbenutzers, damit das
 Anfrageformular die Macs des angemeldeten Benutzers findet. Zum Beispiel `{{userprincipalname}}` (Intune) oder
@@ -260,6 +271,21 @@ Kennung auf einem Mac, gewinnt der spezifischste Geltungsbereich (Mac > Gruppe >
 Geltungsbereich gewinnt Blockieren über Erlauben. Deaktivierte Regeln werden bei der nächsten Synchronisierung von
 den Macs entfernt.
 
+#### Dateizugriffsregeln
+
+*Dateizugriff* legt fest, welche Prozesse welche Dateien lesen oder schreiben dürfen (File Access Authorization von
+Santa), zum Beispiel: Nur `ssh` darf die SSH-Schlüssel lesen, nur die Browser ihre Cookies. Eine Regel hat Pfade (mit
+`*`, `?` und `[ ]`, oder ein Pfad mit allem darunter), einen Regeltyp (*nur die genannten Prozesse dürfen* /
+*die genannten Prozesse dürfen nicht* auf die Pfade zugreifen, oder umgekehrt *die Prozesse dürfen nur auf* / *nicht
+auf* die Pfade zugreifen) und Prozesse (Signing ID mit Team ID oder *Plattform-Binary*, Team ID, Pfad, CDHash oder
+Zertifikat; alle ausgefüllten Felder müssen passen).
+
+- Santa erhält die Regeln **über das Gruppenprofil** (`FileAccessPolicy`), das JSON-Sync-Protokoll kennt sie nicht:
+  Laden Sie nach einer Änderung die Profile der betroffenen Gruppen erneut herunter (die Konsole nennt sie).
+- Beginnen Sie mit *Nur protokollieren* und prüfen Sie die Ereignisse auf den Macs, bevor eine Regel blockiert.
+- *Dateizugriff überschreiben* in der Gruppe (*Nur protokollieren*, *Deaktiviert*) wird bei jeder Synchronisierung
+  gesendet und gilt sofort für alle Regeln der Gruppe, ohne neues Profil.
+
 ### Im Alltag
 
 Alles ist in der Konsole (`/console/`). Der Django-Admin (`/admin/`) hat weiterhin jedes Modell für Änderungen auf
@@ -273,10 +299,12 @@ Profil des Benutzers gespeichert. Auf dem Smartphone liegt die Navigation hinter
 wählt sie aus, Strg-Klick fügt eine hinzu oder entfernt sie, Umschalt-Klick wählt einen Bereich. Die Aktionen für die
 Auswahl erscheinen unten im Fenster; Esc hebt die Auswahl auf.
 
-**Seitenleiste**: Ereignisse, Ausführungsregeln, Paketregeln, Anfragen und der Verlauf öffnen sich in einer Leiste
-rechts, auch zum Anlegen und Bearbeiten. Nach dem Speichern wird die Liste dahinter neu geladen. Esc oder ein Klick
-daneben schließt sie, *Seite ↗* öffnet dasselbe als eigene Seite. *Verlauf* zeigt jede Änderung an einer Regel,
-Paketregel, Gruppe, einem Mac, einer Anmeldegruppe, Rolle, einem Tag oder Benutzer.
+**Seitenleiste**: Ereignisse, Regeln, Paketregeln, Dateizugriffsregeln, Anfragen, Macs, Gruppen, alles unter
+*Administration* und der Verlauf öffnen sich in einer Leiste rechts, auch zum Anlegen und Bearbeiten. Nach dem
+Speichern wird die Liste dahinter neu geladen. Zurück und Vor des Browsers (auch die Maustasten) wechseln zwischen den
+Ansichten der Leiste. Esc oder ein Klick daneben schließt sie, *Seite ↗* öffnet dasselbe als eigene Seite. *Verlauf*
+zeigt jede Änderung an einer Regel, Paketregel, Dateizugriffsregel, Gruppe, einem Mac, einer Anmeldegruppe, Rolle,
+einem Tag oder Benutzer.
 
 **Gruppen**: die Santa-Konfiguration jeder Gruppe, ihre geheime SyncBaseURL, der Download ihres
 Konfigurationsprofils, *Sync-URL neu erzeugen* und in der Liste das Basisprofil.
@@ -359,8 +387,9 @@ Um den Blockierdialog mit dem Formular zu verbinden, setzen Sie die *URL im Bloc
 
 ### Konfiguration exportieren und importieren
 
-Gruppen, Paketregeln und manuelle Regeln können als JSON exportiert und auf einem anderen Server importiert werden,
-z. B. von einem Test- auf einen Produktivserver. In der Konsole: *Administration* → *Export / Import*. Oder:
+Gruppen, Paketregeln, manuelle Regeln und Dateizugriffsregeln können als JSON exportiert und auf einem anderen Server
+importiert werden, z. B. von einem Test- auf einen Produktivserver. In der Konsole: *Administration* →
+*Export / Import*. Oder:
 
 ```bash
 python manage.py export_config -o santa-config.json
@@ -373,8 +402,9 @@ python manage.py import_config - < santa-config.json            # importieren, "
   ersetzt.
 - **Die Sync-Tokens werden nie exportiert**: Eine bestehende Gruppe behält ihr Token, ihr Profil bleibt also gültig.
 - Nicht exportiert: Macs, Ereignisse und die Regeln der Paketregeln (das Ziel baut sie selbst).
-- `--delete-missing` löscht die manuellen Regeln und Paketregeln, die nicht in der Datei sind. Gruppen werden nie
-  gelöscht.
+- Die Dateizugriffsregeln werden über den **Namen** zugeordnet, ihre Gruppen über deren Namen.
+- `--delete-missing` löscht die manuellen Regeln, Paketregeln und Dateizugriffsregeln, die nicht in der Datei sind.
+  Gruppen werden nie gelöscht.
 - Alles oder nichts: Ist ein einziger Eintrag ungültig, wird nichts importiert und jeder Fehler aufgelistet.
 
 ### Entwicklung
@@ -418,7 +448,7 @@ geschrieben.
 santa_server/          settings.py (Image, Umgebungsvariablen), settings_common.py, settings_dev.py, urls.py
 santa/
   models.py            Group, Machine, Rule, Event, ReleaseSource (Paketregel), ReleaseVersion, AccessRequest,
-                       SignInGroup (Anmeldegruppe)
+                       SignInGroup (Anmeldegruppe), FileAccessRule (Dateizugriffsregel)
   sync_views.py        Santa-Sync-Protokoll (preflight, eventupload, ruledownload, postflight)
   rules.py             welche Regeln für einen Mac gelten, und der inkrementelle Regel-Sync
   events.py            Speichern der hochgeladenen Ereignisse
@@ -430,7 +460,7 @@ santa/
   profiles.py          die Konfigurationsprofile (Basisprofil, eines je Gruppe)
   config_io.py         Export / Import der Konfiguration (JSON)
   console/             die Konsole und das Anfrageformular (Views, Forms, URLs)
-  templates/, static/  Templates; htmx, console.js, console.css
+  templates/, static/  Templates; htmx, console/*.js und *.css (eine Datei je Aufgabe)
   admin.py, forms.py   der Django-Admin
   management/commands  sync_release_sources, cleanup_events, export_config, import_config
   locale/              deutsche Übersetzung
@@ -657,17 +687,27 @@ as custom profiles:
    It contains:
    - `SyncBaseURL`: the secret sync URL of the group.
    - `SyncEnableProtoTransfer = false`: this server only speaks the JSON sync protocol.
-   - optionally `UnknownBlockMessage`, `BannedBlockMessage`, `EnableBadSignatureProtection` (section
-     *Profile only*), and `MachineOwner` (below).
+   - optionally `UnknownBlockMessage`, `BannedBlockMessage`, `EnableBadSignatureProtection`, `OnStartUSBOptions`
+     (section *Profile only*), `BrandingCompanyName`, `BrandingCompanyLogo`, `BrandingCompanyLogoDark` (section
+     *Branding*, Santa 2026.1 and newer), and `MachineOwner` (below).
 3. Install the Santa package with your MDM.
 
 **Each Mac must get exactly one group profile**: two Santa profiles on the same Mac conflict. Moving a Mac to another
 group means assigning the other group's profile; at its next sync it does a clean sync with the new rules.
 
-Everything the server sends at every sync (client mode, path regexes, USB, sync interval, transitive rules, block
-dialog button, …) is deliberately **not** in the profile: change it in the console and the Macs pick it up at their
-next sync. Only after a change in *Profile only*, or after *Regenerate the sync URL*, download the group profile again
-and replace it in the MDM. The identifiers stay the same, so it updates in place.
+Everything the server sends at every sync (client mode, path regexes, removable media, sync interval, transitive rules,
+block dialog button, …) is deliberately **not** in the profile: change it in the console and the Macs pick it up at
+their next sync. Only after a change in *Profile only* or *Branding*, or after *Regenerate the sync URL*, download the
+group profile again and replace it in the MDM. The identifiers stay the same, so it updates in place.
+
+**Removable media** (USB sticks, external disks, SD cards): *Allow*, *Block* or *Remount with flags* (e.g.
+`rdonly,noexec`: read only, nothing executable), optionally different for encrypted media. The server sends it at every
+sync (`removable_media_policy`, plus `block_usb_mount` / `remount_usb_mode` for older Santa versions). What happens to
+the media already mounted when Santa starts (`OnStartUSBOptions`) is only in the profile.
+
+**Branding** (Santa 2026.1 and newer): company name and logo in the dialogs of Santa. An uploaded logo (PNG or JPEG,
+at most 256 KB) goes into the profile as a `data:` URL; or a `file:///` URL of an image your MDM puts on the Macs.
+Santa doesn't support `https://` URLs.
 
 **`MachineOwner`** (optional, `SANTA_PROFILE_MACHINE_OWNER`): the MDM variable of the primary user, so that the
 request form finds the Macs of the signed-in user. For example `{{userprincipalname}}` (Intune) or `$EMAIL`
@@ -690,6 +730,21 @@ A rule applies to every Mac (*global*), to groups, or to individual Macs. If sev
 identifier on a Mac, the most specific scope wins (Mac > group > global), and on the same scope a block wins over an
 allow. Disabled rules are removed from the Macs at their next sync.
 
+#### File access rules
+
+*File access* decides which processes may read or write which files (File Access Authorization of Santa), for
+example: only `ssh` may read the SSH keys, only the browsers their cookies. A rule has paths (with `*`, `?` and `[ ]`,
+or a path with everything below it), a rule type (*only the listed processes may* / *the listed processes may not*
+access the paths, or the other way round *the processes may only* / *may not* access the paths) and processes
+(Signing ID with Team ID or *Platform binary*, Team ID, path, CDHash or certificate; every field filled in must
+match).
+
+- Santa gets the rules **through the group profile** (`FileAccessPolicy`), the JSON sync protocol doesn't have them:
+  after a change, download the profiles of the groups concerned again (the console names them).
+- Start with *Audit only* and check the events on the Macs before a rule blocks.
+- *File access override* of the group (*Audit only*, *Disabled*) is sent at every sync and applies to every rule of
+  the group right away, without a new profile.
+
 ### Daily use
 
 Everything is in the console (`/console/`). The Django admin (`/admin/`) still has every model for low-level editing
@@ -703,10 +758,11 @@ navigation is behind the menu button.
 **Lists**: click a column header to sort, again to reverse. A click on a row selects it, Ctrl-click adds or removes
 one, Shift-click selects a range. The actions for the selection appear at the bottom of the window; Esc clears it.
 
-**Side panel**: events, execution rules, package rules, requests and the history open in a panel on the right, also
-to create and edit them. After saving, the list behind it reloads. Esc or a click next to it closes it, *Page ↗* opens
-the same as a page of its own. *History* shows every change of a rule, package rule, group, Mac, sign-in group, role,
-tag or user.
+**Side panel**: events, rules, package rules, file access rules, requests, Macs, groups, everything under
+*Administration* and the history open in a panel on the right, also to create and edit them. After saving, the list
+behind it reloads. Back and Forward of the browser (also the mouse buttons) step through the views of the panel. Esc
+or a click next to it closes it, *Page ↗* opens the same as a page of its own. *History* shows every change of a rule,
+package rule, file access rule, group, Mac, sign-in group, role, tag or user.
 
 **Groups**: the Santa configuration of each group, its secret SyncBaseURL, the download of its configuration
 profile, *Regenerate the sync URL*, and the base profile on the list.
@@ -781,8 +837,8 @@ To link the block dialog to the form, set the group's *block dialog URL* to
 
 ### Export and import the configuration
 
-Groups, package rules and manual rules can be exported as JSON and imported on another server, e.g. from a test to a
-production server. In the console: *Administration* → *Export / import*. Or:
+Groups, package rules, manual rules and file access rules can be exported as JSON and imported on another server, e.g.
+from a test to a production server. In the console: *Administration* → *Export / import*. Or:
 
 ```bash
 python manage.py export_config -o santa-config.json
@@ -794,7 +850,9 @@ python manage.py import_config - < santa-config.json            # import, "-" re
   **serial number**. The scopes of a rule are replaced by the ones in the file.
 - **The sync tokens are never exported**: an existing group keeps its token, so its profile stays valid.
 - Not exported: Macs, events, and the rules created by package rules (the target builds them).
-- `--delete-missing` deletes the manual rules and package rules that are not in the file. Groups are never deleted.
+- File access rules are matched by **name**, their groups by their names.
+- `--delete-missing` deletes the manual rules, package rules and file access rules that are not in the file. Groups
+  are never deleted.
 - Everything or nothing: if a single entry is invalid, nothing is imported and every error is listed.
 
 ### Development
@@ -836,7 +894,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for pull requests, and [AGENTS.md](AGENTS
 santa_server/          settings.py (image, env vars), settings_common.py, settings_dev.py, urls.py
 santa/
   models.py            Group, Machine, Rule, Event, ReleaseSource (package rule), ReleaseVersion, AccessRequest,
-                       SignInGroup
+                       SignInGroup, FileAccessRule
   sync_views.py        Santa sync protocol (preflight, eventupload, ruledownload, postflight)
   rules.py             which rules apply to a Mac, and the incremental rule sync
   events.py            storage of the uploaded events
@@ -848,7 +906,7 @@ santa/
   profiles.py          the configuration profiles (base profile, one per group)
   config_io.py         export / import of the configuration (JSON)
   console/             the console and the request form (views, forms, urls)
-  templates/, static/  templates; htmx, console.js, console.css
+  templates/, static/  templates; htmx, console/*.js and *.css (one file per task)
   admin.py, forms.py   the Django admin
   management/commands  sync_release_sources, cleanup_events, export_config, import_config
   locale/              German translation

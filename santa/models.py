@@ -6,12 +6,21 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.core.validators import MaxLengthValidator
 from django.db import models
 from django.utils.text import format_lazy
 from django.utils.translation import gettext
 from django.utils.translation import gettext_lazy as _
 
-from .validators import combine_path_regexes, validate_identifier, validate_path_regexes
+from .validators import (
+    CDHASH_RE,
+    SHA256_RE,
+    TEAM_ID_RE,
+    combine_path_regexes,
+    split_lines,
+    validate_identifier,
+    validate_path_regexes,
+)
 
 
 def generate_sync_token():
@@ -25,6 +34,59 @@ class ClientMode(models.TextChoices):
 
 # mount flags Santa accepts for the USB remount
 USB_REMOUNT_FLAGS = {"rdonly", "noexec", "nosuid", "nobrowse", "noowners", "nodev", "async", "-j"}
+
+# the logos are in the configuration profile (data: URL): keep the profile small
+BRANDING_LOGO_MAX_BYTES = 256 * 1024
+BRANDING_LOGO_TYPES = ("image/png", "image/jpeg")
+
+
+class RemovableMediaAction(models.TextChoices):
+    ALLOW = "ALLOW", _("Allow")
+    BLOCK = "BLOCK", _("Block")
+    REMOUNT = "REMOUNT", _("Remount with flags")
+
+
+class OnStartUSBOption(models.TextChoices):
+    # the values of OnStartUSBOptions
+    UNMOUNT = "Unmount", _("Unmount")
+    FORCE_UNMOUNT = "ForceUnmount", _("Force unmount")
+    REMOUNT = "Remount", _("Remount")
+    FORCE_REMOUNT = "ForceRemount", _("Force remount")
+
+
+def remount_flags_help(text):
+    flags = format_lazy(_("Comma separated, e.g. rdonly,noexec (read only, nothing executable). Allowed: {flags}."),
+                        flags=", ".join(sorted(USB_REMOUNT_FLAGS)))
+    return format_lazy("{text} {flags}", text=text, flags=flags)
+
+
+def split_flags(value):
+    return [flag.strip() for flag in value.split(",") if flag.strip()]
+
+
+def removable_media_policy(action, flags):
+    """RemovableMediaPolicy of the sync protocol: {"allow": true}, {"block": true} or {"remount": {"flags": […]}}"""
+    if action == RemovableMediaAction.REMOUNT:
+        return {"remount": {"flags": split_flags(flags)}}
+    return {action.lower(): True}
+
+
+def validate_logo_url(value):
+    """file:// (a file on the Macs) or data: with a PNG / JPEG; Santa doesn't load https:// logos"""
+    if value.startswith("file:///"):
+        return
+    if not value.startswith(tuple(f"data:{kind};base64," for kind in BRANDING_LOGO_TYPES)):
+        raise ValidationError(gettext("A file:///… URL of an image on the Macs, or an uploaded PNG or JPEG."))
+    if len(value) > BRANDING_LOGO_MAX_BYTES * 4 // 3 + 100:
+        raise ValidationError(gettext("The image is too large (at most %(size)s KB).")
+                              % {"size": BRANDING_LOGO_MAX_BYTES // 1024})
+
+
+class FileAccessOverride(models.TextChoices):
+    # override_file_access_action of the preflight
+    NONE = "NONE", _("None, the rules apply")
+    AUDIT_ONLY = "AUDIT_ONLY", _("Audit only")
+    DISABLE = "DISABLE", _("Disabled")
 
 
 class Group(models.Model):
@@ -78,17 +140,29 @@ class Group(models.Model):
         help_text=_("Upload an event for every execution, including the allowed ones, not only for the blocked / "
                   "unknown ones. Useful to see what runs before switching a group to lockdown, but very noisy."),
     )
-    block_usb_mount = models.BooleanField(
-        _("block USB mass storage"), default=False,
-        help_text=_("Block the mounting of USB mass storage devices (sticks, external disks)."),
+    removable_media_action = models.CharField(
+        _("removable media"), max_length=16, choices=RemovableMediaAction.choices,
+        default=RemovableMediaAction.ALLOW,
+        help_text=_("USB sticks, external disks, SD cards: allow them, block them, or remount them with the flags "
+                  "below (e.g. read only). Sent at every sync."),
     )
-    remount_usb_mode = models.CharField(
-        _("remount USB with flags"), max_length=200, blank=True,
-        help_text=format_lazy(
-            _("Only with “Block USB mass storage”: instead of blocking, remount the device with these flags, "
-              "comma separated, e.g. rdonly,noexec (read only, nothing executable). Allowed: {flags}."),
-            flags=", ".join(sorted(USB_REMOUNT_FLAGS)),
-        ),
+    removable_media_remount_flags = models.CharField(
+        _("remount flags"), max_length=200, blank=True,
+        help_text=remount_flags_help(_("Only with “Remount with flags”.")),
+    )
+    encrypted_removable_media_action = models.CharField(
+        _("encrypted removable media"), max_length=16, choices=RemovableMediaAction.choices, blank=True,
+        help_text=_("Encrypted disks (e.g. APFS encrypted) can get another action. Empty = the same as above. "
+                  "Santa 2026.1 and newer."),
+    )
+    encrypted_removable_media_remount_flags = models.CharField(
+        _("remount flags of encrypted media"), max_length=200, blank=True,
+        help_text=remount_flags_help(_("Only with “Remount with flags” for encrypted media.")),
+    )
+    override_file_access_action = models.CharField(
+        _("file access override"), max_length=16, choices=FileAccessOverride.choices, default=FileAccessOverride.NONE,
+        help_text=_("Overrides every file access rule of the group, e.g. to switch them off for a moment: "
+                  "“Audit only” logs instead of blocking, “Disabled” turns them off. Sent at every sync."),
     )
     event_detail_url = models.URLField(
         _("block dialog URL"), max_length=800, blank=True,
@@ -115,6 +189,29 @@ class Group(models.Model):
         help_text=_("Profile only. Also block, in monitor mode, the binaries with a broken code signature "
                   "(tampered files), unless a rule allows them."),
     )
+    file_access_block_message = models.TextField(
+        blank=True,
+        help_text=_("Profile only. Shown when a file access rule blocks, unless the rule has its own message. "
+                  "Empty = Santa's default text."),
+    )
+    on_start_usb_options = models.CharField(
+        _("removable media mounted when Santa starts"), max_length=16, choices=OnStartUSBOption.choices,
+        blank=True,
+        help_text=_("Profile only. What Santa does with the removable media already mounted when it starts, when "
+                  "they are blocked or remounted. Empty = leave them."),
+    )
+    branding_company_name = models.CharField(
+        max_length=200, blank=True,
+        help_text=_("Profile only. Your company name in the dialogs and messages of Santa (Santa 2026.1 and newer)."),
+    )
+    branding_company_logo = models.TextField(
+        blank=True, validators=[validate_logo_url],
+        help_text=_("Profile only. Shown instead of the company name (84 × 28 points)."),
+    )
+    branding_company_logo_dark = models.TextField(
+        blank=True, validators=[validate_logo_url],
+        help_text=_("Profile only. The logo in dark mode. Empty = the logo above."),
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -135,12 +232,19 @@ class Group(models.Model):
             regex_errors = validate_path_regexes(getattr(self, field))
             if regex_errors:
                 errors[field] = regex_errors
-        unknown_flags = set(self.remount_usb_mode_list()) - USB_REMOUNT_FLAGS
-        if unknown_flags:
-            errors["remount_usb_mode"] = gettext("Unknown flag(s): %(flags)s.") % {
-                "flags": ", ".join(sorted(unknown_flags))}
-        elif self.remount_usb_mode_list() and not self.block_usb_mount:
-            errors["remount_usb_mode"] = gettext("Only used with “Block USB mass storage”.")
+        for action_field, flags_field in (("removable_media_action", "removable_media_remount_flags"),
+                                          ("encrypted_removable_media_action",
+                                           "encrypted_removable_media_remount_flags")):
+            flags = split_flags(getattr(self, flags_field))
+            unknown_flags = set(flags) - USB_REMOUNT_FLAGS
+            remount = getattr(self, action_field) == RemovableMediaAction.REMOUNT
+            if unknown_flags:
+                errors[flags_field] = gettext("Unknown flag(s): %(flags)s.") % {
+                    "flags": ", ".join(sorted(unknown_flags))}
+            elif flags and not remount:
+                errors[flags_field] = gettext("Only used with “Remount with flags”.")
+            elif remount and not flags:
+                errors[flags_field] = gettext("Remounting needs at least one flag.")
         if errors:
             raise ValidationError(errors)
 
@@ -155,8 +259,14 @@ class Group(models.Model):
     def blocked_path_regex_for_santa(self):
         return combine_path_regexes(self.blocked_path_regex)
 
-    def remount_usb_mode_list(self):
-        return [flag.strip() for flag in self.remount_usb_mode.split(",") if flag.strip()]
+    def removable_media_policy(self):
+        return removable_media_policy(self.removable_media_action, self.removable_media_remount_flags)
+
+    def encrypted_removable_media_policy(self):
+        if not self.encrypted_removable_media_action:
+            return None
+        return removable_media_policy(self.encrypted_removable_media_action,
+                                      self.encrypted_removable_media_remount_flags)
 
 
 class Machine(models.Model):
@@ -478,6 +588,148 @@ class Rule(models.Model):
         if self.policy == Policy.CEL:
             rule["cel_expr"] = self.cel_expr
         return rule
+
+
+# Santa ignores a rule with another name (WatchItems.mm: kValidRuleNamePattern, kMaxRuleNameLength)
+FILE_ACCESS_RULE_NAME_RE = re.compile(r"^[A-Za-z0-9._:-]+\Z")
+FILE_ACCESS_BLOCK_MESSAGE_MAX_LENGTH = 2048
+
+
+class FileAccessRuleType(models.TextChoices):
+    PATHS_WITH_ALLOWED_PROCESSES = "PathsWithAllowedProcesses", _("Paths: only the listed processes may access them")
+    PATHS_WITH_DENIED_PROCESSES = "PathsWithDeniedProcesses", _("Paths: the listed processes may not access them")
+    PROCESSES_WITH_ALLOWED_PATHS = "ProcessesWithAllowedPaths", _("Processes: may only access the listed paths")
+    PROCESSES_WITH_DENIED_PATHS = "ProcessesWithDeniedPaths", _("Processes: may not access the listed paths")
+
+
+class FileAccessRule(models.Model):
+    """A rule of File Access Authorization: which processes may read or write which paths.
+
+    Santa takes them from the configuration profile (FileAccessPolicy), not from the sync: after a change, the profiles
+    of the groups are downloaded again.
+    """
+
+    name = models.CharField(
+        max_length=64, unique=True,
+        help_text=_("Shown in the logs and in the block dialog, e.g. SSH-keys. Letters, digits and . _ : - "
+                  "(no spaces)."),
+    )
+    description = models.TextField(blank=True)
+    rule_type = models.CharField(max_length=32, choices=FileAccessRuleType.choices,
+                                 default=FileAccessRuleType.PATHS_WITH_ALLOWED_PROCESSES)
+    paths = models.TextField(
+        blank=True,
+        help_text=_("One path per line, e.g. /Users/*/.ssh/id_rsa. Glob patterns (* ? [ ]) work, ** doesn't."),
+    )
+    path_prefixes = models.TextField(
+        blank=True,
+        help_text=_("One path per line: the path and everything below it, e.g. /Users/*/Library/Cookies/"),
+    )
+    allow_read_access = models.BooleanField(
+        default=False, help_text=_("Only writes are checked, everyone may read."),
+    )
+    audit_only = models.BooleanField(
+        default=True,
+        help_text=_("Only log the access, don't block it. Start with it, check the events, then turn it off."),
+    )
+    block_message = models.TextField(
+        blank=True, validators=[MaxLengthValidator(FILE_ACCESS_BLOCK_MESSAGE_MAX_LENGTH)],
+        help_text=_("Shown when the rule blocks. Empty = the message of the group, or Santa's default text."),
+    )
+    event_detail_url = models.URLField(_("block dialog URL"), max_length=800, blank=True)
+    event_detail_text = models.CharField(_("block dialog button text"), max_length=48, blank=True)
+    enable_silent_mode = models.BooleanField(default=False, help_text=_("Block without the dialog."))
+    enable_silent_tty_mode = models.BooleanField(default=False,
+                                                 help_text=_("Block without the message in the terminal."))
+    is_global = models.BooleanField(_("all groups"), default=False)
+    groups = models.ManyToManyField(Group, blank=True, related_name="file_access_rules")
+    is_enabled = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+    def clean(self):
+        errors = {}
+        if self.name and not FILE_ACCESS_RULE_NAME_RE.match(self.name):
+            errors["name"] = gettext("Only letters, digits and . _ : - (no spaces).")
+        for field in ("paths", "path_prefixes"):
+            for line in split_lines(getattr(self, field)):
+                if not line.startswith("/"):
+                    errors[field] = gettext("Line %(line)s: an absolute path, starting with /.") % {"line": line}
+                elif "**" in line:
+                    errors[field] = gettext("Line %(line)s: Santa doesn't support **.") % {"line": line}
+        if not split_lines(self.paths) and not split_lines(self.path_prefixes):
+            errors["paths"] = gettext("At least one path.")
+        if errors:
+            raise ValidationError(errors)
+
+    def path_list(self):
+        return ([{"Path": path, "IsPrefix": False} for path in split_lines(self.paths)]
+                + [{"Path": path, "IsPrefix": True} for path in split_lines(self.path_prefixes)])
+
+    def watch_item(self):
+        """The rule as an entry of WatchItems of the FileAccessPolicy"""
+        options = {"RuleType": self.rule_type, "AllowReadAccess": self.allow_read_access,
+                   "AuditOnly": self.audit_only, "EnableSilentMode": self.enable_silent_mode,
+                   "EnableSilentTTYMode": self.enable_silent_tty_mode}
+        for key, value in (("BlockMessage", self.block_message), ("EventDetailURL", self.event_detail_url),
+                           ("EventDetailText", self.event_detail_text)):
+            if value:
+                options[key] = value
+        return {"Paths": self.path_list(), "Options": options,
+                "Processes": [process.policy_entry() for process in self.processes.all()]}
+
+
+class FileAccessProcess(models.Model):
+    """A process of a file access rule: every field set must match (e.g. Signing ID and Team ID)"""
+
+    rule = models.ForeignKey(FileAccessRule, on_delete=models.CASCADE, related_name="processes")
+    signing_id = models.CharField(_("signing ID"), max_length=300, blank=True,
+                                  help_text=_("e.g. com.apple.ssh-agent, with the Team ID or “Platform binary”"))
+    team_id = models.CharField(_("team ID"), max_length=10, blank=True)
+    platform_binary = models.BooleanField(default=False, help_text=_("Part of macOS"))
+    binary_path = models.CharField(max_length=1024, blank=True)
+    cdhash = models.CharField(_("CDHash"), max_length=40, blank=True)
+    certificate_sha256 = models.CharField(_("certificate SHA-256"), max_length=64, blank=True)
+
+    class Meta:
+        ordering = ["pk"]
+
+    def __str__(self):
+        return ", ".join(f"{key}={value}" for key, value in self.policy_entry().items())
+
+    def clean(self):
+        self.team_id = self.team_id.strip().upper()
+        self.cdhash = self.cdhash.strip().lower()
+        self.certificate_sha256 = self.certificate_sha256.strip().lower()
+        errors = {}
+        if self.team_id and not TEAM_ID_RE.match(self.team_id):
+            errors["team_id"] = gettext("Must be a 10 character Team ID, e.g. EQHXZ8M8AV.")
+        if self.cdhash and not CDHASH_RE.match(self.cdhash):
+            errors["cdhash"] = gettext("Must be a CDHash (40 hex characters).")
+        if self.certificate_sha256 and not SHA256_RE.match(self.certificate_sha256):
+            errors["certificate_sha256"] = gettext("Must be a SHA-256 hex digest (64 characters).")
+        if self.binary_path and not self.binary_path.startswith("/"):
+            errors["binary_path"] = gettext("An absolute path, starting with /.")
+        if self.signing_id and not (self.team_id or self.platform_binary):
+            errors["signing_id"] = gettext("A Signing ID needs the Team ID, or “Platform binary”.")
+        if not errors and not self.policy_entry():
+            raise ValidationError(gettext("Fill in at least one field of the process."))
+        if errors:
+            raise ValidationError(errors)
+
+    def policy_entry(self):
+        entry = {key: value for key, value in (
+            ("SigningID", self.signing_id), ("TeamID", self.team_id), ("BinaryPath", self.binary_path),
+            ("CDHash", self.cdhash), ("CertificateSha256", self.certificate_sha256)) if value}
+        if self.platform_binary:
+            entry["PlatformBinary"] = True
+        return entry
 
 
 def payload_hash(payload):

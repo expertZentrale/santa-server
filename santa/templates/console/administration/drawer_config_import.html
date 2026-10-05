@@ -1,0 +1,7 @@
+{% extends "console/_drawer.html" %}{% load i18n %}
+{% block drawer_class %} wide{% endblock %}
+{% block drawer_attrs %}{% if imported %} data-refresh-on-close{% endif %}{% endblock %}
+{% block drawer_title %}{% translate "Import configuration" %}{% endblock %}
+{% block drawer_body %}
+{% include "console/administration/_config_import.html" with in_drawer=True %}
+{% endblock %}

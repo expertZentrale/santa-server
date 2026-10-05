@@ -1,0 +1,221 @@
+/* Badges, chips, tags */
+.badge {
+  display: inline-block;
+  padding: .05rem .45rem;
+  border-radius: 999px;
+  font-size: .78em;
+  font-weight: 600;
+  background: var(--surface-2);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.badge.ok { background: var(--ok-bg); color: var(--ok); }
+.badge.bad { background: var(--bad-bg); color: var(--bad); }
+.badge.info { background: var(--info-bg); color: var(--info); }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .3rem .55rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+.chip.small { padding: .05rem .5rem; font-size: .8em; margin: .1rem .2rem .1rem 0; }
+.chip.mac { border-style: dashed; }
+.tag { display: inline-block; font-size: .8em; color: var(--muted); margin-right: .35rem; }
+.tag::before { content: "#"; }
+.switch {
+  width: 2.5rem;
+  height: 1.4rem;
+  border-radius: 999px;
+  border: 0;
+  background: var(--border);
+  position: relative;
+  cursor: pointer;
+  transition: background .15s;
+  display: inline-block;
+  vertical-align: middle;
+  flex: none;
+}
+/* an invisible, larger click target around the switch */
+.switch::before { content: ""; position: absolute; inset: -.5rem; }
+.switch::after {
+  content: "";
+  position: absolute;
+  top: .15rem;
+  left: .15rem;
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform .15s;
+}
+.switch.on { background: var(--ok); }
+.switch.on::after { transform: translateX(1.1rem); }
+.table td.toggle { cursor: pointer; }
+
+/* a list of checkboxes that opens above its button (the bulk bar is at the bottom of the window) */
+.picker { position: relative; }
+.picker > summary { list-style: none; }
+.picker > summary::-webkit-details-marker { display: none; }
+.picker > summary::after { content: ""; width: .45em; height: .45em; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: translateY(.1em) rotate(-135deg); margin-left: .2rem; }
+.picker[open] > summary::after { transform: translateY(-.1em) rotate(45deg); }
+.picker-panel {
+  position: absolute;
+  bottom: calc(100% + .5rem);
+  left: 0;
+  min-width: 14rem;
+  max-height: 18rem;
+  overflow-y: auto;
+  margin: 0;
+  padding: .3rem;
+  display: grid;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+}
+.picker-panel label { display: flex; align-items: center; gap: .55rem; padding: .45rem .6rem; border-radius: var(--radius-sm); cursor: pointer; white-space: nowrap; }
+.picker-panel label:hover { background: var(--surface-2); }
+
+/* Icons of the catalog entries */
+.chip img, .suggestion img, .with-icon img {
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: var(--radius-sm);
+  object-fit: contain;
+}
+.with-icon { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.with-icon img { width: 1.75rem; height: 1.75rem; }
+
+/* Identifiers widget */
+.identifiers .chips { list-style: none; padding: 0; margin: 0 0 .5rem; display: flex; flex-wrap: wrap; gap: .4rem; }
+.identifiers .chip { border-radius: var(--radius); padding: .3rem .4rem .3rem .35rem; }
+.chip-text { display: grid; line-height: 1.2; }
+.chip-text code { color: var(--muted); font-size: .78em; }
+.chip-remove { border: 0; background: none; color: var(--muted); font-size: 1.1rem; cursor: pointer; padding: 0 .2rem; }
+.chip-remove:hover { color: var(--bad); }
+.combobox { position: relative; }
+.combobox input { width: 100%; }
+.suggestions {
+  display: none;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + .25rem);
+  max-height: 22.5rem;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+  z-index: 20;
+}
+.suggestions.open { display: block; }
+.suggestion {
+  display: flex;
+  gap: .65rem;
+  width: 100%;
+  padding: .55rem .7rem;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.suggestion:hover, .suggestion[aria-selected="true"] { background: var(--surface-2); }
+.suggestion > span { display: grid; min-width: 0; }
+.suggestion-title { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
+.suggestion code { color: var(--muted); font-size: .8em; }
+.suggestion small { color: var(--muted); }
+.suggestion-note { padding: .6rem .75rem; color: var(--muted); }
+.suggestion[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
+.suggestion[aria-disabled="true"]:hover { background: none; }
+/* CEL: the completion first, its meaning under it */
+.cel-suggestion code { color: var(--text); font-size: .9em; }
+.cel-suggestion small { font-size: .8em; }
+
+
+/* Rules that already match a binary, shown where a rule is created */
+.existing-rules { display: grid; gap: .35rem; padding: .6rem .75rem; margin-bottom: 1rem; border-radius: var(--radius-sm); background: var(--info-bg); }
+.existing-rules ul.plain { gap: .35rem; }
+.existing-rules li { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .45rem; }
+.existing-rules.compact { display: block; padding: 0; margin: 0; background: none; color: var(--info); }
+.existing-rules .muted { color: var(--muted); }
+/* The binaries of the rules for several events */
+.binaries { gap: .25rem; margin-bottom: .5rem; }
+.field .binaries label { display: flex; align-items: flex-start; gap: .6rem; padding: .5rem .6rem; border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; }
+.field .binaries label:hover { background: var(--surface-2); }
+.field .binaries input { margin-top: .2rem; }
+.binaries li:has(input:not(:checked)) .binary-text { opacity: .55; }
+.binary-text { display: grid; gap: .15rem; min-width: 0; }
+.binary-text .badge { margin-left: .35rem; }
+.binary-text .rule-preview { margin-top: 0; }
+.rule-preview.fallback { color: var(--bad); }
+fieldset.field > legend { padding: 0; margin-bottom: .35rem; }
+
+.copy-button {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: .15rem .25rem;
+  min-width: 1.5rem;
+  min-height: 1.5rem;
+  border-radius: var(--radius-sm);
+  vertical-align: middle;
+}
+.copy-button:hover { color: var(--accent); background: var(--surface-2); }
+.copy-button.copied { color: var(--ok); outline: none; }
+
+a.chip { color: inherit; }
+a.chip:hover { text-decoration: none; border-color: var(--accent); }
+.picker-row { display: flex; gap: .5rem; align-items: flex-start; }
+.picker-row select { flex: none; width: auto; }
+.picker-row .combobox { flex: 1; }
+.field .chips { list-style: none; padding: 0; margin: 0 0 .25rem; display: flex; flex-wrap: wrap; gap: .4rem; }
+.field .chips .chip { border-radius: var(--radius); padding: .3rem .4rem .3rem .35rem; }
+.tag-suggestion { padding: .4rem .7rem; }
+.package-list { margin: .4rem 0; }
+.package-list li, .packages-approve .with-icon { flex-wrap: nowrap; }
+.package-text { display: grid; }
+.packages-approve select { width: 100%; }
+
+.rule-preview { display: block; margin-top: .3rem; color: var(--muted); overflow-wrap: anywhere; }
+.rule-preview code { color: var(--text); background: var(--surface-2); padding: .05rem .3rem; border-radius: var(--radius-sm); }
+
+
+/* History of an object */
+ol.history { list-style: none; padding: 0; margin: 0; display: grid; gap: .75rem; }
+ol.history > li { border-bottom: 1px solid var(--border); padding-bottom: .75rem; display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .6rem; }
+ol.history > li:last-child { border-bottom: 0; }
+.history-message { flex-basis: 100%; margin: 0; overflow-wrap: anywhere; }
+
+/* Touch screens: larger targets for the small icon controls */
+@media (pointer: coarse) {
+  .icon-button, .copy-button, .bulkbar-clear, .chip-remove { min-width: 2.75rem; min-height: 2.75rem; }
+  .switch::before { inset: -.75rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .switch, .switch::after { transition: none; }
+}
+
+/* A logo of the group profile: the current one on a checkered background (light and dark logos) */
+.logo-field { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: .6rem .8rem .2rem; }
+.logo-field > legend { padding: 0 .3rem; }
+.logo-preview { display: inline-flex; justify-self: start; width: fit-content; padding: .5rem; margin-bottom: .6rem; border-radius: var(--radius-sm);
+  background: repeating-conic-gradient(var(--surface-2) 0 25%, var(--surface) 0 50%) 0 0 / 1rem 1rem; }
+.logo-preview img { display: block; max-width: 10.5rem; max-height: 3.5rem; }
+
+/* The processes of a file access rule (a formset): one box per process */
+.process-rows { display: grid; gap: .75rem; margin-bottom: .75rem; }
+.process-row { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: .7rem .8rem .1rem; margin: 0; min-width: 0; }
+.process-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr)); gap: 0 1rem;
+  align-items: start; }
+.process-fields .field { align-content: start; }
+.process-checks { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 0 1.5rem; align-items: center; }

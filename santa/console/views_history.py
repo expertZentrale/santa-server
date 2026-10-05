@@ -8,19 +8,20 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
 
-from ..models import Group, Machine, ReleaseSource, Rule, SignInGroup, Tag
+from ..models import FileAccessRule, Group, Machine, ReleaseSource, Rule, SignInGroup, Tag
 from .utils import PAGE_SIZE, paginate, render_drawer, staff_required
 
 # URL name: (model, permission to view it, URL name of its page, whether the page opens in the drawer too)
 HISTORY_MODELS = {
     "rule": (Rule, "santa.view_rule", "console:rule", True),
     "releasesource": (ReleaseSource, "santa.view_releasesource", "console:source", True),
-    "group": (Group, "santa.view_group", "console:group", False),
-    "machine": (Machine, "santa.view_machine", "console:machine", False),
-    "signingroup": (SignInGroup, "santa.view_signingroup", "console:admin_sign_in_group", False),
-    "tag": (Tag, "santa.view_tag", "console:admin_tag", False),
-    "role": (AuthGroup, "auth.view_group", "console:admin_role", False),
-    "user": (User, "auth.view_user", "console:admin_user", False),
+    "fileaccessrule": (FileAccessRule, "santa.view_fileaccessrule", "console:file_access_rule", True),
+    "group": (Group, "santa.view_group", "console:group", True),
+    "machine": (Machine, "santa.view_machine", "console:machine", True),
+    "signingroup": (SignInGroup, "santa.view_signingroup", "console:admin_sign_in_group", True),
+    "tag": (Tag, "santa.view_tag", "console:admin_tag", True),
+    "role": (AuthGroup, "auth.view_group", "console:admin_role", True),
+    "user": (User, "auth.view_user", "console:admin_user", True),
 }
 
 

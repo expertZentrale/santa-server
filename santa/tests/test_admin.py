@@ -9,7 +9,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from santa.forms import AllowEventsForm, UploadBinaryForm
-from santa.models import Event, Group, Machine, Policy, Rule, RuleType, SavedFilter, Tag
+from santa.models import Event, FileAccessRule, Group, Machine, Policy, Rule, RuleType, SavedFilter, Tag
 
 from .utils import build_macho
 
@@ -37,8 +37,10 @@ class AdminTestCase(TestCase):
         rule.groups.add(self.dev)
         rule.tags.add(tag)
         SavedFilter.objects.create(user=User.objects.first(), page="rules", name="Global", query="scope=global")
+        file_access = FileAccessRule.objects.create(name="SSH-keys", paths="/Users/*/.ssh/id_rsa")
+        file_access.processes.create(signing_id="com.openssh.ssh", platform_binary=True)
         for name in ("group", "machine", "rule", "event", "releasesource", "tag", "accessrequest", "signingroup",
-                     "savedfilter"):
+                     "savedfilter", "fileaccessrule"):
             for params in ({}, {"_facets": "True"}):
                 response = self.client.get(reverse(f"admin:santa_{name}_changelist"), params)
                 self.assertEqual(response.status_code, 200, (name, params))
@@ -107,11 +109,20 @@ class AdminTestCase(TestCase):
         self.assertFalse(Rule.objects.exists())
 
     def test_group_validation(self):
-        group = Group(name="Design", allowed_path_regex="^/ok/\n^/broken/(", remount_usb_mode="rdonly,fast")
+        group = Group(name="Design", allowed_path_regex="^/ok/\n^/broken/(", removable_media_action="REMOUNT",
+                      removable_media_remount_flags="rdonly,fast", encrypted_removable_media_remount_flags="rdonly",
+                      branding_company_logo="https://example.com/logo.png")
         with self.assertRaises(ValidationError) as cm:
             group.full_clean()
-        self.assertIn("Line 2 (^/broken/()", cm.exception.message_dict["allowed_path_regex"][0])
-        self.assertIn("Unknown flag(s): fast", cm.exception.message_dict["remount_usb_mode"][0])
+        errors = cm.exception.message_dict
+        self.assertIn("Line 2 (^/broken/()", errors["allowed_path_regex"][0])
+        self.assertIn("Unknown flag(s): fast", errors["removable_media_remount_flags"][0])
+        self.assertIn("Only used with “Remount with flags”", errors["encrypted_removable_media_remount_flags"][0])
+        self.assertIn("file:///", errors["branding_company_logo"][0])
+        group = Group(name="Design", removable_media_action="REMOUNT", branding_company_logo="file:///Library/l.png")
+        with self.assertRaises(ValidationError) as cm:
+            group.full_clean()
+        self.assertEqual(list(cm.exception.message_dict), ["removable_media_remount_flags"])
 
     def test_group_form_shows_descriptions(self):
         response = self.client.get(reverse("admin:santa_group_change", args=(self.dev.pk,)))

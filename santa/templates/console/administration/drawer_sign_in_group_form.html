@@ -1,0 +1,5 @@
+{% extends "console/_drawer.html" %}{% load i18n %}
+{% block drawer_title %}{% if sign_in_group %}{{ sign_in_group.name }}{% else %}{% translate "New sign-in group" %}{% endif %}{% endblock %}
+{% block drawer_body %}
+{% include "console/administration/_sign_in_group_form.html" with in_drawer=True %}
+{% endblock %}

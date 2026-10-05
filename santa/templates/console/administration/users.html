@@ -10,7 +10,7 @@
   <tbody>
   {% for u in page %}
     <tr{% if not u.is_active %} class="disabled"{% endif %}>
-      <td><a class="strong" href="{% url 'console:admin_user' u.pk %}">{{ u.username }}</a>{% if u.email and u.email != u.username %}<small class="muted">{{ u.email }}</small>{% endif %}</td>
+      <td>{% url 'console:admin_user' u.pk as user_url %}<a class="strong" href="{{ user_url }}" hx-get="{{ user_url }}" hx-target="#drawer">{{ u.username }}</a>{% if u.email and u.email != u.username %}<small class="muted">{{ u.email }}</small>{% endif %}</td>
       <td>{{ u.get_full_name|default:"–" }}</td>
       <td>{% if u.from_sign_in %}<span class="badge info">{% translate "sign-in" %}</span>{% else %}<span class="badge">{% translate "local" %}</span>{% endif %}
         {% if u.is_superuser %}<span class="badge bad">{% translate "superuser" %}</span>{% endif %}{% if not u.is_active %}<span class="badge">{% translate "inactive" %}</span>{% endif %}</td>

@@ -1,0 +1,54 @@
+/* The filter bar (widgets/_filter_bar.html): a fixed toolbar, below it the chips of the active filters */
+.filter-bar { display: grid; gap: .6rem; margin-bottom: 1rem; }
+.filter-toolbar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.filter-toolbar input[type="search"] { flex: 1 1 16rem; min-width: 12rem; max-width: 30rem; }
+.filter-tools { display: flex; gap: .5rem; align-items: center; margin-left: auto; }
+.filter-chips { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; min-height: var(--control-h-sm); }
+.filter-chip { display: inline-flex; align-items: center; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); }
+.filter-chip[data-active] { border-color: var(--accent); background: var(--info-bg); }
+/* chosen, but not filtering ("all") */
+.filter-chip:not([data-active]) .filter-chip-label { color: var(--muted); }
+.filter-chip:not([data-active]) strong { font-weight: 400; }
+.filter-chip[hidden] { display: none; }
+.filter-chip-label { display: inline-block; padding: .25rem .7rem; font-size: .875em; cursor: pointer; list-style: none; white-space: nowrap; }
+.filter-chip-label::-webkit-details-marker { display: none; }
+.filter-chip-label strong { font-weight: 600; }
+.filter-chip-remove { padding: .2rem .6rem .2rem .1rem; color: var(--muted); font-size: 1.05rem; line-height: 1; }
+.filter-chip-remove:hover { color: var(--bad); text-decoration: none; }
+.filter-reset { margin-left: .25rem; }
+/* the menus of the bar open below, from the left (the bulk bar's pickers open upwards) */
+.filter-bar .picker.down .picker-panel { left: 0; right: auto; }
+.filter-tools .picker.down .picker-panel { left: auto; right: 0; }
+.picker.filter-chip-picker > summary::after { content: none; }
+.picker.filter-add > summary::after, .picker.views-picker > summary::after,
+.picker.columns-picker > summary::after { transform: translateY(-.1em) rotate(45deg); }
+.picker.filter-add[open] > summary::after, .picker.views-picker[open] > summary::after,
+.picker.columns-picker[open] > summary::after { transform: translateY(.1em) rotate(-135deg); }
+.filter-add .picker-panel:has(.menu-item:not([hidden])) [data-all-shown] { display: none; }
+.filter-add .picker-panel [data-all-shown] { margin: 0; padding: .45rem .6rem; }
+.time-range { display: none; align-items: center; gap: .35rem; padding: .35rem .6rem .45rem; }
+.picker-panel:has(input[data-range]:checked) .time-range { display: flex; }
+.time-range input[type="date"] { width: auto; }
+/* the views: a link per view, rename and delete, and the name of a new one */
+.views-picker > summary { max-width: 16rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.views-picker .picker-panel { min-width: 20rem; gap: .2rem; }
+/* the whole row up to its buttons opens the view */
+.saved-filter { display: flex; align-items: stretch; gap: .1rem; padding-right: .2rem; border-radius: var(--radius-sm); }
+.saved-filter > a { flex: 1; min-width: 0; display: flex; align-items: center; padding: .45rem .6rem; border-radius: var(--radius-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.saved-filter > a:hover { text-decoration: none; }
+.saved-filter > .icon-button, .rename-view > summary { align-self: center; }
+.saved-filter.current > a { font-weight: 600; }
+.saved-filter.current > a::before { content: "✓ "; }
+.saved-filter:hover { background: var(--surface-2); }
+.rename-view > summary { list-style: none; }
+.rename-view > summary::-webkit-details-marker { display: none; }
+.rename-view[open] { flex-basis: 100%; order: 3; }
+.saved-filter:has(.rename-view[open]) { flex-wrap: wrap; }
+.saved-filter-new { display: flex; gap: .4rem; padding: .4rem .2rem; }
+.views-picker .picker-panel > .saved-filter-new { border-top: 1px solid var(--border); margin-top: .2rem; }
+.saved-filter-new input { flex: 1; min-width: 0; }
+.views-picker .picker-panel > small, .views-picker .picker-panel > p { padding: .2rem .6rem; margin: 0; }
+@media (max-width: 40em) {
+  .filter-toolbar input[type="search"] { flex-basis: 100%; max-width: none; }
+  .filter-tools { margin-left: 0; }
+}

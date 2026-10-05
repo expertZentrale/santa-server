@@ -1,0 +1,23 @@
+{% load i18n %}<form method="post" class="stack"{% if in_drawer %} action="{{ request.get_full_path }}" hx-post="{{ request.get_full_path }}" hx-target="#drawer"{% endif %}>
+  {% csrf_token %}
+  {% if form.non_field_errors %}<div class="error">{{ form.non_field_errors }}</div>{% endif %}
+  <fieldset class="plain"{% if sign_in_group and not perms.santa.change_signingroup %} disabled{% endif %}>
+  <section class="card"><h2>{% translate "Sign-in group" %}</h2>
+    {% for field in form %}{% include "console/_field.html" %}{% endfor %}
+  </section>
+  </fieldset>
+  {% if not sign_in_group or perms.santa.change_signingroup %}
+  <div class="actions"><button class="button primary">{% if sign_in_group %}{% translate "Save" %}{% else %}{% translate "Create sign-in group" %}{% endif %}</button>
+    {% if in_drawer %}<button type="button" class="button" data-drawer-close>{% translate "Cancel" %}</button>{% else %}<a class="button" href="{% url 'console:admin_sign_in_groups' %}">{% translate "Cancel" %}</a>{% endif %}
+    {% if sign_in_group %}{% url 'console:history' 'signingroup' sign_in_group.pk as history_url %}<a class="button right" href="{{ history_url }}" hx-get="{{ history_url }}" hx-target="#drawer">{% translate "History" %}</a>{% endif %}
+    {% if sign_in_group and perms.santa.delete_signingroup %}<button class="button danger" form="delete-form">{% translate "Delete" %}</button>{% endif %}</div>
+  {% endif %}
+</form>
+{% if sign_in_group and perms.santa.delete_signingroup %}
+<form id="delete-form" method="post" action="{% url 'console:admin_sign_in_group_delete' sign_in_group.pk %}" data-confirm="{% blocktranslate with name=sign_in_group.name %}Delete the sign-in group {{ name }}? Its members lose its roles right away.{% endblocktranslate %}">{% csrf_token %}</form>
+{% endif %}
+{% if members %}
+<section class="card"><h2>{% translate "Members at their last sign-in" %}</h2>
+  <p>{% for member in members %}{% url 'console:admin_user' member.pk as chip_url %}<a class="chip small" href="{{ chip_url }}"{% if in_drawer %} hx-get="{{ chip_url }}" hx-target="#drawer"{% endif %}>{{ member.username }}</a>{% endfor %}</p>
+</section>
+{% endif %}

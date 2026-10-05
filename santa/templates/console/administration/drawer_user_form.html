@@ -1,0 +1,5 @@
+{% extends "console/_drawer.html" %}{% load i18n %}
+{% block drawer_title %}{% if edited_user %}{{ edited_user.get_full_name|default:edited_user.username }}{% else %}{% translate "New local account" %}{% endif %}{% endblock %}
+{% block drawer_body %}
+{% include "console/administration/_user_form.html" with in_drawer=True %}
+{% endblock %}
