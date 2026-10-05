@@ -9,6 +9,7 @@ from functools import reduce
 
 from django.http import QueryDict
 from django.shortcuts import redirect
+from django.urls import reverse
 from django.utils import formats, timezone
 from django.utils.translation import gettext
 from django.utils.translation import gettext_lazy as _
@@ -96,10 +97,10 @@ def remember_filters(request, page, keep=()):
         if stored.pop(page, None) is not None:
             profile.last_filters = stored
             profile.save(update_fields=["last_filters"])
-        return redirect(_url(request.path, kept, ""))
+        return redirect(_url(request, kept, ""))
     current = filter_query(request.GET, keep)
     if not current:
-        return redirect(_url(request.path, kept, stored[page])) if stored.get(page) else None
+        return redirect(_url(request, kept, stored[page])) if stored.get(page) else None
     if len(current) <= MAX_QUERY_LENGTH and stored.get(page) != current:
         stored[page] = current
         profile.last_filters = stored
@@ -107,7 +108,11 @@ def remember_filters(request, page, keep=()):
     return None
 
 
-def _url(path, kept, query):
+def _url(request, kept, query):
+    """The list again with this query: the path comes from the URL patterns, never from the request (no redirect to
+    another site), the query is encoded again"""
+    match = request.resolver_match
+    path = reverse(match.view_name, args=match.args, kwargs=match.kwargs)
     params = QueryDict(query, mutable=True)
     for name, values in kept.items():
         params.setlist(name, values)
@@ -262,7 +267,7 @@ def filter_bar(request, page, facets, hidden=(), keep=(), placeholder=""):
     return {"bar": {
         "page": page, "q": q, "placeholder": placeholder, "hidden": hidden_pairs, "chips": chips,
         "is_default": is_default,
-        "reset_url": _url(request.path, kept, "reset=1"), "query": canonical, "views": views,
+        "reset_url": _url(request, kept, "reset=1"), "query": canonical, "views": views,
         "active_view": next((view for view in views if canonical_query(view.query) == canonical), None),
     }}
 
