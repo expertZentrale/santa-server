@@ -24,7 +24,7 @@ class LoginView(auth_views.LoginView):
 
     def get_context_data(self, **kwargs):
         return {**super().get_context_data(**kwargs), "oidc_enabled": bool(settings.OIDC_RP_CLIENT_ID),
-                "provider_name": settings.OIDC_PROVIDER_NAME,
+                "provider_name": settings.OIDC_PROVIDER_NAME, "provider_icon": settings.OIDC_PROVIDER_ICON,
                 "failed": "failed" in self.request.GET}
 
 
