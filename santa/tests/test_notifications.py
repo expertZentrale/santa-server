@@ -212,6 +212,22 @@ class NotificationsTestCase(ConsoleBase):
         self.assertEqual(delivered, ["approver@example.com"])
         self.assertIn("E-mail to admin@example.com refused", logs.output[0])
 
+    def test_an_error_when_closing_is_only_logged(self):
+        access_request = AccessRequest.objects.create(requester=self.user, kind="OTHER", title="Figma",
+                                                      justification="x")
+        with patch("santa.notifications.get_connection") as get_connection, \
+                self.assertLogs("santa.notifications", "ERROR") as logs, self.captureOnCommitCallbacks(execute=True):
+            get_connection.return_value.close.side_effect = smtplib.SMTPServerDisconnected("gone")
+            notifications.request_created(access_request)
+        self.assertEqual(get_connection.return_value.send_messages.call_count, 2)
+        self.assertIn("Closing the connection to the mail server failed", logs.output[0])
+        # the daily summary (sent in the command, not in a thread) ends normally too
+        self.choose(self.approver, new_requests=notifications.DAILY)
+        with patch("santa.notifications.get_connection") as get_connection, self.assertLogs("santa.notifications"):
+            get_connection.return_value.close.side_effect = OSError("broken pipe")
+            call_command("send_notification_digest", stdout=open("/dev/null", "w"))
+        self.assertEqual(get_connection.return_value.send_messages.call_count, 1)
+
     def test_a_failing_mail_server_is_only_logged(self):
         access_request = AccessRequest.objects.create(requester=self.user, kind="OTHER", title="Figma",
                                                       justification="x")

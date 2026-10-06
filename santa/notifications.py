@@ -155,7 +155,11 @@ def send_messages(messages, background=None):
                 except Exception:
                     logger.exception("E-mail to %s failed: %s", ", ".join(message.to), message.subject)
         finally:
-            connection.close()
+            # the mails are out: an error while saying goodbye to the server is logged, never raised to the caller
+            try:
+                connection.close()
+            except Exception:
+                logger.exception("Closing the connection to the mail server failed")
 
     if settings.EMAIL_SEND_IN_BACKGROUND if background is None else background:
         threading.Thread(target=run, name="santa-mail", daemon=True).start()
