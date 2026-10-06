@@ -1,15 +1,11 @@
 {% extends "console/base.html" %}{% load console i18n %}
 {% block title %}{% translate "Tags" %}{% endblock %}
 {% block content %}
-{% include "console/administration/_tabs.html" %}
-<form class="filters" method="get">
-  {% if params.sort %}<input type="hidden" name="sort" value="{{ params.sort }}">{% endif %}
-  <input type="search" name="q" value="{{ params.q }}" placeholder="{% translate 'Name, description…' %}" aria-label="{% translate 'Search' %}">
-  <button class="button">{% translate "Filter" %}</button>
-  {% if perms.santa.add_tag %}{% url 'console:admin_tag_add' as add_url %}<a class="button right" href="{{ add_url }}" hx-get="{{ add_url }}" hx-target="#drawer">{% translate "New tag" %}</a>{% endif %}
-</form>
-<p class="muted small">{% translate "Only labels to find the rules, no effect on the Macs." %}</p>
-<table class="table">
+{% if perms.santa.add_tag %}{% url 'console:admin_tag_add' as add_url %}{% endif %}{% translate "New tag" as add_label %}
+{% translate "Only labels to find the rules, no effect on the Macs." as help %}
+{% include "console/administration/_tabs.html" with help=help action_url=add_url action_label=add_label %}
+{% include "console/widgets/_filter_bar.html" %}
+<table class="table" data-table="tags">
   <thead><tr>{% sort_th _("Tag") "name" %}<th>{% translate "Description" %}</th>{% sort_th _("Rules") "rules" "num" %}{% sort_th _("Package rules") "packages" "num" %}</tr></thead>
   <tbody>
   {% for tag in page %}

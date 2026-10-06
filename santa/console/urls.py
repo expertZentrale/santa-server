@@ -72,6 +72,7 @@ urlpatterns = [
     path("administration/users/", views_admin.users, name="admin_users"),
     path("administration/users/add/", views_admin.user_form, name="admin_user_add"),
     path("administration/users/<int:pk>/", views_admin.user_form, name="admin_user"),
+    path("administration/users/<int:pk>/delete/", views_admin.user_delete, name="admin_user_delete"),
     path("administration/roles/", views_admin.roles, name="admin_roles"),
     path("administration/roles/add/", views_admin.role_form, name="admin_role_add"),
     path("administration/roles/<int:pk>/", views_admin.role_form, name="admin_role"),

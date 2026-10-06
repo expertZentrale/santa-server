@@ -48,12 +48,23 @@ def mobileconfig_response(content, filename):
 @staff_required
 def groups(request):
     require_perms(request, "view_group")
+    if remembered := remember_filters(request, "groups"):
+        return remembered
     queryset = Group.objects.annotate(machine_count=Count("machines", distinct=True),
                                       rule_count=Count("rules", distinct=True),
                                       last_sync=Max("machines__last_postflight_at"))
+    if modes := chosen(request.GET, "mode", ClientMode.values):
+        queryset = queryset.filter(client_mode__in=modes)
+    q = request.GET.get("q", "").strip()
+    if q:
+        queryset = queryset.filter(Q(name__icontains=q) | Q(description__icontains=q))
     queryset, sort = sort_by(request, queryset, {"name": "name", "macs": "machine_count", "rules": "rule_count",
                                                  "sync": "last_sync"}, "name")
-    return render(request, "console/groups/list.html", {"groups": queryset, "sort": sort})
+    return render(request, "console/groups/list.html", {
+        "page": paginate(request, queryset), "sort": sort, "params": request.GET,
+        **filter_bar(request, "groups", [Facet("mode", gettext("Mode"), choices=ClientMode.choices)],
+                     hidden=("sort",), placeholder=gettext("Name, description…")),
+    })
 
 
 @staff_required

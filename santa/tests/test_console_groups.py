@@ -21,6 +21,18 @@ class ConsoleGroupsTestCase(ConsoleBase):
         response = self.client.get(reverse("console:group", args=(self.dev.pk,)))
         self.assertContains(response, self.dev.sync_base_url)
 
+    def test_search_and_filter_groups(self):
+        self.sales.client_mode = "LOCKDOWN"
+        self.sales.description = "Field team"
+        self.sales.save()
+        response = self.client.get(reverse("console:groups"), {"q": "field"})
+        self.assertEqual([group.name for group in response.context["page"]], ["Sales"])
+        response = self.client.get(reverse("console:groups"), {"q": "", "mode": "MONITOR"})
+        self.assertEqual([group.name for group in response.context["page"]], ["Development"])
+        # the last filter is kept
+        self.assertRedirects(self.client.get(reverse("console:groups")),
+                             reverse("console:groups") + "?q=&mode=MONITOR", fetch_redirect_response=False)
+
     def test_create_and_change_group(self):
         data = {"name": "Design", "client_mode": "LOCKDOWN", "batch_size": 100, "full_sync_interval": 600,
                 "allowed_path_regex": "^/opt/tools/\n^/Applications/Figma\\.app/", "removable_media_action": "ALLOW",

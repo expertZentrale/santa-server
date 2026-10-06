@@ -3,8 +3,10 @@
 Only for the admin and the request form, the release sync does not use it.
 """
 import hashlib
+import json
 import logging
 import re
+import time
 from dataclasses import asdict, dataclass
 
 import requests
@@ -19,13 +21,21 @@ logger = logging.getLogger(__name__)
 
 CACHE_TIMEOUT = 3600
 # part of the cache keys: bump it when the queries or the results change
-CACHE_VERSION = 2
+CACHE_VERSION = 4
 MAX_RESULTS = 10
 SEARCH_TIMEOUT = 10
+# Homebrew has no search API: the whole list of formulae (~30 MB) or casks (~20 MB) is loaded once a day
+HOMEBREW_API = "https://formulae.brew.sh/api"
+HOMEBREW_INDEX_TIMEOUT = 86400
+# the older list is kept for the searches while one worker loads the new one, or when formulae.brew.sh is down
+HOMEBREW_INDEX_KEEP = 7 * 86400
+HOMEBREW_INDEX_LOCK_TIMEOUT = 120
+HOMEBREW_INDEX_MAX_BYTES = 100 * 1024 * 1024
 GITHUB_REPOSITORY_RE = re.compile(r"github\.com[/:]([^/]+)/")
 
 Kind = ReleaseSource.Kind
-SEARCHABLE_KINDS = (Kind.GITHUB_RELEASE, Kind.NPM_PACKAGE, Kind.VSCODE_EXTENSION, Kind.JETBRAINS_PLUGIN)
+SEARCHABLE_KINDS = (Kind.GITHUB_RELEASE, Kind.HOMEBREW_FORMULA, Kind.HOMEBREW_CASK, Kind.NPM_PACKAGE,
+                    Kind.VSCODE_EXTENSION, Kind.JETBRAINS_PLUGIN)
 
 
 class CatalogError(Exception):
@@ -138,8 +148,88 @@ def _search_jetbrains(session, query):
     return [_jetbrains_suggestion(plugin) for plugin in response.json().get("plugins", [])]
 
 
+def _homebrew_entry(kind, data):
+    """identifier, name, other names (aliases, old names), description, homepage"""
+    if kind == Kind.HOMEBREW_CASK:
+        names = data.get("name") or [data["token"]]
+        return [data["token"], names[0], [*names[1:], *(data.get("old_tokens") or [])],
+                data.get("desc") or "", data.get("homepage") or ""]
+    return [data["name"], data["name"], [*(data.get("aliases") or []), *(data.get("oldnames") or [])],
+            data.get("desc") or "", data.get("homepage") or ""]
+
+
+def _homebrew_suggestion(entry):
+    identifier, name, _others, description, homepage = entry
+    return Suggestion(identifier=identifier, name=name, description=description, icon_url=_github_avatar(homepage))
+
+
+def _load_homebrew_index(session, kind):
+    path = "cask" if kind == Kind.HOMEBREW_CASK else "formula"
+    content = bytearray()
+    with session.get(f"{HOMEBREW_API}/{path}.json", stream=True, timeout=SEARCH_TIMEOUT) as response:
+        response.raise_for_status()
+        for chunk in response.iter_content(1024 * 1024):
+            content += chunk
+            if len(content) > HOMEBREW_INDEX_MAX_BYTES:
+                raise ValueError(f"the {path} list is bigger than {HOMEBREW_INDEX_MAX_BYTES} bytes")
+    return [_homebrew_entry(kind, data) for data in json.loads(content) if not data.get("disabled")]
+
+
+def _homebrew_index(session, kind):
+    """The list of the formulae or casks. One worker at a time loads it, the others use the older one meanwhile."""
+    key = f"santa:catalog:v{CACHE_VERSION}:homebrew-index:{kind}"
+    stored = cache.get(key)
+    if stored and time.time() - stored["loaded_at"] < HOMEBREW_INDEX_TIMEOUT:
+        return stored["entries"]
+    lock_key = f"{key}:lock"
+    if not cache.add(lock_key, "1", timeout=HOMEBREW_INDEX_LOCK_TIMEOUT):
+        if stored:
+            return stored["entries"]
+        raise CatalogError(gettext("The Homebrew list is being loaded, try again in a moment."))
+    try:
+        entries = _load_homebrew_index(session, kind)
+    except (requests.RequestException, KeyError, ValueError) as e:
+        if not stored:
+            raise
+        logger.warning("Homebrew %s list: %s, the older one is used", kind, e)
+        return stored["entries"]
+    finally:
+        cache.delete(lock_key)
+    cache.set(key, {"loaded_at": time.time(), "entries": entries}, HOMEBREW_INDEX_KEEP)
+    return entries
+
+
+def _homebrew_rank(entry, query):
+    identifier, name, others, description, _homepage = entry
+    names = [identifier.lower(), name.lower(), *(other.lower() for other in others)]
+    if query in names:
+        return 0
+    if any(n.startswith(query) for n in names):
+        return 1
+    if any(query in n for n in names):
+        return 2
+    if query in description.lower():
+        return 3
+    return None
+
+
+def _search_homebrew(kind):
+    def search(session, query):
+        query = query.lower()
+        ranked = []
+        for entry in _homebrew_index(session, kind):
+            rank = _homebrew_rank(entry, query)
+            if rank is not None:
+                ranked.append((rank, len(entry[0]), entry[0], entry))
+        ranked.sort(key=lambda item: item[:3])
+        return [_homebrew_suggestion(entry) for *_key, entry in ranked[:MAX_RESULTS]]
+    return search
+
+
 SEARCHES = {
     Kind.GITHUB_RELEASE: _search_github,
+    Kind.HOMEBREW_FORMULA: _search_homebrew(Kind.HOMEBREW_FORMULA),
+    Kind.HOMEBREW_CASK: _search_homebrew(Kind.HOMEBREW_CASK),
     Kind.NPM_PACKAGE: _search_npm,
     Kind.VSCODE_EXTENSION: _search_vscode,
     Kind.JETBRAINS_PLUGIN: _search_jetbrains,
@@ -181,6 +271,11 @@ def _lookup(session, kind, identifier):
         data = response.json()
         return Suggestion(identifier=data["full_name"], name=data["name"], description=data.get("description") or "",
                           icon_url=(data.get("owner") or {}).get("avatar_url") or "")
+    if kind in (Kind.HOMEBREW_FORMULA, Kind.HOMEBREW_CASK):
+        path = "cask" if kind == Kind.HOMEBREW_CASK else "formula"
+        response = session.get(f"{HOMEBREW_API}/{path}/{identifier}.json", timeout=SEARCH_TIMEOUT)
+        response.raise_for_status()
+        return _homebrew_suggestion(_homebrew_entry(kind, response.json()))
     if kind == Kind.NPM_PACKAGE:
         response = session.get(f"https://registry.npmjs.org/{identifier.replace('/', '%2F')}/latest",
                                timeout=SEARCH_TIMEOUT)

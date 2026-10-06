@@ -27,5 +27,9 @@
   </fieldset>
   <div class="actions"><button class="button primary">{% if edited_user %}{% translate "Save" %}{% else %}{% translate "Create account" %}{% endif %}</button>
     {% if in_drawer %}<button type="button" class="button" data-drawer-close>{% translate "Cancel" %}</button>{% else %}<a class="button" href="{% url 'console:admin_users' %}">{% translate "Cancel" %}</a>{% endif %}
-    {% if edited_user %}{% url 'console:history' 'user' edited_user.pk as history_url %}<a class="button right" href="{{ history_url }}" hx-get="{{ history_url }}" hx-target="#drawer">{% translate "History" %}</a>{% endif %}</div>
+    {% if edited_user %}{% url 'console:history' 'user' edited_user.pk as history_url %}<a class="button right" href="{{ history_url }}" hx-get="{{ history_url }}" hx-target="#drawer">{% translate "History" %}</a>{% endif %}
+    {% if can_delete %}<button class="button danger" form="delete-form">{% translate "Delete" %}</button>{% endif %}</div>
 </form>
+{% if can_delete %}
+<form id="delete-form" method="post" action="{% url 'console:admin_user_delete' edited_user.pk %}" data-confirm="{% if from_sign_in %}{% blocktranslate with name=edited_user.username %}Delete the user {{ name }}? The account is created again at the next sign-in.{% endblocktranslate %}{% else %}{% blocktranslate with name=edited_user.username %}Delete the local account {{ name }}?{% endblocktranslate %}{% endif %}">{% csrf_token %}</form>
+{% endif %}
