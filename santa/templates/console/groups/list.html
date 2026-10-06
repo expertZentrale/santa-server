@@ -10,10 +10,11 @@
     {% if perms.santa.add_group %}{% url 'console:group_add' as add_url %}<a class="button primary" href="{{ add_url }}" hx-get="{{ add_url }}" hx-target="#drawer">{% translate "New group" %}</a>{% endif %}
   </div>
 </div>
-<table class="table">
+{% include "console/widgets/_filter_bar.html" %}
+<table class="table" data-table="groups">
   <thead><tr>{% sort_th _("Group") "name" %}<th>{% translate "Mode" %}</th>{% sort_th _("Macs") "macs" "num" %}{% sort_th _("Rules") "rules" "num" %}{% sort_th _("Last sync") "sync" %}<th></th></tr></thead>
   <tbody>
-  {% for group in groups %}
+  {% for group in page %}
     <tr>
       <td>{% url 'console:group' group.pk as group_url %}<a class="strong" href="{{ group_url }}" hx-get="{{ group_url }}" hx-target="#drawer">{{ group.name }}</a>
         {% if group.description %}<small class="muted">{{ group.description|truncatechars:90 }}</small>{% endif %}</td>
@@ -24,8 +25,9 @@
       <td>{% if perms.santa.change_group %}<a class="button small" href="{% url 'console:group_profile' group.pk %}">{% translate "Profile" %}</a>{% endif %}</td>
     </tr>
   {% empty %}
-    <tr class="empty"><td colspan="6">{% translate "No groups yet." %}</td></tr>
+    <tr class="empty"><td colspan="6">{% if bar.is_default %}{% translate "No groups yet." %}{% else %}{% translate "No groups for these filters." %}{% endif %}</td></tr>
   {% endfor %}
   </tbody>
 </table>
+{% include "console/_pagination.html" %}
 {% endblock %}

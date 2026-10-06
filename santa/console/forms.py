@@ -271,8 +271,13 @@ class RuleBulkForm(forms.Form):
         return cleaned_data
 
 
+class FileDropInput(forms.FileInput):
+    """A file input as a drop zone: the input covers the zone, so a file can be dropped on it (console/upload.js)"""
+    template_name = "console/widgets/file_drop.html"
+
+
 class UploadBinaryForm(TagsMixin):
-    file = forms.FileField(label=_("File"),
+    file = forms.FileField(label=_("File"), widget=FileDropInput,
                            help_text=_("Mach-O binary, or a zip / tar archive (e.g. a GitHub release asset). "
                                        "The file is only hashed, it is not stored."))
     binary_pattern = forms.CharField(required=False, max_length=200, label=_("Binary pattern"),
@@ -627,7 +632,7 @@ class ApproveOtherForm(TagsMixin):
     identifier = forms.CharField(required=False, max_length=256, label=_("Identifier"),
                                  widget=forms.TextInput(attrs={"class": "mono", "autocomplete": "off"}),
                                  help_text=_("Or upload the app below: the server reads the identifier from it."))
-    file = forms.FileField(required=False, label=_("File"),
+    file = forms.FileField(required=False, label=_("File"), widget=FileDropInput,
                            help_text=_("Mach-O binary, or a zip / tar archive. Every executable in it gets a rule. "
                                        "The file is only hashed, it is not stored."))
     binary_pattern = forms.CharField(required=False, max_length=200, label=_("Binary pattern"),
@@ -827,7 +832,7 @@ class GroupForm(forms.ModelForm):
                 required=False, label=_("Upload an image"),
                 help_text=format_lazy(_("PNG or JPEG, at most {size} KB. It goes into the profile."),
                                       size=BRANDING_LOGO_MAX_BYTES // 1024),
-                widget=forms.ClearableFileInput(attrs={"accept": ",".join(BRANDING_LOGO_TYPES)}))
+                widget=FileDropInput(attrs={"accept": ",".join(BRANDING_LOGO_TYPES)}))
             self.fields[f"{name}_url"] = forms.CharField(
                 required=False, label=_("Or an image on the Macs"),
                 initial=value if value.startswith("file://") else "",
@@ -1064,8 +1069,9 @@ FileAccessProcessFormSet = forms.inlineformset_factory(
 
 
 class ConfigImportForm(forms.Form):
-    file = forms.FileField(label=_("File"), help_text=_("JSON file of “Export configuration”, e.g. from the test "
-                                                        "server, or of the export_config command."))
+    file = forms.FileField(label=_("File"), widget=FileDropInput(attrs={"accept": ".json,application/json"}),
+                           help_text=_("JSON file of “Export configuration”, e.g. from the test "
+                                       "server, or of the export_config command."))
     delete_missing = forms.BooleanField(
         required=False, label=_("Delete what is not in the file"),
         help_text=_("Deletes the manual rules, package rules and file access rules that are not in the file."))

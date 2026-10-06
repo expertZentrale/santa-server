@@ -3,9 +3,11 @@ import json
 import logging
 
 from django.contrib import messages
+from django.contrib.admin.models import LogEntry
 from django.contrib.auth.models import Group as AuthGroup
 from django.contrib.auth.models import User
 from django.core.exceptions import PermissionDenied
+from django.db import transaction
 from django.db.models import Count, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -24,7 +26,7 @@ from ..auth import (
 )
 from ..config_io import EXPORT_PERMS, IMPORT_PERMS, ConfigImportError, export_config, import_config
 from ..models import SignInGroup, Tag
-from .filters import Facet, chosen, filter_bar, remember_filters
+from .filters import Facet, any_of, chosen, filter_bar, remember_filters
 from .forms import ConfigImportForm, RoleForm, SignInGroupForm, TagForm, UserForm
 from .utils import (
     changed_message,
@@ -174,7 +176,30 @@ def user_form(request, pk=None):
         "form": form, "edited_user": user, "sign_in_roles": sign_in_roles,
         "sign_in_groups": user.sign_in_groups.all() if user else [],
         "from_sign_in": bool(user and is_sign_in_user(user)),
+        "can_delete": bool(user and user != request.user and request.user.has_perm("auth.delete_user")),
     })
+
+
+@staff_required
+@require_POST
+def user_delete(request, pk):
+    require_perms(request, "auth.view_user", "auth.delete_user")
+    user = get_object_or_404(User, pk=pk)
+    if user.is_superuser and not request.user.is_superuser:
+        raise PermissionDenied
+    if user == request.user:
+        messages.error(request, gettext("You can't delete your own account."))
+        return redirect("console:admin_user", pk=user.pk)
+    # keep the record: the access requests protect their requester, and the history would go with the user
+    if user.access_requests.exists() or LogEntry.objects.filter(user=user).exists():
+        messages.error(request, gettext("%(user)s has access requests or changes in the history and can't be "
+                                        "deleted. Deactivate the account instead.") % {"user": user})
+        return redirect("console:admin_user", pk=user.pk)
+    with transaction.atomic():
+        log_deletion(request.user, user)
+        user.delete()
+    messages.success(request, gettext("User %(user)s deleted.") % {"user": user})
+    return redirect("console:admin_users")
 
 
 # Roles
@@ -307,15 +332,27 @@ def sign_in_group_delete(request, pk):
 @staff_required
 def tags(request):
     require_perms(request, "view_tag")
+    if remembered := remember_filters(request, "tags"):
+        return remembered
     queryset = Tag.objects.annotate(rule_count=Count("rules", distinct=True),
                                     source_count=Count("release_sources", distinct=True))
     q = request.GET.get("q", "").strip()
     if q:
         queryset = queryset.filter(Q(name__icontains=q) | Q(description__icontains=q))
+    uses = {"rules": Q(rule_count__gt=0), "packages": Q(source_count__gt=0),
+            "unused": Q(rule_count=0, source_count=0)}
+    used = any_of([uses[value] for value in chosen(request.GET, "used", uses)])
+    if used is not None:
+        queryset = queryset.filter(used)
     queryset, sort = sort_by(request, queryset, {"name": "name", "rules": "rule_count",
                                                  "packages": "source_count"}, "name")
     return render_section(request, "console/administration/tags.html", "tags", {
         "page": paginate(request, queryset), "sort": sort, "params": request.GET,
+        **filter_bar(request, "tags", [
+            Facet("used", gettext("Used by"), choices=[("rules", gettext("Execution rules")),
+                                                       ("packages", gettext("Package rules")),
+                                                       ("unused", gettext("Nothing"))]),
+        ], hidden=("sort",), placeholder=gettext("Name, description…")),
     })
 
 

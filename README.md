@@ -340,9 +340,10 @@ Löschen unter *Administration* → *Tags*.
 Paketregel) und Zustand. Regeln, die Paketregeln angelegt haben, können nur aktiviert oder deaktiviert werden; ändern
 Sie stattdessen ihre Paketregel.
 
-**Paketregeln**: *Paketregeln* → *Neue Paketregel*. Für GitHub, npm, VS Code und JetBrains tippen Sie unter *Pakete*,
-um den Katalog zu durchsuchen; `owner/teil` durchsucht die Repositories eines GitHub-Owners. Homebrew und URLs werden
-eingetippt und mit Enter hinzugefügt.
+**Paketregeln**: *Paketregeln* → *Neue Paketregel*. Für GitHub, Homebrew, npm, VS Code und JetBrains tippen Sie unter
+*Pakete*, um den Katalog zu durchsuchen; `owner/teil` durchsucht die Repositories eines GitHub-Owners. Homebrew hat keine
+Such-API: der Server lädt die Liste der Formeln bzw. Casks einmal am Tag. URLs werden eingetippt und mit Enter
+hinzugefügt.
 
 | Katalog | Kennung | Asset-Muster | Binary-Muster |
 |---|---|---|---|
@@ -795,9 +796,9 @@ executable inside, or those matching the glob pattern). The file is not stored.
 **Execution rules**: tabs per rule type, filters for policy, scope, tag, origin (manual or package rule) and state.
 Rules created by package rules can only be enabled or disabled; change their package rule instead.
 
-**Package rules**: *Package rules* → *New package rule*. For GitHub, npm, VS Code and JetBrains, type in *Packages* to
-search the catalog; `owner/part` searches the repositories of a GitHub owner. Homebrew and URLs are typed and added
-with Enter.
+**Package rules**: *Package rules* → *New package rule*. For GitHub, Homebrew, npm, VS Code and JetBrains, type in
+*Packages* to search the catalog; `owner/part` searches the repositories of a GitHub owner. Homebrew has no search API:
+the server loads the list of formulae or casks once a day. URLs are typed and added with Enter.
 
 | Catalog | Identifier | Asset pattern | Binary pattern |
 |---|---|---|---|

@@ -1,7 +1,9 @@
-{% load i18n %}<div class="page-head">
+{% load i18n %}{% comment %}The head of the administration pages. action_url / action_label: the "New …" button at the
+right, opens in the drawer.{% endcomment %}<div class="page-head">
   <h1>{% translate "Administration" %}</h1>
   {% if help %}{% include "console/_help.html" with text=help %}{% endif %}
   <div class="tabs" role="tablist">
     {% for key, label, url in sections %}<a href="{% url url %}" role="tab" {% if key == section %}class="active" aria-selected="true"{% endif %}>{{ label }}</a>{% endfor %}
   </div>
+  {% if action_url %}<div class="actions"><a class="button primary" href="{{ action_url }}" hx-get="{{ action_url }}" hx-target="#drawer">{{ action_label }}</a></div>{% endif %}
 </div>

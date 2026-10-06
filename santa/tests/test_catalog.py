@@ -1,4 +1,5 @@
-from unittest.mock import MagicMock
+import json
+from unittest.mock import MagicMock, patch
 
 from django.test import TestCase, override_settings
 
@@ -28,6 +29,23 @@ VSCODE = {"results": [{"extensions": [{
     "versions": [{"files": [{"assetType": "Microsoft.VisualStudio.Services.Icons.Default",
                              "source": "https://cdn.example/icon.png"}]}],
 }]}]}
+
+
+def streamed(data):
+    mock = response(None)
+    mock.__enter__.return_value = mock
+    mock.iter_content.return_value = [json.dumps(data).encode()]
+    return mock
+
+
+FORMULAE = [
+    {"name": "colima", "aliases": [], "desc": "Container runtimes on macOS", "homepage": "https://github.com/abiosoft/colima"},
+    {"name": "lima", "aliases": [], "desc": "Linux virtual machines, used by colima", "homepage": "https://lima-vm.io"},
+    {"name": "colima-extra", "aliases": [], "desc": "", "homepage": ""},
+    {"name": "podman", "aliases": ["kolima"], "desc": "", "homepage": ""},
+    {"name": "colima-old", "desc": "", "homepage": "", "disabled": True},
+]
+CASKS = [{"token": "firefox", "name": ["Mozilla Firefox"], "desc": "Web browser", "homepage": "https://www.mozilla.org"}]
 
 
 @override_settings(CACHES=LOCMEM)
@@ -73,6 +91,35 @@ class CatalogTestCase(TestCase):
         self.assertEqual(found[0].icon_url, "https://github.com/evanw.png?size=64")
         self.assertEqual(found[1].icon_url, "")
 
+    def test_homebrew_formula_ranks_names_before_descriptions(self):
+        s = session(get=streamed(FORMULAE))
+        found = catalog.search(Kind.HOMEBREW_FORMULA, "Colima", s)
+        self.assertEqual([f.identifier for f in found], ["colima", "colima-extra", "lima"])
+        self.assertEqual(found[0].icon_url, "https://github.com/abiosoft.png?size=64")
+        self.assertEqual(s.get.call_args.args[0], "https://formulae.brew.sh/api/formula.json")
+        # aliases are names too
+        self.assertEqual([f.identifier for f in catalog.search(Kind.HOMEBREW_FORMULA, "kolima", s)], ["podman"])
+        # the list is loaded once, not for every search
+        self.assertEqual(s.get.call_count, 1)
+
+    def test_homebrew_cask(self):
+        s = session(get=streamed(CASKS))
+        [found] = catalog.search(Kind.HOMEBREW_CASK, "firef", s)
+        self.assertEqual((found.identifier, found.name, found.description),
+                         ("firefox", "Mozilla Firefox", "Web browser"))
+        self.assertEqual(s.get.call_args.args[0], "https://formulae.brew.sh/api/cask.json")
+
+    def test_homebrew_list_size_is_limited(self):
+        with self.assertRaises(catalog.CatalogError):
+            with patch.object(catalog, "HOMEBREW_INDEX_MAX_BYTES", 10):
+                catalog.search(Kind.HOMEBREW_FORMULA, "colima", session(get=streamed(FORMULAE)))
+
+    def test_homebrew_lookup(self):
+        s = session(get=response({"token": "firefox", "name": ["Mozilla Firefox"], "homepage": "https://www.mozilla.org"}))
+        found = catalog.lookup(Kind.HOMEBREW_CASK, "firefox", s)
+        self.assertEqual(found.name, "Mozilla Firefox")
+        self.assertEqual(s.get.call_args.args[0], "https://formulae.brew.sh/api/cask/firefox.json")
+
     def test_jetbrains(self):
         s = session(get=response({"plugins": [
             {"id": 10080, "xmlId": "izhangzhihao.rainbow.brackets", "name": "Rainbow Brackets",
@@ -85,7 +132,7 @@ class CatalogTestCase(TestCase):
 
     def test_not_searchable_and_short_queries(self):
         s = session()
-        self.assertEqual(catalog.search(Kind.HOMEBREW_FORMULA, "colima", s), [])
+        self.assertEqual(catalog.search(Kind.URL, "https://example.com", s), [])
         self.assertEqual(catalog.search(Kind.NPM_PACKAGE, "e", s), [])
         s.get.assert_not_called()
 

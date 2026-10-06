@@ -7,7 +7,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 
 from santa.auth import ADMIN_GROUP_NAME, REQUESTERS_GROUP_NAME
-from santa.models import Group, Rule, RuleType, SignInGroup, Tag
+from santa.models import AccessRequest, Group, Rule, RuleType, SignInGroup, Tag
 
 from .test_console import SHA_A, ConsoleBase
 
@@ -77,6 +77,36 @@ class AdministrationTestCase(ConsoleBase):
         self.admin.refresh_from_db()
         self.assertTrue(self.admin.is_active)
 
+    def test_delete_user(self):
+        local = User.objects.create_user("break-glass", password="x")
+        response = self.client.post(reverse("console:admin_user_delete", args=(local.pk,)))
+        self.assertRedirects(response, reverse("console:admin_users"))
+        self.assertFalse(User.objects.filter(pk=local.pk).exists())
+        self.assertTrue(LogEntry.objects.filter(object_id=str(local.pk), action_flag=DELETION).exists())
+        self.assertEqual(self.client.get(reverse("console:admin_user_delete", args=(self.user.pk,))).status_code, 405)
+
+    def test_users_with_a_record_are_not_deleted(self):
+        requester = User.objects.create_user("jane@example.com")
+        AccessRequest.objects.create(requester=requester, kind="EVENT", file_sha256=SHA_A, title="t",
+                                     justification="x")
+        editor = User.objects.create_user("editor", is_staff=True)
+        LogEntry.objects.create(user=editor, action_flag=CHANGE, object_repr="x")
+        for user in (requester, editor, self.admin):
+            response = self.client.post(reverse("console:admin_user_delete", args=(user.pk,)), follow=True)
+            self.assertTrue(User.objects.filter(pk=user.pk).exists())
+            self.assertNotContains(response, f"User {user} deleted.")
+
+    def test_delete_user_needs_the_permission(self):
+        manager = User.objects.create_user("manager", is_staff=True)
+        manager.user_permissions.set(Permission.objects.filter(codename__in=["view_user", "change_user"]))
+        self.client.force_login(manager)
+        self.assertNotContains(self.client.get(reverse("console:admin_user", args=(self.user.pk,))), "delete-form")
+        self.assertEqual(self.client.post(reverse("console:admin_user_delete", args=(self.user.pk,))).status_code, 403)
+        manager.user_permissions.add(Permission.objects.get(codename="delete_user"))
+        response = self.client.post(reverse("console:admin_user_delete", args=(self.admin.pk,)))
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(User.objects.filter(pk=self.admin.pk).exists())
+
     def test_role_permissions(self):
         view_rule = Permission.objects.get(codename="view_rule")
         request_package = Permission.objects.get(codename="request_package")
@@ -125,11 +155,16 @@ class AdministrationTestCase(ConsoleBase):
         rule.tags.add(tag)
         response = self.client.get(reverse("console:admin_tags"))
         self.assertEqual(response.context["page"][0].rule_count, 1)
+        Tag.objects.create(name="internal")
+        response = self.client.get(reverse("console:admin_tags"), {"q": "bre"})
+        self.assertEqual([t.name for t in response.context["page"]], ["brew"])
+        response = self.client.get(reverse("console:admin_tags"), {"q": "", "used": "unused"})
+        self.assertEqual([t.name for t in response.context["page"]], ["internal"])
         self.client.post(reverse("console:admin_tag", args=(tag.pk,)), {"name": "homebrew", "description": ""})
         tag.refresh_from_db()
         self.assertEqual(tag.name, "homebrew")
         self.client.post(reverse("console:admin_tag_delete", args=(tag.pk,)))
-        self.assertFalse(Tag.objects.exists())
+        self.assertFalse(Tag.objects.filter(pk=tag.pk).exists())
         self.assertTrue(Rule.objects.filter(pk=rule.pk).exists())
 
     def test_export_and_import(self):
