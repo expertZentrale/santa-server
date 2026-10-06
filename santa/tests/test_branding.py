@@ -26,6 +26,9 @@ class BrandingTestCase(ConsoleBase):
         self.client.logout()
         self.assertContains(self.client.get(reverse("login")), icon, html=True)
         self.client.force_login(self.admin)
-        self.assertContains(self.client.get(reverse("admin:index")), icon, html=True)
+        response = self.client.get(reverse("admin:index"))
+        self.assertContains(response, icon, html=True)
+        self.assertContains(response, '<div id="site-name"><a href="/admin/">Mac Allowlist</a></div>', html=True)
+        self.assertContains(response, "| Mac Allowlist</title>")
         self.assertRedirects(self.client.get("/favicon.ico"), "https://intranet.example/icon.png",
                              fetch_redirect_response=False)

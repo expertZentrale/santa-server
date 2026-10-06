@@ -1,11 +1,14 @@
 from django.conf import settings
 from django.contrib import admin
 from django.urls import include, path
+from django.utils.functional import lazy
 
 from santa.console import views_auth, views_profile
 
-admin.site.site_header = settings.SANTA_SERVER_NAME
-admin.site.site_title = settings.SANTA_SERVER_NAME
+# read when a page is rendered, not when the URLs are loaded
+server_name = lazy(lambda: settings.SANTA_SERVER_NAME, str)()
+admin.site.site_header = server_name
+admin.site.site_title = server_name
 admin.site.index_title = "Binary authorization for the Macs"
 
 urlpatterns = [
