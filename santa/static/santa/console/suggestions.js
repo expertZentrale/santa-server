@@ -4,8 +4,25 @@
 
   const { debounce, moveSelection } = SantaConsole;
 
+  // the latest request of each box: an older answer that arrives later is dropped
+  const latest = new WeakMap();
+
+  function nextRequest(box) {
+    const request = (latest.get(box) || 0) + 1;
+    latest.set(box, request);
+    return request;
+  }
+
+  // closed without a search: a request still under way doesn't open it again
+  function closeSuggestions(box) {
+    nextRequest(box);
+    box.replaceChildren();
+    box.classList.remove("open");
+  }
+
   // params: the search text as q, e.g. { kind, q }; setOpen shows or hides the box
   function fetchSuggestions(url, params, box, setOpen = (open) => box.classList.toggle("open", open)) {
+    const request = nextRequest(box);
     if (params.q.trim().length < 2) {
       box.replaceChildren();
       setOpen(false);
@@ -14,11 +31,14 @@
     fetch(`${url}?${new URLSearchParams(params)}`, { headers: { "HX-Request": "true" }, credentials: "same-origin" })
       .then((response) => (response.ok ? response.text() : ""))
       .then((html) => {
+        if (latest.get(box) !== request) return;
         // server-rendered, escaped template
         box.innerHTML = html;
         setOpen(html.trim() !== "");
       })
-      .catch(() => setOpen(false));
+      .catch(() => {
+        if (latest.get(box) === request) setOpen(false);
+      });
   }
 
   function makeIcon(iconUrl) {
@@ -77,8 +97,7 @@
     const lookup = debounce(() => {
       const kind = kindSelect ? kindSelect.value : "";
       if (!searchable.includes(kind)) {
-        box.replaceChildren();
-        box.classList.remove("open");
+        closeSuggestions(box);
         return;
       }
       fetchSuggestions(form.dataset.catalogUrl, { kind, q: search.value }, box);
@@ -181,7 +200,7 @@
 
     const lookup = debounce(() => {
       if (searchable.includes(kind.value)) fetchSuggestions(form.dataset.catalogUrl, { kind: kind.value, q: search.value }, box);
-      else box.classList.remove("open");
+      else closeSuggestions(box);
     }, 300);
     search.addEventListener("input", lookup);
     kind.addEventListener("change", lookup);
@@ -230,8 +249,12 @@
   function setupRuleSearch(field) {
     if (field.dataset.ruleSearchReady) return;
     field.dataset.ruleSearchReady = "1";
-    const input = field.querySelector("input[role=combobox]");
+    const input = field.querySelector("input");
     const box = field.querySelector("[data-suggestions]");
+    input.setAttribute("role", "combobox");
+    input.setAttribute("aria-autocomplete", "list");
+    input.setAttribute("aria-controls", box.id);
+    input.setAttribute("aria-expanded", "false");
     const hidden = field.closest("form")?.querySelector('input[name="rule"]');
     const setOpen = (open) => {
       box.classList.toggle("open", open);

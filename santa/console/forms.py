@@ -662,12 +662,10 @@ class ApproveOtherForm(TagsMixin):
                                                     widget=forms.CheckboxSelectMultiple)
 
     # an existing rule
-    rule_identifier = forms.CharField(
-        required=False, label=_("Rule"), max_length=256,
-        help_text=_("Search by identifier, description or tag, and pick the rule."),
-        widget=forms.TextInput(attrs={"class": "mono", "autocomplete": "off", "role": "combobox",
-                                      "aria-autocomplete": "list", "aria-controls": "rule-suggestions",
-                                      "aria-expanded": "false"}))
+    # with the permission to view the rules, a search (_approve_other.html, suggestions.js)
+    rule_identifier = forms.CharField(required=False, label=_("Rule"), max_length=256,
+                                      help_text=_("Identifier of the rule you created for it"),
+                                      widget=forms.TextInput(attrs={"class": "mono", "autocomplete": "off"}))
     # the rule picked from the suggestions: one identifier can have several rules (scopes)
     rule = forms.ModelChoiceField(queryset=Rule.objects.all(), required=False, widget=forms.HiddenInput)
 

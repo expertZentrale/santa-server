@@ -458,6 +458,28 @@ class AdminRequestTestCase(ConsoleBase):
         self.client.force_login(viewer)
         self.assertEqual(self.client.get(url, {"q": "safari"}).status_code, 403)
 
+    def test_rule_suggestions_rank_before_the_limit(self):
+        # many rules match by their description and sort before the one with the identifier itself
+        Rule.objects.bulk_create(Rule(rule_type=RuleType.BINARY, identifier=f"{index:064x}", is_global=True,
+                                      description="Chrome helper") for index in range(60))
+        Rule.objects.create(rule_type=RuleType.SIGNINGID, identifier="EQHXZ8M8AV:com.google.chrome", is_global=True)
+        exact = Rule.objects.create(rule_type=RuleType.TEAMID, identifier="chrome", is_global=True)
+        rules = self.client.get(reverse("console:rule_suggestions"), {"q": "Chrome"}).context["rules"]
+        self.assertEqual(rules[0], exact)
+        self.assertEqual(len(rules), 10)
+
+    def test_approver_without_view_rule_types_the_identifier(self):
+        approver = User.objects.create_user("approver", is_staff=True)
+        approver.user_permissions.set(Permission.objects.filter(codename__in=["view_accessrequest",
+                                                                              "change_accessrequest"]))
+        self.client.force_login(approver)
+        response = self.client.get(reverse("console:request", args=(self.other_request().pk,)))
+        self.assertNotContains(response, "data-rule-search")
+        self.assertContains(response, "Identifier of the rule you created for it")
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse("console:request", args=(self.other_request().pk,)))
+        self.assertContains(response, "data-rule-search")
+
     def test_approve_other_needs_the_rule_permissions(self):
         approver = User.objects.create_user("approver", is_staff=True)
         approver.user_permissions.set(Permission.objects.filter(codename__in=["view_accessrequest",
