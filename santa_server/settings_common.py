@@ -119,6 +119,8 @@ STORAGES = {
 }
 
 SESSION_ENGINE = "django.contrib.sessions.backends.cache"
+# Prometheus metrics on /metrics (django-prometheus); settings.py switches them off with METRICS_ENABLED=false
+METRICS_ENABLED = True
 SESSION_CACHE_ALIAS = "default"
 
 # Uploaded binaries are only hashed, never stored. Big ones are spooled to a temp file.

@@ -43,7 +43,8 @@ Read this file before changing anything. If a request conflicts with these rules
 - **Gunicorn serves everything, static files through WhiteNoise.** No nginx, no static bucket.
 - **Redis and SQL Server are external.** The containers in `.devcontainer/docker-compose.yml` are for development only.
   Redis is used for the cache (`django_prometheus` Redis backend), the sessions, and the lock of the scheduled jobs.
-- Health: `/health` (liveness, no DB), `/ready` (DB check). Metrics: `/metrics` (django-prometheus).
+- Health: `/health` (liveness, no DB), `/ready` (DB check). Metrics: `/metrics` (django-prometheus, served by the
+  middleware only; `METRICS_ENABLED=false` drops the app, its middleware and backends).
   All three answer before the ALLOWED_HOSTS check (`HealthCheckMiddleware`), for probes and scrapers that use the
   pod IP. Don't move them.
 
