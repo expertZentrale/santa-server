@@ -46,10 +46,16 @@ if env_bool("TRUST_X_FORWARDED_PROTO"):
     USE_X_FORWARDED_HOST = True
 SESSION_COOKIE_SECURE = CSRF_COOKIE_SECURE = env_bool("SECURE_COOKIES", not DEBUG)
 
+# Prometheus metrics on /metrics; off: nothing is collected, the plain backends are used
+METRICS_ENABLED = env_bool("METRICS_ENABLED", True)
+if not METRICS_ENABLED:
+    INSTALLED_APPS = [app for app in INSTALLED_APPS if app != "django_prometheus"]  # noqa: F405
+    MIDDLEWARE = [name for name in MIDDLEWARE if not name.startswith("django_prometheus.")]  # noqa: F405
+
 DATABASES = {
     "default": {
-        # mssql-django with the database metrics of django-prometheus (santa/db/base.py)
-        "ENGINE": "santa.db",
+        # mssql-django, with the metrics of django-prometheus (santa/db/base.py)
+        "ENGINE": "santa.db" if METRICS_ENABLED else "mssql",
         "HOST": env("DB_HOST", required=True),
         "PORT": env("DB_PORT", "1433"),
         "NAME": env("DB_NAME", "santa"),
@@ -67,7 +73,8 @@ DATABASES = {
 
 CACHES = {
     "default": {
-        "BACKEND": "django_prometheus.cache.backends.redis.RedisCache",
+        "BACKEND": "django_prometheus.cache.backends.redis.RedisCache" if METRICS_ENABLED
+                   else "django.core.cache.backends.redis.RedisCache",
         # redis://[user:password@]host:6379/db
         "LOCATION": env("REDIS_URL", required=True),
         "KEY_PREFIX": env("CACHE_KEY_PREFIX", "santa"),

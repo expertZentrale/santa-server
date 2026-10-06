@@ -50,6 +50,7 @@ Das Image (`santa_server/settings.py`) wird über Umgebungsvariablen konfigurier
 | `DB_EXTRA_PARAMS` | | ODBC-Verbindungsoptionen, z. B. `Encrypt=yes;TrustServerCertificate=no` |
 | `REDIS_URL` | ja | z. B. `redis://user:password@redis:6379/0` (Cache, Sessions, Sperre des geplanten Jobs) |
 | `CACHE_KEY_PREFIX` | | Standard `santa`, um eine Redis-Datenbank zu teilen |
+| `METRICS_ENABLED` | | Standard `true`: Prometheus-Metriken unter `/metrics`; `false` sammelt nichts, `/metrics` gibt 404 |
 | `SANTA_PUBLIC_BASE_URL` | ja | die URL, die die Macs verwenden, z. B. `https://santa.example.com`; Teil der Profile |
 | `ALLOWED_HOSTS` | | kommagetrennt, Standard der Host von `SANTA_PUBLIC_BASE_URL` |
 | `CSRF_TRUSTED_ORIGINS` | | kommagetrennt, Standard der Origin von `SANTA_PUBLIC_BASE_URL` |
@@ -98,7 +99,8 @@ Benutzer ohne Rechte; SQL Server und Redis laufen separat.
   - täglich: `python manage.py cleanup_events --days 90`
 - **Endpunkte**: `/health` (Liveness, ohne Datenbank), `/ready` (prüft die Datenbank), `/metrics` (Prometheus).
   `/metrics` enthält auch die Datenbank-Metriken (`django_db_*`: Abfragen, Dauer, Fehler, Verbindungen); dafür
-  nutzt der Server mit `santa.db` eine Hülle um das SQL-Server-Backend von mssql-django.
+  nutzt der Server mit `santa.db` eine Hülle um das SQL-Server-Backend von mssql-django. `METRICS_ENABLED=false`
+  schaltet die Metriken ganz ab.
   Sie antworten vor der Host-Prüfung, für Probes. `/sync/…` muss für die Macs über HTTPS erreichbar sein; die Konsole
   (`/console/`), das Anfrageformular (`/request/`), `/login/`, `/oidc/…` und `/admin/` können auf Ihr Netz
   beschränkt werden.
@@ -530,6 +532,7 @@ The image (`santa_server/settings.py`) is configured with environment variables:
 | `DB_EXTRA_PARAMS` | | ODBC connection options, e.g. `Encrypt=yes;TrustServerCertificate=no` |
 | `REDIS_URL` | yes | e.g. `redis://user:password@redis:6379/0` (cache, sessions, lock of the scheduled job) |
 | `CACHE_KEY_PREFIX` | | default `santa`, to share a Redis database |
+| `METRICS_ENABLED` | | default `true`: Prometheus metrics on `/metrics`; `false` collects nothing, `/metrics` gives 404 |
 | `SANTA_PUBLIC_BASE_URL` | yes | the URL the Macs use, e.g. `https://santa.example.com`; part of the profiles |
 | `ALLOWED_HOSTS` | | comma separated, default the host of `SANTA_PUBLIC_BASE_URL` |
 | `CSRF_TRUSTED_ORIGINS` | | comma separated, default the origin of `SANTA_PUBLIC_BASE_URL` |
@@ -578,7 +581,8 @@ separately.
   - daily: `python manage.py cleanup_events --days 90`
 - **Endpoints**: `/health` (liveness, no database), `/ready` (checks the database), `/metrics` (Prometheus).
   `/metrics` also has the database metrics (`django_db_*`: queries, duration, errors, connections); for them the
-  server uses `santa.db`, a wrapper around the SQL Server backend of mssql-django.
+  server uses `santa.db`, a wrapper around the SQL Server backend of mssql-django. `METRICS_ENABLED=false` switches
+  the metrics off entirely.
   They answer before the host check, for probes. `/sync/…` must be reachable by the Macs over HTTPS; the console
   (`/console/`), the request form (`/request/`), `/login/`, `/oidc/…` and `/admin/` can be limited to your network.
 - Put a TLS terminating proxy or ingress in front, and set `TRUST_X_FORWARDED_PROTO=1`.
