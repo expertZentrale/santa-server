@@ -10,6 +10,8 @@ Read this file before changing anything. If a request conflicts with these rules
 - **No organisation-specific code or texts.** The project is public: no internal hostnames, registries, secret stores
   or deployment tools, and no product names where a generic term fits ("MDM", "OpenID Connect provider").
   Examples for specific products (Intune, Jamf Pro, Entra ID, Keycloak) belong in the README.
+  The one exception: the built-in sign-in button `OIDC_PROVIDER_ICON=microsoft` (its logo and colors, as Microsoft's
+  branding guidelines describe them). Other providers get their logo by URL, not as built-in code.
 - Only copy code from projects with a compatible license (Apache-2.0, MIT, BSD), and say so in the commit.
 - Keep the project a **normal Django application** that a Django developer understands without studying it:
   - The day-to-day UI is the console (`santa/console/`, `/console/`): plain Django views, forms and templates,

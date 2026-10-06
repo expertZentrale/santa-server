@@ -90,6 +90,9 @@ OIDC_GROUPS_CLAIM = "groups"
 OIDC_USERNAME_CLAIMS = ["preferred_username", "upn", "email"]
 # name of the button on the login page
 OIDC_PROVIDER_NAME = "single sign-on"
+# logo on that button: "microsoft" (the logo and colors of "Sign in with Microsoft"), a URL or path of an image,
+# or empty (no logo)
+OIDC_PROVIDER_ICON = ""
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},

@@ -73,6 +73,7 @@ Das Image (`santa_server/settings.py`) wird über Umgebungsvariablen konfigurier
 | `OIDC_ADMIN_ROLE`, `OIDC_ROLES_CLAIM` | | Standard `Santa.Admin` im Claim `roles` (Pfad mit Punkten für verschachtelte Claims) |
 | `OIDC_GROUPS_CLAIM` | | Standard `groups` (Pfad mit Punkten): der Claim, der mit den [Anmeldegruppen](#anmeldegruppen-und-rollen) verglichen wird |
 | `OIDC_USERNAME_CLAIMS`, `OIDC_SCOPES`, `OIDC_PROVIDER_NAME` | | Standard `preferred_username,upn,email`, `openid email profile`, Text der Anmelde-Schaltfläche |
+| `OIDC_PROVIDER_ICON` | | Logo auf der Anmelde-Schaltfläche: `microsoft` (Logo und Farben von „Mit Microsoft anmelden“, mit `OIDC_PROVIDER_NAME=Microsoft`), URL oder Pfad eines Bildes, leer = ohne Logo |
 | `WAIT_FOR_URL` | | Entrypoint: vor dem Webserver warten, bis diese URL antwortet, z. B. ein Sidecar; andere Befehle (die geplanten Jobs) starten sofort |
 | `WAIT_FOR_URL_JOBS` | | Entrypoint: `1`, um auch vor anderen Befehlen zu warten, wenn die Jobs den Sidecar ebenfalls haben |
 | `WAIT_FOR_TIMEOUT` | | Entrypoint: nach so vielen Sekunden Warten mit Fehler beenden, damit die Plattform neu startet; Standard `0` = ohne Grenze |
@@ -574,6 +575,7 @@ The image (`santa_server/settings.py`) is configured with environment variables:
 | `OIDC_ADMIN_ROLE`, `OIDC_ROLES_CLAIM` | | default `Santa.Admin` in the claim `roles` (dotted path for nested claims) |
 | `OIDC_GROUPS_CLAIM` | | default `groups` (dotted path): the claim matched against the [sign-in groups](#sign-in-groups-and-roles) |
 | `OIDC_USERNAME_CLAIMS`, `OIDC_SCOPES`, `OIDC_PROVIDER_NAME` | | default `preferred_username,upn,email`, `openid email profile`, button text |
+| `OIDC_PROVIDER_ICON` | | logo on the sign-in button: `microsoft` (logo and colors of "Sign in with Microsoft", with `OIDC_PROVIDER_NAME=Microsoft`), URL or path of an image, empty = no logo |
 | `WAIT_FOR_URL` | | entrypoint: before the web server, wait until this URL answers, e.g. a sidecar; other commands (the scheduled jobs) start at once |
 | `WAIT_FOR_URL_JOBS` | | entrypoint: `1` to wait before other commands too, when the jobs have the sidecar as well |
 | `WAIT_FOR_TIMEOUT` | | entrypoint: exit with an error after waiting this many seconds, so the platform restarts; default `0` = no limit |
