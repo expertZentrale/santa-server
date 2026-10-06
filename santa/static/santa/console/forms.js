@@ -153,6 +153,26 @@
     rows.lastElementChild?.querySelector("input, select, textarea")?.focus();
   });
 
+  // × marks a form of the formset for deletion (its DELETE box, hidden), the rows keep their index.
+  // A new row disappears; a saved one folds up until the form is saved, with "Undo".
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-formset-remove], [data-formset-undo]");
+    if (!button) return;
+    const row = button.closest("fieldset");
+    const remove = button.matches("[data-formset-remove]");
+    row.querySelector("[data-formset-delete]").checked = remove;
+    if (!row.hasAttribute("data-saved")) {
+      row.hidden = true;
+      row.closest("[data-formset]")?.querySelector("[data-formset-add]")?.focus();
+      return;
+    }
+    row.querySelector("[data-formset-body]").hidden = remove;
+    row.querySelector("[data-formset-removed]").hidden = !remove;
+    const removeButton = row.querySelector("[data-formset-remove]");
+    removeButton.hidden = remove;
+    (remove ? row.querySelector("[data-formset-undo]") : removeButton).focus();
+  });
+
   SantaConsole.onInit((root) => {
     updateRulePreviews(root);
     updateBinaryPreviews(root);

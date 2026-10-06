@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: santa-server\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-06 09:59+0000\n"
+"POT-Creation-Date: 2026-10-06 10:15+0000\n"
 "Language: de\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -21,7 +21,8 @@ msgstr ""
 
 #: santa/catalog.py:188
 msgid "The Homebrew list is being loaded, try again in a moment."
-msgstr "Die Homebrew-Liste wird gerade geladen, versuchen Sie es gleich noch einmal."
+msgstr ""
+"Die Homebrew-Liste wird gerade geladen, versuchen Sie es gleich noch einmal."
 
 #: santa/catalog.py:261
 #, python-format
@@ -3455,6 +3456,18 @@ msgid ""
 msgstr ""
 "Die Dateizugriffsregel %(name)s löschen? Sie bleibt auf den Macs, bis ihr "
 "Profil ersetzt wird."
+
+#: santa/templates/console/file_access/_process.html:6
+msgid "Remove the process"
+msgstr "Prozess entfernen"
+
+#: santa/templates/console/file_access/_process.html:9
+msgid "Removed when you save."
+msgstr "Wird beim Speichern entfernt."
+
+#: santa/templates/console/file_access/_process.html:10
+msgid "Undo"
+msgstr "Rückgängig"
 
 #: santa/templates/console/file_access/drawer_form.html:3
 #: santa/templates/console/file_access/form.html:2

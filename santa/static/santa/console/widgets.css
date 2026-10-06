@@ -211,6 +211,21 @@ ol.history > li:last-child { border-bottom: 0; }
   .switch, .switch::after, input[role="switch"], input[role="switch"]::after { transition: none; }
 }
 
+/* High contrast: the browser paints our colors over and the state would be gone. The checkboxes and the switches
+   of the forms are the browser's own checkboxes then, the switch of the table rows gets system colors. */
+@media (forced-colors: active) {
+  input[type="checkbox"]:not([role="switch"]), input[type="checkbox"][role="switch"] {
+    appearance: auto; width: 1rem; height: 1rem; border: revert; background: revert;
+  }
+  input[type="checkbox"]:not([role="switch"])::after, input[type="checkbox"][role="switch"]::after,
+  input[type="checkbox"][role="switch"]::before { content: none; }
+  .switch, .switch::after { forced-color-adjust: none; }
+  .switch { background: Canvas; border: 1px solid CanvasText; }
+  .switch::after { background: CanvasText; top: calc(.15rem - 1px); left: calc(.15rem - 1px); }
+  .switch.on { background: Highlight; border-color: Highlight; }
+  .switch.on::after { background: HighlightText; }
+}
+
 /* A logo of the group profile: the current one on a checkered background (light and dark logos) */
 .logo-field { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: .6rem .8rem .2rem; }
 .logo-field > legend { padding: 0 .3rem; }
@@ -243,7 +258,14 @@ ol.history > li:last-child { border-bottom: 0; }
 
 /* The processes of a file access rule (a formset): one box per process */
 .process-rows { display: grid; gap: .75rem; margin-bottom: .75rem; }
-.process-row { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: .7rem .8rem .1rem; margin: 0; min-width: 0; }
+.process-row { position: relative; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: .7rem 2.6rem .1rem .8rem;
+  margin: 0; min-width: 0; }
+/* a process with an error of its own (not of one field) */
+.process-row.invalid { border-color: var(--bad); }
+.process-remove { position: absolute; top: .3rem; right: .3rem; }
+.process-remove:hover { color: var(--bad); }
+.process-removed { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .75rem; padding-bottom: .6rem; }
+.process-removed .mono { overflow-wrap: anywhere; text-decoration: line-through; }
 .process-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr)); gap: 0 1rem;
   align-items: start; }
 .process-fields .field { align-content: start; }

@@ -1,16 +1,24 @@
-{% load i18n %}{# One process of a file access rule (formset row) #}
-<fieldset class="process-row{% if process.errors %} has-error{% endif %}">
+{% load i18n %}{# One process of a file access rule (formset row). × marks it for deletion (forms.js): a new row disappears, a saved one folds up until "Save", with "Undo". #}
+{% with removed=process.DELETE.value saved=process.instance.pk %}
+<fieldset class="process-row{% if process.non_field_errors %} invalid{% endif %}"{% if saved %} data-saved{% endif %}{% if removed and not saved %} hidden{% endif %}>
   {% for hidden in process.hidden_fields %}{{ hidden }}{% endfor %}
-  {% for error in process.non_field_errors %}<div class="error">{{ error }}</div>{% endfor %}
-  <div class="process-fields">
-    {% include "console/_field.html" with field=process.signing_id %}
-    {% include "console/_field.html" with field=process.team_id %}
-    {% include "console/_field.html" with field=process.binary_path %}
-    {% include "console/_field.html" with field=process.cdhash %}
-    {% include "console/_field.html" with field=process.certificate_sha256 %}
-    <div class="process-checks">
-      {% include "console/_field.html" with field=process.platform_binary %}
-      {% if process.DELETE %}{% include "console/_field.html" with field=process.DELETE %}{% endif %}
+  <input type="checkbox" name="{{ process.DELETE.html_name }}" hidden data-formset-delete{% if removed %} checked{% endif %}>
+  <button type="button" class="icon-button process-remove" data-formset-remove title="{% translate 'Remove the process' %}" aria-label="{% translate 'Remove the process' %}"{% if removed %} hidden{% endif %}>{% include "console/icons/x.svg" %}</button>
+  {% if saved %}<div class="process-removed" data-formset-removed{% if not removed %} hidden{% endif %}>
+    <span class="mono small">{{ process.instance }}</span>
+    <span class="muted">{% translate "Removed when you save." %}</span>
+    <button type="button" class="button small" data-formset-undo>{% translate "Undo" %}</button>
+  </div>{% endif %}
+  <div class="process-body" data-formset-body{% if removed %} hidden{% endif %}>
+    {% for error in process.non_field_errors %}<div class="error">{{ error }}</div>{% endfor %}
+    <div class="process-fields">
+      {% include "console/_field.html" with field=process.signing_id %}
+      {% include "console/_field.html" with field=process.team_id %}
+      {% include "console/_field.html" with field=process.binary_path %}
+      {% include "console/_field.html" with field=process.cdhash %}
+      {% include "console/_field.html" with field=process.certificate_sha256 %}
+      <div class="process-checks">{% include "console/_field.html" with field=process.platform_binary %}</div>
     </div>
   </div>
 </fieldset>
+{% endwith %}

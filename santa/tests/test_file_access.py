@@ -145,6 +145,35 @@ class FileAccessTestCase(ConsoleBase):
         self.assertIn("Processes changed",
                       LogEntry.objects.filter(object_id=str(self.ssh.pk)).latest("pk").change_message)
 
+    def test_only_the_wrong_field_is_marked(self):
+        data = {"name": "Browser-cookies", "rule_type": FileAccessRuleType.PATHS_WITH_ALLOWED_PROCESSES,
+                "path_prefixes": "/Users/*/Library/Cookies/", "is_global": "on",
+                **process_formset({"signing_id": "com.google.Chrome"}, {"signing_id": "x", "DELETE": "on"})}
+        response = self.client.post(reverse("console:file_access_rule_add"), data)
+        self.assertContains(response, "A Signing ID needs the Team ID")
+        self.assertContains(response, 'class="field has-error" data-field="signing_id"')
+        self.assertContains(response, 'class="field" data-field="team_id"')
+        self.assertNotContains(response, "process-row invalid")
+        # the new row removed with × stays hidden, and doesn't count for the formset
+        self.assertContains(response, 'name="processes-1-DELETE" hidden data-formset-delete checked')
+        # (Django leaves the deleted forms out of the errors of the formset)
+        self.assertEqual(len(response.context["formset"].errors), 1)
+
+    def test_removed_new_process_is_not_saved(self):
+        data = {"name": "Browser-cookies", "rule_type": FileAccessRuleType.PATHS_WITH_ALLOWED_PROCESSES,
+                "path_prefixes": "/Users/*/Library/Cookies/", "is_global": "on",
+                **process_formset({"team_id": "EQHXZ8M8AV", "signing_id": "com.google.Chrome"},
+                                  {"signing_id": "only-half", "DELETE": "on"})}
+        self.assertEqual(self.client.post(reverse("console:file_access_rule_add"), data).status_code, 302)
+        self.assertEqual(FileAccessRule.objects.get(name="Browser-cookies").processes.count(), 1)
+
+    def test_saved_process_can_be_removed_and_restored(self):
+        response = self.client.get(reverse("console:file_access_rule", args=(self.ssh.pk,)))
+        # two saved processes, the extra row and the template of a new one
+        self.assertContains(response, "data-formset-remove title", count=4)
+        self.assertContains(response, "data-formset-undo", count=2)
+        self.assertNotContains(response, 'data-field="DELETE"')
+
     def test_processes_rule_types_need_a_process(self):
         data = {"name": "Curl", "rule_type": FileAccessRuleType.PROCESSES_WITH_DENIED_PATHS,
                 "path_prefixes": "/Users/", "is_global": "on", **process_formset()}
