@@ -336,8 +336,12 @@ small.help.after-field { margin: -.5rem 0 .9rem; }
 .actions { display: flex; gap: .75rem; align-items: center; }
 .login { max-width: 26.25rem; margin: 3rem auto; }
 .login details { margin-top: 1rem; }
-.login label { display: grid; gap: .25rem; margin-bottom: .6rem; }
-.login input { width: 100%; }
+.login details > summary { cursor: pointer; color: var(--muted); }
+.login details[open] > summary { margin-bottom: 1rem; }
+/* like the fields of the other forms (.field): bold label, the same distances */
+.login label { display: grid; gap: .25rem; margin-bottom: .9rem; font-weight: 600; }
+.login input { width: 100%; font-weight: 400; }
+.login form.stack { margin-bottom: 0; }
 /* "Sign in with …" with the logo of the provider (OIDC_PROVIDER_ICON) */
 .button.sign-in { min-height: 2.6rem; gap: .75rem; font-weight: 600; border-color: var(--control-off); }
 .sign-in-logo { flex: none; width: 1.3rem; height: 1.3rem; object-fit: contain; }

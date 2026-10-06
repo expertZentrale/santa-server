@@ -150,6 +150,13 @@
     const drawer = getDrawer();
     if (event.detail.target !== drawer) return;
     const url = drawer.querySelector("[data-drawer-url]")?.dataset.drawerUrl || "";
+    const current = currentState();
+    if ((pending === "push" || pending === "start") && url && shown > 0 && current?.index === shown
+        && current.drawer === url) {
+      // the view it shows already (the same row clicked again): fresh content, but no second entry to step through
+      kept.delete(shown);
+      pending = "replace";
+    }
     if (pending === "push" || pending === "start") {
       const index = (currentState()?.index ?? shown) + 1;
       // a new entry drops the entries after the current one, and so their views
