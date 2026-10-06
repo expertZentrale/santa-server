@@ -1,0 +1,9 @@
+{% load i18n %}{% autoescape off %}{% if access_request.status == "APPROVED" %}{% blocktranslate with title=access_request.title %}Your request “{{ title }}” was approved.{% endblocktranslate %}{% if access_request.kind == "EVENT" or access_request.result_rule_id or access_request.result_source_id %}
+{% translate "Your Mac gets the new rule at its next sync, usually within a few minutes." %}{% endif %}{% else %}{% blocktranslate with title=access_request.title %}Your request “{{ title }}” was not approved.{% endblocktranslate %}{% endif %}
+{% if access_request.decision_note %}
+{% translate "Note:" %}
+{{ access_request.decision_note }}
+{% endif %}
+{% translate "Your requests:" %}
+{{ url }}
+{% include "email/_footer.txt" %}{% endautoescape %}

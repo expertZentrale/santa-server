@@ -148,6 +148,11 @@ LOGGING = {
 SANTA_SERVER_NAME = "Santa Server"
 SANTA_FAVICON_URL = ""
 
+# E-mail notifications (notifications.py): off without EMAIL_HOST. Sent right after the change, a failure is logged.
+EMAIL_HOST = ""
+EMAIL_TIMEOUT = 10
+DEFAULT_FROM_EMAIL = "santa@localhost"
+
 # Configuration profiles (.mobileconfig) for the MDM. The profile identifiers and UUIDs are derived from the prefix:
 # changing it later gives every profile a new identity in the MDM.
 SANTA_PROFILE_ORGANIZATION = "Santa Server"

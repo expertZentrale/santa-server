@@ -61,6 +61,10 @@ Das Image (`santa_server/settings.py`) wird über Umgebungsvariablen konfigurier
 | `GITHUB_TOKEN` | empfohlen | für Paketregeln und die Katalogsuche; ohne erlaubt GitHub 60 Anfragen pro Stunde |
 | `SANTA_SERVER_NAME` | | Name in Fenstertitel, Kopfzeile und Django-Admin, Standard `Santa Server` |
 | `SANTA_FAVICON_URL` | | eigenes Favicon: absolute URL oder Pfad ab `/` (SVG, PNG oder ICO); leer = die mitgelieferte Weihnachtsmütze |
+| `EMAIL_HOST`, `EMAIL_PORT` | | SMTP-Server für die [E-Mail-Benachrichtigungen](#e-mail-benachrichtigungen); leer = keine E-Mails. Port Standard `587` |
+| `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD` | | Anmeldung am SMTP-Server, leer = ohne |
+| `EMAIL_USE_TLS`, `EMAIL_USE_SSL` | | Standard STARTTLS (`EMAIL_USE_TLS=true`); `EMAIL_USE_SSL=true` für SMTPS (Port 465) |
+| `DEFAULT_FROM_EMAIL` | | Absender, Standard `santa@<Host von SANTA_PUBLIC_BASE_URL>` |
 | `SANTA_PROFILE_ORGANIZATION` | | `PayloadOrganization` der Profile |
 | `SANTA_PROFILE_IDENTIFIER_PREFIX` | einmal setzen | Präfix der Profil-Identifier, z. B. `com.example.santa`. Die Profil-UUIDs werden daraus abgeleitet: **nach dem Verteilen der Profile nicht mehr ändern** |
 | `SANTA_PROFILE_MACHINE_OWNER` | | `MachineOwner` der Gruppenprofile, siehe [Die Macs konfigurieren](#die-macs-konfigurieren) |
@@ -95,6 +99,7 @@ Benutzer ohne Rechte; SQL Server und Redis laufen separat.
   `WAIT_FOR_URL_JOBS=1`):
   - stündlich: `python manage.py sync_release_sources` (neue Releases der Paketregeln, verzögerte Freigaben)
   - täglich: `python manage.py cleanup_events --days 90`
+  - täglich (mit E-Mail): `python manage.py send_notification_digest` (die tägliche Zusammenfassung)
 - **Endpunkte**: `/health` (Liveness, ohne Datenbank), `/ready` (prüft die Datenbank), `/metrics` (Prometheus).
   Sie antworten vor der Host-Prüfung, für Probes. `/sync/…` muss für die Macs über HTTPS erreichbar sein; die Konsole
   (`/console/`), das Anfrageformular (`/request/`), `/login/`, `/oidc/…` und `/admin/` können auf Ihr Netz
@@ -388,6 +393,22 @@ hochgeladener App, oder eine Paketregel) oder lehnen mit einer Notiz ab.
 Um den Blockierdialog mit dem Formular zu verbinden, setzen Sie die *URL im Blockierdialog* der Gruppe auf
 `https://<host>/request/new/?sha256=%file_sha%` und den Text der Schaltfläche z. B. auf `Zugang anfragen`.
 
+#### E-Mail-Benachrichtigungen
+
+Mit `EMAIL_HOST` versendet der Server E-Mails, gleich nach der Änderung; schlägt der Versand fehl, wird das nur
+protokolliert. Jeder Benutzer wählt im *Profil* für jede Benachrichtigung *Aus*, *Sofort* oder *Tägliche
+Zusammenfassung* (die schickt `send_notification_digest`, mit allem der letzten 24 Stunden). Angeboten wird nur, was
+die Rollen erlauben:
+
+- *Meine Anfragen*: die eigene Anfrage wurde genehmigt oder abgelehnt (mit der Notiz), für alle.
+- *Neue Anfragen*: für Freigebende (Recht, Anfragen zu ändern).
+- *Paketversionen zur Freigabe*: eine Paketregel ohne automatische Freigabe hat eine neue Version gefunden.
+- *Freigegebene Paketversionen*: dasselbe mit automatischer Freigabe, standardmäßig aus.
+- *Fehler von Paketregeln*: eine Paketregel kann nicht mehr geprüft werden, einmal beim Übergang zum Fehler.
+
+Die E-Mails sind in der Sprache des Profils (sonst `LANGUAGE_CODE`) und verlinken in die Konsole
+(`SANTA_PUBLIC_BASE_URL`). Benutzer ohne E-Mail-Adresse bekommen keine.
+
 ### Konfiguration exportieren und importieren
 
 Gruppen, Paketregeln, manuelle Regeln und Dateizugriffsregeln können als JSON exportiert und auf einem anderen Server
@@ -458,6 +479,7 @@ santa/
   macho.py             liest Hashes und Kennungen der Codesignatur aus Mach-O-Dateien
   releases.py          Paketregeln (GitHub, Homebrew, npm, VS Code, JetBrains, URL)
   catalog.py           Suche in den Paketkatalogen (Vorschläge und Icons)
+  notifications.py     E-Mail-Benachrichtigungen: wer welche E-Mail bekommt
   services.py          eine Kennung erlauben, passende Ereignisse erledigen, die Macs eines Benutzers
   auth.py              Anmeldung über OpenID Connect, Anmeldegruppen und Rollen
   profiles.py          die Konfigurationsprofile (Basisprofil, eines je Gruppe)
@@ -465,7 +487,7 @@ santa/
   console/             die Konsole und das Anfrageformular (Views, Forms, URLs)
   templates/, static/  Templates; htmx, console/*.js und *.css (eine Datei je Aufgabe)
   admin.py, forms.py   der Django-Admin
-  management/commands  sync_release_sources, cleanup_events, export_config, import_config
+  management/commands  sync_release_sources, cleanup_events, send_notification_digest, export_config, import_config
   locale/              deutsche Übersetzung
   tests/
 scripts/               create_database.py (Devcontainer und CI)
@@ -538,6 +560,10 @@ The image (`santa_server/settings.py`) is configured with environment variables:
 | `GITHUB_TOKEN` | recommended | for package rules and the catalog search; without it GitHub allows 60 requests per hour |
 | `SANTA_SERVER_NAME` | | name in the window title, the header and the Django admin, default `Santa Server` |
 | `SANTA_FAVICON_URL` | | your own favicon: an absolute URL or a path from `/` (SVG, PNG or ICO); empty = the Santa hat that comes with it |
+| `EMAIL_HOST`, `EMAIL_PORT` | | SMTP server for the [e-mail notifications](#e-mail-notifications); empty = no e-mails. Port default `587` |
+| `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD` | | sign-in at the SMTP server, empty = none |
+| `EMAIL_USE_TLS`, `EMAIL_USE_SSL` | | default STARTTLS (`EMAIL_USE_TLS=true`); `EMAIL_USE_SSL=true` for SMTPS (port 465) |
+| `DEFAULT_FROM_EMAIL` | | sender, default `santa@<host of SANTA_PUBLIC_BASE_URL>` |
 | `SANTA_PROFILE_ORGANIZATION` | | `PayloadOrganization` of the profiles |
 | `SANTA_PROFILE_IDENTIFIER_PREFIX` | set once | prefix of the profile identifiers, e.g. `com.example.santa`. The profile UUIDs are derived from it: **don't change it after the profiles are deployed** |
 | `SANTA_PROFILE_MACHINE_OWNER` | | `MachineOwner` of the group profiles, see [Configuring the Macs](#configuring-the-macs) |
@@ -572,6 +598,7 @@ separately.
   `WAIT_FOR_URL_JOBS=1`):
   - hourly: `python manage.py sync_release_sources` (new releases of the package rules, delayed approvals)
   - daily: `python manage.py cleanup_events --days 90`
+  - daily (with e-mail): `python manage.py send_notification_digest` (the daily summary)
 - **Endpoints**: `/health` (liveness, no database), `/ready` (checks the database), `/metrics` (Prometheus).
   They answer before the host check, for probes. `/sync/…` must be reachable by the Macs over HTTPS; the console
   (`/console/`), the request form (`/request/`), `/login/`, `/oidc/…` and `/admin/` can be limited to your network.
@@ -840,6 +867,21 @@ right away, by identifier or uploaded app, or a package rule) or deny with a not
 To link the block dialog to the form, set the group's *block dialog URL* to
 `https://<host>/request/new/?sha256=%file_sha%` and the button text to e.g. `Request access`.
 
+#### E-mail notifications
+
+With `EMAIL_HOST` the server sends e-mails, right after the change; a failure to send is only logged. Every user
+chooses in their *Profile* for each notification *Off*, *Immediately* or *Daily summary* (sent by
+`send_notification_digest`, with everything of the last 24 hours). Only what their roles allow is offered:
+
+- *My requests*: their own request was approved or denied (with the note), for everyone.
+- *New requests*: for approvers (permission to change requests).
+- *Package versions to approve*: a package rule without automatic approval found a new version.
+- *Approved package versions*: the same with automatic approval, off by default.
+- *Package rule errors*: a package rule can't be checked any more, once when it starts failing.
+
+The e-mails are in the language of the profile (else `LANGUAGE_CODE`) and link to the console
+(`SANTA_PUBLIC_BASE_URL`). Users without an e-mail address get none.
+
 ### Export and import the configuration
 
 Groups, package rules, manual rules and file access rules can be exported as JSON and imported on another server, e.g.
@@ -906,6 +948,7 @@ santa/
   macho.py             reads hashes and code signature identifiers from Mach-O files
   releases.py          package rules (GitHub, Homebrew, npm, VS Code, JetBrains, URL)
   catalog.py           search the package catalogs (suggestions and icons)
+  notifications.py     e-mail notifications: who gets which e-mail
   services.py          allow an identifier, resolve the matching events, the Macs of a user
   auth.py              OpenID Connect sign-in, sign-in groups and roles
   profiles.py          the configuration profiles (base profile, one per group)
@@ -913,7 +956,7 @@ santa/
   console/             the console and the request form (views, forms, urls)
   templates/, static/  templates; htmx, console/*.js and *.css (one file per task)
   admin.py, forms.py   the Django admin
-  management/commands  sync_release_sources, cleanup_events, export_config, import_config
+  management/commands  sync_release_sources, cleanup_events, send_notification_digest, export_config, import_config
   locale/              German translation
   tests/
 scripts/               create_database.py (devcontainer and CI)

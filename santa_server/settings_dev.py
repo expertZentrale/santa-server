@@ -41,3 +41,7 @@ LANGUAGE_CODE = os.getenv("LANGUAGE_CODE", LANGUAGE_CODE)  # noqa: F405
 
 SANTA_PUBLIC_BASE_URL = os.getenv("SANTA_PUBLIC_BASE_URL", "http://localhost:8000")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN") or None
+
+# e-mail notifications are on, the mails are printed in the log of runserver (the tests collect them in memory)
+EMAIL_HOST = "localhost"
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
