@@ -1,7 +1,7 @@
 import csv
 
 from django.contrib import messages
-from django.db.models import Q
+from django.db.models import Case, IntegerField, Q, Value, When, prefetch_related_objects
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -256,6 +256,26 @@ def rules_existing(request):
     # "applies" only means something for a binary of an event
     return render(request, "console/rules/_existing.html", {"matches": [{"rule": rule, "applies": True}
                                                                         for rule in rules], "same_identifier": True})
+
+
+MAX_RULE_SUGGESTIONS = 10
+
+
+@staff_required
+def rule_suggestions(request):
+    """Rules for a search text, e.g. "Existing execution rule" of a request (suggestions.js)"""
+    require_perms(request, "view_rule")
+    q = request.GET.get("q", "").strip()
+    rules = []
+    if len(q) >= 2:
+        # ranked before the limit: the identifier itself first, then the ones starting with it, then the rest
+        rank = Case(When(identifier__iexact=q, then=Value(0)), When(identifier__istartswith=q, then=Value(1)),
+                    default=Value(2), output_field=IntegerField())
+        rules = list(Rule.objects.filter(Q(identifier__icontains=q) | Q(description__icontains=q)
+                                         | Q(tags__name__icontains=q))
+                     .annotate(rank=rank).distinct().order_by("rank", "identifier", "pk")[:MAX_RULE_SUGGESTIONS])
+        prefetch_related_objects(rules, "groups", "machines")
+    return render(request, "console/rules/_suggestions.html", {"rules": rules, "query": q})
 
 
 @staff_required

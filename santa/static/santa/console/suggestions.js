@@ -4,21 +4,41 @@
 
   const { debounce, moveSelection } = SantaConsole;
 
-  function fetchSuggestions(url, kind, query, box) {
-    if (query.trim().length < 2) {
+  // the latest request of each box: an older answer that arrives later is dropped
+  const latest = new WeakMap();
+
+  function nextRequest(box) {
+    const request = (latest.get(box) || 0) + 1;
+    latest.set(box, request);
+    return request;
+  }
+
+  // closed without a search: a request still under way doesn't open it again
+  function closeSuggestions(box) {
+    nextRequest(box);
+    box.replaceChildren();
+    box.classList.remove("open");
+  }
+
+  // params: the search text as q, e.g. { kind, q }; setOpen shows or hides the box
+  function fetchSuggestions(url, params, box, setOpen = (open) => box.classList.toggle("open", open)) {
+    const request = nextRequest(box);
+    if (params.q.trim().length < 2) {
       box.replaceChildren();
-      box.classList.remove("open");
+      setOpen(false);
       return;
     }
-    const params = new URLSearchParams({ kind, q: query });
-    fetch(`${url}?${params}`, { headers: { "HX-Request": "true" }, credentials: "same-origin" })
+    fetch(`${url}?${new URLSearchParams(params)}`, { headers: { "HX-Request": "true" }, credentials: "same-origin" })
       .then((response) => (response.ok ? response.text() : ""))
       .then((html) => {
+        if (latest.get(box) !== request) return;
         // server-rendered, escaped template
         box.innerHTML = html;
-        box.classList.toggle("open", html.trim() !== "");
+        setOpen(html.trim() !== "");
       })
-      .catch(() => box.classList.remove("open"));
+      .catch(() => {
+        if (latest.get(box) === request) setOpen(false);
+      });
   }
 
   function makeIcon(iconUrl) {
@@ -77,11 +97,10 @@
     const lookup = debounce(() => {
       const kind = kindSelect ? kindSelect.value : "";
       if (!searchable.includes(kind)) {
-        box.replaceChildren();
-        box.classList.remove("open");
+        closeSuggestions(box);
         return;
       }
-      fetchSuggestions(form.dataset.catalogUrl, kind, search.value, box);
+      fetchSuggestions(form.dataset.catalogUrl, { kind, q: search.value }, box);
     }, 300);
 
     search.addEventListener("input", lookup);
@@ -180,8 +199,8 @@
     }
 
     const lookup = debounce(() => {
-      if (searchable.includes(kind.value)) fetchSuggestions(form.dataset.catalogUrl, kind.value, search.value, box);
-      else box.classList.remove("open");
+      if (searchable.includes(kind.value)) fetchSuggestions(form.dataset.catalogUrl, { kind: kind.value, q: search.value }, box);
+      else closeSuggestions(box);
     }, 300);
     search.addEventListener("input", lookup);
     kind.addEventListener("change", lookup);
@@ -225,9 +244,61 @@
     render();
   }
 
+  // "Existing execution rule" of a request: the rules for the text typed; a pick also sets the hidden rule (one
+  // identifier can have rules for several scopes)
+  function setupRuleSearch(field) {
+    if (field.dataset.ruleSearchReady) return;
+    field.dataset.ruleSearchReady = "1";
+    const input = field.querySelector("input");
+    const box = field.querySelector("[data-suggestions]");
+    input.setAttribute("role", "combobox");
+    input.setAttribute("aria-autocomplete", "list");
+    input.setAttribute("aria-controls", box.id);
+    input.setAttribute("aria-expanded", "false");
+    const hidden = field.closest("form")?.querySelector('input[name="rule"]');
+    const setOpen = (open) => {
+      box.classList.toggle("open", open);
+      input.setAttribute("aria-expanded", String(open));
+      if (!open) input.removeAttribute("aria-activedescendant");
+    };
+    const lookup = debounce(() => fetchSuggestions(field.dataset.url, { q: input.value }, box, setOpen), 300);
+    const pick = (option) => {
+      input.value = option.dataset.identifier;
+      if (hidden) hidden.value = option.dataset.rule;
+      setOpen(false);
+      input.focus();
+    };
+    input.addEventListener("input", () => {
+      // typed by hand: the rule is looked up by its identifier
+      if (hidden) hidden.value = "";
+      lookup();
+    });
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        moveSelection(box, event.key === "ArrowDown" ? 1 : -1);
+      } else if (event.key === "Enter" && box.classList.contains("open")) {
+        const selected = box.querySelector(".suggestion[aria-selected=true]");
+        if (selected) {
+          event.preventDefault();
+          pick(selected);
+        }
+      } else if (event.key === "Escape" && box.classList.contains("open")) {
+        // only the suggestions close, not the drawer around the form
+        event.stopPropagation();
+        setOpen(false);
+      }
+    });
+    box.addEventListener("click", (event) => {
+      const option = event.target.closest(".suggestion");
+      if (option) pick(option);
+    });
+  }
+
   SantaConsole.onInit((root) => {
     root.querySelectorAll("[data-source-form]").forEach(setupIdentifiers);
     root.querySelectorAll("[data-package-form]").forEach(setupPackageRequest);
+    root.querySelectorAll("[data-rule-search]").forEach(setupRuleSearch);
   });
 
   // a click outside closes the open suggestions (of every combobox)

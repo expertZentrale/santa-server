@@ -662,8 +662,11 @@ class ApproveOtherForm(TagsMixin):
                                                     widget=forms.CheckboxSelectMultiple)
 
     # an existing rule
+    # with the permission to view the rules, a search (_approve_other.html, suggestions.js)
     rule_identifier = forms.CharField(required=False, label=_("Rule"), max_length=256,
-                                      help_text=_("Identifier of the rule you created for it"))
+                                      help_text=_("Identifier of the rule you created for it"),
+                                      widget=forms.TextInput(attrs={"class": "mono", "autocomplete": "off"}))
+    # the rule picked from the suggestions: one identifier can have several rules (scopes)
     rule = forms.ModelChoiceField(queryset=Rule.objects.all(), required=False, widget=forms.HiddenInput)
 
     note = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 2}), label=_("Note"),
@@ -715,7 +718,14 @@ class ApproveOtherForm(TagsMixin):
                                    gettext("Choose at least one group for the new package rule, or all Macs."))
         elif result == self.EXISTING:
             identifier = (cleaned_data.get("rule_identifier") or "").strip()
-            rule = Rule.objects.filter(identifier__iexact=identifier).order_by("pk").first() if identifier else None
+            picked = cleaned_data.get("rule")
+            if picked and picked.identifier.lower() == identifier.lower():
+                rule = picked
+            elif identifier:
+                # typed by hand: the first rule with the identifier
+                rule = Rule.objects.filter(identifier__iexact=identifier).order_by("pk").first()
+            else:
+                rule = None
             if rule is None:
                 self.add_error("rule_identifier", gettext("No rule with this identifier."))
             cleaned_data["rule"] = rule
