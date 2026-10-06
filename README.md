@@ -59,6 +59,8 @@ Das Image (`santa_server/settings.py`) wird über Umgebungsvariablen konfigurier
 | `LANGUAGE_CODE` | | Standardsprache, `en` oder `de`; Browser und Benutzerprofil haben Vorrang |
 | `TIME_ZONE` | | Standard `UTC`; die Konsole zeigt die Zeiten in der Zeitzone des Browsers oder des Benutzerprofils |
 | `GITHUB_TOKEN` | empfohlen | für Paketregeln und die Katalogsuche; ohne erlaubt GitHub 60 Anfragen pro Stunde |
+| `SANTA_SERVER_NAME` | | Name in Fenstertitel, Kopfzeile und Django-Admin, Standard `Santa Server` |
+| `SANTA_FAVICON_URL` | | eigenes Favicon: absolute URL oder Pfad ab `/` (SVG, PNG oder ICO); leer = die mitgelieferte Weihnachtsmütze |
 | `SANTA_PROFILE_ORGANIZATION` | | `PayloadOrganization` der Profile |
 | `SANTA_PROFILE_IDENTIFIER_PREFIX` | einmal setzen | Präfix der Profil-Identifier, z. B. `com.example.santa`. Die Profil-UUIDs werden daraus abgeleitet: **nach dem Verteilen der Profile nicht mehr ändern** |
 | `SANTA_PROFILE_MACHINE_OWNER` | | `MachineOwner` der Gruppenprofile, siehe [Die Macs konfigurieren](#die-macs-konfigurieren) |
@@ -534,6 +536,8 @@ The image (`santa_server/settings.py`) is configured with environment variables:
 | `LANGUAGE_CODE` | | default language, `en` or `de`; the browser and the user profile win over it |
 | `TIME_ZONE` | | default `UTC`; the console shows the times in the time zone of the browser, or of the user profile |
 | `GITHUB_TOKEN` | recommended | for package rules and the catalog search; without it GitHub allows 60 requests per hour |
+| `SANTA_SERVER_NAME` | | name in the window title, the header and the Django admin, default `Santa Server` |
+| `SANTA_FAVICON_URL` | | your own favicon: an absolute URL or a path from `/` (SVG, PNG or ICO); empty = the Santa hat that comes with it |
 | `SANTA_PROFILE_ORGANIZATION` | | `PayloadOrganization` of the profiles |
 | `SANTA_PROFILE_IDENTIFIER_PREFIX` | set once | prefix of the profile identifiers, e.g. `com.example.santa`. The profile UUIDs are derived from it: **don't change it after the profiles are deployed** |
 | `SANTA_PROFILE_MACHINE_OWNER` | | `MachineOwner` of the group profiles, see [Configuring the Macs](#configuring-the-macs) |

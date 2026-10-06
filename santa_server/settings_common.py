@@ -9,6 +9,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 INSTALLED_APPS = [
     "django_prometheus",
+    # before the admin: its templates (admin/base_site.html) override the admin's
+    "santa",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -17,7 +19,6 @@ INSTALLED_APPS = [
     "whitenoise.runserver_nostatic",
     "django.contrib.staticfiles",
     "mozilla_django_oidc",
-    "santa",
 ]
 
 MIDDLEWARE = [
@@ -142,6 +143,10 @@ LOGGING = {
     "root": {"handlers": ["console"], "level": "INFO"},
     "loggers": {"django.db.backends": {"level": "WARNING"}},
 }
+
+# The name in the title, the header and the Django admin, and the favicon: a URL or path, empty = the Santa hat
+SANTA_SERVER_NAME = "Santa Server"
+SANTA_FAVICON_URL = ""
 
 # Configuration profiles (.mobileconfig) for the MDM. The profile identifiers and UUIDs are derived from the prefix:
 # changing it later gives every profile a new identity in the MDM.

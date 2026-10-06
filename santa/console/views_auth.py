@@ -2,6 +2,13 @@ from django.conf import settings
 from django.contrib.auth import views as auth_views
 from django.shortcuts import redirect
 
+from ..context_processors import favicon_url
+
+
+def favicon(request):
+    # browsers ask for /favicon.ico on pages without a <link>, e.g. the JSON ones
+    return redirect(favicon_url())
+
 
 def home(request):
     if not request.user.is_authenticated:
