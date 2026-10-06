@@ -22,7 +22,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.utils.http import urlencode
 
-from . import macho
+from . import macho, notifications
 from .models import ReleaseSource, ReleaseVersion, Rule, RuleType
 
 logger = logging.getLogger(__name__)
@@ -538,13 +538,18 @@ def sync_release_source(source, session=None):
         if release_version:
             new_versions.append(release_version)
     prune_old_versions(source)
+    worked_before = not source.last_error
     source.last_checked_at = timezone.now()
     source.last_error = "\n".join(failed + errors)[:5000]
     source.save(update_fields=["last_checked_at", "last_error"])
+    if worked_before and source.last_error:
+        # once, when it starts failing: not at every hourly check
+        notifications.source_failed(source)
     # a release published before the delay is enabled right away
     enable_due_releases(source)
     for release_version in new_versions:
         release_version.refresh_from_db()
+    notifications.versions_found(source, new_versions)
     if failed:
         raise ReleaseError("\n".join(failed), new_versions)
     return new_versions

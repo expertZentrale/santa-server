@@ -1,0 +1,4 @@
+{% load i18n %}
+-- 
+{% blocktranslate %}{{ server_name }}: change which e-mails you get in your profile:{% endblocktranslate %}
+{{ profile_url }}

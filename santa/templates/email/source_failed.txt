@@ -1,0 +1,7 @@
+{% load i18n %}{% autoescape off %}{% blocktranslate with name=source.name %}The package rule “{{ name }}” had problems checking for new versions:{% endblocktranslate %}
+
+{{ source.last_error }}
+
+{% translate "Versions that couldn't be checked or downloaded are not allowed until it works again. Details:" %}
+{{ url }}
+{% include "email/_footer.txt" %}{% endautoescape %}

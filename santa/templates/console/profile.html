@@ -22,6 +22,12 @@
   {% include "console/_field.html" with field=form.language %}
   {% include "console/_field.html" with field=form.time_zone %}
   {% get_current_timezone as TIME_ZONE %}<p class="help small">{% blocktranslate %}Times are shown in {{ TIME_ZONE }}.{% endblocktranslate %}</p>
+  {% if form.notification_names %}
+  <h2>{% translate "E-mail notifications" %}</h2>
+  {% if not mail_enabled %}<p class="muted">{% translate "This server doesn't send e-mails (yet): your choices apply once it does." %}</p>
+  {% elif not user.email %}<p class="muted">{% translate "Your account has no e-mail address, so no e-mails are sent." %}</p>{% endif %}
+  {% for field in form.notification_fields %}{% include "console/_field.html" %}{% endfor %}
+  {% endif %}
   <div class="actions"><button class="button primary">{% translate "Save" %}</button></div>
 </form>
 {% endblock %}

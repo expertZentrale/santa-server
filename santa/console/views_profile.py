@@ -5,6 +5,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import translation
 from django.views.decorators.http import require_POST
 
+from .. import notifications
 from ..models import SavedFilter, UserProfile
 from ..users import gravatar_url, profile_for
 from .filters import FILTER_PAGES, MAX_QUERY_LENGTH, MAX_SAVED_FILTERS, filter_query
@@ -15,7 +16,7 @@ from .utils import safe_next
 @login_required
 def profile(request):
     user_profile = profile_for(request.user)
-    form = ProfileForm(request.POST or None, instance=user_profile)
+    form = ProfileForm(request.POST or None, instance=user_profile, user=request.user)
     if request.method == "POST" and form.is_valid():
         form.save()
         _activate(request, user_profile)
@@ -23,7 +24,7 @@ def profile(request):
         return redirect("profile")
     return render(request, "console/profile.html", {
         "form": form, "avatar_large": gravatar_url(request.user, 96),
-        "groups": request.user.groups.order_by("name"),
+        "groups": request.user.groups.order_by("name"), "mail_enabled": notifications.enabled(),
     })
 
 
