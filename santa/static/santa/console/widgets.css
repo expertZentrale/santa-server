@@ -25,12 +25,16 @@
 .chip.mac { border-style: dashed; }
 .tag { display: inline-block; font-size: .8em; color: var(--muted); margin-right: .35rem; }
 .tag::before { content: "#"; }
-.switch {
+/* the switch of a table row (a button), and the yes / no fields of the forms (a checkbox, _field.html) */
+.switch, input[type="checkbox"][role="switch"] {
+  appearance: none;
+  margin: 0;
+  padding: 0;
   width: 2.5rem;
   height: 1.4rem;
   border-radius: 999px;
   border: 0;
-  background: var(--border);
+  background: var(--control-off);
   position: relative;
   cursor: pointer;
   transition: background .15s;
@@ -39,8 +43,8 @@
   flex: none;
 }
 /* an invisible, larger click target around the switch */
-.switch::before { content: ""; position: absolute; inset: -.5rem; }
-.switch::after {
+.switch::before, input[role="switch"]::before { content: ""; position: absolute; inset: -.5rem; }
+.switch::after, input[role="switch"]::after {
   content: "";
   position: absolute;
   top: .15rem;
@@ -51,8 +55,8 @@
   background: #fff;
   transition: transform .15s;
 }
-.switch.on { background: var(--ok); }
-.switch.on::after { transform: translateX(1.1rem); }
+.switch.on, input[role="switch"]:checked { background: var(--ok); }
+.switch.on::after, input[role="switch"]:checked::after { transform: translateX(1.1rem); }
 .table td.toggle { cursor: pointer; }
 
 /* a list of checkboxes that opens above its button (the bulk bar is at the bottom of the window) */
@@ -68,6 +72,7 @@
   min-width: 14rem;
   max-height: 18rem;
   overflow-y: auto;
+  overscroll-behavior: contain;
   margin: 0;
   padding: .3rem;
   display: grid;
@@ -107,6 +112,7 @@
   top: calc(100% + .25rem);
   max-height: 22.5rem;
   overflow-y: auto;
+  overscroll-behavior: contain;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -198,11 +204,26 @@ ol.history > li:last-child { border-bottom: 0; }
 /* Touch screens: larger targets for the small icon controls */
 @media (pointer: coarse) {
   .icon-button, .copy-button, .bulkbar-clear, .chip-remove { min-width: 2.75rem; min-height: 2.75rem; }
-  .switch::before { inset: -.75rem; }
+  .switch::before, input[role="switch"]::before { inset: -.75rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .switch, .switch::after { transition: none; }
+  .switch, .switch::after, input[role="switch"], input[role="switch"]::after { transition: none; }
+}
+
+/* High contrast: the browser paints our colors over and the state would be gone. The checkboxes and the switches
+   of the forms are the browser's own checkboxes then, the switch of the table rows gets system colors. */
+@media (forced-colors: active) {
+  input[type="checkbox"]:not([role="switch"]), input[type="checkbox"][role="switch"] {
+    appearance: auto; width: 1rem; height: 1rem; border: revert; background: revert;
+  }
+  input[type="checkbox"]:not([role="switch"])::after, input[type="checkbox"][role="switch"]::after,
+  input[type="checkbox"][role="switch"]::before { content: none; }
+  .switch, .switch::after { forced-color-adjust: none; }
+  .switch { background: Canvas; border: 1px solid CanvasText; }
+  .switch::after { background: CanvasText; top: calc(.15rem - 1px); left: calc(.15rem - 1px); }
+  .switch.on { background: Highlight; border-color: Highlight; }
+  .switch.on::after { background: HighlightText; }
 }
 
 /* A logo of the group profile: the current one on a checkered background (light and dark logos) */
@@ -211,6 +232,11 @@ ol.history > li:last-child { border-bottom: 0; }
 .logo-preview { display: inline-flex; justify-self: start; width: fit-content; padding: .5rem; margin-bottom: .6rem; border-radius: var(--radius-sm);
   background: repeating-conic-gradient(var(--surface-2) 0 25%, var(--surface) 0 50%) 0 0 / 1rem 1rem; }
 .logo-preview img { display: block; max-width: 10.5rem; max-height: 3.5rem; }
+
+/* The roles of a user: the ones of the sign-in (fixed), then the ones given by hand, one per line */
+.roles-field > div[id] { flex-direction: column; gap: .45rem; }
+.roles-field > div[id] > div { display: flex; flex-wrap: wrap; align-items: center; gap: 0 .6rem; }
+.roles-field label:has(input:disabled) { cursor: default; }
 
 /* A file upload as a drop zone (forms.FileDropInput): the invisible input covers it, a click or a drop goes to it */
 .file-drop { position: relative; display: grid; justify-items: center; gap: .35rem; padding: 1.1rem 1rem;
@@ -232,8 +258,15 @@ ol.history > li:last-child { border-bottom: 0; }
 
 /* The processes of a file access rule (a formset): one box per process */
 .process-rows { display: grid; gap: .75rem; margin-bottom: .75rem; }
-.process-row { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: .7rem .8rem .1rem; margin: 0; min-width: 0; }
+.process-row { position: relative; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: .7rem 2.6rem .1rem .8rem;
+  margin: 0; min-width: 0; }
+/* a process with an error of its own (not of one field) */
+.process-row.invalid { border-color: var(--bad); }
+.process-remove { position: absolute; top: .3rem; right: .3rem; }
+.process-remove:hover { color: var(--bad); }
+.process-removed { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .75rem; padding-bottom: .6rem; }
+.process-removed .mono { overflow-wrap: anywhere; text-decoration: line-through; }
 .process-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr)); gap: 0 1rem;
   align-items: start; }
 .process-fields .field { align-content: start; }
-.process-checks { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 0 1.5rem; align-items: center; }
+.process-checks { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 0 1.5rem; align-items: start; }

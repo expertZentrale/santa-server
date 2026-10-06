@@ -1,6 +1,6 @@
-<div class="field{% if field.errors %} has-error{% endif %}{% if field.field.widget.input_type == 'checkbox' and not field.field.widget.allow_multiple_selected %} check{% endif %}" data-field="{{ field.name }}">
+{% load console %}<div class="field{% if field.errors %} has-error{% endif %}{% if field.field.widget.input_type == 'checkbox' and not field.field.widget.allow_multiple_selected %} check{% endif %}" data-field="{{ field.name }}">
   {% if field.field.widget.input_type == "checkbox" and not field.field.widget.allow_multiple_selected %}
-    <label>{{ field }} {{ field.label }}</label>
+    {{ field|as_switch }}<label for="{{ field.id_for_label }}">{{ field.label }}</label>
   {% else %}
     <label for="{{ field.id_for_label }}">{{ field.label }}</label>
     {{ field }}
