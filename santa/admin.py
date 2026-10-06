@@ -640,8 +640,8 @@ class TagAdmin(admin.ModelAdmin):
 
 @admin.register(SignInGroup)
 class SignInGroupAdmin(admin.ModelAdmin):
-    list_display = ("name", "claim_value", "console_access")
-    list_filter = ("console_access",)
+    list_display = ("name", "claim_value", "console_access", "no_email")
+    list_filter = ("console_access", "no_email")
     search_fields = ("name", "claim_value")
     filter_horizontal = ("roles",)
 

@@ -35,7 +35,7 @@ from ..models import (
     UserProfile,
     validate_logo_url,
 )
-from ..users import time_zone_names
+from ..users import profile_for, time_zone_names
 from ..validators import validate_identifier
 
 SCOPE_GLOBAL = "global"
@@ -954,6 +954,9 @@ class UserForm(forms.ModelForm):
     """A user of the console. Staff and the password only for the local accounts: the sign-in sets the others."""
 
     roles = RolesField(label=_("Roles"))
+    email_override = forms.ChoiceField(
+        choices=UserProfile.EmailOverride.choices, required=False, label=_("E-mail notifications"),
+        help_text=_("An exception from the sign-in groups, e.g. no e-mails for an account without a mailbox."))
     password1 = forms.CharField(label=_("Password"), required=False, strip=False,
                                 widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}))
     password2 = forms.CharField(label=_("Password again"), required=False, strip=False,
@@ -982,6 +985,7 @@ class UserForm(forms.ModelForm):
             pk__in=[role.pk for role in self.managed_roles]).order_by("name")
         if user.pk:
             self.initial["roles"] = [role for role in user.groups.all() if role not in self.managed_roles]
+            self.initial["email_override"] = profile_for(user).email_override
             self.fields["username"].disabled = True
             self.fields["password1"].help_text = _("Leave empty to keep the password.")
         else:
@@ -1011,6 +1015,10 @@ class UserForm(forms.ModelForm):
         user.save()
         kept = [role for role in user.groups.all() if role in self.managed_roles]
         user.groups.set([*kept, *self.cleaned_data["roles"]])
+        profile = profile_for(user)
+        if profile.email_override != self.cleaned_data["email_override"]:
+            profile.email_override = self.cleaned_data["email_override"]
+            profile.save(update_fields=["email_override"])
         return user
 
 
@@ -1033,9 +1041,9 @@ class SignInGroupForm(forms.ModelForm):
 
     class Meta:
         model = SignInGroup
-        fields = ("name", "claim_value", "console_access", "roles")
+        fields = ("name", "claim_value", "console_access", "no_email", "roles")
         labels = {"name": _("Name"), "claim_value": _("Value in the groups claim"),
-                  "console_access": _("Console access")}
+                  "console_access": _("Console access"), "no_email": _("No e-mails")}
         widgets = {"claim_value": forms.TextInput(attrs={"class": "mono", "autocomplete": "off"})}
 
 

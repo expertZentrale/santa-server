@@ -667,6 +667,25 @@ class ConsoleEventsTestCase(ConsoleBase):
         response = self.client.post(reverse("console:events_create_rules"), {"shas": [SHA_A], "resolved": "all"})
         self.assertEqual(len(response.context["binaries"]), 1)
 
+    def test_status_filter_with_several_values(self):
+        self.make_event(SHA_A)
+        resolved = self.make_event(SHA_B, file_name="docker")
+        Event.objects.filter(pk=resolved.pk).update(resolved_at=timezone.now())
+        url = reverse("console:events")
+
+        def names(**params):
+            response = self.client.get(url, {"view": "all", "q": "", **params})
+            return sorted(event.file_name for event in response.context["page"]), response.context["resolved"]
+
+        # open by default, before the form was sent
+        response = self.client.get(url, {"view": "all"})
+        self.assertEqual([event.file_name for event in response.context["page"]], ["colima"])
+        self.assertEqual(names(resolved="open"), (["colima"], "open"))
+        self.assertEqual(names(resolved="resolved"), (["docker"], "resolved"))
+        # both, none (the × of the chip), and the old "all" of saved views
+        for params in ({"resolved": ["open", "resolved"]}, {"resolved": ""}, {"resolved": "all"}):
+            self.assertEqual(names(**params), (["colima", "docker"], "all"), params)
+
     def test_mark_resolved(self):
         self.make_event()
         self.make_event(machine=self.other_machine)

@@ -1,5 +1,7 @@
+import smtplib
 from unittest.mock import patch
 
+from django.contrib.admin.models import LogEntry
 from django.contrib.auth.models import Permission, User
 from django.core import mail
 from django.core.management import call_command
@@ -7,7 +9,7 @@ from django.test import override_settings
 from django.urls import reverse
 
 from santa import notifications
-from santa.models import AccessRequest, ReleaseSource, ReleaseVersion
+from santa.models import AccessRequest, ReleaseSource, ReleaseVersion, SignInGroup, UserProfile
 from santa.releases import ReleaseError, sync_release_source
 from santa.users import profile_for
 
@@ -183,10 +185,32 @@ class NotificationsTestCase(ConsoleBase):
             # the request doesn't send: a thread does
             get_connection.assert_not_called()
             thread.call_args.kwargs["target"]()
-        connection = get_connection.return_value.__enter__.return_value
-        [(messages,), _] = connection.send_messages.call_args
-        self.assertEqual(sorted(message.to[0] for message in messages), ["admin@example.com", "approver@example.com"])
-        self.assertEqual(connection.send_messages.call_count, 1)
+        # one connection, opened and closed once, each mail on its own
+        get_connection.assert_called_once()
+        connection = get_connection.return_value
+        self.assertEqual((connection.open.call_count, connection.close.call_count), (1, 1))
+        sent = [message.to[0] for (messages,), _ in connection.send_messages.call_args_list for message in messages]
+        self.assertEqual(sorted(sent), ["admin@example.com", "approver@example.com"])
+        self.assertEqual(connection.send_messages.call_count, 2)
+
+    def test_a_refused_address_doesnt_stop_the_others(self):
+        access_request = AccessRequest.objects.create(requester=self.user, kind="OTHER", title="Figma",
+                                                      justification="x")
+        delivered = []
+
+        def send(messages):
+            [message] = messages
+            if message.to == ["admin@example.com"]:
+                raise smtplib.SMTPRecipientsRefused({"admin@example.com": (550, b"5.4.1 Recipient address rejected")})
+            delivered.append(message.to[0])
+            return 1
+
+        with patch("santa.notifications.get_connection") as get_connection, \
+                self.assertLogs("santa.notifications", "WARNING") as logs, self.captureOnCommitCallbacks(execute=True):
+            get_connection.return_value.send_messages.side_effect = send
+            notifications.request_created(access_request)
+        self.assertEqual(delivered, ["approver@example.com"])
+        self.assertIn("E-mail to admin@example.com refused", logs.output[0])
 
     def test_a_failing_mail_server_is_only_logged(self):
         access_request = AccessRequest.objects.create(requester=self.user, kind="OTHER", title="Figma",
@@ -194,6 +218,54 @@ class NotificationsTestCase(ConsoleBase):
         with patch("santa.notifications.get_connection", side_effect=OSError("connection refused")), \
                 self.assertLogs("santa.notifications", "ERROR"), self.captureOnCommitCallbacks(execute=True):
             notifications.request_created(access_request)
+
+    def test_sign_in_group_without_e_mails_and_exceptions(self):
+        admins = SignInGroup.objects.create(name="Admins without mailbox", claim_value="admins-1", no_email=True)
+        admins.members.add(self.approver)
+        access_request = AccessRequest.objects.create(requester=self.user, kind="OTHER", title="Figma",
+                                                      justification="x")
+
+        def recipients_of_a_new_request():
+            mail.outbox.clear()
+            with self.captureOnCommitCallbacks(execute=True):
+                notifications.request_created(access_request)
+            return recipients()
+
+        self.assertEqual(recipients_of_a_new_request(), ["admin@example.com"])
+        self.assertEqual(notifications.available(self.approver), [])
+        # an exception in Administration → Users, both ways
+        profile = profile_for(self.approver)
+        profile.email_override = UserProfile.EmailOverride.ON
+        profile.save()
+        self.assertEqual(recipients_of_a_new_request(), ["admin@example.com", "approver@example.com"])
+        profile.email_override = UserProfile.EmailOverride.OFF
+        profile.save()
+        admins.members.remove(self.approver)
+        self.assertEqual(recipients_of_a_new_request(), ["admin@example.com"])
+        # nor in the daily summary
+        self.choose(self.approver, new_requests=notifications.DAILY)
+        mail.outbox.clear()
+        call_command("send_notification_digest", stdout=open("/dev/null", "w"))
+        self.assertEqual(mail.outbox, [])
+
+    def test_blocked_user_sees_a_note_in_the_profile(self):
+        SignInGroup.objects.create(name="No mail", claim_value="nomail", no_email=True).members.add(self.approver)
+        self.client.force_login(self.approver)
+        response = self.client.get(reverse("profile"))
+        self.assertContains(response, "E-mails are switched off for your account by the administrators.")
+        self.assertNotContains(response, 'name="notify_')
+
+    def test_set_in_the_administration(self):
+        url = reverse("console:admin_user", args=(self.approver.pk,))
+        self.client.post(url, {"is_active": "on", "email_override": "off", "email": "approver@example.com",
+                               "is_staff": "on"})
+        self.assertEqual(profile_for(self.approver).email_override, "off")
+        self.assertIn("email_override", LogEntry.objects.filter(object_id=str(self.approver.pk)).latest("pk")
+                      .get_change_message())
+        self.client.post(reverse("console:admin_sign_in_group_add"), {
+            "name": "Admins", "claim_value": "admins-2", "no_email": "on"})
+        self.assertTrue(SignInGroup.objects.get(claim_value="admins-2").no_email)
+        self.assertContains(self.client.get(reverse("console:admin_sign_in_groups")), "no e-mails")
 
     def test_profile_choices(self):
         self.client.force_login(self.approver)
