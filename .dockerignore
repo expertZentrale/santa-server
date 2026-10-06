@@ -8,3 +8,9 @@ staticfiles
 .devcontainer
 *.md
 !README.md
+.idea
+.vscode
+**/.DS_Store
+.env
+core
+core.[0-9]*
