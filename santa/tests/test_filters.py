@@ -235,11 +235,12 @@ class FilterBarTestCase(ConsoleBase):
             self.assertNotContains(response, "Reset all")
             self.assertEqual({name: chip["text"] for name, chip in self.chips(bar).items()},
                              {"days": "7 days", "resolved": "Open"})
-        chips = self.chips(self.bar(url, view="blocked", q="", group=str(self.dev.pk), sha256=SHA_A))
+        # a sent form has the ticked status too (like the status of the requests)
+        chips = self.chips(self.bar(url, view="blocked", q="", resolved="open", group=str(self.dev.pk), sha256=SHA_A))
         self.assertEqual(chips["sha256"]["text"], f"{SHA_A[:12]}…")
         # × of a default: no limit
         self.assertIn("days=&", chips["days"]["remove_url"] + "&")
-        self.assertIn("resolved=all", chips["resolved"]["remove_url"])
+        self.assertIn("resolved=&", chips["resolved"]["remove_url"] + "&")
         self.assertIn("view=blocked", chips["group"]["remove_url"])
         self.assertNotIn("sha256", chips["sha256"]["remove_url"])
         response = self.client.get(url, {"view": "blocked", "q": "", "group": str(self.dev.pk)})

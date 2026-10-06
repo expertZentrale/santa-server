@@ -104,12 +104,26 @@ def filter_events(request, events):
         events = events.filter(file_sha256=params["sha256"].lower())
     start, end = date_range(params, "days", TIME_DAYS, "7")
     events = in_range(events, "execution_time", start, end)
-    resolved = params.get("resolved", "open")
+    resolved = resolved_status(params)
     if resolved == "open":
         events = events.filter(resolved_at__isnull=True)
     elif resolved == "resolved":
         events = events.filter(resolved_at__isnull=False)
     return events
+
+
+RESOLVED_VALUES = ("open", "resolved")
+
+
+def resolved_status(params):
+    """The status filter as one value: "open", "resolved" or "all" (both or none ticked; also an old ?resolved=all).
+
+    Open before the filter form was sent, like the other default filters.
+    """
+    if "resolved" not in params and "q" not in params:
+        return "open"
+    values = chosen(params, "resolved", RESOLVED_VALUES)
+    return values[0] if len(values) == 1 else "all"
 
 
 def event_facets(request, view):
@@ -121,9 +135,8 @@ def event_facets(request, view):
         facets.append(Facet("decision", gettext("Decision"), choices=[(d, d) for d in decisions]))
     facets += [
         Facet("days", gettext("Time range"), kind="time", choices=TIME_PRESETS, default="7"),
-        Facet("resolved", gettext("Status"), kind="choice", default="open", unfiltered="all",
-              choices=[("open", gettext("Open")), ("resolved", gettext("Resolved")),
-                       ("all", gettext("Open and resolved"))]),
+        Facet("resolved", gettext("Status"), choices=[("open", gettext("Open")), ("resolved", gettext("Resolved"))],
+              default=["open"]),
     ]
     if sha256 := params.get("sha256", ""):
         facets.append(Facet("sha256", gettext("Binary"), kind="fixed", text=f"{sha256[:12]}…"))
@@ -137,10 +150,9 @@ def event_facets(request, view):
 
 
 def filter_context(request):
-    resolved = request.GET.get("resolved", "open")
     return {
         # the hidden field of the selection: "open", "resolved" or "all", like the filter
-        "resolved": resolved if resolved in ("open", "resolved", "all") else "open",
+        "resolved": resolved_status(request.GET),
         "params": request.GET,
     }
 
