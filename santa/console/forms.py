@@ -917,7 +917,7 @@ class ProfileForm(forms.ModelForm):
             required=False, label=_("Time zone"))
         # the e-mails the user may get (notifications.py)
         self.notification_names = []
-        for notification in notifications.available(user) if user else []:
+        for notification in notifications.available(user) if user and notifications.enabled() else []:
             name = f"notify_{notification.key}"
             self.fields[name] = forms.ChoiceField(
                 choices=[(value, notifications.MODE_LABELS[value]) for value in notification.modes],

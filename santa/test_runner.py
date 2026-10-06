@@ -18,8 +18,8 @@ class EnglishTestRunner(DiscoverRunner):
 
     def setup_test_environment(self, **kwargs):
         super().setup_test_environment(**kwargs)
-        self._english = override_settings(LANGUAGE_CODE="en", EMAIL_HOST="localhost", EMAIL_SEND_IN_BACKGROUND=False,
-                                          **DEFAULT_SETTINGS)
+        self._english = override_settings(LANGUAGE_CODE="en", EMAIL_HOST="localhost", EMAIL_NOTIFICATIONS_ENABLED=True,
+                                          EMAIL_SEND_IN_BACKGROUND=False, **DEFAULT_SETTINGS)
         self._english.enable()
 
     def teardown_test_environment(self, **kwargs):

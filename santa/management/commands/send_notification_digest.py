@@ -20,7 +20,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         if not notifications.enabled():
-            self.stdout.write("E-mail is not set up (EMAIL_HOST)")
+            self.stdout.write("E-mail notifications are off (EMAIL_HOST, EMAIL_NOTIFICATIONS_ENABLED)")
             return
         if not cache.add(LOCK_KEY, "1", timeout=3600):
             self.stderr.write("Another digest is being sent")
