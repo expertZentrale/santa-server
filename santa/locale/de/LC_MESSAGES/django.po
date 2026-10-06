@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: santa-server\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-06 09:58+0000\n"
+"POT-Creation-Date: 2026-10-06 10:15+0000\n"
 "Language: de\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -21,7 +21,8 @@ msgstr ""
 
 #: santa/catalog.py:188
 msgid "The Homebrew list is being loaded, try again in a moment."
-msgstr "Die Homebrew-Liste wird gerade geladen, versuchen Sie es gleich noch einmal."
+msgstr ""
+"Die Homebrew-Liste wird gerade geladen, versuchen Sie es gleich noch einmal."
 
 #: santa/catalog.py:261
 #, python-format
@@ -383,7 +384,7 @@ msgstr "Gruppen hinzufügen"
 #: santa/templates/console/administration/_role_form.html:27
 #: santa/templates/console/administration/_sign_in_group_form.html:13
 #: santa/templates/console/administration/_tag_form.html:10
-#: santa/templates/console/administration/_user_form.html:31
+#: santa/templates/console/administration/_user_form.html:34
 #: santa/templates/console/file_access/_form.html:45
 #: santa/templates/console/groups/_form.html:38
 #: santa/templates/console/rules/_form.html:37
@@ -2855,7 +2856,7 @@ msgstr ""
 #: santa/templates/console/administration/_role_form.html:25
 #: santa/templates/console/administration/_sign_in_group_form.html:11
 #: santa/templates/console/administration/_tag_form.html:8
-#: santa/templates/console/administration/_user_form.html:29
+#: santa/templates/console/administration/_user_form.html:32
 #: santa/templates/console/events/_create_rules_form.html:30
 #: santa/templates/console/file_access/_form.html:43
 #: santa/templates/console/rules/_form.html:35
@@ -2922,7 +2923,7 @@ msgstr ""
 #: santa/templates/console/administration/_role_form.html:24
 #: santa/templates/console/administration/_sign_in_group_form.html:10
 #: santa/templates/console/administration/_tag_form.html:7
-#: santa/templates/console/administration/_user_form.html:28
+#: santa/templates/console/administration/_user_form.html:31
 #: santa/templates/console/file_access/_form.html:42
 #: santa/templates/console/groups/_form.html:36
 #: santa/templates/console/profile.html:25
@@ -2938,7 +2939,7 @@ msgstr "Rolle anlegen"
 #: santa/templates/console/administration/_role_form.html:26
 #: santa/templates/console/administration/_sign_in_group_form.html:12
 #: santa/templates/console/administration/_tag_form.html:9
-#: santa/templates/console/administration/_user_form.html:30
+#: santa/templates/console/administration/_user_form.html:33
 #: santa/templates/console/file_access/_form.html:44
 #: santa/templates/console/groups/_form.html:37
 #: santa/templates/console/history/drawer.html:4
@@ -3027,19 +3028,29 @@ msgstr "ja,nein"
 msgid "Last sign-in"
 msgstr "Letzte Anmeldung"
 
-#: santa/templates/console/administration/_user_form.html:22
-msgid "From the sign-in (change them in the sign-in groups):"
-msgstr "Aus der Anmeldung (in den Anmeldegruppen ändern):"
-
 #: santa/templates/console/administration/_user_form.html:23
+msgid "Roles of the sign-in are changed in the sign-in groups."
+msgstr "Rollen aus der Anmeldung werden in den Anmeldegruppen geändert."
+
+#: santa/templates/console/administration/_user_form.html:25
+#, python-format
+msgid "from %(groups)s"
+msgstr "über %(groups)s"
+
+#: santa/templates/console/administration/_user_form.html:25
 msgid "admin role of the sign-in"
 msgstr "Admin-Rolle der Anmeldung"
 
-#: santa/templates/console/administration/_user_form.html:28
+#: santa/templates/console/administration/_user_form.html:26
+#: santa/templates/console/administration/roles.html:18
+msgid "No roles yet."
+msgstr "Noch keine Rollen."
+
+#: santa/templates/console/administration/_user_form.html:31
 msgid "Create account"
 msgstr "Konto anlegen"
 
-#: santa/templates/console/administration/_user_form.html:34
+#: santa/templates/console/administration/_user_form.html:37
 #, python-format
 msgid ""
 "Delete the user %(name)s? The account is created again at the next sign-in."
@@ -3047,7 +3058,7 @@ msgstr ""
 "Den Benutzer %(name)s löschen? Das Konto wird bei der nächsten Anmeldung neu "
 "angelegt."
 
-#: santa/templates/console/administration/_user_form.html:34
+#: santa/templates/console/administration/_user_form.html:37
 #, python-format
 msgid "Delete the local account %(name)s?"
 msgstr "Das lokale Konto %(name)s löschen?"
@@ -3087,10 +3098,6 @@ msgid ""
 msgstr ""
 "Eine Rolle ist eine Sammlung von Berechtigungen. Benutzer erhalten Rollen "
 "über ihre Anmeldegruppen oder hier von Hand."
-
-#: santa/templates/console/administration/roles.html:18
-msgid "No roles yet."
-msgstr "Noch keine Rollen."
 
 #: santa/templates/console/administration/sign_in_groups.html:6
 msgid ""
@@ -3449,6 +3456,18 @@ msgid ""
 msgstr ""
 "Die Dateizugriffsregel %(name)s löschen? Sie bleibt auf den Macs, bis ihr "
 "Profil ersetzt wird."
+
+#: santa/templates/console/file_access/_process.html:6
+msgid "Remove the process"
+msgstr "Prozess entfernen"
+
+#: santa/templates/console/file_access/_process.html:9
+msgid "Removed when you save."
+msgstr "Wird beim Speichern entfernt."
+
+#: santa/templates/console/file_access/_process.html:10
+msgid "Undo"
+msgstr "Rückgängig"
 
 #: santa/templates/console/file_access/drawer_form.html:3
 #: santa/templates/console/file_access/form.html:2

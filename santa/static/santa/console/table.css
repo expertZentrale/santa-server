@@ -60,7 +60,7 @@ a.badge:hover { text-decoration: none; filter: brightness(.95); outline: 1px sol
 /* the column chooser: the list scrolls, its reset stays at the bottom */
 .columns-picker .picker-panel { display: flex; flex-direction: column; max-height: none; overflow: visible; padding: 0; }
 /* (its height: table.js, the same limit on every page) */
-.picker-list { display: grid; overflow-y: auto; padding: .3rem; }
+.picker-list { display: grid; overflow-y: auto; overscroll-behavior: contain; padding: .3rem; }
 .picker-footer { border-top: 1px solid var(--border); padding: .3rem; }
 
 /* The identifier is cut at the width of its column, the full text is in the title */

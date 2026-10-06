@@ -15,6 +15,12 @@ POLICY_CLASSES = {
 
 
 @register.filter
+def as_switch(field):
+    """A yes / no field as a switch: screen readers say on / off instead of checked"""
+    return field.as_widget(attrs={"role": "switch"})
+
+
+@register.filter
 def policy_class(policy):
     return POLICY_CLASSES.get(policy, "")
 
