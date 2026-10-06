@@ -1,0 +1,18 @@
+{
+	// The dev server of the devcontainer: starts when the folder opens, in its own terminal with the log, once you
+	// allowed automatic tasks ("Tasks: Manage Automatic Tasks" → "Allow Automatic Tasks", a user setting); else start
+	// it with "Tasks: Run Task" → "Santa Server". Restart it (e.g. after rebuilding the container for
+	// .devcontainer/.env) with "Tasks: Restart Running Task".
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Santa Server",
+			"type": "shell",
+			"command": "python manage.py runserver 0.0.0.0:8000",
+			"isBackground": true,
+			"problemMatcher": [],
+			"runOptions": {"runOn": "folderOpen"},
+			"presentation": {"panel": "dedicated", "reveal": "always", "clear": true}
+		}
+	]
+}

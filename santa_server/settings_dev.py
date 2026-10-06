@@ -1,47 +1,30 @@
+"""Settings of the devcontainer: the settings of the image (settings.py) with defaults for development.
+
+Every environment variable of the configuration table (README) works here as well, e.g. in .devcontainer/.env:
+a value there wins over the defaults below. The variables are read when runserver starts.
+"""
 import os
 
-from .settings_common import *  # noqa: F401,F403
-
-DEBUG = True
-SECRET_KEY = "django-insecure-devcontainer-only"
-ALLOWED_HOSTS = ["*"]
-
-DATABASES = {
-    "default": {
-        "ENGINE": "mssql",
-        "HOST": os.getenv("DB_HOST", "mssql"),
-        "PORT": os.getenv("DB_PORT", "1433"),
-        "USER": os.getenv("DB_USER", "sa"),
-        "PASSWORD": os.getenv("DB_PASSWORD", ""),
-        "NAME": os.getenv("DB_NAME", "santa"),
-        "OPTIONS": {
-            "python_driver": "mssql_python",
-            "extra_params": "TrustServerCertificate=yes;",
-        },
-    },
+development_defaults = {
+    "SECRET_KEY": "django-insecure-devcontainer-only",
+    "DEBUG": "true",
+    "ALLOWED_HOSTS": "*",
+    "SANTA_PUBLIC_BASE_URL": "http://localhost:8000",
+    # the SQL Server of the devcontainer has a self-signed certificate
+    "DB_EXTRA_PARAMS": "TrustServerCertificate=yes;",
+    "CACHE_KEY_PREFIX": "santa_dev",
+    # the Mailpit of the devcontainer: the e-mails are shown on http://localhost:8025
+    "EMAIL_HOST": "mailpit",
+    "EMAIL_PORT": "1025",
+    "EMAIL_USE_TLS": "false",
 }
+for name, value in development_defaults.items():
+    os.environ.setdefault(name, value)
 
-CACHES = {
-    "default": {
-        "BACKEND": "django_prometheus.cache.backends.redis.RedisCache",
-        "LOCATION": os.getenv("REDIS_URL", "redis://redis:6379/1"),
-        "KEY_PREFIX": "santa_dev",
-    },
-}
+from .settings import *  # noqa: E402,F401,F403
 
 # no manifest in development: the tests (DEBUG=False) must not depend on collectstatic
 STORAGES = {
     **STORAGES,  # noqa: F405
     "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
 }
-
-# like the image: TIME_ZONE / LANGUAGE_CODE in .devcontainer/.env or containerEnv of devcontainer.json
-TIME_ZONE = os.getenv("TIME_ZONE", TIME_ZONE)  # noqa: F405
-LANGUAGE_CODE = os.getenv("LANGUAGE_CODE", LANGUAGE_CODE)  # noqa: F405
-
-SANTA_PUBLIC_BASE_URL = os.getenv("SANTA_PUBLIC_BASE_URL", "http://localhost:8000")
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN") or None
-
-# e-mail notifications are on, the mails are printed in the log of runserver (the tests collect them in memory)
-EMAIL_HOST = "localhost"
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"

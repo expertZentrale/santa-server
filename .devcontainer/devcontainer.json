@@ -13,9 +13,15 @@
 		"REDIS_URL": "redis://redis:6379/1"
 	},
 	"remoteUser": "dev",
-	"forwardPorts": [8000],
+	"forwardPorts": [8000, "mailpit:8025"],
+	"portsAttributes": {
+		"8000": {"label": "Santa Server"},
+		"mailpit:8025": {"label": "Mailpit (e-mails)"}
+	},
 	"postCreateCommand": ".devcontainer/setup.sh",
 	"customizations": {
+		// the task "Santa Server" (.vscode/tasks.json) starts the dev server when the folder opens, once automatic
+		// tasks are allowed in your user settings (VS Code takes that setting from nowhere else)
 		"vscode": {
 			"extensions": [
 				"ms-python.python",

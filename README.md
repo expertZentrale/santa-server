@@ -436,22 +436,32 @@ python manage.py import_config - < santa-config.json            # importieren, "
 
 ### Entwicklung
 
-Öffnen Sie den Ordner in VS Code → **Reopen in Container**. Der Devcontainer startet SQL Server 2022 und Redis, legt
-die Datenbank an und führt die Migrationen aus (`.devcontainer/setup.sh`). Die Werkzeuge laufen als Benutzer `dev`
-ohne Rechte mit der UID Ihres Host-Benutzers, die Dateien im Workspace bleiben also Ihre. Dann:
+Öffnen Sie den Ordner in VS Code → **Reopen in Container**. Der Devcontainer startet SQL Server 2022, Redis und
+Mailpit, legt die Datenbank an und führt die Migrationen aus (`.devcontainer/setup.sh`). Der Entwicklungsserver
+läuft auf http://localhost:8000/: Beim Öffnen des Ordners startet ihn die VS-Code-Aufgabe *Santa Server*
+(`.vscode/tasks.json`) in einem eigenen Terminal mit dem Log. Dafür einmal automatische Aufgaben in Ihren
+Benutzereinstellungen erlauben: *Tasks: Manage Automatic Tasks* → *Allow Automatic Tasks* (VS Code nimmt diese
+Einstellung nur von dort, nicht aus dem Devcontainer); bis dahin *Tasks: Run Task* → *Santa Server*. Neu starten mit
+*Tasks: Restart Running Task*, ohne VS Code mit `python manage.py runserver 0.0.0.0:8000`. Die E-Mails des Servers fängt Mailpit ab: http://localhost:8025/. Die
+Werkzeuge laufen als Benutzer `dev` ohne Rechte mit der UID Ihres Host-Benutzers, die Dateien im Workspace bleiben also
+Ihre. Dann:
 
 ```bash
 python manage.py createsuperuser
-python manage.py runserver 0.0.0.0:8000     # http://localhost:8000/
 python manage.py test                        # gegen SQL Server
 ruff check .
 ```
 
 **Persönliche Einstellungen**: Kopieren Sie `.devcontainer/.env.example` nach `.devcontainer/.env` (von Git und
-Docker ignoriert) und bauen Sie den Container neu. Darin:
+Docker ignoriert) und bauen Sie den Container neu: Die Datei wird beim Anlegen des Containers gelesen, danach
+startet die Aufgabe *Santa Server* den Server mit den neuen Werten. Jede Variable der [Konfiguration](#konfiguration) wirkt dort wie im Image
+(`settings_dev.py` setzt nur Standardwerte für die Entwicklung und lädt dann `settings.py`), z. B.:
 - `GITHUB_TOKEN`: ein Fine-grained Token mit „Public repositories (read-only)“ und ohne Berechtigungen. Ohne ihn
   erlaubt GitHub 60 API-Anfragen pro Stunde und 10 Suchen pro Minute für Ihre IP.
 - `TIME_ZONE`: die Standardzeitzone des Servers, z. B. `Europe/Berlin`.
+- `OIDC_*`: die Anmeldung mit Ihrem Anbieter, Redirect-URI `http://localhost:8000/oidc/callback/`.
+
+Die Tests laufen immer mit den Standardwerten von `OIDC_*` und `SANTA_*`, unabhängig von `.env`.
 
 **Übersetzungen**: Die Texte sind englisch, Deutsch steht in `santa/locale/de/LC_MESSAGES/django.po`. Nach dem Ändern
 von Texten: `python manage.py makemessages -l de`, die neuen Einträge übersetzen, `python manage.py compilemessages`
@@ -911,22 +921,33 @@ python manage.py import_config - < santa-config.json            # import, "-" re
 
 ### Development
 
-Open the folder in VS Code → **Reopen in Container**. The devcontainer starts SQL Server 2022 and Redis, creates the
-database and runs the migrations (`.devcontainer/setup.sh`). The tools run as the unprivileged user `dev` with the
-UID of your host user, so the files in the workspace stay yours. Then:
+Open the folder in VS Code → **Reopen in Container**. The devcontainer starts SQL Server 2022, Redis and Mailpit,
+creates the database and runs the migrations (`.devcontainer/setup.sh`). The development server runs on
+http://localhost:8000/: when the folder opens, the VS Code task *Santa Server* (`.vscode/tasks.json`) starts it in its
+own terminal with the log. For that, allow automatic tasks once in your user settings: *Tasks: Manage Automatic
+Tasks* → *Allow Automatic Tasks* (VS Code takes this setting only from there, not from the devcontainer); until then
+*Tasks: Run Task* → *Santa Server*. Restart it with *Tasks: Restart Running Task*, without VS Code with
+`python manage.py runserver 0.0.0.0:8000`. Mailpit catches
+the e-mails of the server: http://localhost:8025/. The tools run as the unprivileged user `dev` with the UID of your
+host user, so the files in the workspace stay yours. Then:
 
 ```bash
 python manage.py createsuperuser
-python manage.py runserver 0.0.0.0:8000     # http://localhost:8000/
 python manage.py test                        # against SQL Server
 ruff check .
 ```
 
 **Personal settings**: copy `.devcontainer/.env.example` to `.devcontainer/.env` (ignored by git and docker) and
-rebuild the container. In it:
+rebuild the container: the file is read when the container is created, then the task *Santa Server* starts the server
+with the new values. Every
+variable of the [configuration](#configuration) works there as in the image (`settings_dev.py` only sets defaults for
+development, then loads `settings.py`), e.g.:
 - `GITHUB_TOKEN`: a fine-grained token with "Public repositories (read-only)" and no permissions. Without it GitHub
   allows 60 API requests per hour and 10 searches per minute for your IP.
 - `TIME_ZONE`: the default time zone of the server, e.g. `Europe/Berlin`.
+- `OIDC_*`: the sign-in with your provider, redirect URI `http://localhost:8000/oidc/callback/`.
+
+The tests always run with the defaults of `OIDC_*` and `SANTA_*`, whatever `.env` sets.
 
 **Translations**: the texts are English, German is in `santa/locale/de/LC_MESSAGES/django.po`. After changing texts:
 `python manage.py makemessages -l de`, translate the new entries, `python manage.py compilemessages`, and commit the

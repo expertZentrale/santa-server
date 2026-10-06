@@ -71,7 +71,9 @@ Every model and query must work on SQL Server (mssql-django 2.x, `mssql_python` 
 - The image uses `santa_server/settings.py`: every deployment value is an environment variable, read with its
   `env()` helpers. A new variable goes in the configuration table of the README.
 - Deployments can add `santa_server/settings_local.py` (`from .settings import *`, gitignored). Never commit one.
-- The devcontainer uses `santa_server/settings_dev.py` with the env vars of `.devcontainer/devcontainer.json`.
+- The devcontainer uses `santa_server/settings_dev.py`: it only sets development defaults (`os.environ.setdefault`)
+  and then loads `settings.py`, so every variable works in `.devcontainer/.env` too. Don't read variables there
+  yourself. The test runner resets the `OIDC_*` and `SANTA_*` settings to the defaults of `settings_common.py`.
 - Never hardcode secrets, and never put real credentials in the dev settings or the example `docker-compose.yml`.
 
 ## Naming
