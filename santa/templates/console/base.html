@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Santa{% endblock %} · Santa Server</title>
+  <title>{% block title %}Santa{% endblock %} · {{ server_name }}</title>
+  {% include "_favicon.html" %}
   {# one file per task; the order counts (defer keeps it): core.js first, then filterbar, drawer, table (Escape) #}
   <link rel="stylesheet" href="{% static 'santa/console/base.css' %}">
   <link rel="stylesheet" href="{% static 'santa/console/filterbar.css' %}">
@@ -27,7 +28,7 @@
   {% if user.is_authenticated %}
   <button type="button" class="burger" data-burger aria-expanded="false" aria-controls="main-nav" aria-label="{% translate 'Menu' %}">{% include "console/icons/menu.svg" %}</button>
   {% endif %}
-  <a class="brand" href="{% url 'home' %}">Santa Server</a>
+  <a class="brand" href="{% url 'home' %}">{{ server_name }}</a>
   {% if user.is_authenticated %}
   <nav id="main-nav" aria-label="{% translate 'Main' %}">
     {% if user.is_staff %}

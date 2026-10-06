@@ -9,3 +9,12 @@ __pycache__/
 staticfiles/
 .ruff_cache/
 .venv/
+
+### Editors and local files ###
+.idea/
+.vscode/
+.DS_Store
+.env
+# crash dumps: memory images, they can contain secrets
+/core
+/core.[0-9]*
