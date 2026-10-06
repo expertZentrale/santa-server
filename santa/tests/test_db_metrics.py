@@ -8,12 +8,14 @@ from santa.models import Group
 class DatabaseMetricsTestCase(TestCase):
     def test_queries_are_counted(self):
         labels = (connection.alias, connection.vendor)
-        before = execute_total.labels(*labels)._value.get()
+        # the metrics count for the whole process: compare with the values before these queries
+        executed = execute_total.labels(*labels)._value.get()
+        timed = query_duration_seconds.labels(*labels)._sum.get()
         list(Group.objects.all())
         Group.objects.create(name="Metrics")
         self.assertEqual(connection.vendor, "microsoft")
-        self.assertGreaterEqual(execute_total.labels(*labels)._value.get() - before, 2)
-        self.assertGreater(query_duration_seconds.labels(*labels)._sum.get(), 0)
+        self.assertGreaterEqual(execute_total.labels(*labels)._value.get() - executed, 2)
+        self.assertGreater(query_duration_seconds.labels(*labels)._sum.get(), timed)
 
     def test_metrics_page_shows_them(self):
         list(Group.objects.all())
