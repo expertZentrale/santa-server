@@ -13,6 +13,7 @@ from django.utils.text import format_lazy
 from django.utils.translation import gettext
 from django.utils.translation import gettext_lazy as _
 
+from .. import notifications
 from ..catalog import update_identifier_icons
 from ..models import (
     BRANDING_LOGO_MAX_BYTES,
@@ -908,12 +909,34 @@ class ProfileForm(forms.ModelForm):
         widgets = {"theme": forms.RadioSelect}
         labels = {"theme": _("Theme"), "language": _("Language"), "time_zone": _("Time zone")}
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["language"].choices = [("", _("Language of the browser"))] + list(settings.LANGUAGES)
         self.fields["time_zone"] = forms.ChoiceField(
             choices=[("", _("Time zone of the browser"))] + [(name, name) for name in sorted(time_zone_names())],
             required=False, label=_("Time zone"))
+        # the e-mails the user may get (notifications.py)
+        self.notification_names = []
+        for notification in notifications.available(user) if user else []:
+            name = f"notify_{notification.key}"
+            self.fields[name] = forms.ChoiceField(
+                choices=[(value, notifications.MODE_LABELS[value]) for value in notification.modes],
+                initial=notifications.mode(user, notification.key), label=notification.label,
+                help_text=notification.help_text, required=False)
+            self.notification_names.append(name)
+
+    def notification_fields(self):
+        return [self[name] for name in self.notification_names]
+
+    def save(self, commit=True):
+        profile = super().save(commit=False)
+        # a choice that is not sent keeps the current one
+        profile.notifications = {**profile.notifications, **{
+            name.removeprefix("notify_"): self.cleaned_data[name] for name in self.notification_names
+            if self.cleaned_data[name]}}
+        if commit:
+            profile.save()
+        return profile
 
 
 # Administration

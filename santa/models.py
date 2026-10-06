@@ -879,6 +879,8 @@ class UserProfile(models.Model):
     has_admin_role = models.BooleanField(default=False, editable=False)
     # {list: query string} of the last used filter of each list, a document only (never filtered on)
     last_filters = models.JSONField(default=dict, blank=True, editable=False)
+    # {notification: "off" | "instant" | "daily"} (notifications.py), a document only; missing = its default
+    notifications = models.JSONField(default=dict, blank=True, editable=False)
 
     def __str__(self):
         return f"Profile of {self.user}"

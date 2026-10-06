@@ -1,0 +1,13 @@
+{% load i18n %}{% autoescape off %}{% blocktranslate with name=access_request.requester.get_full_name|default:access_request.requester.get_username %}{{ name }} asks for software:{% endblocktranslate %}
+
+{{ access_request.title }} ({{ access_request.get_kind_display }})
+{% for package in access_request.packages.all %}- {{ package.get_kind_display }}: {{ package.identifier }}
+{% endfor %}{% if access_request.file_sha256 %}SHA-256: {{ access_request.file_sha256 }}
+{% endif %}{% if access_request.link %}{{ access_request.link }}
+{% endif %}
+{% translate "Why:" %}
+{{ access_request.justification }}
+
+{% translate "Approve or deny it in the console:" %}
+{{ url }}
+{% include "email/_footer.txt" %}{% endautoescape %}

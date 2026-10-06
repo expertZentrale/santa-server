@@ -1,0 +1,18 @@
+{% load i18n %}{% autoescape off %}{% if new_requests %}{% translate "New requests" %}
+{% for access_request in new_requests %}- {{ access_request.title }} ({{ access_request.get_kind_display }}, {{ access_request.requester.get_full_name|default:access_request.requester.get_username }}){% if not access_request.is_pending %}: {{ access_request.get_status_display }}{% endif %}
+{% endfor %}{% if open_requests %}{% blocktranslate count count=open_requests %}{{ count }} request is open.{% plural %}{{ count }} requests are open.{% endblocktranslate %}
+{% endif %}{{ requests_url }}
+
+{% endif %}{% if package_pending %}{% translate "Package versions to approve" %}
+{% for version in package_pending %}- {{ version.source.name }}: {% if version.identifier %}{{ version.identifier }} {% endif %}{{ version.version }}
+{% endfor %}{{ sources_url }}
+
+{% endif %}{% if package_auto %}{% translate "Approved package versions" %}
+{% for version in package_auto %}- {{ version.source.name }}: {% if version.identifier %}{{ version.identifier }} {% endif %}{{ version.version }}
+{% endfor %}{{ sources_url }}
+
+{% endif %}{% if package_errors %}{% translate "Package rules with errors" %}
+{% for source in package_errors %}- {{ source.name }}: {{ source.last_error|truncatechars:200 }}
+{% endfor %}{{ sources_url }}
+
+{% endif %}{% include "email/_footer.txt" %}{% endautoescape %}

@@ -10,7 +10,7 @@ from django.utils import timezone
 from django.utils.translation import gettext
 from django.views.decorators.http import require_POST
 
-from .. import catalog
+from .. import catalog, notifications
 from ..catalog import update_identifier_icons
 from ..models import AccessRequest, AccessRequestPackage, Event, ReleaseSource, RuleType
 from ..releases import ReleaseError, find_binaries, sync_release_source
@@ -148,6 +148,7 @@ def new_request(request):
                 AccessRequestPackage.objects.bulk_create(
                     AccessRequestPackage(access_request=access_request, **package)
                     for package in form.cleaned_data.get("packages", []))
+                notifications.request_created(access_request)
             messages.success(request, gettext("Your request was sent to your IT team. You'll see the answer here."))
             return redirect("requests:list")
     return render(request, "request/new.html", {
@@ -340,6 +341,7 @@ def _decide(access_request, user, status, note):
     access_request.decided_at = timezone.now()
     access_request.decision_note = note
     access_request.save()
+    notifications.request_decided(access_request)
     log_change(user, access_request, f"{access_request.get_status_display()}: {note}"[:500])
 
 
