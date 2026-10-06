@@ -1,7 +1,7 @@
 import csv
 
 from django.contrib import messages
-from django.db.models import Q
+from django.db.models import Q, prefetch_related_objects
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -256,6 +256,30 @@ def rules_existing(request):
     # "applies" only means something for a binary of an event
     return render(request, "console/rules/_existing.html", {"matches": [{"rule": rule, "applies": True}
                                                                         for rule in rules], "same_identifier": True})
+
+
+# rules looked at for the suggestions: the best ones of them are shown
+RULE_SUGGESTION_CANDIDATES = 50
+MAX_RULE_SUGGESTIONS = 10
+
+
+@staff_required
+def rule_suggestions(request):
+    """Rules for a search text, e.g. "Existing execution rule" of a request (suggestions.js)"""
+    require_perms(request, "view_rule")
+    q = request.GET.get("q", "").strip()
+    rules = []
+    if len(q) >= 2:
+        candidates = (Rule.objects.filter(Q(identifier__icontains=q) | Q(description__icontains=q)
+                                          | Q(tags__name__icontains=q))
+                      .distinct().order_by("identifier", "pk")[:RULE_SUGGESTION_CANDIDATES])
+        lower = q.lower()
+        # the identifier itself first, then the ones starting with it
+        rules = sorted(candidates, key=lambda rule: (rule.identifier.lower() != lower,
+                                                     not rule.identifier.lower().startswith(lower)))
+        rules = rules[:MAX_RULE_SUGGESTIONS]
+        prefetch_related_objects(rules, "groups", "machines")
+    return render(request, "console/rules/_suggestions.html", {"rules": rules, "query": q})
 
 
 @staff_required

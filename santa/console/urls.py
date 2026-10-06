@@ -25,6 +25,7 @@ urlpatterns = [
     path("rules/bulk/", views_rules.rules_bulk, name="rules_bulk"),
     path("rules/add/", views_rules.rule_form, name="rule_add"),
     path("rules/existing/", views_rules.rules_existing, name="rules_existing"),
+    path("rules/suggestions/", views_rules.rule_suggestions, name="rule_suggestions"),
     path("rules/export.csv", views_rules.rules_export, name="rules_export"),
     path("rules/upload/", views_rules.rule_upload, name="rule_upload"),
     path("rules/<int:pk>/", views_rules.rule_form, name="rule"),

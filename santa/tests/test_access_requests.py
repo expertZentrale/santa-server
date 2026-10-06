@@ -9,7 +9,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from santa.catalog import Suggestion
-from santa.models import AccessRequest, AccessRequestPackage, Event, Policy, ReleaseSource, Rule, RuleType
+from santa.models import AccessRequest, AccessRequestPackage, Event, Policy, ReleaseSource, Rule, RuleType, Tag
 from santa.services import machines_for_user
 
 from .test_console import SHA_A, SHA_B, ConsoleBase
@@ -420,6 +420,43 @@ class AdminRequestTestCase(ConsoleBase):
                              "package_rule_type": RuleType.BINARY})
         other.refresh_from_db()
         self.assertEqual((other.status, other.result_rule), (AccessRequest.Status.APPROVED, None))
+
+    def test_approve_other_with_the_picked_rule(self):
+        Rule.objects.create(rule_type=RuleType.BINARY, identifier=SHA_A, is_global=True)
+        for_dev = Rule.objects.create(rule_type=RuleType.BINARY, identifier=SHA_A)
+        for_dev.groups.add(self.dev)
+        access_request = self.other_request()
+        self.approve(access_request, {"result": "existing", "rule_identifier": SHA_A, "rule": for_dev.pk,
+                                      "rule_type": RuleType.SIGNINGID, "policy": Policy.ALLOWLIST,
+                                      "scope": "machines", "package_target": "new", "package_kind": "URL",
+                                      "package_rule_type": RuleType.BINARY})
+        access_request.refresh_from_db()
+        self.assertEqual(access_request.result_rule, for_dev)
+
+    def test_rule_suggestions(self):
+        tag = Tag.objects.create(name="browsers")
+        chrome = Rule.objects.create(rule_type=RuleType.TEAMID, identifier="EQHXZ8M8AV", is_global=True,
+                                     description="Google")
+        chrome.tags.add(tag)
+        safari = Rule.objects.create(rule_type=RuleType.SIGNINGID, identifier="platform:com.apple.Safari")
+        safari.groups.add(self.dev)
+        safari.tags.add(tag)
+        url = reverse("console:rule_suggestions")
+
+        def found(q):
+            return [rule.identifier for rule in self.client.get(url, {"q": q}).context["rules"]]
+
+        self.assertEqual(found("safari"), ["platform:com.apple.Safari"])
+        self.assertEqual(found("googl"), ["EQHXZ8M8AV"])
+        self.assertEqual(sorted(found("browser")), ["EQHXZ8M8AV", "platform:com.apple.Safari"])
+        self.assertEqual(found("s"), [])
+        response = self.client.get(url, {"q": "safari"})
+        self.assertContains(response, f'data-rule="{safari.pk}"')
+        self.assertContains(response, "Development")
+        self.assertContains(self.client.get(url, {"q": "nothing-like-it"}), "No rule found.")
+        viewer = User.objects.create_user("viewer", is_staff=True)
+        self.client.force_login(viewer)
+        self.assertEqual(self.client.get(url, {"q": "safari"}).status_code, 403)
 
     def test_approve_other_needs_the_rule_permissions(self):
         approver = User.objects.create_user("approver", is_staff=True)

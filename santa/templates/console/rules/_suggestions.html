@@ -1,0 +1,11 @@
+{% load console i18n %}{# Rules for a search text (views_rules.rule_suggestions), in a .suggestions listbox #}
+{% for rule in rules %}
+<button type="button" class="suggestion" role="option" id="rule-suggestion-{{ rule.pk }}" data-identifier="{{ rule.identifier }}" data-rule="{{ rule.pk }}">
+  <span><span class="suggestion-title"><span class="badge {{ rule.policy|policy_class }}">{{ rule.get_policy_display }}</span> <strong>{{ rule.get_rule_type_display }}</strong>
+    {% if rule.is_global %}<span class="chip small">{% translate "All Macs" %}</span>{% else %}{% for group in rule.groups.all %}<span class="chip small">{{ group.name }}</span>{% endfor %}{% for machine in rule.machines.all %}<span class="chip small mac">{{ machine.hostname|default:machine.serial_number }}</span>{% endfor %}{% endif %}
+    {% if not rule.is_enabled %}<span class="badge">{% translate "disabled" %}</span>{% endif %}</span>
+    <code>{{ rule.identifier }}</code>
+    {% if rule.description %}<small>{{ rule.description|truncatechars:110 }}</small>{% endif %}</span>
+</button>
+{% empty %}{% if query|length >= 2 %}<div class="suggestion-note">{% translate "No rule found." %}</div>{% endif %}
+{% endfor %}

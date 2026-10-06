@@ -30,5 +30,14 @@
   </div>
   {% else %}<p class="muted">{% translate "Creating package rules needs the permission to add package rules." %}</p>{% endif %}
 </div>
-<div data-show-when="result=existing">{% include "console/_field.html" with field=form.rule_identifier %}</div>
+<div data-show-when="result=existing">
+  {% with field=form.rule_identifier %}
+  <div class="field{% if field.errors %} has-error{% endif %}" data-field="{{ field.name }}" data-rule-search data-url="{% url 'console:rule_suggestions' %}">
+    <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+    <div class="combobox">{{ field }}<div class="suggestions" id="rule-suggestions" data-suggestions role="listbox" aria-label="{{ field.label }}"></div></div>
+    <small class="help">{{ field.help_text }}</small>
+    {% for error in field.errors %}<small class="error">{{ error }}</small>{% endfor %}
+  </div>
+  {% endwith %}
+</div>
 {% include "console/_field.html" with field=form.note %}
