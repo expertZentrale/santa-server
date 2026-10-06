@@ -338,6 +338,17 @@ small.help.after-field { margin: -.5rem 0 .9rem; }
 .login details { margin-top: 1rem; }
 .login label { display: grid; gap: .25rem; margin-bottom: .6rem; }
 .login input { width: 100%; }
+/* "Sign in with …" with the logo of the provider (OIDC_PROVIDER_ICON) */
+.button.sign-in { min-height: 2.6rem; gap: .75rem; font-weight: 600; border-color: var(--control-off); }
+.sign-in-logo { flex: none; width: 1.3rem; height: 1.3rem; object-fit: contain; }
+/* the colors of the Microsoft sign-in button (light: white, gray frame; dark: #2f2f2f) */
+.button.sign-in-microsoft {
+  font-family: "Segoe UI", system-ui, sans-serif;
+  background: light-dark(#fff, #2f2f2f);
+  border-color: light-dark(#8c8c8c, #2f2f2f);
+  color: light-dark(#5e5e5e, #fff);
+}
+.button.sign-in-microsoft:hover { background: light-dark(#f3f3f3, #3b3b3b); }
 form.inline { display: inline; margin: 0; }
 
 /* Tabs and filters */
