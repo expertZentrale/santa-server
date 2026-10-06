@@ -63,6 +63,7 @@ Das Image (`santa_server/settings.py`) wird über Umgebungsvariablen konfigurier
 | `SANTA_SERVER_NAME` | | Name in Fenstertitel, Kopfzeile und Django-Admin, Standard `Santa Server` |
 | `SANTA_FAVICON_URL` | | eigenes Favicon: absolute URL oder Pfad ab `/` (SVG, PNG oder ICO); leer = die mitgelieferte Weihnachtsmütze |
 | `EMAIL_HOST`, `EMAIL_PORT` | | SMTP-Server für die [E-Mail-Benachrichtigungen](#e-mail-benachrichtigungen); leer = keine E-Mails. Port Standard `587` |
+| `EMAIL_NOTIFICATIONS_ENABLED` | | Standard `true`; `false` schaltet die E-Mail-Benachrichtigungen ab, auch mit `EMAIL_HOST`. Ohne sie bietet das Profil keine Auswahl an |
 | `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD` | | Anmeldung am SMTP-Server, leer = ohne |
 | `EMAIL_USE_TLS`, `EMAIL_USE_SSL` | | Standard STARTTLS (`EMAIL_USE_TLS=true`); `EMAIL_USE_SSL=true` für SMTPS (Port 465) |
 | `DEFAULT_FROM_EMAIL` | | Absender, Standard `santa@<Host von SANTA_PUBLIC_BASE_URL>` |
@@ -400,11 +401,11 @@ Um den Blockierdialog mit dem Formular zu verbinden, setzen Sie die *URL im Bloc
 
 #### E-Mail-Benachrichtigungen
 
-Mit `EMAIL_HOST` versendet der Server E-Mails, gleich nach der Änderung, im Hintergrund über eine Verbindung (die
-Anfrage wartet nicht auf den Mailserver); schlägt der Versand fehl, wird das nur protokolliert, und eine E-Mail, die
-gerade unterwegs ist, wenn der Prozess endet, geht verloren. Jeder Benutzer wählt im *Profil* für jede Benachrichtigung *Aus*, *Sofort* oder *Tägliche
-Zusammenfassung* (die schickt `send_notification_digest`, mit allem der letzten 24 Stunden). Angeboten wird nur, was
-die Rollen erlauben:
+Mit `EMAIL_HOST` (und ohne `EMAIL_NOTIFICATIONS_ENABLED=false`) versendet der Server E-Mails, gleich nach der Änderung,
+im Hintergrund über eine Verbindung (die Anfrage wartet nicht auf den Mailserver); schlägt der Versand fehl, wird das
+nur protokolliert, und eine E-Mail, die gerade unterwegs ist, wenn der Prozess endet, geht verloren. Jeder Benutzer
+wählt im *Profil* für jede Benachrichtigung *Aus*, *Sofort* oder *Tägliche Zusammenfassung* (die schickt
+`send_notification_digest`, mit allem der letzten 24 Stunden). Angeboten wird nur, was die Rollen erlauben:
 
 - *Meine Anfragen*: die eigene Anfrage wurde genehmigt oder abgelehnt (mit der Notiz), für alle; nur *Aus* oder
   *Sofort*, nicht in der Zusammenfassung.
@@ -440,22 +441,32 @@ python manage.py import_config - < santa-config.json            # importieren, "
 
 ### Entwicklung
 
-Öffnen Sie den Ordner in VS Code → **Reopen in Container**. Der Devcontainer startet SQL Server 2022 und Redis, legt
-die Datenbank an und führt die Migrationen aus (`.devcontainer/setup.sh`). Die Werkzeuge laufen als Benutzer `dev`
-ohne Rechte mit der UID Ihres Host-Benutzers, die Dateien im Workspace bleiben also Ihre. Dann:
+Öffnen Sie den Ordner in VS Code → **Reopen in Container**. Der Devcontainer startet SQL Server 2022, Redis und
+Mailpit, legt die Datenbank an und führt die Migrationen aus (`.devcontainer/setup.sh`). Der Entwicklungsserver
+läuft auf http://localhost:8000/: Beim Öffnen des Ordners startet ihn die VS-Code-Aufgabe *Santa Server*
+(`.vscode/tasks.json`) in einem eigenen Terminal mit dem Log. Dafür einmal automatische Aufgaben in Ihren
+Benutzereinstellungen erlauben: *Tasks: Manage Automatic Tasks* → *Allow Automatic Tasks* (VS Code nimmt diese
+Einstellung nur von dort, nicht aus dem Devcontainer); bis dahin *Tasks: Run Task* → *Santa Server*. Neu starten mit
+*Tasks: Restart Running Task*, ohne VS Code mit `python manage.py runserver 0.0.0.0:8000`. Die E-Mails des Servers fängt Mailpit ab: http://localhost:8025/. Die
+Werkzeuge laufen als Benutzer `dev` ohne Rechte mit der UID Ihres Host-Benutzers, die Dateien im Workspace bleiben also
+Ihre. Dann:
 
 ```bash
 python manage.py createsuperuser
-python manage.py runserver 0.0.0.0:8000     # http://localhost:8000/
 python manage.py test                        # gegen SQL Server
 ruff check .
 ```
 
 **Persönliche Einstellungen**: Kopieren Sie `.devcontainer/.env.example` nach `.devcontainer/.env` (von Git und
-Docker ignoriert) und bauen Sie den Container neu. Darin:
+Docker ignoriert) und bauen Sie den Container neu: Die Datei wird beim Anlegen des Containers gelesen, danach
+startet die Aufgabe *Santa Server* den Server mit den neuen Werten. Jede Variable der [Konfiguration](#konfiguration) wirkt dort wie im Image
+(`settings_dev.py` setzt nur Standardwerte für die Entwicklung und lädt dann `settings.py`), z. B.:
 - `GITHUB_TOKEN`: ein Fine-grained Token mit „Public repositories (read-only)“ und ohne Berechtigungen. Ohne ihn
   erlaubt GitHub 60 API-Anfragen pro Stunde und 10 Suchen pro Minute für Ihre IP.
 - `TIME_ZONE`: die Standardzeitzone des Servers, z. B. `Europe/Berlin`.
+- `OIDC_*`: die Anmeldung mit Ihrem Anbieter, Redirect-URI `http://localhost:8000/oidc/callback/`.
+
+Die Tests laufen immer mit den Standardwerten von `OIDC_*` und `SANTA_*`, unabhängig von `.env`.
 
 **Übersetzungen**: Die Texte sind englisch, Deutsch steht in `santa/locale/de/LC_MESSAGES/django.po`. Nach dem Ändern
 von Texten: `python manage.py makemessages -l de`, die neuen Einträge übersetzen, `python manage.py compilemessages`
@@ -569,6 +580,7 @@ The image (`santa_server/settings.py`) is configured with environment variables:
 | `SANTA_SERVER_NAME` | | name in the window title, the header and the Django admin, default `Santa Server` |
 | `SANTA_FAVICON_URL` | | your own favicon: an absolute URL or a path from `/` (SVG, PNG or ICO); empty = the Santa hat that comes with it |
 | `EMAIL_HOST`, `EMAIL_PORT` | | SMTP server for the [e-mail notifications](#e-mail-notifications); empty = no e-mails. Port default `587` |
+| `EMAIL_NOTIFICATIONS_ENABLED` | | default `true`; `false` switches the e-mail notifications off, also with `EMAIL_HOST`. Without them the profile offers no choices |
 | `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD` | | sign-in at the SMTP server, empty = none |
 | `EMAIL_USE_TLS`, `EMAIL_USE_SSL` | | default STARTTLS (`EMAIL_USE_TLS=true`); `EMAIL_USE_SSL=true` for SMTPS (port 465) |
 | `DEFAULT_FROM_EMAIL` | | sender, default `santa@<host of SANTA_PUBLIC_BASE_URL>` |
@@ -881,11 +893,11 @@ To link the block dialog to the form, set the group's *block dialog URL* to
 
 #### E-mail notifications
 
-With `EMAIL_HOST` the server sends e-mails, right after the change, in the background over one connection (the
-request doesn't wait for the mail server); a failure to send is only logged, and an e-mail still on its way when
-the process ends is lost. Every user
-chooses in their *Profile* for each notification *Off*, *Immediately* or *Daily summary* (sent by
-`send_notification_digest`, with everything of the last 24 hours). Only what their roles allow is offered:
+With `EMAIL_HOST` (and without `EMAIL_NOTIFICATIONS_ENABLED=false`) the server sends e-mails, right after the change,
+in the background over one connection (the request doesn't wait for the mail server); a failure to send is only logged,
+and an e-mail still on its way when the process ends is lost. Every user chooses in their *Profile* for each
+notification *Off*, *Immediately* or *Daily summary* (sent by `send_notification_digest`, with everything of the last
+24 hours). Only what their roles allow is offered:
 
 - *My requests*: their own request was approved or denied (with the note), for everyone; only *Off* or
   *Immediately*, not in the summary.
@@ -919,22 +931,33 @@ python manage.py import_config - < santa-config.json            # import, "-" re
 
 ### Development
 
-Open the folder in VS Code → **Reopen in Container**. The devcontainer starts SQL Server 2022 and Redis, creates the
-database and runs the migrations (`.devcontainer/setup.sh`). The tools run as the unprivileged user `dev` with the
-UID of your host user, so the files in the workspace stay yours. Then:
+Open the folder in VS Code → **Reopen in Container**. The devcontainer starts SQL Server 2022, Redis and Mailpit,
+creates the database and runs the migrations (`.devcontainer/setup.sh`). The development server runs on
+http://localhost:8000/: when the folder opens, the VS Code task *Santa Server* (`.vscode/tasks.json`) starts it in its
+own terminal with the log. For that, allow automatic tasks once in your user settings: *Tasks: Manage Automatic
+Tasks* → *Allow Automatic Tasks* (VS Code takes this setting only from there, not from the devcontainer); until then
+*Tasks: Run Task* → *Santa Server*. Restart it with *Tasks: Restart Running Task*, without VS Code with
+`python manage.py runserver 0.0.0.0:8000`. Mailpit catches
+the e-mails of the server: http://localhost:8025/. The tools run as the unprivileged user `dev` with the UID of your
+host user, so the files in the workspace stay yours. Then:
 
 ```bash
 python manage.py createsuperuser
-python manage.py runserver 0.0.0.0:8000     # http://localhost:8000/
 python manage.py test                        # against SQL Server
 ruff check .
 ```
 
 **Personal settings**: copy `.devcontainer/.env.example` to `.devcontainer/.env` (ignored by git and docker) and
-rebuild the container. In it:
+rebuild the container: the file is read when the container is created, then the task *Santa Server* starts the server
+with the new values. Every
+variable of the [configuration](#configuration) works there as in the image (`settings_dev.py` only sets defaults for
+development, then loads `settings.py`), e.g.:
 - `GITHUB_TOKEN`: a fine-grained token with "Public repositories (read-only)" and no permissions. Without it GitHub
   allows 60 API requests per hour and 10 searches per minute for your IP.
 - `TIME_ZONE`: the default time zone of the server, e.g. `Europe/Berlin`.
+- `OIDC_*`: the sign-in with your provider, redirect URI `http://localhost:8000/oidc/callback/`.
+
+The tests always run with the defaults of `OIDC_*` and `SANTA_*`, whatever `.env` sets.
 
 **Translations**: the texts are English, German is in `santa/locale/de/LC_MESSAGES/django.po`. After changing texts:
 `python manage.py makemessages -l de`, translate the new entries, `python manage.py compilemessages`, and commit the

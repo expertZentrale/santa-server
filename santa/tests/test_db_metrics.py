@@ -2,6 +2,7 @@ import json
 import os
 import subprocess
 import sys
+from unittest import skipUnless
 
 from django.conf import settings
 from django.db import connection
@@ -10,8 +11,13 @@ from django_prometheus.db import execute_total, query_duration_seconds
 
 from santa.models import Group
 
+# METRICS_ENABLED=false in the environment (e.g. .devcontainer/.env) leaves django-prometheus out at the start: then
+# there is nothing to count (the CI runs with the default)
+needs_metrics = skipUnless(settings.METRICS_ENABLED, "METRICS_ENABLED=false in the environment")
+
 
 class DatabaseMetricsTestCase(TestCase):
+    @needs_metrics
     def test_queries_are_counted(self):
         labels = (connection.alias, connection.vendor)
         # the metrics count for the whole process: compare with the values before these queries
@@ -23,6 +29,7 @@ class DatabaseMetricsTestCase(TestCase):
         self.assertGreaterEqual(execute_total.labels(*labels)._value.get() - executed, 2)
         self.assertGreater(query_duration_seconds.labels(*labels)._sum.get(), timed)
 
+    @needs_metrics
     def test_metrics_page_shows_them(self):
         list(Group.objects.all())
         response = self.client.get("/metrics")

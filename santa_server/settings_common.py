@@ -153,8 +153,10 @@ LOGGING = {
 SANTA_SERVER_NAME = "Santa Server"
 SANTA_FAVICON_URL = ""
 
-# E-mail notifications (notifications.py): off without EMAIL_HOST. Sent right after the change, in a background
-# thread over one connection (the request doesn't wait for the mail server), a failure is logged.
+# E-mail notifications (notifications.py): on with EMAIL_HOST, unless EMAIL_NOTIFICATIONS_ENABLED is false; when off,
+# the profile doesn't offer them. Sent right after the change, in a background thread over one connection (the
+# request doesn't wait for the mail server), a failure is logged.
+EMAIL_NOTIFICATIONS_ENABLED = True
 EMAIL_HOST = ""
 EMAIL_TIMEOUT = 10
 EMAIL_SEND_IN_BACKGROUND = True

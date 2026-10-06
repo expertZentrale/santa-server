@@ -1,4 +1,4 @@
-# Development only: the app container with the tools, SQL Server and Redis. In production they run separately.
+# Development only: the app container with the tools, SQL Server, Redis and Mailpit. In production they run separately.
 # The project name keeps the containers and the SQL Server volume stable across rebuilds.
 name: santa-server
 
@@ -10,13 +10,22 @@ services:
     volumes:
       - ..:/workspaces/santa-server:cached
     command: sleep infinity
-    # personal settings such as GITHUB_TOKEN, not in git (see .devcontainer/.env.example)
+    # an init as PID 1 reaps the processes that end (the restarted dev server), sleep can't
+    init: true
+    # personal settings, any variable of the configuration table (see .devcontainer/.env.example); not in git
     env_file:
       - path: .env
         required: false
+    # no core dumps: a crashing process would leave a large core file in the workspace
+    ulimits:
+      core: 0
     depends_on:
-      - mssql
-      - redis
+      mssql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      mailpit:
+        condition: service_started
 
   redis:
     image: redis:7-alpine
@@ -33,6 +42,18 @@ services:
     # not published on the host (no conflict with another local SQL Server), the app reaches it as mssql:1433
     volumes:
       - mssql_data:/var/opt/mssql
+    restart: unless-stopped
+    # healthy once it accepts logins: the app container starts then
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' -b -o /dev/null"]
+      interval: 5s
+      timeout: 5s
+      start_period: 30s
+      retries: 20
+
+  # catches the e-mails of the server (SMTP mailpit:1025), shows them on http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:latest
     restart: unless-stopped
 
 volumes:

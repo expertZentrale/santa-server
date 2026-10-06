@@ -12,7 +12,9 @@ staticfiles/
 
 ### Editors and local files ###
 .idea/
-.vscode/
+# personal VS Code settings; the task that starts the dev server is shared
+.vscode/*
+!.vscode/tasks.json
 .DS_Store
 .env
 # crash dumps: memory images, they can contain secrets

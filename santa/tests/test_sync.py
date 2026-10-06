@@ -3,6 +3,7 @@ import json
 import uuid
 import zlib
 
+from django.conf import settings
 from django.test import TestCase
 
 from santa.models import Event, Group, Machine, Policy, RemovableMediaAction, Rule, RuleType
@@ -298,7 +299,13 @@ class SyncTestCase(TestCase):
     def test_probes_answer_before_the_host_check(self):
         # probes and Prometheus use the pod IP, not the public host name
         with self.settings(ALLOWED_HOSTS=["santa.example.com"]):
-            for path in ("/health", "/ready", "/metrics"):
+            for path in ("/health", "/ready"):
                 self.assertEqual(self.client.get(path, HTTP_HOST="10.0.0.1").status_code, 200, path)
-            self.assertIn(b"django_http_requests", self.client.get("/metrics", HTTP_HOST="10.0.0.1").content)
+            metrics = self.client.get("/metrics", HTTP_HOST="10.0.0.1")
+            if settings.METRICS_ENABLED:
+                self.assertEqual(metrics.status_code, 200)
+                self.assertIn(b"django_http_requests", metrics.content)
+            else:
+                # switched off in the environment (METRICS_ENABLED=false): an ordinary path, the host check refuses it
+                self.assertEqual(metrics.status_code, 400)
             self.assertEqual(self.client.get("/login/", HTTP_HOST="10.0.0.1").status_code, 400)
