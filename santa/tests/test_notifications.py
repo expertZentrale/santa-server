@@ -129,6 +129,48 @@ class NotificationsTestCase(ConsoleBase):
         call_command("send_notification_digest", stdout=open("/dev/null", "w"))
         self.assertEqual(mail.outbox, [])
 
+    def test_daily_summary_by_the_version_and_without_own_requests(self):
+        self.choose(self.approver, new_requests=notifications.DAILY, package_pending=notifications.DAILY,
+                    package_auto=notifications.DAILY)
+        self.approver.user_permissions.add(Permission.objects.get(codename="change_rule"))
+        ReleaseVersion.objects.create(source=self.source, identifier="colima", version="0.9.1")
+        # switched on after the version was found: it still waits for an approval
+        self.source.auto_approve = True
+        self.source.save()
+        AccessRequest.objects.create(requester=self.approver, kind="OTHER", title="Own request", justification="x")
+        call_command("send_notification_digest", stdout=open("/dev/null", "w"))
+        body = mail.outbox[0].body
+        self.assertIn("Package versions to approve\n- Colima: colima 0.9.1", body)
+        self.assertNotIn("Approved package versions", body)
+        self.assertNotIn("Own request", body)
+        # only their own request: nothing to send
+        mail.outbox.clear()
+        ReleaseVersion.objects.all().delete()
+        call_command("send_notification_digest", stdout=open("/dev/null", "w"))
+        self.assertEqual(mail.outbox, [])
+
+    def test_one_connection_in_the_background(self):
+        access_request = AccessRequest.objects.create(requester=self.user, kind="OTHER", title="Figma",
+                                                      justification="x")
+        with patch("santa.notifications.get_connection") as get_connection, \
+                patch("santa.notifications.threading.Thread") as thread:
+            with self.settings(EMAIL_SEND_IN_BACKGROUND=True), self.captureOnCommitCallbacks(execute=True):
+                notifications.request_created(access_request)
+            # the request doesn't send: a thread does
+            get_connection.assert_not_called()
+            thread.call_args.kwargs["target"]()
+        connection = get_connection.return_value.__enter__.return_value
+        [(messages,), _] = connection.send_messages.call_args
+        self.assertEqual(sorted(message.to[0] for message in messages), ["admin@example.com", "approver@example.com"])
+        self.assertEqual(connection.send_messages.call_count, 1)
+
+    def test_a_failing_mail_server_is_only_logged(self):
+        access_request = AccessRequest.objects.create(requester=self.user, kind="OTHER", title="Figma",
+                                                      justification="x")
+        with patch("santa.notifications.get_connection", side_effect=OSError("connection refused")), \
+                self.assertLogs("santa.notifications", "ERROR"), self.captureOnCommitCallbacks(execute=True):
+            notifications.request_created(access_request)
+
     def test_profile_choices(self):
         self.client.force_login(self.approver)
         response = self.client.get(reverse("profile"))

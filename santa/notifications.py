@@ -5,11 +5,12 @@ summary of the command send_notification_digest). Only the notifications the per
 offered and sent. Without EMAIL_HOST nothing is sent.
 """
 import logging
+import threading
 from dataclasses import dataclass
 
 from django.conf import settings
 from django.contrib.auth.models import User
-from django.core.mail import send_mail
+from django.core.mail import EmailMessage, get_connection
 from django.db import transaction
 from django.db.models import Q
 from django.template.loader import render_to_string
@@ -44,6 +45,7 @@ class Notification:
 
 
 NOTIFICATIONS = [
+    # personal and expected soon: no daily summary
     Notification("my_requests", _("My requests"), _("Your request was approved or denied."),
                  staff=False, daily=False),
     Notification("new_requests", _("New requests"), _("A user asks for software."),
@@ -55,7 +57,7 @@ NOTIFICATIONS = [
                  _("A package rule found a new version that is approved automatically."),
                  perms=("santa.view_releasesource",), default=OFF),
     Notification("package_errors", _("Package rule errors"),
-                 _("A package rule can't be checked for new versions any more (once, when it starts failing)."),
+                 _("A package rule has problems checking for new versions (once, when they start)."),
                  perms=("santa.view_releasesource",)),
 ]
 BY_KEY = {notification.key: notification for notification in NOTIFICATIONS}
@@ -100,11 +102,8 @@ def users_for(key):
     return [user for user in users if notification in available(user)]
 
 
-def send(user, subject, template, context):
-    """One mail, in the language of the user. A failure is logged, it never breaks the change that caused it.
-
-    subject: (lazy text, its values), translated in the language of the user.
-    """
+def message(user, subject, template, context):
+    """One mail, in the language of the user. subject: (lazy text, its values)."""
     language = profile_for(user).language or settings.LANGUAGE_CODE
     with translation.override(language):
         body = render_to_string(f"email/{template}.txt", {
@@ -113,10 +112,29 @@ def send(user, subject, template, context):
         })
         text, values = subject
         subject = f"[{settings.SANTA_SERVER_NAME}] {str(text) % values}"
-    try:
-        send_mail(subject, body, None, [user.email])
-    except Exception:
-        logger.exception("E-mail to %s failed: %s", user.email, subject)
+    return EmailMessage(subject, body, to=[user.email])
+
+
+def send_messages(messages, background=None):
+    """Send over one connection: an unreachable server costs one timeout, not one per mail.
+
+    In the background (EMAIL_SEND_IN_BACKGROUND), the request doesn't wait for the mail server; the thread doesn't
+    touch the database. A failure is logged, it never breaks the change that caused it.
+    """
+    if not messages:
+        return
+
+    def run():
+        try:
+            with get_connection() as connection:
+                connection.send_messages(messages)
+        except Exception:
+            logger.exception("Sending %s e-mails failed: %s", len(messages), messages[0].subject)
+
+    if settings.EMAIL_SEND_IN_BACKGROUND if background is None else background:
+        threading.Thread(target=run, name="santa-mail", daemon=True).start()
+    else:
+        run()
 
 
 def notify(key, users, subject, template, context, exclude=None):
@@ -128,11 +146,11 @@ def notify(key, users, subject, template, context, exclude=None):
         return
 
     def deliver():
-        for user in (users() if callable(users) else users):
-            if user == exclude or not user.email or BY_KEY[key] not in available(user):
-                continue
-            if mode(user, key) == INSTANT:
-                send(user, subject, template, context)
+        # the recipients and the texts here, with the database; only the sending in the background
+        send_messages([message(user, subject, template, context)
+                       for user in (users() if callable(users) else users)
+                       if user != exclude and user.email and BY_KEY[key] in available(user)
+                       and mode(user, key) == INSTANT])
 
     transaction.on_commit(deliver)
 
@@ -174,5 +192,5 @@ def versions_found(source, versions):
 
 def source_failed(source):
     notify("package_errors", lambda: users_for("package_errors"),
-           (_("Package rule %(name)s fails"), {"name": source.name}), "source_failed",
+           (_("Package rule %(name)s has errors"), {"name": source.name}), "source_failed",
            {"source": source, "url": absolute_url("console:source", source.pk)})

@@ -33,26 +33,32 @@ class Command(BaseCommand):
 
     def send_all(self, since):
         versions = list(ReleaseVersion.objects.filter(created_at__gte=since).select_related("source")
-                        .order_by("source__name", "-created_at"))
+                        .prefetch_related("rules").order_by("source__name", "-created_at"))
+        # from the version, not from auto_approve of the source today: it may have changed since
+        approved = [version for version in versions
+                    if version.auto_enable_pending or any(rule.is_enabled for rule in version.rules.all())]
         sections = {
             "new_requests": list(AccessRequest.objects.filter(created_at__gte=since).select_related("requester")),
-            "package_pending": [version for version in versions if not version.source.auto_approve],
-            "package_auto": [version for version in versions if version.source.auto_approve],
+            "package_pending": [version for version in versions if version not in approved],
+            "package_auto": approved,
             "package_errors": list(ReleaseSource.objects.filter(is_enabled=True).exclude(last_error="")
                                    .order_by("name")),
         }
         open_requests = AccessRequest.objects.filter(status=AccessRequest.Status.PENDING).count()
-        sent = 0
+        messages = []
         for user in User.objects.filter(is_active=True, is_staff=True).exclude(email="").order_by("pk"):
             chosen = {notification.key for notification in notifications.available(user)
                       if notification.daily and notifications.mode(user, notification.key) == notifications.DAILY}
-            items = {key: sections[key] for key in chosen if sections[key]}
+            mine = {**sections, "new_requests": [access_request for access_request in sections["new_requests"]
+                                                 if access_request.requester_id != user.pk]}
+            items = {key: mine[key] for key in chosen if mine[key]}
             if not items:
                 continue
-            notifications.send(user, (_("Daily summary"), {}), "digest", {
+            messages.append(notifications.message(user, (_("Daily summary"), {}), "digest", {
                 **items, "open_requests": open_requests if "new_requests" in chosen else None,
                 "requests_url": notifications.absolute_url("console:requests"),
                 "sources_url": notifications.absolute_url("console:sources"),
-            })
-            sent += 1
-        return sent
+            }))
+        # the scheduler waits, no thread
+        notifications.send_messages(messages, background=False)
+        return len(messages)

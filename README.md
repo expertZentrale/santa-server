@@ -395,16 +395,18 @@ Um den Blockierdialog mit dem Formular zu verbinden, setzen Sie die *URL im Bloc
 
 #### E-Mail-Benachrichtigungen
 
-Mit `EMAIL_HOST` versendet der Server E-Mails, gleich nach der Änderung; schlägt der Versand fehl, wird das nur
-protokolliert. Jeder Benutzer wählt im *Profil* für jede Benachrichtigung *Aus*, *Sofort* oder *Tägliche
+Mit `EMAIL_HOST` versendet der Server E-Mails, gleich nach der Änderung, im Hintergrund über eine Verbindung (die
+Anfrage wartet nicht auf den Mailserver); schlägt der Versand fehl, wird das nur protokolliert, und eine E-Mail, die
+gerade unterwegs ist, wenn der Prozess endet, geht verloren. Jeder Benutzer wählt im *Profil* für jede Benachrichtigung *Aus*, *Sofort* oder *Tägliche
 Zusammenfassung* (die schickt `send_notification_digest`, mit allem der letzten 24 Stunden). Angeboten wird nur, was
 die Rollen erlauben:
 
-- *Meine Anfragen*: die eigene Anfrage wurde genehmigt oder abgelehnt (mit der Notiz), für alle.
+- *Meine Anfragen*: die eigene Anfrage wurde genehmigt oder abgelehnt (mit der Notiz), für alle; nur *Aus* oder
+  *Sofort*, nicht in der Zusammenfassung.
 - *Neue Anfragen*: für Freigebende (Recht, Anfragen zu ändern).
 - *Paketversionen zur Freigabe*: eine Paketregel ohne automatische Freigabe hat eine neue Version gefunden.
 - *Freigegebene Paketversionen*: dasselbe mit automatischer Freigabe, standardmäßig aus.
-- *Fehler von Paketregeln*: eine Paketregel kann nicht mehr geprüft werden, einmal beim Übergang zum Fehler.
+- *Fehler von Paketregeln*: beim Prüfen einer Paketregel gibt es Fehler, einmal, wenn sie beginnen.
 
 Die E-Mails sind in der Sprache des Profils (sonst `LANGUAGE_CODE`) und verlinken in die Konsole
 (`SANTA_PUBLIC_BASE_URL`). Benutzer ohne E-Mail-Adresse bekommen keine.
@@ -869,15 +871,18 @@ To link the block dialog to the form, set the group's *block dialog URL* to
 
 #### E-mail notifications
 
-With `EMAIL_HOST` the server sends e-mails, right after the change; a failure to send is only logged. Every user
+With `EMAIL_HOST` the server sends e-mails, right after the change, in the background over one connection (the
+request doesn't wait for the mail server); a failure to send is only logged, and an e-mail still on its way when
+the process ends is lost. Every user
 chooses in their *Profile* for each notification *Off*, *Immediately* or *Daily summary* (sent by
 `send_notification_digest`, with everything of the last 24 hours). Only what their roles allow is offered:
 
-- *My requests*: their own request was approved or denied (with the note), for everyone.
+- *My requests*: their own request was approved or denied (with the note), for everyone; only *Off* or
+  *Immediately*, not in the summary.
 - *New requests*: for approvers (permission to change requests).
 - *Package versions to approve*: a package rule without automatic approval found a new version.
 - *Approved package versions*: the same with automatic approval, off by default.
-- *Package rule errors*: a package rule can't be checked any more, once when it starts failing.
+- *Package rule errors*: checking a package rule has errors, once, when they start.
 
 The e-mails are in the language of the profile (else `LANGUAGE_CODE`) and link to the console
 (`SANTA_PUBLIC_BASE_URL`). Users without an e-mail address get none.
