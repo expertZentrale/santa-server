@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: santa-server\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-06 14:33+0200\n"
+"POT-Creation-Date: 2026-10-06 15:31+0200\n"
 "Language: de\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -980,7 +980,7 @@ msgstr "Zeitzone des Browsers"
 msgid "Roles"
 msgstr "Rollen"
 
-#: santa/console/forms.py:957 santa/templates/console/login.html:16
+#: santa/console/forms.py:957 santa/templates/console/login.html:20
 msgid "Password"
 msgstr "Passwort"
 
@@ -1617,45 +1617,45 @@ msgstr ""
 "%(machine)s: Clean Sync bei der nächsten Synchronisierung (der Mac verwirft "
 "alle Regeln und lädt sie neu herunter)."
 
-#: santa/console/views_profile.py:23
+#: santa/console/views_profile.py:22
 msgid "Preferences saved."
 msgstr "Einstellungen gespeichert."
 
-#: santa/console/views_profile.py:62
+#: santa/console/views_profile.py:61
 msgid "Unknown list."
 msgstr "Unbekannte Liste."
 
-#: santa/console/views_profile.py:65 santa/console/views_profile.py:95
+#: santa/console/views_profile.py:64 santa/console/views_profile.py:94
 msgid "Enter a name for the view."
 msgstr "Bitte einen Namen für die Ansicht eingeben."
 
-#: santa/console/views_profile.py:68
+#: santa/console/views_profile.py:67
 msgid "This view is too long to save."
 msgstr "Diese Ansicht ist zu lang zum Speichern."
 
-#: santa/console/views_profile.py:72
+#: santa/console/views_profile.py:71
 #, python-format
 msgid "At most %(count)s saved views per list. Delete one first."
 msgstr ""
 "Höchstens %(count)s gespeicherte Ansichten pro Liste. Löschen Sie zuerst "
 "eine."
 
-#: santa/console/views_profile.py:76
+#: santa/console/views_profile.py:75
 #, python-format
 msgid "View “%(name)s” saved."
 msgstr "Ansicht „%(name)s“ gespeichert."
 
-#: santa/console/views_profile.py:85
+#: santa/console/views_profile.py:84
 #, python-format
 msgid "View “%(name)s” deleted."
 msgstr "Ansicht „%(name)s“ gelöscht."
 
-#: santa/console/views_profile.py:97
+#: santa/console/views_profile.py:96
 #, python-format
 msgid "There is a view “%(name)s” already."
 msgstr "Eine Ansicht „%(name)s“ gibt es bereits."
 
-#: santa/console/views_profile.py:101
+#: santa/console/views_profile.py:100
 #, python-format
 msgid "View renamed to “%(name)s”."
 msgstr "Ansicht in „%(name)s“ umbenannt."
@@ -2820,32 +2820,32 @@ msgstr ""
 "Beim Prüfen einer Paketregel auf neue Versionen gibt es Fehler (einmal, wenn "
 "sie beginnen)."
 
-#: santa/notifications.py:163
+#: santa/notifications.py:164
 #, python-format
 msgid "New request: %(title)s"
 msgstr "Neue Anfrage: %(title)s"
 
-#: santa/notifications.py:168
+#: santa/notifications.py:169
 #, python-format
 msgid "Approved: %(title)s"
 msgstr "Genehmigt: %(title)s"
 
-#: santa/notifications.py:169
+#: santa/notifications.py:170
 #, python-format
 msgid "Not approved: %(title)s"
 msgstr "Nicht genehmigt: %(title)s"
 
-#: santa/notifications.py:185
+#: santa/notifications.py:186
 #, python-format
 msgid "New version of %(name)s approved"
 msgstr "Neue Version von %(name)s freigegeben"
 
-#: santa/notifications.py:187
+#: santa/notifications.py:188
 #, python-format
 msgid "New version of %(name)s to approve"
 msgstr "Neue Version von %(name)s zur Freigabe"
 
-#: santa/notifications.py:195
+#: santa/notifications.py:196
 #, python-format
 msgid "Package rule %(name)s has errors"
 msgstr "Paketregel %(name)s hat Fehler"
@@ -3019,7 +3019,7 @@ msgstr ""
 #: santa/templates/console/administration/_user_form.html:31
 #: santa/templates/console/file_access/_form.html:42
 #: santa/templates/console/groups/_form.html:36
-#: santa/templates/console/profile.html:31
+#: santa/templates/console/profile.html:30
 #: santa/templates/console/rules/_form.html:34
 #: santa/templates/console/sources/_form.html:39
 msgid "Save"
@@ -3745,7 +3745,7 @@ msgid "No changes recorded."
 msgstr "Keine Änderungen aufgezeichnet."
 
 #: santa/templates/console/login.html:2 santa/templates/console/login.html:6
-#: santa/templates/console/login.html:18
+#: santa/templates/console/login.html:22
 msgid "Sign in"
 msgstr "Anmelden"
 
@@ -3755,16 +3755,16 @@ msgstr ""
 "Die Anmeldung ist fehlgeschlagen. Versuchen Sie es erneut oder fragen Sie "
 "Ihr IT-Team."
 
-#: santa/templates/console/login.html:9
+#: santa/templates/console/login.html:13
 #, python-format
 msgid "Sign in with %(provider_name)s"
 msgstr "Mit %(provider_name)s anmelden"
 
-#: santa/templates/console/login.html:10
+#: santa/templates/console/login.html:14
 msgid "Local account"
 msgstr "Lokales Konto"
 
-#: santa/templates/console/login.html:15
+#: santa/templates/console/login.html:19
 #: santa/templates/console/profile.html:11
 msgid "User name"
 msgstr "Benutzername"
@@ -3988,13 +3988,6 @@ msgid "E-mail notifications"
 msgstr "E-Mail-Benachrichtigungen"
 
 #: santa/templates/console/profile.html:27
-msgid ""
-"This server doesn't send e-mails (yet): your choices apply once it does."
-msgstr ""
-"Dieser Server versendet (noch) keine E-Mails: Ihre Auswahl gilt, sobald er "
-"es tut."
-
-#: santa/templates/console/profile.html:28
 msgid "Your account has no e-mail address, so no e-mails are sent."
 msgstr ""
 "Ihr Konto hat keine E-Mail-Adresse, daher werden keine E-Mails versendet."
@@ -4650,6 +4643,12 @@ msgstr "Unbekannter Regeltyp %(rule_type)s."
 #, python-format
 msgid "Line %(number)s (%(pattern)s): %(error)s"
 msgstr "Zeile %(number)s (%(pattern)s): %(error)s"
+
+#~ msgid ""
+#~ "This server doesn't send e-mails (yet): your choices apply once it does."
+#~ msgstr ""
+#~ "Dieser Server versendet (noch) keine E-Mails: Ihre Auswahl gilt, sobald "
+#~ "er es tut."
 
 #~ msgid "Until it works again, new versions are not allowed. Details:"
 #~ msgstr ""

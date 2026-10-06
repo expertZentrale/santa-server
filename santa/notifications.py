@@ -2,7 +2,7 @@
 
 Every user chooses per notification in the profile (UserProfile.notifications): off, immediately or daily (the
 summary of the command send_notification_digest). Only the notifications the permissions of the user allow are
-offered and sent. Without EMAIL_HOST nothing is sent.
+offered and sent. Without EMAIL_HOST, or with EMAIL_NOTIFICATIONS_ENABLED=false, nothing is sent or offered.
 """
 import logging
 import threading
@@ -64,7 +64,8 @@ BY_KEY = {notification.key: notification for notification in NOTIFICATIONS}
 
 
 def enabled():
-    return bool(settings.EMAIL_HOST)
+    """Off without a mail server, or switched off with EMAIL_NOTIFICATIONS_ENABLED=false"""
+    return settings.EMAIL_NOTIFICATIONS_ENABLED and bool(settings.EMAIL_HOST)
 
 
 def available(user):

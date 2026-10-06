@@ -109,6 +109,30 @@ class NotificationsTestCase(ConsoleBase):
         call_command("send_notification_digest", stdout=open("/dev/null", "w"))
         self.assertEqual(mail.outbox, [])
 
+    @override_settings(EMAIL_NOTIFICATIONS_ENABLED=False)
+    def test_switched_off_globally(self):
+        self.assertFalse(notifications.enabled())
+        access_request = AccessRequest.objects.create(requester=self.user, kind="OTHER", title="Figma",
+                                                      justification="x")
+        with self.captureOnCommitCallbacks(execute=True):
+            notifications.request_created(access_request)
+        self.choose(self.approver, new_requests=notifications.DAILY)
+        call_command("send_notification_digest", stdout=open("/dev/null", "w"))
+        self.assertEqual(mail.outbox, [])
+
+    def test_profile_hides_the_choices_when_off(self):
+        self.client.force_login(self.approver)
+        for off in ({"EMAIL_HOST": ""}, {"EMAIL_NOTIFICATIONS_ENABLED": False}):
+            with self.settings(**off):
+                response = self.client.get(reverse("profile"))
+                self.assertNotContains(response, "E-mail notifications")
+                self.assertNotContains(response, 'name="notify_')
+                # saving the profile keeps the choices for when they are on again
+                self.choose(self.approver, new_requests=notifications.DAILY)
+                self.client.post(reverse("profile"), {"theme": "dark"})
+                self.assertEqual(notifications.mode(self.approver, "new_requests"), notifications.DAILY)
+        self.assertContains(self.client.get(reverse("profile")), 'name="notify_new_requests"')
+
     def test_daily_summary(self):
         self.choose(self.approver, new_requests=notifications.DAILY, package_errors=notifications.DAILY)
         AccessRequest.objects.create(requester=self.user, kind="OTHER", title="Figma", justification="x")
