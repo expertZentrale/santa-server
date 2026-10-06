@@ -61,6 +61,10 @@ class AdministrationTestCase(ConsoleBase):
         response = self.client.get(reverse("console:admin_user", args=(sign_in_user.pk,)))
         self.assertNotIn(requesters, response.context["form"].fields["roles"].queryset)
         self.assertNotIn("is_staff", response.context["form"].fields)
+        # the roles of the sign-in in the same list, fixed; yes / no fields as switches
+        self.assertContains(response, f'<input type="checkbox" checked disabled> {REQUESTERS_GROUP_NAME}', html=False)
+        self.assertNotContains(response, '<label for="">')
+        self.assertContains(response, 'role="switch"')
         self.client.post(reverse("console:admin_user", args=(sign_in_user.pk,)),
                          {"is_active": "on", "roles": [by_hand.pk]})
         self.assertEqual(set(sign_in_user.groups.all()), {requesters, by_hand})
