@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import connection
 from django.http import HttpResponse
 from django.utils import timezone, translation
@@ -7,7 +8,10 @@ from .users import profile_for, time_zone_for
 
 
 class HealthCheckMiddleware:
-    """/health, /ready and /metrics answer before the host check: probes and scrapers use the pod IP"""
+    """/health, /ready and /metrics answer before the host check: probes and scrapers use the pod IP.
+
+    /metrics only here (no URL), so METRICS_ENABLED=false makes it a 404.
+    """
 
     def __init__(self, get_response):
         self.get_response = get_response
@@ -22,7 +26,7 @@ class HealthCheckMiddleware:
             except Exception:
                 return HttpResponse("database unavailable", status=503, content_type="text/plain")
             return HttpResponse("ok", content_type="text/plain")
-        if request.path == "/metrics":
+        if request.path == "/metrics" and settings.METRICS_ENABLED:
             return ExportToDjangoView(request)
         return self.get_response(request)
 
