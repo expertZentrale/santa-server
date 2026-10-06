@@ -1,6 +1,8 @@
 import json
+import time
 from unittest.mock import MagicMock, patch
 
+from django.core.cache import cache
 from django.test import TestCase, override_settings
 
 from santa import catalog
@@ -45,13 +47,14 @@ FORMULAE = [
     {"name": "podman", "aliases": ["kolima"], "desc": "", "homepage": ""},
     {"name": "colima-old", "desc": "", "homepage": "", "disabled": True},
 ]
-CASKS = [{"token": "firefox", "name": ["Mozilla Firefox"], "desc": "Web browser", "homepage": "https://www.mozilla.org"}]
+CASKS = [{"token": "firefox", "name": ["Mozilla Firefox"], "desc": "Web browser", "homepage": "https://www.mozilla.org"},
+         {"token": "visual-studio-code", "name": ["Microsoft Visual Studio Code", "VS Code"], "desc": "Editor",
+          "homepage": ""}]
 
 
 @override_settings(CACHES=LOCMEM)
 class CatalogTestCase(TestCase):
     def setUp(self):
-        from django.core.cache import cache
         cache.clear()
 
     def test_vscode(self):
@@ -108,6 +111,39 @@ class CatalogTestCase(TestCase):
         self.assertEqual((found.identifier, found.name, found.description),
                          ("firefox", "Mozilla Firefox", "Web browser"))
         self.assertEqual(s.get.call_args.args[0], "https://formulae.brew.sh/api/cask.json")
+
+    def test_homebrew_cask_other_names_are_searched(self):
+        found = catalog.search(Kind.HOMEBREW_CASK, "vs code", session(get=streamed(CASKS)))
+        self.assertEqual([(f.identifier, f.name) for f in found],
+                         [("visual-studio-code", "Microsoft Visual Studio Code")])
+
+    def homebrew_index_key(self, kind=Kind.HOMEBREW_FORMULA):
+        return f"santa:catalog:v{catalog.CACHE_VERSION}:homebrew-index:{kind}"
+
+    def store_old_index(self):
+        cache.set(self.homebrew_index_key(), {
+            "loaded_at": time.time() - catalog.HOMEBREW_INDEX_TIMEOUT - 1,
+            "entries": [catalog._homebrew_entry(Kind.HOMEBREW_FORMULA, FORMULAE[0])]}, None)
+
+    def test_homebrew_list_is_loaded_by_one_worker(self):
+        # another worker loads the list: no second download, the search tries again later
+        cache.add(self.homebrew_index_key() + ":lock", "1")
+        s = session(get=streamed(FORMULAE))
+        with self.assertRaises(catalog.CatalogError):
+            catalog.search(Kind.HOMEBREW_FORMULA, "colima", s)
+        # meanwhile, the older list is used
+        self.store_old_index()
+        self.assertEqual([f.identifier for f in catalog.search(Kind.HOMEBREW_FORMULA, "colima", s)], ["colima"])
+        s.get.assert_not_called()
+
+    def test_older_homebrew_list_is_replaced_or_kept(self):
+        self.store_old_index()
+        s = MagicMock()
+        s.get.side_effect = catalog.requests.ConnectionError("down")
+        self.assertEqual([f.identifier for f in catalog.search(Kind.HOMEBREW_FORMULA, "lima", s)], ["colima"])
+        s = session(get=streamed(FORMULAE))
+        self.assertEqual([f.identifier for f in catalog.search(Kind.HOMEBREW_FORMULA, "podman", s)], ["podman"])
+        self.assertIsNone(cache.get(self.homebrew_index_key() + ":lock"))
 
     def test_homebrew_list_size_is_limited(self):
         with self.assertRaises(catalog.CatalogError):
