@@ -5,6 +5,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import translation
 from django.views.decorators.http import require_POST
 
+from .. import notifications
 from ..models import SavedFilter, UserProfile
 from ..users import gravatar_url, profile_for
 from .filters import FILTER_PAGES, MAX_QUERY_LENGTH, MAX_SAVED_FILTERS, filter_query
@@ -24,6 +25,7 @@ def profile(request):
     return render(request, "console/profile.html", {
         "form": form, "avatar_large": gravatar_url(request.user, 96),
         "groups": request.user.groups.order_by("name"),
+        "mail_blocked": notifications.enabled() and notifications.blocked(request.user),
     })
 
 

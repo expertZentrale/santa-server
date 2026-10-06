@@ -882,6 +882,15 @@ class UserProfile(models.Model):
     # {notification: "off" | "instant" | "daily"} (notifications.py), a document only; missing = its default
     notifications = models.JSONField(default=dict, blank=True, editable=False)
 
+    class EmailOverride(models.TextChoices):
+        DEFAULT = "", _("As the sign-in groups say")
+        OFF = "off", _("No e-mails")
+        ON = "on", _("E-mails allowed")
+
+    # set by the administrators (Administration → Users): an exception from SignInGroup.no_email
+    email_override = models.CharField(max_length=8, choices=EmailOverride.choices, blank=True, default="",
+                                      editable=False)
+
     def __str__(self):
         return f"Profile of {self.user}"
 
@@ -919,6 +928,9 @@ class SignInGroup(models.Model):
     name = models.CharField(max_length=200, help_text=_("A name to recognise the group, only for display"))
     console_access = models.BooleanField(
         default=False, help_text=_("The members can open the console (with the permissions of their roles)"))
+    no_email = models.BooleanField(
+        default=False, help_text=_("The members get no e-mail notifications, e.g. admin accounts without a mailbox. "
+                                   "A user can be excepted in Administration → Users."))
     roles = models.ManyToManyField("auth.Group", blank=True, related_name="sign_in_groups",
                                    help_text=_("The members get these roles"))
     # state, not configuration: who had the group at their last sign-in

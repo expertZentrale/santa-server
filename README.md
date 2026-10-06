@@ -417,6 +417,10 @@ wählt im *Profil* für jede Benachrichtigung *Aus*, *Sofort* oder *Tägliche Zu
 Die E-Mails sind in der Sprache des Profils (sonst `LANGUAGE_CODE`) und verlinken in die Konsole
 (`SANTA_PUBLIC_BASE_URL`). Benutzer ohne E-Mail-Adresse bekommen keine.
 
+Konten ohne Postfach (z. B. Admin-Konten) nehmen Sie aus: An einer [Anmeldegruppe](#anmeldegruppen-und-rollen)
+*Keine E-Mails* setzen, dann bekommen ihre Mitglieder keine Benachrichtigungen; einzelne Benutzer stellen Sie unter
+*Administration → Benutzer* auf *Keine E-Mails* oder, als Ausnahme in einer solchen Gruppe, auf *E-Mails erlaubt*.
+
 ### Konfiguration exportieren und importieren
 
 Gruppen, Paketregeln, manuelle Regeln und Dateizugriffsregeln können als JSON exportiert und auf einem anderen Server
@@ -908,6 +912,10 @@ notification *Off*, *Immediately* or *Daily summary* (sent by `send_notification
 
 The e-mails are in the language of the profile (else `LANGUAGE_CODE`) and link to the console
 (`SANTA_PUBLIC_BASE_URL`). Users without an e-mail address get none.
+
+Accounts without a mailbox (e.g. admin accounts) are left out: set *No e-mails* on a
+[sign-in group](#sign-in-groups-and-roles), then its members get no notifications; single users are set in
+*Administration → Users* to *No e-mails* or, as an exception in such a group, to *E-mails allowed*.
 
 ### Export and import the configuration
 

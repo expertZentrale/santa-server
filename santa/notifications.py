@@ -5,6 +5,7 @@ summary of the command send_notification_digest). Only the notifications the per
 offered and sent. Without EMAIL_HOST, or with EMAIL_NOTIFICATIONS_ENABLED=false, nothing is sent or offered.
 """
 import logging
+import smtplib
 import threading
 from dataclasses import dataclass
 
@@ -18,7 +19,7 @@ from django.urls import reverse
 from django.utils import translation
 from django.utils.translation import gettext_lazy as _
 
-from .models import AccessRequest
+from .models import AccessRequest, UserProfile
 from .users import profile_for
 
 logger = logging.getLogger(__name__)
@@ -68,9 +69,17 @@ def enabled():
     return settings.EMAIL_NOTIFICATIONS_ENABLED and bool(settings.EMAIL_HOST)
 
 
+def blocked(user):
+    """No e-mails for this user: set by the administrators, or a sign-in group without e-mails"""
+    override = profile_for(user).email_override
+    if override:
+        return override == UserProfile.EmailOverride.OFF
+    return user.sign_in_groups.filter(no_email=True).exists()
+
+
 def available(user):
     """The notifications the user may get"""
-    if not user.is_active:
+    if not user.is_active or blocked(user):
         return []
     return [notification for notification in NOTIFICATIONS
             if (user.is_staff or not notification.staff) and user.has_perms(notification.perms)]
@@ -119,18 +128,34 @@ def message(user, subject, template, context):
 def send_messages(messages, background=None):
     """Send over one connection: an unreachable server costs one timeout, not one per mail.
 
-    In the background (EMAIL_SEND_IN_BACKGROUND), the request doesn't wait for the mail server; the thread doesn't
-    touch the database. A failure is logged, it never breaks the change that caused it.
+    Each mail on its own: an address the server refuses (e.g. 550, unknown or not allowed) is logged, the others still
+    get theirs. In the background (EMAIL_SEND_IN_BACKGROUND), the request doesn't wait for the mail server; the thread
+    doesn't touch the database. A failure is logged, it never breaks the change that caused it.
     """
     if not messages:
         return
 
     def run():
         try:
-            with get_connection() as connection:
-                connection.send_messages(messages)
+            connection = get_connection()
+            connection.open()
         except Exception:
-            logger.exception("Sending %s e-mails failed: %s", len(messages), messages[0].subject)
+            logger.exception("Mail server not reachable, %s e-mails not sent: %s", len(messages), messages[0].subject)
+            return
+        try:
+            for index, message in enumerate(messages):
+                try:
+                    connection.send_messages([message])
+                except smtplib.SMTPRecipientsRefused as e:
+                    logger.warning("E-mail to %s refused: %s", ", ".join(message.to), e.recipients)
+                except smtplib.SMTPServerDisconnected:
+                    logger.exception("Mail server closed the connection, %s e-mails not sent: %s",
+                                     len(messages) - index, message.subject)
+                    break
+                except Exception:
+                    logger.exception("E-mail to %s failed: %s", ", ".join(message.to), message.subject)
+        finally:
+            connection.close()
 
     if settings.EMAIL_SEND_IN_BACKGROUND if background is None else background:
         threading.Thread(target=run, name="santa-mail", daemon=True).start()
