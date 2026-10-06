@@ -3,8 +3,8 @@
   <td data-col="identifier">{% url 'console:rule' rule.pk as rule_url %}{% with parts=rule|identifier_parts %}
     <div class="identifier-cell"><a class="mono strong identifier" href="{{ rule_url }}" hx-get="{{ rule_url }}" hx-target="#drawer" title="{{ rule.identifier }}">{% if parts.0 %}<span class="muted">{{ parts.0 }}</span>{% endif %}{{ parts.1 }}</a>
     {% include "console/_copy.html" with value=rule.identifier %}</div>{% endwith %}
-    {% if rule.description %}<small class="muted clamp description-inline" title="{{ rule.description }}">{{ rule.description }}</small>{% endif %}</td>
-  <td data-col="comment"><span class="clamp" title="{{ rule.description }}">{{ rule.description }}</span></td>
+    {% if rule.description %}<small class="muted cell-line description-inline" title="{{ rule.description }}">{{ rule.description }}</small>{% endif %}</td>
+  <td data-col="comment"><span class="cell-line" title="{{ rule.description }}">{{ rule.description }}</span></td>
   <td data-col="type">{{ rule.get_rule_type_display }}</td>
   <td data-col="policy"><span class="badge {{ rule.policy|policy_class }}">{{ rule.get_policy_display }}</span></td>
   <td data-col="scope">{% if rule.is_global %}<span class="chip small">{% translate "All Macs" %}</span>{% else %}

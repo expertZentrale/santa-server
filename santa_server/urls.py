@@ -26,5 +26,4 @@ urlpatterns = [
     path("request/", include("santa.console.request_urls")),
     path("admin/", admin.site.urls),
     path("sync/", include("santa.sync_urls")),
-    path("", include("django_prometheus.urls")),
 ]

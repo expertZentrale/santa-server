@@ -34,9 +34,11 @@ main .table-scroll.fits > .table:not(.compact) > thead th { position: sticky; to
 /* the buttons of a row: last column, right-aligned, the same place in every row. No percentage widths in these
    tables: the box around them is as wide as its content, and a percentage would stretch it to the window */
 .table td.row-actions { width: 1px; white-space: nowrap; text-align: right; }
-/* a long path takes the room the column has, but doesn't widen it; the whole path is in the title */
-.cell-path { display: block; min-width: 100%; max-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.table.measuring .cell-path { max-width: none; }
+/* a long path or description: one line in the room the column has, without widening it; the whole text is in the
+   title */
+.cell-path, .cell-line { display: block; min-width: 100%; max-width: 0; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }
+.table.measuring .cell-path, .table.measuring .cell-line { max-width: none; }
 /* the column with the paths keeps some room for them, until a width is set by hand */
 .table:not(.fixed) th.grow { width: 16rem; }
 a.badge:hover { text-decoration: none; filter: brightness(.95); outline: 1px solid currentColor; }
@@ -67,7 +69,6 @@ a.badge:hover { text-decoration: none; filter: brightness(.95); outline: 1px sol
 .identifier-cell { display: flex; align-items: center; gap: .25rem; min-width: 0; }
 .identifier-cell .identifier { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .table[data-table="rules"] th[data-col="identifier"] { width: 26rem; }
-.clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
 /* with the column "Comment" shown, the comment is not repeated under the identifier */
 .table[data-shown~="comment"] .description-inline { display: none; }
 
