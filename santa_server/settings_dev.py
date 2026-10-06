@@ -8,7 +8,8 @@ ALLOWED_HOSTS = ["*"]
 
 DATABASES = {
     "default": {
-        "ENGINE": "mssql",
+        # mssql-django with the database metrics of django-prometheus (santa/db/base.py)
+        "ENGINE": "santa.db",
         "HOST": os.getenv("DB_HOST", "mssql"),
         "PORT": os.getenv("DB_PORT", "1433"),
         "USER": os.getenv("DB_USER", "sa"),

@@ -48,7 +48,8 @@ SESSION_COOKIE_SECURE = CSRF_COOKIE_SECURE = env_bool("SECURE_COOKIES", not DEBU
 
 DATABASES = {
     "default": {
-        "ENGINE": "mssql",
+        # mssql-django with the database metrics of django-prometheus (santa/db/base.py)
+        "ENGINE": "santa.db",
         "HOST": env("DB_HOST", required=True),
         "PORT": env("DB_PORT", "1433"),
         "NAME": env("DB_NAME", "santa"),

@@ -96,6 +96,8 @@ Benutzer ohne Rechte; SQL Server und Redis laufen separat.
   - stündlich: `python manage.py sync_release_sources` (neue Releases der Paketregeln, verzögerte Freigaben)
   - täglich: `python manage.py cleanup_events --days 90`
 - **Endpunkte**: `/health` (Liveness, ohne Datenbank), `/ready` (prüft die Datenbank), `/metrics` (Prometheus).
+  `/metrics` enthält auch die Datenbank-Metriken (`django_db_*`: Abfragen, Dauer, Fehler, Verbindungen); dafür
+  nutzt der Server mit `santa.db` eine Hülle um das SQL-Server-Backend von mssql-django.
   Sie antworten vor der Host-Prüfung, für Probes. `/sync/…` muss für die Macs über HTTPS erreichbar sein; die Konsole
   (`/console/`), das Anfrageformular (`/request/`), `/login/`, `/oidc/…` und `/admin/` können auf Ihr Netz
   beschränkt werden.
@@ -573,6 +575,8 @@ separately.
   - hourly: `python manage.py sync_release_sources` (new releases of the package rules, delayed approvals)
   - daily: `python manage.py cleanup_events --days 90`
 - **Endpoints**: `/health` (liveness, no database), `/ready` (checks the database), `/metrics` (Prometheus).
+  `/metrics` also has the database metrics (`django_db_*`: queries, duration, errors, connections); for them the
+  server uses `santa.db`, a wrapper around the SQL Server backend of mssql-django.
   They answer before the host check, for probes. `/sync/…` must be reachable by the Macs over HTTPS; the console
   (`/console/`), the request form (`/request/`), `/login/`, `/oidc/…` and `/admin/` can be limited to your network.
 - Put a TLS terminating proxy or ingress in front, and set `TRUST_X_FORWARDED_PROTO=1`.
