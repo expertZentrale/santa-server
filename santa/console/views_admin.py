@@ -7,8 +7,8 @@ from django.contrib.admin.models import LogEntry
 from django.contrib.auth.models import Group as AuthGroup
 from django.contrib.auth.models import User
 from django.core.exceptions import PermissionDenied
-from django.db import transaction
-from django.db.models import Count, Q
+from django.db import IntegrityError, transaction
+from django.db.models import Count, ProtectedError, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -190,14 +190,21 @@ def user_delete(request, pk):
     if user == request.user:
         messages.error(request, gettext("You can't delete your own account."))
         return redirect("console:admin_user", pk=user.pk)
-    # keep the record: the access requests protect their requester, and the history would go with the user
-    if user.access_requests.exists() or LogEntry.objects.filter(user=user).exists():
+    # keep the record: the access requests protect their requester, and the history would go with the user.
+    # Checked and deleted in one transaction; a request or a change written meanwhile makes the delete fail.
+    try:
+        with transaction.atomic():
+            locked = User.objects.select_for_update().get(pk=user.pk)
+            has_record = locked.access_requests.exists() or LogEntry.objects.filter(user=locked).exists()
+            if not has_record:
+                log_deletion(request.user, locked)
+                locked.delete()
+    except (ProtectedError, IntegrityError):
+        has_record = True
+    if has_record:
         messages.error(request, gettext("%(user)s has access requests or changes in the history and can't be "
                                         "deleted. Deactivate the account instead.") % {"user": user})
         return redirect("console:admin_user", pk=user.pk)
-    with transaction.atomic():
-        log_deletion(request.user, user)
-        user.delete()
     messages.success(request, gettext("User %(user)s deleted.") % {"user": user})
     return redirect("console:admin_users")
 

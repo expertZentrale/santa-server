@@ -6,6 +6,7 @@ import hashlib
 import json
 import logging
 import re
+import time
 from dataclasses import asdict, dataclass
 
 import requests
@@ -20,12 +21,15 @@ logger = logging.getLogger(__name__)
 
 CACHE_TIMEOUT = 3600
 # part of the cache keys: bump it when the queries or the results change
-CACHE_VERSION = 3
+CACHE_VERSION = 4
 MAX_RESULTS = 10
 SEARCH_TIMEOUT = 10
 # Homebrew has no search API: the whole list of formulae (~30 MB) or casks (~20 MB) is loaded once a day
 HOMEBREW_API = "https://formulae.brew.sh/api"
 HOMEBREW_INDEX_TIMEOUT = 86400
+# the older list is kept for the searches while one worker loads the new one, or when formulae.brew.sh is down
+HOMEBREW_INDEX_KEEP = 7 * 86400
+HOMEBREW_INDEX_LOCK_TIMEOUT = 120
 HOMEBREW_INDEX_MAX_BYTES = 100 * 1024 * 1024
 GITHUB_REPOSITORY_RE = re.compile(r"github\.com[/:]([^/]+)/")
 
@@ -147,7 +151,8 @@ def _search_jetbrains(session, query):
 def _homebrew_entry(kind, data):
     """identifier, name, other names (aliases, old names), description, homepage"""
     if kind == Kind.HOMEBREW_CASK:
-        return [data["token"], (data.get("name") or [data["token"]])[0], data.get("old_tokens") or [],
+        names = data.get("name") or [data["token"]]
+        return [data["token"], names[0], [*names[1:], *(data.get("old_tokens") or [])],
                 data.get("desc") or "", data.get("homepage") or ""]
     return [data["name"], data["name"], [*(data.get("aliases") or []), *(data.get("oldnames") or [])],
             data.get("desc") or "", data.get("homepage") or ""]
@@ -170,6 +175,30 @@ def _load_homebrew_index(session, kind):
     return [_homebrew_entry(kind, data) for data in json.loads(content) if not data.get("disabled")]
 
 
+def _homebrew_index(session, kind):
+    """The list of the formulae or casks. One worker at a time loads it, the others use the older one meanwhile."""
+    key = f"santa:catalog:v{CACHE_VERSION}:homebrew-index:{kind}"
+    stored = cache.get(key)
+    if stored and time.time() - stored["loaded_at"] < HOMEBREW_INDEX_TIMEOUT:
+        return stored["entries"]
+    lock_key = f"{key}:lock"
+    if not cache.add(lock_key, "1", timeout=HOMEBREW_INDEX_LOCK_TIMEOUT):
+        if stored:
+            return stored["entries"]
+        raise CatalogError(gettext("The Homebrew list is being loaded, try again in a moment."))
+    try:
+        entries = _load_homebrew_index(session, kind)
+    except (requests.RequestException, KeyError, ValueError) as e:
+        if not stored:
+            raise
+        logger.warning("Homebrew %s list: %s, the older one is used", kind, e)
+        return stored["entries"]
+    finally:
+        cache.delete(lock_key)
+    cache.set(key, {"loaded_at": time.time(), "entries": entries}, HOMEBREW_INDEX_KEEP)
+    return entries
+
+
 def _homebrew_rank(entry, query):
     identifier, name, others, description, _homepage = entry
     names = [identifier.lower(), name.lower(), *(other.lower() for other in others)]
@@ -186,11 +215,9 @@ def _homebrew_rank(entry, query):
 
 def _search_homebrew(kind):
     def search(session, query):
-        index = _cached(f"homebrew-index:{kind}", lambda: _load_homebrew_index(session, kind),
-                        HOMEBREW_INDEX_TIMEOUT)
         query = query.lower()
         ranked = []
-        for entry in index:
+        for entry in _homebrew_index(session, kind):
             rank = _homebrew_rank(entry, query)
             if rank is not None:
                 ranked.append((rank, len(entry[0]), entry[0], entry))
@@ -209,14 +236,14 @@ SEARCHES = {
 }
 
 
-def _cached(key, compute, timeout=CACHE_TIMEOUT):
+def _cached(key, compute):
     cache_key = f"santa:catalog:v{CACHE_VERSION}:" + hashlib.sha256(key.encode()).hexdigest()
     value = cache.get(cache_key)
     if value is None:
         value = compute()
         # None: the catalog could not be reached, try again next time
         if value is not None:
-            cache.set(cache_key, value, timeout)
+            cache.set(cache_key, value, CACHE_TIMEOUT)
     return value
 
 

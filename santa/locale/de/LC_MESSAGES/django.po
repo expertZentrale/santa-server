@@ -4,14 +4,14 @@ msgid ""
 msgstr ""
 "Project-Id-Version: santa-server\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-06 09:44+0000\n"
+"POT-Creation-Date: 2026-10-06 09:59+0000\n"
 "Language: de\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-#: santa/catalog.py:78
+#: santa/catalog.py:82
 msgid ""
 "GitHub search rate limit reached, try again in a minute (or set "
 "github_token)."
@@ -19,7 +19,11 @@ msgstr ""
 "Limit der GitHub-Suche erreicht, bitte in einer Minute erneut versuchen "
 "(oder github_token setzen)."
 
-#: santa/catalog.py:234
+#: santa/catalog.py:188
+msgid "The Homebrew list is being loaded, try again in a moment."
+msgstr "Die Homebrew-Liste wird gerade geladen, versuchen Sie es gleich noch einmal."
+
+#: santa/catalog.py:261
 #, python-format
 msgid "The catalog could not be searched: %(error)s"
 msgstr "Der Katalog konnte nicht durchsucht werden: %(error)s"
@@ -1163,7 +1167,7 @@ msgstr "Anmeldegruppen"
 msgid "Export / import"
 msgstr "Export / Import"
 
-#: santa/console/views_admin.py:58 santa/console/views_admin.py:352
+#: santa/console/views_admin.py:58 santa/console/views_admin.py:359
 #: santa/templates/console/base.html:35
 #: santa/templates/console/rules/form.html:5
 #: santa/templates/console/rules/list.html:2
@@ -1173,7 +1177,7 @@ msgstr "Export / Import"
 msgid "Execution rules"
 msgstr "Ausführungsregeln"
 
-#: santa/console/views_admin.py:59 santa/console/views_admin.py:353
+#: santa/console/views_admin.py:59 santa/console/views_admin.py:360
 #: santa/templates/console/administration/tags.html:9
 #: santa/templates/console/base.html:36
 #: santa/templates/console/sources/detail.html:4
@@ -1265,7 +1269,7 @@ msgstr "Benutzer %(user)s gespeichert."
 msgid "You can't delete your own account."
 msgstr "Sie können Ihr eigenes Konto nicht löschen."
 
-#: santa/console/views_admin.py:195
+#: santa/console/views_admin.py:205
 #, python-format
 msgid ""
 "%(user)s has access requests or changes in the history and can't be deleted. "
@@ -1274,17 +1278,17 @@ msgstr ""
 "%(user)s hat Anfragen oder Änderungen im Verlauf und kann nicht gelöscht "
 "werden. Deaktivieren Sie das Konto stattdessen."
 
-#: santa/console/views_admin.py:201
+#: santa/console/views_admin.py:208
 #, python-format
 msgid "User %(user)s deleted."
 msgstr "Benutzer %(user)s gelöscht."
 
-#: santa/console/views_admin.py:255
+#: santa/console/views_admin.py:262
 #, python-format
 msgid "Role %(role)s saved."
 msgstr "Rolle %(role)s gespeichert."
 
-#: santa/console/views_admin.py:272
+#: santa/console/views_admin.py:279
 #, python-format
 msgid ""
 "The role %(role)s is given by the admin role of the sign-in, it can't be "
@@ -1293,12 +1297,12 @@ msgstr ""
 "Die Rolle %(role)s wird über die Admin-Rolle der Anmeldung vergeben und kann "
 "nicht gelöscht werden."
 
-#: santa/console/views_admin.py:277
+#: santa/console/views_admin.py:284
 #, python-format
 msgid "Role %(role)s deleted."
 msgstr "Rolle %(role)s gelöscht."
 
-#: santa/console/views_admin.py:308
+#: santa/console/views_admin.py:315
 #, python-format
 msgid ""
 "Sign-in group %(group)s saved. It applies to its members now, new members "
@@ -1307,40 +1311,40 @@ msgstr ""
 "Anmeldegruppe %(group)s gespeichert. Sie gilt ab sofort für ihre Mitglieder, "
 "neue Mitglieder erhalten sie bei ihrer nächsten Anmeldung."
 
-#: santa/console/views_admin.py:324
+#: santa/console/views_admin.py:331
 #, python-format
 msgid "Sign-in group %(group)s deleted, its members lost its roles."
 msgstr ""
 "Anmeldegruppe %(group)s gelöscht, ihre Mitglieder haben ihre Rollen verloren."
 
-#: santa/console/views_admin.py:352
+#: santa/console/views_admin.py:359
 msgid "Used by"
 msgstr "Verwendet von"
 
-#: santa/console/views_admin.py:354
+#: santa/console/views_admin.py:361
 msgid "Nothing"
 msgstr "Nichts"
 
-#: santa/console/views_admin.py:355 santa/console/views_groups.py:66
+#: santa/console/views_admin.py:362 santa/console/views_groups.py:66
 msgid "Name, description…"
 msgstr "Name, Beschreibung…"
 
-#: santa/console/views_admin.py:371
+#: santa/console/views_admin.py:378
 #, python-format
 msgid "Tag %(tag)s saved."
 msgstr "Tag %(tag)s gespeichert."
 
-#: santa/console/views_admin.py:383
+#: santa/console/views_admin.py:390
 #, python-format
 msgid "Tag %(tag)s deleted. The rules stay, only the label is gone."
 msgstr "Tag %(tag)s gelöscht. Die Regeln bleiben, nur die Markierung ist weg."
 
-#: santa/console/views_admin.py:414
+#: santa/console/views_admin.py:421
 #, python-format
 msgid "Not a JSON file: %(error)s"
 msgstr "Keine JSON-Datei: %(error)s"
 
-#: santa/console/views_admin.py:426
+#: santa/console/views_admin.py:433
 #, python-format
 msgid "Imported: %(count)s change."
 msgid_plural "Imported: %(count)s changes."

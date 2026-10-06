@@ -1,9 +1,11 @@
 import json
+from unittest.mock import patch
 
 from django.contrib.admin.models import ADDITION, CHANGE, DELETION, LogEntry
 from django.contrib.auth.models import Group as AuthGroup
 from django.contrib.auth.models import Permission, User
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db.models import ProtectedError
 from django.urls import reverse
 
 from santa.auth import ADMIN_GROUP_NAME, REQUESTERS_GROUP_NAME
@@ -99,6 +101,14 @@ class AdministrationTestCase(ConsoleBase):
             response = self.client.post(reverse("console:admin_user_delete", args=(user.pk,)), follow=True)
             self.assertTrue(User.objects.filter(pk=user.pk).exists())
             self.assertNotContains(response, f"User {user} deleted.")
+
+    def test_record_written_while_deleting(self):
+        local = User.objects.create_user("break-glass", password="x")
+        with patch.object(User, "delete", side_effect=ProtectedError("access request", set())):
+            response = self.client.post(reverse("console:admin_user_delete", args=(local.pk,)), follow=True)
+        self.assertContains(response, "Deactivate the account instead.")
+        self.assertTrue(User.objects.filter(pk=local.pk).exists())
+        self.assertFalse(LogEntry.objects.filter(object_id=str(local.pk), action_flag=DELETION).exists())
 
     def test_delete_user_needs_the_permission(self):
         manager = User.objects.create_user("manager", is_staff=True)
