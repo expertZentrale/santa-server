@@ -11,6 +11,7 @@ from .models import (
     ReleaseVersion,
     Rule,
     RuleType,
+    with_parent_groups,
 )
 
 EVENT_IDENTIFIER_FIELDS = {
@@ -66,7 +67,8 @@ ALLOW_POLICIES = (Policy.ALLOWLIST, Policy.ALLOWLIST_COMPILER)
 def existing_rules(events):
     """The rules that already match the binaries of the events, by SHA-256: [{"rule", "applies"}]
 
-    applies: the rule is enabled and reaches at least one Mac of the events (global, its group or the Mac).
+    applies: the rule is enabled and reaches at least one Mac of the events (global, its group, the parent group
+    it is based on, or the Mac).
     """
     events_of = {}
     for event in events:
@@ -87,9 +89,13 @@ def existing_rules(events):
                 for sha in binaries_of[rule.identifier]:
                     found[sha].append(rule)
     result = {}
+    rule_groups = {}
     for sha, rules in found.items():
         machines = {event.machine_id for event in events_of[sha]}
-        groups = {event.machine.group_id for event in events_of[sha]}
+        group_ids = frozenset(event.machine.group_id for event in events_of[sha])
+        if group_ids not in rule_groups:
+            rule_groups[group_ids] = with_parent_groups(group_ids, "inherit_rules")
+        groups = rule_groups[group_ids]
         result[sha] = [{"rule": rule, "applies": rule.is_enabled and (
             rule.is_global or any(group.pk in groups for group in rule.groups.all())
             or any(machine.pk in machines for machine in rule.machines.all()))}
@@ -192,12 +198,13 @@ def chunked(values, size=1000):
 def allowed_packages(user, packages):
     """The (kind, identifier) of the packages that an enabled allow package rule already covers on the Macs of the user
 
-    Package rules are global or for groups, so the groups of the user's Macs decide.
+    Package rules are global or for groups, so the groups of the user's Macs (and the parents they take the rules
+    of) decide.
     """
     wanted = {(package["kind"], package["identifier"]) for package in packages}
     if not wanted:
         return set()
-    groups = machines_for_user(user).values_list("group_id", flat=True)
+    groups = with_parent_groups(machines_for_user(user).values_list("group_id", flat=True), "inherit_rules")
     # identifier is a multi-line TextField: split it here instead of filtering on it
     sources = (ReleaseSource.objects.filter(kind__in={kind for kind, _ in wanted}, is_enabled=True,
                                             policy__in=ALLOW_POLICIES)

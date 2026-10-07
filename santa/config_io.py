@@ -1,7 +1,7 @@
 """Export and import the configuration (groups, release sources, rules) as JSON, e.g. from dev to live.
 
 Everything is matched by natural keys, never by primary key:
-- groups, tags and release sources by name,
+- groups, tags and release sources by name (also the parent of a group based on another one),
 - manual rules by (rule type, identifier, policy),
 - machine scopes by serial number (machines are never created).
 
@@ -28,7 +28,8 @@ GROUP_FIELDS = (
     "removable_media_remount_flags", "encrypted_removable_media_action", "encrypted_removable_media_remount_flags",
     "event_detail_url", "event_detail_text", "unknown_block_message", "banned_block_message",
     "enable_bad_signature_protection", "on_start_usb_options", "branding_company_name", "branding_company_logo",
-    "branding_company_logo_dark", "override_file_access_action", "file_access_block_message",
+    "branding_company_logo_dark", "override_file_access_action", "file_access_block_message", "inherit_rules",
+    "inherit_file_access_rules", "overridden_settings",
 )
 RELEASE_SOURCE_FIELDS = (
     "kind", "identifier", "version_pattern", "asset_pattern", "binary_pattern", "include_prereleases", "rule_type",
@@ -61,7 +62,9 @@ class ConfigImportError(Exception):
 
 
 def export_config():
-    groups = [{"name": g.name, **{f: getattr(g, f) for f in GROUP_FIELDS}} for g in Group.objects.order_by("name")]
+    groups = [{"name": g.name, "parent": g.parent.name if g.parent else None,
+               **{f: getattr(g, f) for f in GROUP_FIELDS}}
+              for g in Group.objects.select_related("parent").order_by("name")]
     tags = [{"name": t.name, "description": t.description} for t in Tag.objects.order_by("name")]
     release_sources = [
         {"name": s.name, **{f: getattr(s, f) for f in RELEASE_SOURCE_FIELDS},
@@ -182,7 +185,25 @@ class _Importer:
                     continue
                 self.record("created" if created else "updated", group)
             self.groups[name] = group
+        self.import_group_parents()
 
+    def import_group_parents(self):
+        """After all groups exist: the parents by name. A file without them (older versions) keeps the parents."""
+        items = [item for item in self.data.get("groups", []) if item.get("name") in self.groups and "parent" in item]
+        # the parents themselves first: they may lose their own parent (one level only)
+        for item in sorted(items, key=lambda item: item["parent"] is not None):
+            group = self.groups[item["name"]]
+            parent = None
+            if item["parent"] is not None:
+                parent = self.groups.get(item["parent"]) or Group.objects.filter(name=item["parent"]).first()
+                if parent is None:
+                    self.errors.append(f"Group {group.name}: unknown parent group {item['parent']!r}")
+                    continue
+            if group.parent_id == (parent.pk if parent else None):
+                continue
+            group.parent = parent
+            if self.save(group, f"Group {group.name}"):
+                self.record("updated", group)
     def import_release_sources(self):
         names = set()
         for item in self.data.get("release_sources", []):

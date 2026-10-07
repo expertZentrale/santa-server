@@ -270,3 +270,9 @@ ol.history > li:last-child { border-bottom: 0; }
   align-items: start; }
 .process-fields .field { align-content: start; }
 .process-checks { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 0 1.5rem; align-items: start; }
+
+/* A setting of a group based on another one: "Own value", then the inherited value or the own fields */
+.inheritable:has(> [data-inherit-override]:not([hidden])) { border-left: 2px solid var(--border); padding-left: .8rem; margin-bottom: .9rem; }
+.inheritable .field[data-field^="override_"] { margin-bottom: .4rem; }
+.inheritable .inherited { display: grid; gap: .25rem; margin-bottom: .4rem; }
+.inheritable .inherited .pre { white-space: pre-wrap; }

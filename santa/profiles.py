@@ -116,6 +116,8 @@ def group_configuration(group):
         # a variable the MDM fills in with the primary user: Santa reports it in the preflight, the request form
         # finds the Macs of the signed-in user with it
         config["MachineOwner"] = settings.SANTA_PROFILE_MACHINE_OWNER
+    # a group based on another one: the settings of the parent, except the overridden ones
+    group = group.effective()
     if group.unknown_block_message:
         config["UnknownBlockMessage"] = group.unknown_block_message
     if group.banned_block_message:
@@ -139,7 +141,8 @@ def group_configuration(group):
 
 
 def file_access_rules(group):
-    return (FileAccessRule.objects.filter(Q(is_global=True) | Q(groups=group), is_enabled=True).distinct()
+    return (FileAccessRule.objects.filter(Q(is_global=True) | Q(groups__in=group.file_access_group_ids()),
+                                          is_enabled=True).distinct()
                                   .prefetch_related("processes").order_by("name"))
 
 

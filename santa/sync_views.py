@@ -148,6 +148,8 @@ def preflight(request, group, machine_id, data):
         logger.info("Machine %s: clean sync (%s)", machine_id, clean_reason)
     machine.save()
 
+    # a group based on another one: the settings of the parent, except the overridden ones
+    group = group.effective()
     response = {
         "client_mode": group.client_mode,
         "batch_size": group.batch_size,
