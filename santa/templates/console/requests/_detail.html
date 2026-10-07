@@ -62,14 +62,14 @@
     {% endfor %}
     {% endif %}
     {% for field in approve_form.hidden_fields %}{{ field }}{% endfor %}
-    <button class="button primary">{% translate "Approve" %}</button>
+    <div class="actions"><button class="button primary">{% translate "Approve" %}</button></div>
   </form>
 </section>
 <section class="card"><h2>{% translate "Deny" %}</h2>
   <form method="post" action="{% url 'console:request_deny' access_request.pk %}" class="stack"{% if in_drawer %} hx-post="{% url 'console:request_deny' access_request.pk %}" hx-target="#drawer"{% endif %}>
     {% csrf_token %}
     {% include "console/_field.html" with field=deny_form.note %}
-    <button class="button danger">{% translate "Deny" %}</button>
+    <div class="actions"><button class="button danger">{% translate "Deny" %}</button></div>
   </form>
 </section>
 {% endif %}
