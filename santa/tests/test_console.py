@@ -612,6 +612,9 @@ class ConsoleEventsTestCase(ConsoleBase):
         self.assertContains(response, 'value="SILENT_BLOCKLIST"')
         self.assertNotContains(response, "Suggested per binary")
         self.assertNotContains(response, "<html")
+        # in the action bar, which stays at the bottom of the drawer like in the other forms
+        self.assertContains(response, '<div class="actions"><button class="button primary">Create rule</button></div>',
+                            html=True)
         self.client.post(reverse("console:event_create_rule", args=(event.pk,)), {
             "rule_type": RuleType.BINARY, "policy": Policy.BLOCKLIST, "scope": "machines", "include": SHA_A,
             "next": "https://evil/"})

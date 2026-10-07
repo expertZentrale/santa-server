@@ -241,6 +241,12 @@ class AdminRequestTestCase(ConsoleBase):
         response = self.client.get(reverse("console:request", args=(access_request.pk,)))
         self.assertContains(response, "ABCDE12345:com.example.tool")
         self.assertContains(response, "jdoe-mbp")
+        # in the action bars, which stay at the bottom of the drawer like in the other forms
+        response = self.client.get(reverse("console:request", args=(access_request.pk,)), HTTP_HX_REQUEST="true")
+        self.assertContains(response, '<div class="actions"><button class="button primary">Approve</button></div>',
+                            html=True)
+        self.assertContains(response, '<div class="actions"><button class="button danger">Deny</button></div>',
+                            html=True)
 
     def test_approve_event_for_the_mac_of_the_requester(self):
         access_request = self.event_request()
