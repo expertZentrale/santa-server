@@ -1,3 +1,4 @@
+import copy
 import hashlib
 import json
 import re
@@ -99,6 +100,20 @@ class Group(models.Model):
         max_length=64, unique=True, default=generate_sync_token, editable=False,
         help_text=_("Secret part of the sync URL. Regenerate it with the admin action if it leaks."),
     )
+
+    # Based on another group: its settings (except the overridden ones) and, if chosen, its rules. One level only.
+    parent = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.RESTRICT, related_name="children",
+        help_text=_("The group takes the settings of this group, except the ones it sets itself, and, if chosen "
+                    "below, its rules and file access rules. Its own rules win over the inherited ones."),
+    )
+    inherit_rules = models.BooleanField(
+        default=True, help_text=_("The rules of the parent group also apply to the Macs of this group."))
+    inherit_file_access_rules = models.BooleanField(
+        default=True, help_text=_("The file access rules of the parent group are also in the profile of this group."))
+    # the keys of INHERITABLE_SETTINGS the group sets itself instead of taking them from the parent;
+    # a document only, read in Python
+    overridden_settings = models.JSONField(default=list, blank=True)
 
     client_mode = models.CharField(
         max_length=16, choices=ClientMode.choices, default=ClientMode.MONITOR,
@@ -217,14 +232,77 @@ class Group(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # what a group based on another one inherits: {setting: its fields}; fields that belong together are one setting
+    INHERITABLE_SETTINGS = {
+        "client_mode": ("client_mode",),
+        "batch_size": ("batch_size",),
+        "full_sync_interval": ("full_sync_interval",),
+        "allowed_path_regex": ("allowed_path_regex",),
+        "blocked_path_regex": ("blocked_path_regex",),
+        "enable_transitive_rules": ("enable_transitive_rules",),
+        "enable_bundles": ("enable_bundles",),
+        "enable_all_event_upload": ("enable_all_event_upload",),
+        "removable_media": ("removable_media_action", "removable_media_remount_flags"),
+        "encrypted_removable_media": ("encrypted_removable_media_action", "encrypted_removable_media_remount_flags"),
+        "override_file_access_action": ("override_file_access_action",),
+        "event_detail": ("event_detail_url", "event_detail_text"),
+        "unknown_block_message": ("unknown_block_message",),
+        "banned_block_message": ("banned_block_message",),
+        "enable_bad_signature_protection": ("enable_bad_signature_protection",),
+        "file_access_block_message": ("file_access_block_message",),
+        "on_start_usb_options": ("on_start_usb_options",),
+        "branding_company_name": ("branding_company_name",),
+        "branding_company_logo": ("branding_company_logo",),
+        "branding_company_logo_dark": ("branding_company_logo_dark",),
+    }
+
     class Meta:
         ordering = ["name"]
 
     def __str__(self):
         return self.name
 
+    def inherited_settings(self):
+        """The settings taken from the parent (none without a parent)"""
+        if not self.parent_id:
+            return []
+        return [key for key in self.INHERITABLE_SETTINGS if key not in self.overridden_settings]
+
+    def effective(self):
+        """The group as the Macs get it: a copy with the settings of the parent, except the overridden ones.
+
+        Name, sync token and pk stay the group's own. Without a parent, the group itself.
+        """
+        inherited = self.inherited_settings()
+        if not inherited:
+            return self
+        group = copy.copy(self)
+        for key in inherited:
+            for field in self.INHERITABLE_SETTINGS[key]:
+                setattr(group, field, getattr(self.parent, field))
+        return group
+
+    def rule_group_ids(self):
+        """The groups whose rules reach the Macs of this group"""
+        return [self.pk, self.parent_id] if self.parent_id and self.inherit_rules else [self.pk]
+
+    def file_access_group_ids(self):
+        """The groups whose file access rules are in the profile of this group"""
+        return [self.pk, self.parent_id] if self.parent_id and self.inherit_file_access_rules else [self.pk]
+
     def clean(self):
         errors = {}
+        overridden = self.overridden_settings or []
+        self.overridden_settings = [key for key in self.INHERITABLE_SETTINGS if key in overridden]
+        if self.parent_id:
+            if self.parent_id == self.pk:
+                errors["parent"] = gettext("A group cannot be based on itself.")
+            elif self.parent.parent_id:
+                errors["parent"] = gettext("%(group)s is itself based on another group: only one level is "
+                                           "possible.") % {"group": self.parent}
+            elif self.pk and self.children.exists():
+                errors["parent"] = gettext("Other groups are based on this group: it cannot be based on another "
+                                           "one itself.")
         if not 5 <= self.batch_size <= 500:
             errors["batch_size"] = gettext("Must be between 5 and 500.")
         if self.full_sync_interval < 60:
@@ -268,6 +346,20 @@ class Group(models.Model):
             return None
         return removable_media_policy(self.encrypted_removable_media_action,
                                       self.encrypted_removable_media_remount_flags)
+
+
+def with_parent_groups(group_ids, inherit):
+    """The groups plus the parents whose rules they take (inherit: the field inherit_rules or
+    inherit_file_access_rules)"""
+    group_ids = set(group_ids)
+    parents = Group.objects.filter(pk__in=group_ids, parent__isnull=False, **{inherit: True})
+    return group_ids | set(parents.values_list("parent_id", flat=True))
+
+
+def with_child_groups(groups, inherit):
+    """The groups plus the groups based on them that take their rules (inherit: as in with_parent_groups())"""
+    children = Group.objects.filter(parent__in=list(groups), **{inherit: True})
+    return sorted({*groups, *children}, key=lambda group: group.name)
 
 
 class Machine(models.Model):
@@ -944,6 +1036,9 @@ class SignInGroup(models.Model):
                                    "A user can be excepted in Administration → Users."))
     roles = models.ManyToManyField("auth.Group", blank=True, related_name="sign_in_groups",
                                    help_text=_("The members get these roles"))
+    # {notification: "off" | "instant" | "daily"} (notifications.py), a document only; missing = no default.
+    # The members start with these, their own choice in the profile wins.
+    notification_defaults = models.JSONField(default=dict, blank=True)
     # state, not configuration: who had the group at their last sign-in
     members = models.ManyToManyField(settings.AUTH_USER_MODEL, blank=True, related_name="sign_in_groups",
                                      editable=False)

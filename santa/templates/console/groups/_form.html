@@ -4,7 +4,9 @@
     <dt>{% translate "Macs" %}</dt><dd><a href="{% url 'console:machines' %}?group={{ group.pk }}">{{ machine_count }}</a>
       {% if lockdown_count %} · {% blocktranslate count count=lockdown_count %}{{ count }} in lockdown{% plural %}{{ count }} in lockdown{% endblocktranslate %}{% endif %}
       {% if stale_count %} · <a href="{% url 'console:machines' %}?group={{ group.pk }}&amp;status=stale"><span class="badge bad">{% blocktranslate count count=stale_count %}{{ count }} not synced for 2 days{% plural %}{{ count }} not synced for 2 days{% endblocktranslate %}</span></a>{% endif %}</dd>
-    <dt>{% translate "Rules" %}</dt><dd><a href="{% url 'console:rules' %}?scope={{ group.pk }}">{% blocktranslate count count=rule_count %}{{ count }} for this group{% plural %}{{ count }} for this group{% endblocktranslate %}</a> {% translate "(plus the global ones)" %}</dd>
+    <dt>{% translate "Rules" %}</dt><dd><a href="{% url 'console:rules' %}?scope={{ group.pk }}">{% blocktranslate count count=rule_count %}{{ count }} for this group{% plural %}{{ count }} for this group{% endblocktranslate %}</a>
+      {% if group.parent and group.inherit_rules %}{% url 'console:rules' as rules_url %}{% blocktranslate with url=rules_url pk=group.parent_id parent=group.parent.name %}(plus the global ones and the ones of <a href="{{ url }}?scope={{ pk }}">{{ parent }}</a>){% endblocktranslate %}{% else %}{% translate "(plus the global ones)" %}{% endif %}</dd>
+    {% if children %}<dt>{% translate "Based on it" %}</dt><dd>{% for child in children %}{% url 'console:group' child.pk as child_url %}<a class="chip small" href="{{ child_url }}" hx-get="{{ child_url }}" hx-target="#drawer">{{ child.name }}</a>{% endfor %}</dd>{% endif %}
     {% if perms.santa.view_fileaccessrule %}<dt>{% translate "File access rules" %}</dt><dd><a href="{% url 'console:file_access_rules' %}?group={{ group.pk }}">{% blocktranslate count count=file_access_count %}{{ count }} in the profile{% plural %}{{ count }} in the profile{% endblocktranslate %}</a></dd>{% endif %}
     <dt>{% translate "Open blocks" %}</dt><dd><a href="{% url 'console:events' %}?group={{ group.pk }}">{{ open_blocks }}</a></dd>
     {% if can_see_sync_token %}
@@ -24,10 +26,22 @@
   {% for title, help_text, fields in form.sections %}
     <section class="card"><h2>{{ title }}</h2>
       {% if help_text %}<p class="help small">{{ help_text }}</p>{% endif %}
-      {% for field, show_when in fields %}
-        {% if field.is_logo %}{% include "console/groups/_logo_field.html" with logo=field %}
-        {% elif show_when %}<div data-show-when="{{ show_when }}">{% include "console/_field.html" %}</div>
-        {% else %}{% include "console/_field.html" %}{% endif %}
+      {% for block in fields %}
+        {% if block.key %}<div class="inheritable" data-setting data-saved-parent="{{ form.saved_parent }}">
+          <div data-inherit-override{% if not block.has_parent %} hidden{% endif %}>{% include "console/_field.html" with field=block.override %}</div>
+          <div class="inherited" data-inherited{% if not block.inherits %} hidden{% endif %}>
+            <dl class="facts" data-inherited-values>{% for label, text, image in block.values %}<dt>{{ label }}</dt><dd>{% if image %}<span class="logo-preview"><img src="{{ image }}" alt="{{ label }}"></span>{% elif text == "" %}<span class="muted">–</span>{% else %}<span class="pre">{{ text }}</span>{% endif %}</dd>{% endfor %}</dl>
+            <small class="help" data-inherited-pending hidden>{% translate "Inherited: the value of the chosen group, once saved." %}</small>
+            {% if block.values %}<small class="help" data-inherited-from>{% blocktranslate with group=group.parent.name %}Inherited from {{ group }}.{% endblocktranslate %}</small>{% endif %}
+          </div>
+          <div data-own{% if block.inherits %} hidden{% endif %}>
+        {% endif %}
+        {% for field, show_when in block.fields %}
+          {% if field.is_logo %}{% include "console/groups/_logo_field.html" with logo=field %}
+          {% elif show_when %}<div data-show-when="{{ show_when }}">{% include "console/_field.html" %}</div>
+          {% else %}{% include "console/_field.html" %}{% endif %}
+        {% endfor %}
+        {% if block.key %}</div></div>{% endif %}
       {% endfor %}
     </section>
   {% endfor %}

@@ -761,7 +761,8 @@ class LogoField:
 class GroupForm(forms.ModelForm):
     class Meta:
         model = Group
-        fields = ("name", "description", "client_mode", "batch_size", "full_sync_interval", "allowed_path_regex",
+        fields = ("name", "description", "parent", "inherit_rules", "inherit_file_access_rules", "client_mode",
+                  "batch_size", "full_sync_interval", "allowed_path_regex",
                   "blocked_path_regex", "enable_transitive_rules", "enable_bundles", "enable_all_event_upload",
                   "removable_media_action", "removable_media_remount_flags", "encrypted_removable_media_action",
                   "encrypted_removable_media_remount_flags", "override_file_access_action", "event_detail_url",
@@ -778,7 +779,9 @@ class GroupForm(forms.ModelForm):
             "file_access_block_message": forms.Textarea(attrs={"rows": 2}),
         }
         labels = {
-            "name": _("Name"), "description": _("Description"), "client_mode": _("Client mode"),
+            "name": _("Name"), "description": _("Description"), "parent": _("Based on"),
+            "inherit_rules": _("Inherit rules"), "inherit_file_access_rules": _("Inherit file access rules"),
+            "client_mode": _("Client mode"),
             "batch_size": _("Batch size"), "full_sync_interval": _("Full sync interval"),
             "allowed_path_regex": _("Allowed path regexes"), "blocked_path_regex": _("Blocked path regexes"),
             "enable_transitive_rules": _("Enable transitive rules"), "enable_bundles": _("Enable bundles"),
@@ -802,6 +805,9 @@ class GroupForm(forms.ModelForm):
     # the sections of the form page, like in the admin
     SECTIONS = [
         (_("Group"), "", ("name", "description")),
+        (_("Based on"), _("A group based on another one takes its settings, except the ones it sets itself (Own "
+                          "value). Its own rules win over the inherited ones, so it can allow more."),
+         ("parent", "inherit_rules", "inherit_file_access_rules")),
         (_("Santa configuration"), _("Sent to the Macs at every sync."), ("client_mode", "batch_size",
                                                                            "full_sync_interval")),
         (_("Path regexes"), _("One per line, combined into one regex for Santa. Rules always win over the regexes."),
@@ -828,6 +834,8 @@ class GroupForm(forms.ModelForm):
                       "file_access_block_message", "on_start_usb_options", "branding_company_name",
                       "branding_company_logo")
     SHOW_WHEN = {
+        "inherit_rules": "parent",
+        "inherit_file_access_rules": "parent",
         "removable_media_remount_flags": "removable_media_action=REMOUNT",
         "encrypted_removable_media_remount_flags": "encrypted_removable_media_action=REMOUNT",
     }
@@ -837,6 +845,15 @@ class GroupForm(forms.ModelForm):
         self.fields["encrypted_removable_media_action"].choices = [
             ("", _("The same as removable media")), *RemovableMediaAction.choices]
         self.fields["on_start_usb_options"].choices = [("", _("Leave them")), *OnStartUSBOption.choices]
+        # one level: only groups that are not based on another one, never itself
+        parents = Group.objects.filter(parent__isnull=True)
+        if self.instance.pk:
+            parents = parents.exclude(pk=self.instance.pk)
+        self.fields["parent"].queryset = parents
+        self.fields["parent"].empty_label = _("No other group")
+        for key in Group.INHERITABLE_SETTINGS:
+            self.fields[f"override_{key}"] = forms.BooleanField(
+                required=False, label=_("Own value"), initial=key in self.instance.overridden_settings)
         for name in self.LOGO_LABELS:
             value = getattr(self.instance, name)
             self.fields[f"{name}_file"] = forms.FileField(
@@ -852,7 +869,18 @@ class GroupForm(forms.ModelForm):
 
     def clean(self):
         cleaned = super().clean()
+        inherited = self.inherited_settings(cleaned)
+        # the inherited settings keep the group's own values (back when it overrides them again), unchecked
+        for key in inherited:
+            for name in Group.INHERITABLE_SETTINGS[key]:
+                if name in self.fields:
+                    self.errors.pop(name, None)
+                    cleaned[name] = getattr(self.instance, name)
+        self.instance.overridden_settings = (
+            [key for key in Group.INHERITABLE_SETTINGS if key not in inherited] if cleaned.get("parent") else [])
         for name in self.LOGO_LABELS:
+            if name in inherited:
+                continue
             upload = cleaned.get(f"{name}_file")
             url = cleaned.get(f"{name}_url", "").strip()
             current = getattr(self.instance, name)
@@ -877,14 +905,76 @@ class GroupForm(forms.ModelForm):
             setattr(self.instance, name, value)
         return cleaned
 
+    def inherited_settings(self, cleaned=None):
+        """The settings taken from the parent, by the submitted form (else the saved group)"""
+        if cleaned is not None:
+            parent, own = cleaned.get("parent"), {key for key in Group.INHERITABLE_SETTINGS
+                                                   if cleaned.get(f"override_{key}")}
+        elif self.is_bound:
+            parent = self["parent"].value()
+            own = {key for key in Group.INHERITABLE_SETTINGS if self[f"override_{key}"].value()}
+        else:
+            parent, own = self.instance.parent_id, set(self.instance.overridden_settings)
+        return [key for key in Group.INHERITABLE_SETTINGS if key not in own] if parent else []
+
     def profile_changed(self):
-        return any(name.startswith(self.PROFILE_FIELDS) for name in self.changed_data)
+        return any(name.removeprefix("override_").startswith(self.PROFILE_FIELDS)
+                   or name in ("parent", "inherit_file_access_rules") for name in self.changed_data)
+
+    def changed_settings(self):
+        """The inheritable settings whose value changed"""
+        return {key for key, names in Group.INHERITABLE_SETTINGS.items()
+                if any(name.startswith(names) for name in self.changed_data)}
+
+    def inherited_values(self, key):
+        """[(label, text, image)] of the setting in the saved parent group"""
+        parent = self.instance.parent
+        values = []
+        for name in Group.INHERITABLE_SETTINGS[key]:
+            value = getattr(parent, name)
+            if name in self.LOGO_LABELS:
+                image = value if value.startswith("data:") else ""
+                values.append((self.LOGO_LABELS[name], "" if image else value, image))
+                continue
+            field = self.fields[name]
+            if isinstance(value, bool):
+                text = gettext("yes") if value else gettext("no")
+            elif getattr(field, "choices", None) is not None and not isinstance(field, forms.ModelChoiceField):
+                text = dict(field.choices).get(value, value)
+            else:
+                text = value
+            if text == "" and name.endswith("_remount_flags"):
+                continue
+            values.append((field.label, text, ""))
+        return values
 
     def sections(self):
+        """[(title, help text, blocks)]: a block is one setting (inherited or not) or a field of the group"""
+        inherited = set(self.inherited_settings())
+        has_parent = bool(self["parent"].value())
+        setting_of = {name: key for key, names in Group.INHERITABLE_SETTINGS.items() for name in names}
+
         def field(name):
-            return LogoField(self, name) if name in self.LOGO_LABELS else self[name]
-        return [(title, help_text, [(field(name), self.SHOW_WHEN.get(name, "")) for name in names])
-                for title, help_text, names in self.SECTIONS]
+            return (LogoField(self, name) if name in self.LOGO_LABELS else self[name], self.SHOW_WHEN.get(name, ""))
+
+        sections = []
+        for title, help_text, names in self.SECTIONS:
+            blocks = []
+            for name in names:
+                key = setting_of.get(name)
+                if key and blocks and blocks[-1]["key"] == key:
+                    blocks[-1]["fields"].append(field(name))
+                    continue
+                blocks.append({"key": key, "fields": [field(name)]})
+                if key:
+                    blocks[-1].update({
+                        "override": self[f"override_{key}"], "inherits": key in inherited, "has_parent": has_parent,
+                        "values": self.inherited_values(key) if self.instance.parent_id else []})
+            sections.append((title, help_text, blocks))
+        return sections
+
+    def saved_parent(self):
+        return self.instance.parent_id or ""
 
 
 def logo_data_url(upload):
@@ -919,9 +1009,13 @@ class ProfileForm(forms.ModelForm):
         self.notification_names = []
         for notification in notifications.available(user) if user and notifications.enabled() else []:
             name = f"notify_{notification.key}"
+            # empty: no choice, the default of the sign-in groups or the notification applies
+            default = notifications.MODE_LABELS[notifications.default_mode(user, notification.key)]
+            stored = self.instance.notifications.get(notification.key)
             self.fields[name] = forms.ChoiceField(
-                choices=[(value, notifications.MODE_LABELS[value]) for value in notification.modes],
-                initial=notifications.mode(user, notification.key), label=notification.label,
+                choices=[("", _("Default (%(mode)s)") % {"mode": default})]
+                + [(value, notifications.MODE_LABELS[value]) for value in notification.modes],
+                initial=stored if stored in notification.modes else "", label=notification.label,
                 help_text=notification.help_text, required=False)
             self.notification_names.append(name)
 
@@ -930,10 +1024,15 @@ class ProfileForm(forms.ModelForm):
 
     def save(self, commit=True):
         profile = super().save(commit=False)
-        # a choice that is not sent keeps the current one
-        profile.notifications = {**profile.notifications, **{
-            name.removeprefix("notify_"): self.cleaned_data[name] for name in self.notification_names
-            if self.cleaned_data[name]}}
+        # the notifications that are not offered keep their choice
+        chosen = dict(profile.notifications)
+        for name in self.notification_names:
+            key = name.removeprefix("notify_")
+            if self.cleaned_data[name]:
+                chosen[key] = self.cleaned_data[name]
+            else:
+                chosen.pop(key, None)
+        profile.notifications = chosen
         if commit:
             profile.save()
         return profile
@@ -1045,6 +1144,42 @@ class SignInGroupForm(forms.ModelForm):
         labels = {"name": _("Name"), "claim_value": _("Value in the groups claim"),
                   "console_access": _("Console access"), "no_email": _("No e-mails")}
         widgets = {"claim_value": forms.TextInput(attrs={"class": "mono", "autocomplete": "off"})}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # the defaults of the members' e-mails (notifications.py), all of them: the roles decide who gets which
+        self.notification_names = []
+        for notification in notifications.NOTIFICATIONS if notifications.enabled() else []:
+            name = f"notify_{notification.key}"
+            default = notifications.MODE_LABELS[notification.default]
+            stored = self.instance.notification_defaults.get(notification.key)
+            self.fields[name] = forms.ChoiceField(
+                choices=[("", _("No default (%(mode)s)") % {"mode": default})]
+                + [(value, notifications.MODE_LABELS[value]) for value in notification.modes],
+                initial=stored if stored in notification.modes else "", label=notification.label,
+                help_text=notification.help_text, required=False)
+            self.notification_names.append(name)
+
+    def main_fields(self):
+        return [field for field in self if field.name not in self.notification_names]
+
+    def notification_fields(self):
+        return [self[name] for name in self.notification_names]
+
+    def save(self, commit=True):
+        group = super().save(commit=False)
+        defaults = dict(group.notification_defaults)
+        for name in self.notification_names:
+            key = name.removeprefix("notify_")
+            if self.cleaned_data[name]:
+                defaults[key] = self.cleaned_data[name]
+            else:
+                defaults.pop(key, None)
+        group.notification_defaults = defaults
+        if commit:
+            group.save()
+            self.save_m2m()
+        return group
 
 
 class TagForm(forms.ModelForm):

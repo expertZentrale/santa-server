@@ -280,9 +280,25 @@ schreiben können.
 #### Geltungsbereich der Regeln
 
 Eine Regel gilt für jeden Mac (*global*), für Gruppen oder für einzelne Macs. Zielen mehrere Regeln auf dieselbe
-Kennung auf einem Mac, gewinnt der spezifischste Geltungsbereich (Mac > Gruppe > global), und im selben
-Geltungsbereich gewinnt Blockieren über Erlauben. Deaktivierte Regeln werden bei der nächsten Synchronisierung von
-den Macs entfernt.
+Kennung auf einem Mac, gewinnt der spezifischste Geltungsbereich (Mac > Gruppe > Gruppe, auf der sie basiert >
+global), und im selben Geltungsbereich gewinnt Blockieren über Erlauben. Deaktivierte Regeln werden bei der nächsten
+Synchronisierung von den Macs entfernt.
+
+#### Gruppen, die auf einer anderen basieren
+
+Haben zwei Gruppen fast dieselben Regeln, z. B. *Entwickler* dürfen etwas mehr als *Büro*, setzen Sie in der
+Gruppe *Entwickler* unter *Basiert auf* die Gruppe *Büro*. Sie übernimmt dann:
+
+- die **Einstellungen** von *Büro* (Modus, Pfad-Regexes, Wechselmedien, Profiltexte, Branding, …), außer denen, für
+  die Sie *Eigener Wert* einschalten. Name, Beschreibung und Sync-URL bleiben die eigenen.
+- mit *Regeln erben* die **Regeln** von *Büro*. Die eigenen Regeln der Gruppe haben Vorrang: Eine Erlauben-Regel von
+  *Entwickler* gewinnt über eine Blockieren-Regel von *Büro* für dieselbe Kennung.
+- mit *Dateizugriffsregeln erben* die **Dateizugriffsregeln** von *Büro* in ihrem Profil.
+
+Es gibt nur eine Ebene: Eine Gruppe, auf der andere basieren, kann nicht selbst auf einer anderen basieren, und sie
+lässt sich erst löschen, wenn keine Gruppe mehr auf ihr basiert. Ändert sich eine Profileinstellung oder eine
+Dateizugriffsregel von *Büro*, nennt die Konsole auch die Gruppen, deren Profil Sie deshalb erneut herunterladen
+müssen.
 
 #### Dateizugriffsregeln
 
@@ -421,6 +437,11 @@ Konten ohne Postfach (z. B. Admin-Konten) nehmen Sie aus: An einer [Anmeldegrupp
 *Keine E-Mails* setzen, dann bekommen ihre Mitglieder keine Benachrichtigungen; einzelne Benutzer stellen Sie unter
 *Administration → Benutzer* auf *Keine E-Mails* oder, als Ausnahme in einer solchen Gruppe, auf *E-Mails erlaubt*.
 
+Unter *Standards für E-Mails* legt eine Anmeldegruppe fest, womit ihre Mitglieder beginnen (z. B. *Neue Anfragen*
+nur in der täglichen Zusammenfassung). Im Profil gilt dann *Standard*, bis der Benutzer selbst etwas wählt. Eine
+eigene Anmeldegruppe hat Vorrang vor `*`; bei mehreren gilt die mit den meisten E-Mails (*Sofort* vor
+*Tägliche Zusammenfassung* vor *Aus*). *Keine E-Mails* hat immer Vorrang.
+
 ### Konfiguration exportieren und importieren
 
 Gruppen, Paketregeln, manuelle Regeln und Dateizugriffsregeln können als JSON exportiert und auf einem anderen Server
@@ -433,9 +454,9 @@ python manage.py import_config santa-config.json --dry-run     # Änderungen anz
 python manage.py import_config - < santa-config.json            # importieren, "-" liest stdin (z. B. docker exec -i)
 ```
 
-- Zuordnung: Gruppen und Paketregeln über den **Namen**, manuelle Regeln über **Regeltyp + Kennung + Richtlinie**,
-  Mac-Geltungsbereiche über die **Seriennummer**. Die Geltungsbereiche einer Regel werden durch die aus der Datei
-  ersetzt.
+- Zuordnung: Gruppen (auch die, auf der eine Gruppe basiert) und Paketregeln über den **Namen**, manuelle Regeln über
+  **Regeltyp + Kennung + Richtlinie**, Mac-Geltungsbereiche über die **Seriennummer**. Die Geltungsbereiche einer
+  Regel werden durch die aus der Datei ersetzt.
 - **Die Sync-Tokens werden nie exportiert**: Eine bestehende Gruppe behält ihr Token, ihr Profil bleibt also gültig.
 - Nicht exportiert: Macs, Ereignisse und die Regeln der Paketregeln (das Ziel baut sie selbst).
 - Die Dateizugriffsregeln werden über den **Namen** zugeordnet, ihre Gruppen über deren Namen.
@@ -787,8 +808,23 @@ into `(?:line1)|(?:line2)`. Anchor them with `^`, and never allow user-writable 
 #### Rule scope
 
 A rule applies to every Mac (*global*), to groups, or to individual Macs. If several rules target the same
-identifier on a Mac, the most specific scope wins (Mac > group > global), and on the same scope a block wins over an
-allow. Disabled rules are removed from the Macs at their next sync.
+identifier on a Mac, the most specific scope wins (Mac > group > the group it is based on > global), and on the same
+scope a block wins over an allow. Disabled rules are removed from the Macs at their next sync.
+
+#### Groups based on another group
+
+If two groups have almost the same rules, e.g. *Developers* may do a little more than *Office*, set *Office* under
+*Based on* in the group *Developers*. It then takes:
+
+- the **settings** of *Office* (mode, path regexes, removable media, profile texts, branding, …), except the ones you
+  switch to *Own value*. Name, description and sync URL stay its own.
+- with *Inherit rules*, the **rules** of *Office*. The group's own rules win: an allow rule of *Developers* wins over a
+  block rule of *Office* for the same identifier.
+- with *Inherit file access rules*, the **file access rules** of *Office* in its profile.
+
+There is only one level: a group that others are based on cannot be based on another one itself, and it can only be
+deleted once no group is based on it any more. When a profile setting or a file access rule of *Office* changes, the
+console also names the groups whose profile you have to download again because of it.
 
 #### File access rules
 
@@ -917,6 +953,11 @@ Accounts without a mailbox (e.g. admin accounts) are left out: set *No e-mails* 
 [sign-in group](#sign-in-groups-and-roles), then its members get no notifications; single users are set in
 *Administration → Users* to *No e-mails* or, as an exception in such a group, to *E-mails allowed*.
 
+Under *E-mail defaults* a sign-in group sets what its members start with (e.g. *New requests* only in the daily
+summary). The profile then shows *Default* until the user chooses something themselves. A group of its own wins over
+`*`; with several, the one with the most e-mails applies (*Immediately* before *Daily summary* before *Off*).
+*No e-mails* always wins.
+
 ### Export and import the configuration
 
 Groups, package rules, manual rules and file access rules can be exported as JSON and imported on another server, e.g.
@@ -928,8 +969,8 @@ python manage.py import_config santa-config.json --dry-run     # show the change
 python manage.py import_config - < santa-config.json            # import, "-" reads stdin (e.g. docker exec -i)
 ```
 
-- Matching: groups and package rules by **name**, manual rules by **rule type + identifier + policy**, Mac scopes by
-  **serial number**. The scopes of a rule are replaced by the ones in the file.
+- Matching: groups (also the one a group is based on) and package rules by **name**, manual rules by **rule type +
+  identifier + policy**, Mac scopes by **serial number**. The scopes of a rule are replaced by the ones in the file.
 - **The sync tokens are never exported**: an existing group keeps its token, so its profile stays valid.
 - Not exported: Macs, events, and the rules created by package rules (the target builds them).
 - File access rules are matched by **name**, their groups by their names.

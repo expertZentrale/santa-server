@@ -50,7 +50,8 @@ def _mobileconfig_response(content, filename):
 @admin.register(Group)
 class GroupAdmin(admin.ModelAdmin):
     change_list_template = "admin/santa/group/change_list.html"
-    list_display = ("name", "client_mode", "machine_count", "rule_count", "sync_url", "mdm_profile")
+    list_display = ("name", "parent", "client_mode", "machine_count", "rule_count", "sync_url", "mdm_profile")
+    list_filter = ("parent",)
     search_fields = ("name",)
     readonly_fields = ("sync_url", "mdm_profile", "created_at", "updated_at")
     actions = ["regenerate_sync_token"]
@@ -60,6 +61,12 @@ class GroupAdmin(admin.ModelAdmin):
             "description": "Upload the profile of the group to your MDM as a custom configuration profile and "
                            "assign it to these Macs. Every Mac with this profile belongs to this group. The base "
                            "profile (same for every Mac) is on the group list.",
+        }),
+        ("Inheritance", {
+            "fields": ("parent", "inherit_rules", "inherit_file_access_rules", "overridden_settings"),
+            "description": "A group based on another one takes its settings, except the ones in overridden settings "
+                           "(keys of Group.INHERITABLE_SETTINGS), and, if chosen, its rules and file access rules. "
+                           "The values below are the group's own ones.",
         }),
         ("Santa configuration", {
             "fields": ("client_mode", "batch_size", "full_sync_interval"),

@@ -4,20 +4,24 @@ from .models import POLICY_PRECEDENCE, Rule, payload_hash
 
 logger = logging.getLogger(__name__)
 
-GLOBAL, GROUP, MACHINE = 0, 1, 2
+GLOBAL, PARENT, GROUP, MACHINE = 0, 1, 2, 3
 
 
 def effective_rule_objects(machine):
     """Return {santa_key: (scope level, rule)} for the rules that apply to the machine.
 
-    One Santa rule per identifier: the most specific scope wins, then the strictest policy.
+    One Santa rule per identifier: the most specific scope wins (Mac, group, parent group, global), then the
+    strictest policy. A group based on another one can so allow what its parent blocks.
     """
     enabled = Rule.objects.filter(is_enabled=True)
-    scoped_querysets = (
+    group = machine.group
+    scoped_querysets = [
         (GLOBAL, enabled.filter(is_global=True)),
-        (GROUP, enabled.filter(groups=machine.group_id)),
+        (GROUP, enabled.filter(groups=group.pk)),
         (MACHINE, enabled.filter(machines=machine)),
-    )
+    ]
+    if group.parent_id and group.inherit_rules:
+        scoped_querysets.insert(1, (PARENT, enabled.filter(groups=group.parent_id)))
     chosen = {}
     for level, qs in scoped_querysets:
         for rule in qs:
@@ -65,7 +69,7 @@ def get_rule_batch(machine, cursor):
         session = build_sync_session(machine)
         machine.pending_sync = session
         machine.save(update_fields=["pending_sync"])
-    batch_size = machine.group.batch_size
+    batch_size = machine.group.effective().batch_size
     rules = session["rules"][offset:offset + batch_size]
     next_offset = offset + batch_size
     next_cursor = str(next_offset) if next_offset < len(session["rules"]) else None

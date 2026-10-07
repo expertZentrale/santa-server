@@ -16,6 +16,7 @@
       <option value="">{% translate "All rules" %}</option>
       <option value="mac" {% if params.rules == "mac" %}selected{% endif %}>{% translate "This Mac" %}</option>
       <option value="group" {% if params.rules == "group" %}selected{% endif %}>{% blocktranslate with group=machine.group.name %}Group {{ group }}{% endblocktranslate %}</option>
+      {% if machine.group.parent and machine.group.inherit_rules %}<option value="parent" {% if params.rules == "parent" %}selected{% endif %}>{% blocktranslate with group=machine.group.parent.name %}Group {{ group }} (inherited){% endblocktranslate %}</option>{% endif %}
       <option value="global" {% if params.rules == "global" %}selected{% endif %}>{% translate "All Macs" %}</option>
     </select>
     <button class="button">{% translate "Filter" %}</button>
@@ -45,6 +46,7 @@
               {% if rule.is_global %}<small class="muted">{% translate "also all Macs" %}</small>
               {% elif rule.in_group %}<small class="muted">{% blocktranslate with group=machine.group.name %}also {{ group }}{% endblocktranslate %}</small>{% endif %}
             {% elif rule.scope_level == levels.group %}{% url 'console:group' machine.group_id as group_url %}<a class="chip small" href="{{ group_url }}" hx-get="{{ group_url }}" hx-target="#drawer">{{ machine.group.name }}</a>
+            {% elif rule.scope_level == levels.parent %}{% url 'console:group' machine.group.parent_id as group_url %}<a class="chip small" href="{{ group_url }}" hx-get="{{ group_url }}" hx-target="#drawer">{{ machine.group.parent.name }}</a> <small class="muted">{% translate "inherited" %}</small>
             {% else %}<span class="chip small">{% translate "All Macs" %}</span>{% endif %}
             {% if rule.is_enabled and not rule.wins %}<span class="badge">{% translate "overridden" %}</span>{% endif %}</td>
           <td>{% for tag in rule.tags.all %}<span class="tag">{{ tag.name }}</span>{% endfor %}</td>
