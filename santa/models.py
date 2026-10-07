@@ -933,6 +933,9 @@ class SignInGroup(models.Model):
                                    "A user can be excepted in Administration → Users."))
     roles = models.ManyToManyField("auth.Group", blank=True, related_name="sign_in_groups",
                                    help_text=_("The members get these roles"))
+    # {notification: "off" | "instant" | "daily"} (notifications.py), a document only; missing = no default.
+    # The members start with these, their own choice in the profile wins.
+    notification_defaults = models.JSONField(default=dict, blank=True)
     # state, not configuration: who had the group at their last sign-in
     members = models.ManyToManyField(settings.AUTH_USER_MODEL, blank=True, related_name="sign_in_groups",
                                      editable=False)

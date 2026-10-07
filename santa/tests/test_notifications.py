@@ -1,4 +1,5 @@
 import smtplib
+from importlib import import_module
 from unittest.mock import patch
 
 from django.contrib.admin.models import LogEntry
@@ -298,3 +299,78 @@ class NotificationsTestCase(ConsoleBase):
         response = self.client.get(reverse("profile"))
         self.assertContains(response, 'name="notify_my_requests"')
         self.assertNotContains(response, 'name="notify_new_requests"')
+
+    def test_defaults_of_the_sign_in_groups(self):
+        def fresh_mode(key):
+            return notifications.mode(User.objects.get(pk=self.approver.pk), key)
+
+        everyone = SignInGroup.objects.get(claim_value=SignInGroup.EVERYONE)
+        everyone.notification_defaults = {"new_requests": "off", "package_auto": "daily"}
+        everyone.save()
+        everyone.members.add(self.approver)
+        self.assertEqual(fresh_mode("new_requests"), notifications.OFF)
+        self.assertEqual(fresh_mode("package_auto"), notifications.DAILY)
+        self.assertEqual(fresh_mode("package_errors"), notifications.INSTANT)
+        # a group of its own wins over everyone, and of several the one with the most e-mails
+        quiet = SignInGroup.objects.create(name="Quiet", claim_value="quiet", notification_defaults={
+            "new_requests": "daily", "package_auto": "off", "my_requests": "daily"})
+        quiet.members.add(self.approver)
+        self.assertEqual(fresh_mode("new_requests"), notifications.DAILY)
+        self.assertEqual(fresh_mode("package_auto"), notifications.OFF)
+        SignInGroup.objects.create(name="Loud", claim_value="loud", notification_defaults={
+            "new_requests": "instant"}).members.add(self.approver)
+        self.assertEqual(fresh_mode("new_requests"), notifications.INSTANT)
+        # no daily summary for my requests: the default of the notification
+        self.assertEqual(fresh_mode("my_requests"), notifications.INSTANT)
+        # the choice of the user wins
+        self.choose(self.approver, package_auto=notifications.INSTANT)
+        self.assertEqual(fresh_mode("package_auto"), notifications.INSTANT)
+
+    def test_a_group_default_decides_who_gets_mail(self):
+        SignInGroup.objects.create(name="Approvers", claim_value="approvers", notification_defaults={
+            "new_requests": "off"}).members.add(self.approver)
+        access_request = AccessRequest.objects.create(requester=self.user, kind="OTHER", title="Figma",
+                                                      justification="x")
+        with self.captureOnCommitCallbacks(execute=True):
+            notifications.request_created(access_request)
+        self.assertEqual(recipients(), ["admin@example.com"])
+
+    def test_sign_in_group_form_sets_the_defaults(self):
+        url = reverse("console:admin_sign_in_group_add")
+        self.assertContains(self.client.get(url), 'name="notify_package_auto"')
+        self.client.post(url, {"name": "Approvers", "claim_value": "approvers", "notify_new_requests": "daily",
+                               "notify_package_auto": ""})
+        group = SignInGroup.objects.get(claim_value="approvers")
+        self.assertEqual(group.notification_defaults, {"new_requests": "daily"})
+        self.assertContains(self.client.get(reverse("console:admin_sign_in_groups")), "e-mail defaults")
+        self.client.post(reverse("console:admin_sign_in_group", args=(group.pk,)), {
+            "name": "Approvers", "claim_value": "approvers", "notify_new_requests": ""})
+        group.refresh_from_db()
+        self.assertEqual(group.notification_defaults, {})
+
+    def test_profile_default_choice(self):
+        SignInGroup.objects.create(name="Approvers", claim_value="approvers", notification_defaults={
+            "new_requests": "daily"}).members.add(self.approver)
+        self.choose(self.approver, new_requests=notifications.OFF, package_auto=notifications.INSTANT)
+        self.client.force_login(self.approver)
+        self.assertContains(self.client.get(reverse("profile")), "Default (Daily summary)")
+        self.client.post(reverse("profile"), {"theme": "auto", "notify_new_requests": "",
+                                              "notify_package_auto": "instant"})
+        profile = UserProfile.objects.get(user=self.approver)
+        self.assertEqual(profile.notifications, {"package_auto": "instant"})
+
+    def test_migration_forgets_the_untouched_defaults(self):
+        from django.apps import apps
+        migration = import_module("santa.migrations.0019_sign_in_group_notification_defaults")
+        profile = profile_for(self.approver)
+        profile.notifications = {"new_requests": "instant", "package_auto": "off", "package_errors": "daily",
+                                 "my_requests": "off"}
+        profile.save()
+        migration.forget_default_choices(apps, None)
+        profile.refresh_from_db()
+        self.assertEqual(profile.notifications, {"package_errors": "daily", "my_requests": "off"})
+
+    def test_migration_defaults_match_the_notifications(self):
+        migration = import_module("santa.migrations.0019_sign_in_group_notification_defaults")
+        self.assertLessEqual(migration.DEFAULTS.items(),
+                             {n.key: n.default for n in notifications.NOTIFICATIONS}.items())

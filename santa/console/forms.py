@@ -919,9 +919,13 @@ class ProfileForm(forms.ModelForm):
         self.notification_names = []
         for notification in notifications.available(user) if user and notifications.enabled() else []:
             name = f"notify_{notification.key}"
+            # empty: no choice, the default of the sign-in groups or the notification applies
+            default = notifications.MODE_LABELS[notifications.default_mode(user, notification.key)]
+            stored = self.instance.notifications.get(notification.key)
             self.fields[name] = forms.ChoiceField(
-                choices=[(value, notifications.MODE_LABELS[value]) for value in notification.modes],
-                initial=notifications.mode(user, notification.key), label=notification.label,
+                choices=[("", _("Default (%(mode)s)") % {"mode": default})]
+                + [(value, notifications.MODE_LABELS[value]) for value in notification.modes],
+                initial=stored if stored in notification.modes else "", label=notification.label,
                 help_text=notification.help_text, required=False)
             self.notification_names.append(name)
 
@@ -930,10 +934,15 @@ class ProfileForm(forms.ModelForm):
 
     def save(self, commit=True):
         profile = super().save(commit=False)
-        # a choice that is not sent keeps the current one
-        profile.notifications = {**profile.notifications, **{
-            name.removeprefix("notify_"): self.cleaned_data[name] for name in self.notification_names
-            if self.cleaned_data[name]}}
+        # the notifications that are not offered keep their choice
+        chosen = dict(profile.notifications)
+        for name in self.notification_names:
+            key = name.removeprefix("notify_")
+            if self.cleaned_data[name]:
+                chosen[key] = self.cleaned_data[name]
+            else:
+                chosen.pop(key, None)
+        profile.notifications = chosen
         if commit:
             profile.save()
         return profile
@@ -1045,6 +1054,42 @@ class SignInGroupForm(forms.ModelForm):
         labels = {"name": _("Name"), "claim_value": _("Value in the groups claim"),
                   "console_access": _("Console access"), "no_email": _("No e-mails")}
         widgets = {"claim_value": forms.TextInput(attrs={"class": "mono", "autocomplete": "off"})}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # the defaults of the members' e-mails (notifications.py), all of them: the roles decide who gets which
+        self.notification_names = []
+        for notification in notifications.NOTIFICATIONS if notifications.enabled() else []:
+            name = f"notify_{notification.key}"
+            default = notifications.MODE_LABELS[notification.default]
+            stored = self.instance.notification_defaults.get(notification.key)
+            self.fields[name] = forms.ChoiceField(
+                choices=[("", _("No default (%(mode)s)") % {"mode": default})]
+                + [(value, notifications.MODE_LABELS[value]) for value in notification.modes],
+                initial=stored if stored in notification.modes else "", label=notification.label,
+                help_text=notification.help_text, required=False)
+            self.notification_names.append(name)
+
+    def main_fields(self):
+        return [field for field in self if field.name not in self.notification_names]
+
+    def notification_fields(self):
+        return [self[name] for name in self.notification_names]
+
+    def save(self, commit=True):
+        group = super().save(commit=False)
+        defaults = dict(group.notification_defaults)
+        for name in self.notification_names:
+            key = name.removeprefix("notify_")
+            if self.cleaned_data[name]:
+                defaults[key] = self.cleaned_data[name]
+            else:
+                defaults.pop(key, None)
+        group.notification_defaults = defaults
+        if commit:
+            group.save()
+            self.save_m2m()
+        return group
 
 
 class TagForm(forms.ModelForm):
