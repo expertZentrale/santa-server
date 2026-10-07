@@ -12,7 +12,7 @@ from django.views.decorators.http import require_POST
 
 from ..models import AccessRequest, ClientMode, Event, Group, Machine, Rule, generate_sync_token
 from ..profiles import base_profile, file_access_rules, group_profile
-from ..rules import GLOBAL, GROUP, MACHINE, effective_rule_objects
+from ..rules import GLOBAL, GROUP, MACHINE, PARENT, effective_rule_objects
 from ..services import can_see_sync_token, remove_machine_from_rules, rules_only_for
 from .filters import Facet, any_of, chosen, filter_bar, remember_filters
 from .forms import GroupForm
@@ -50,11 +50,13 @@ def groups(request):
     require_perms(request, "view_group")
     if remembered := remember_filters(request, "groups"):
         return remembered
-    queryset = Group.objects.annotate(machine_count=Count("machines", distinct=True),
-                                      rule_count=Count("rules", distinct=True),
-                                      last_sync=Max("machines__last_postflight_at"))
+    queryset = Group.objects.select_related("parent").annotate(
+        machine_count=Count("machines", distinct=True), rule_count=Count("rules", distinct=True),
+        last_sync=Max("machines__last_postflight_at"))
     if modes := chosen(request.GET, "mode", ClientMode.values):
-        queryset = queryset.filter(client_mode__in=modes)
+        # the mode the Macs get: a group based on another one can inherit it (overridden_settings is a document)
+        queryset = queryset.filter(pk__in=[group.pk for group in Group.objects.select_related("parent")
+                                           if group.effective().client_mode in modes])
     q = request.GET.get("q", "").strip()
     if q:
         queryset = queryset.filter(Q(name__icontains=q) | Q(description__icontains=q))
@@ -65,6 +67,12 @@ def groups(request):
         **filter_bar(request, "groups", [Facet("mode", gettext("Mode"), choices=ClientMode.choices)],
                      hidden=("sort",), placeholder=gettext("Name, description…")),
     })
+
+
+def profile_changed_children(group, form):
+    """The groups based on the group whose profile changed with it: they take a changed profile setting"""
+    changed = {key for key in form.changed_settings() if key.startswith(form.PROFILE_FIELDS)}
+    return [child for child in group.children.order_by("name") if changed & set(child.inherited_settings())]
 
 
 @staff_required
@@ -90,6 +98,9 @@ def group_form(request, pk=None):
                                        "your MDM.")
                 else:
                     message += gettext("The Macs get the changes at their next sync.")
+                if children := profile_changed_children(group, form):
+                    message += " " + gettext("The profile of the groups based on it changed too: %(groups)s.") % {
+                        "groups": ", ".join(child.name for child in children)}
                 messages.success(request, message)
             return drawer_done(request, reverse("console:group", args=[group.pk]), open_in_drawer=created)
     context = {"form": form, "group": group, "can_change": can_change,
@@ -102,6 +113,7 @@ def group_form(request, pk=None):
                                            | Q(last_postflight_at__isnull=True)).count(),
             "lockdown_count": machines.filter(client_mode=ClientMode.LOCKDOWN).count(),
             "rule_count": group.rules.count(),
+            "children": group.children.order_by("name"),
             "file_access_count": file_access_rules(group).count(),
             "open_blocks": Event.objects.filter(group=group, resolved_at__isnull=True,
                                                 decision__startswith="BLOCK_").count(),
@@ -131,6 +143,10 @@ def group_delete(request, pk):
     if group.machines.exists():
         messages.error(request, gettext("%(group)s still has Macs. Move them to another group first "
                                         "(new configuration profile), then delete it.") % {"group": group})
+        return redirect("console:group", pk=group.pk)
+    if group.children.exists():
+        messages.error(request, gettext("Other groups are based on %(group)s. Choose another group for them first, "
+                                        "then delete it.") % {"group": group})
         return redirect("console:group", pk=group.pk)
     log_deletion(request.user, group)
     group.delete()
@@ -197,7 +213,7 @@ def machines(request):
     })
 
 
-MACHINE_RULE_SCOPES = {"mac": MACHINE, "group": GROUP, "global": GLOBAL}
+MACHINE_RULE_SCOPES = {"mac": MACHINE, "group": GROUP, "parent": PARENT, "global": GLOBAL}
 
 
 def machine_rules(machine, effective, params):
@@ -225,7 +241,7 @@ def machine_rules(machine, effective, params):
 @staff_required
 def machine_detail(request, pk):
     require_perms(request, "view_machine")
-    machine = get_object_or_404(Machine.objects.select_related("group"), pk=pk)
+    machine = get_object_or_404(Machine.objects.select_related("group__parent"), pk=pk)
     effective = effective_rule_objects(machine)
     synced = machine.synced_rules or {}
     page = paginate(request, machine_rules(machine, effective, request.GET))
@@ -243,7 +259,7 @@ def machine_detail(request, pk):
         "is_stale": not machine.last_postflight_at or machine.last_postflight_at < timezone.now() - STALE_AFTER,
         "page": page,
         "params": request.GET,
-        "levels": {"machine": MACHINE, "group": GROUP, "global": GLOBAL},
+        "levels": {"machine": MACHINE, "group": GROUP, "parent": PARENT, "global": GLOBAL},
         "events": (Event.objects.filter(machine=machine).order_by("-execution_time")[:15]),
         "open_blocks": Event.objects.filter(machine=machine, resolved_at__isnull=True,
                                             decision__startswith="BLOCK_").count(),

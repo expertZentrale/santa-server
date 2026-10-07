@@ -17,8 +17,9 @@
   {% for group in page %}
     <tr>
       <td>{% url 'console:group' group.pk as group_url %}<a class="strong" href="{{ group_url }}" hx-get="{{ group_url }}" hx-target="#drawer">{{ group.name }}</a>
+        {% if group.parent %}<small class="muted">{% blocktranslate with parent=group.parent.name %}based on {{ parent }}{% endblocktranslate %}</small>{% endif %}
         {% if group.description %}<small class="muted">{{ group.description|truncatechars:90 }}</small>{% endif %}</td>
-      <td><span class="badge {% if group.client_mode == 'LOCKDOWN' %}bad{% else %}info{% endif %}">{{ group.get_client_mode_display }}</span></td>
+      <td>{% with effective=group.effective %}<span class="badge {% if effective.client_mode == 'LOCKDOWN' %}bad{% else %}info{% endif %}">{{ effective.get_client_mode_display }}</span>{% endwith %}</td>
       <td class="num"><a href="{% url 'console:machines' %}?group={{ group.pk }}">{{ group.machine_count }}</a></td>
       <td class="num"><a href="{% url 'console:rules' %}?scope={{ group.pk }}">{{ group.rule_count }}</a></td>
       <td>{% if group.last_sync %}{% blocktranslate with since=group.last_sync|timesince %}{{ since }} ago{% endblocktranslate %}{% else %}–{% endif %}</td>

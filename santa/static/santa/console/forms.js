@@ -5,19 +5,39 @@
 
   const { controlValue } = SantaConsole;
 
-  // data-show-when="policy=BLOCKLIST|CEL", data-hide-when="is_global"
+  // data-show-when="policy=BLOCKLIST|CEL", data-show-when="parent" (not empty), data-hide-when="is_global"
   function updateConditional(root) {
     root.querySelectorAll("[data-show-when], [data-hide-when]").forEach((element) => {
       const form = element.closest("form") || document;
       let visible = true;
       if (element.dataset.showWhen) {
         const [name, values] = element.dataset.showWhen.split("=");
-        visible = values.split("|").includes(controlValue(form, name));
+        visible = values === undefined ? Boolean(controlValue(form, name))
+          : values.split("|").includes(controlValue(form, name));
       }
       if (element.dataset.hideWhen) {
         visible = visible && !controlValue(form, element.dataset.hideWhen);
       }
       element.hidden = !visible;
+    });
+  }
+
+  // A group based on another one: per setting the inherited value, or the own one ("Own value" ticked)
+  function updateInherited(root) {
+    root.querySelectorAll("[data-setting]").forEach((setting) => {
+      const form = setting.closest("form");
+      const parent = controlValue(form, "parent");
+      const override = setting.querySelector("[data-inherit-override]");
+      const own = !parent || Boolean(controlValue(override, override.querySelector("input").name));
+      override.hidden = !parent;
+      setting.querySelector("[data-own]").hidden = !own;
+      setting.querySelector("[data-inherited]").hidden = own;
+      // the values shown are the ones of the saved parent
+      const saved = parent === setting.dataset.savedParent;
+      setting.querySelector("[data-inherited-values]").hidden = !saved;
+      setting.querySelector("[data-inherited-pending]").hidden = saved;
+      const from = setting.querySelector("[data-inherited-from]");
+      if (from) from.hidden = !saved;
     });
   }
 
@@ -177,11 +197,13 @@
     updateRulePreviews(root);
     updateBinaryPreviews(root);
     updateConditional(root);
+    updateInherited(root);
     updateNewRuleFields(root);
     if (root.id === "drawer") uncheckSaved(root);
   });
   SantaConsole.onSwap((target) => {
     updateConditional(target.closest("form") || target);
+    updateInherited(target);
     updateRulePreviews(target);
   });
 
@@ -191,6 +213,7 @@
     const form = event.target.closest("form");
     if (form) {
       updateConditional(form);
+      updateInherited(form);
       updateNewRuleFields(form);
     }
     if (event.target.matches("select[data-identifiers]")) updateRulePreviews(event.target.parentElement);

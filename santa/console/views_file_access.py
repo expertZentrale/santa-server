@@ -6,7 +6,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.translation import gettext
 from django.views.decorators.http import require_POST
 
-from ..models import FileAccessRule, FileAccessRuleType, Group
+from ..models import FileAccessRule, FileAccessRuleType, Group, with_child_groups, with_parent_groups
 from .filters import Facet, chosen, filter_bar, remember_filters
 from .forms import FileAccessProcessFormSet, FileAccessRuleForm
 from .utils import (
@@ -24,7 +24,10 @@ from .utils import (
 
 
 def affected_groups(rule):
-    return list(Group.objects.order_by("name") if rule.is_global else rule.groups.order_by("name"))
+    if rule.is_global:
+        return list(Group.objects.order_by("name"))
+    # and the groups based on them that take their file access rules
+    return with_child_groups(rule.groups.all(), "inherit_file_access_rules")
 
 
 def profile_message(groups):
@@ -43,6 +46,8 @@ def file_access_rules(request):
     queryset = (FileAccessRule.objects.prefetch_related("groups")
                                       .annotate(process_count=Count("processes", distinct=True)))
     if groups := [value for value in chosen(request.GET, "group") if value.isdigit()]:
+        # the rules in the profile of the group: also the ones of the parent it takes them from
+        groups = with_parent_groups(map(int, groups), "inherit_file_access_rules")
         queryset = queryset.filter(Q(is_global=True) | Q(groups__id__in=groups)).distinct()
     if rule_types := chosen(request.GET, "type", FileAccessRuleType.values):
         queryset = queryset.filter(rule_type__in=rule_types)
