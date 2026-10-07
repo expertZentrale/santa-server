@@ -9,7 +9,7 @@ from django.utils import timezone
 from django.utils.translation import gettext, ngettext
 from django.views.decorators.http import require_POST
 
-from ..models import AccessRequest, Event, Group, Machine, RuleType
+from ..models import NEEDS_RULE, AccessRequest, Event, Group, Machine, RuleType
 from ..services import allow_identifier, existing_rules, is_allowed
 from .filters import TIME_DAYS, TIME_PRESETS, Facet, chosen, date_range, filter_bar, in_range, remember_filters
 from .forms import SCOPE_GLOBAL, SCOPE_GROUPS, SCOPE_MACHINES, EventRuleForm
@@ -49,10 +49,11 @@ def events_by_ids(ids):
 
 
 def selected_events(request):
-    """The events chosen in a list: by id ("All events"), or all open blocks of a binary ("Blocked apps")"""
+    """The events chosen in a list: by id ("All events"), or all open blocks of a binary ("Blocked apps", with the
+    unknown ones of monitor mode)"""
     events = {event.pk: event for event in events_by_ids(request.POST.getlist("ids"))}
     shas = [sha.lower() for sha in request.POST.getlist("shas") if len(sha) == 64]
-    blocks = Event.objects.select_related("machine", "group").filter(decision__startswith="BLOCK_")
+    blocks = Event.objects.select_related("machine", "group").filter(NEEDS_RULE)
     # the same events as the list: its "resolved" filter
     resolved = request.POST.get("resolved", "open")
     if resolved == "open":
@@ -184,10 +185,14 @@ def events(request):
 
 
 def blocked_apps(events):
-    """One row per blocked binary: a GROUP BY, fine on SQL Server"""
-    return (events.filter(decision__startswith="BLOCK_")
+    """One row per blocked binary: a GROUP BY, fine on SQL Server.
+
+    Also the binaries that ran in monitor mode only because they are unknown: lockdown would block them.
+    """
+    return (events.filter(NEEDS_RULE)
                   .values("file_sha256")
                   .annotate(file_name=Max("file_name"), file_path=Max("file_path"),
+                            block_count=Count("id", filter=Q(decision__startswith="BLOCK_")),
                             signing_id=Max("signing_id"), team_id=Max("team_id"),
                             event_count=Count("id"), machine_count=Count("machine", distinct=True),
                             user_count=Count("executing_user", distinct=True),
@@ -224,7 +229,7 @@ def event_updates(request):
     if context["view"] == "all":
         context["events"] = list(new.select_related("machine", "group").order_by("-pk")[:UPDATE_ROWS_LIMIT])
     else:
-        shas = list(new.filter(decision__startswith="BLOCK_").values_list("file_sha256", flat=True).distinct())
+        shas = list(new.filter(NEEDS_RULE).values_list("file_sha256", flat=True).distinct())
         rows = []
         for chunk in chunked(shas):
             rows += blocked_apps(filter_events(request, Event.objects.filter(file_sha256__in=chunk)))

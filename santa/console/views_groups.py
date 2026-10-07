@@ -10,7 +10,7 @@ from django.utils.text import slugify
 from django.utils.translation import gettext, ngettext
 from django.views.decorators.http import require_POST
 
-from ..models import AccessRequest, ClientMode, Event, Group, Machine, Rule, generate_sync_token
+from ..models import NEEDS_RULE, AccessRequest, ClientMode, Event, Group, Machine, Rule, generate_sync_token
 from ..profiles import base_profile, file_access_rules, group_profile
 from ..rules import GLOBAL, GROUP, MACHINE, PARENT, effective_rule_objects
 from ..services import can_see_sync_token, remove_machine_from_rules, rules_only_for
@@ -115,8 +115,7 @@ def group_form(request, pk=None):
             "rule_count": group.rules.count(),
             "children": group.children.order_by("name"),
             "file_access_count": file_access_rules(group).count(),
-            "open_blocks": Event.objects.filter(group=group, resolved_at__isnull=True,
-                                                decision__startswith="BLOCK_").count(),
+            "open_blocks": Event.objects.filter(NEEDS_RULE, group=group, resolved_at__isnull=True).count(),
         })
     return render_drawer(request, "console/groups/form.html", "console/groups/drawer_form.html", context)
 
@@ -261,8 +260,7 @@ def machine_detail(request, pk):
         "params": request.GET,
         "levels": {"machine": MACHINE, "group": GROUP, "parent": PARENT, "global": GLOBAL},
         "events": (Event.objects.filter(machine=machine).order_by("-execution_time")[:15]),
-        "open_blocks": Event.objects.filter(machine=machine, resolved_at__isnull=True,
-                                            decision__startswith="BLOCK_").count(),
+        "open_blocks": Event.objects.filter(NEEDS_RULE, machine=machine, resolved_at__isnull=True).count(),
         "requests": AccessRequest.objects.filter(machine=machine).select_related("requester")[:10],
     }
     return render_drawer(request, "console/machines/detail.html", "console/machines/drawer_detail.html", context)

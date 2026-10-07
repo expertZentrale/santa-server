@@ -16,6 +16,7 @@
   --bad-bg: light-dark(#fde7e5, #3a1a18);
   --info: light-dark(#1d5fa8, #8ab8ff);
   --info-bg: light-dark(#e3eefb, #182a44);
+  --warn: light-dark(#8a5300, #ffcf70);
   --warn-bg: light-dark(#fff4d6, #3a3017);
   --scrollbar: light-dark(#c3c9d2, #46505d);
   /* a switch that is off, and the frame of a checkbox: stronger than --border, visible on white */
@@ -333,7 +334,7 @@ small.help.after-field { margin: -.5rem 0 .9rem; }
 .error, small.error { color: var(--bad); }
 .has-error input, .has-error select, .has-error textarea { border-color: var(--bad); }
 .errorlist { color: var(--bad); margin: 0; padding-left: 1rem; }
-.actions { display: flex; gap: .75rem; align-items: center; }
+.actions { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; }
 .login { max-width: 26.25rem; margin: 3rem auto; }
 .login details { margin-top: 1rem; }
 .login details > summary { cursor: pointer; color: var(--muted); }
@@ -411,13 +412,16 @@ form.inline { display: inline; margin: 0; }
 .back:hover { color: var(--text); background: var(--surface-2); }
 .drawer-head .back { margin-bottom: .25rem; }
 
-.error-box { background: var(--bad-bg); color: var(--bad); padding: .75rem 1rem; border-radius: var(--radius); white-space: pre-wrap; }
+.error-box { background: var(--bad-bg); color: var(--bad); padding: .75rem 1rem; border-radius: var(--radius); white-space: pre-wrap; overflow-wrap: anywhere; }
 ul.plain { list-style: none; padding: 0; margin: 0; display: grid; gap: .3rem; }
 .card-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .75rem; }
 .card-head h2 { margin: 0; }
 form.regenerate { margin: .5rem 0 0; }
 
-.request .request-head { display: flex; justify-content: space-between; gap: 1rem; }
+/* a long title wraps, the status keeps its size next to it */
+.request .request-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: .25rem 1rem; }
+.request .request-head > strong { min-width: 0; overflow-wrap: anywhere; }
+.request .request-head > .badge { flex: none; }
 .request .note { background: var(--surface-2); padding: .5rem .75rem; border-radius: var(--radius-sm); }
 
 .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(21.25rem, 100%), 1fr)); gap: 0 1rem; }
@@ -438,6 +442,12 @@ details.upload summary { cursor: pointer; color: var(--muted); margin-bottom: .5
   .filters input[type="search"] { min-width: 0; max-width: none; flex-basis: 100%; }
   .filters select { flex: 1 1 45%; }
   .profile-card { flex-direction: column; }
+}
+@media (max-width: 40em) {
+  /* the help of a page: below its title, as wide as the window, wherever the ⓘ is */
+  .help-pop { position: fixed; top: auto; left: 1rem; right: 1rem; width: auto; max-width: none; margin-top: .4rem; }
+  /* long values (hashes, host names) wrap instead of widening the page */
+  .drawer code, .drawer .mono { overflow-wrap: anywhere; }
 }
 
 @media (prefers-reduced-motion: reduce) {

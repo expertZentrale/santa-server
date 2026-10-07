@@ -35,6 +35,11 @@ class UserRequestTestCase(ConsoleBase):
         self.assertNotContains(response, "not-mine")
         self.assertEqual(response.context["form"].initial["event"], mine)
 
+    def test_unknown_in_monitor_mode_is_not_offered(self):
+        # it runs, nothing to ask for: only the console lists it for the approvers
+        self.make_event(file_name="unknown-tool", decision="ALLOW_UNKNOWN")
+        self.assertNotContains(self.client.get(reverse("requests:new")), "unknown-tool")
+
     def test_request_a_blocked_event(self):
         event = self.make_event(bundle_name="Colima")
         response = self.client.post(reverse("requests:new"), {"kind": "EVENT", "event": event.pk,

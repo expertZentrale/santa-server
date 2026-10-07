@@ -4,6 +4,7 @@
 {% block content %}
 <div class="page-head">
   <h1>{% translate "Events" %}</h1>
+  {% translate "Blocked apps: the programs Santa blocked, and the unknown ones that ran in monitor mode (lockdown would block them). One row per program." as help %}{% include "console/_help.html" with text=help %}
   <div class="tabs" role="tablist">
     <a href="?view=blocked" role="tab" {% if view != "all" %}class="active" aria-selected="true"{% endif %}>{% translate "Blocked apps" %}</a>
     <a href="?view=all" role="tab" {% if view == "all" %}class="active" aria-selected="true"{% endif %}>{% translate "All events" %}</a>
