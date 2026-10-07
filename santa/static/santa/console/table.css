@@ -96,19 +96,39 @@ a.badge:hover { text-decoration: none; filter: brightness(.95); outline: 1px sol
 }
 .bulkbar:not(.visible) { transform: translate(-50%, calc(100% + 1.5rem)); opacity: 0; visibility: hidden; pointer-events: none; }
 .bulkbar .count { font-weight: 600; white-space: nowrap; }
+/* the box of the tag suggestions (tags.js) goes with its field, else it takes room while the field is hidden */
+.bulkbar > .combobox:not(:has(> input:not([hidden]))) { display: none; }
 .bulkbar-clear { border: 0; background: none; color: var(--muted); font-size: 1.2rem; line-height: 1; padding: .3rem .5rem; border-radius: var(--radius-sm); cursor: pointer; min-height: var(--control-h); }
 .bulkbar-clear:hover { background: var(--surface-2); color: var(--text); }
-body.has-bulkbar main { padding-bottom: 6rem; }
+/* room for the bar below the last row (its height: table.js) */
+body.has-bulkbar main { padding-bottom: calc(var(--bulkbar-h, 4rem) + 2rem); }
 /* the bar is at the bottom of the window: its tag suggestions open upwards, wide enough to read */
 .bulkbar .suggestions { top: auto; bottom: calc(100% + .25rem); min-width: 16rem; max-height: min(22.5rem, 60vh); }
 
 /* the drawer works on the selection: the bar would cover its buttons */
 body:has(.drawer.open) .bulkbar.visible { opacity: 0; visibility: hidden; pointer-events: none; }
 @media (max-width: 40em) {
-  .bulkbar { left: 1rem; right: 1rem; bottom: 1rem; max-width: none; transform: none; border-radius: var(--radius); }
+  .bulkbar {
+    left: 1rem; right: 1rem; bottom: calc(1rem + env(safe-area-inset-bottom, 0rem)); max-width: none; transform: none;
+    border-radius: var(--radius); padding: .5rem;
+  }
   .bulkbar:not(.visible) { transform: translateY(calc(100% + 1.5rem)); }
+  /* the count and × on the first line, the actions below, side by side as far as they fit */
+  .bulkbar > .count { flex: 1 1 auto; padding-left: .5rem; }
+  .bulkbar > .bulkbar-clear { order: 1; }
+  .bulkbar::before { content: ""; order: 2; flex-basis: 100%; }
+  .bulkbar > :not(.count, .bulkbar-clear) { order: 3; flex: 1 1 8rem; }
+  .bulkbar > .button { white-space: nowrap; }
+  .bulkbar > details > summary { width: 100%; justify-content: center; }
+  .bulkbar .picker-panel { max-width: calc(100vw - 3rem); }
+  .bulkbar .picker-panel label { white-space: normal; }
 }
 [data-select-form] tbody tr:has(td.select input) { cursor: pointer; }
+.select-all-cards { display: none; }
+/* touch: larger checkboxes to select the rows */
+@media (pointer: coarse) {
+  .table td.select input, .select-all-cards input { width: 1.4rem; height: 1.4rem; }
+}
 .table tbody tr.selected { background: var(--info-bg); }
 .table tbody tr.selected:hover { background: color-mix(in srgb, var(--info-bg) 80%, var(--surface-2)); }
 
@@ -117,6 +137,7 @@ body:has(.drawer.open) .bulkbar.visible { opacity: 0; visibility: hidden; pointe
 .pagination .pages { grid-column: 2; display: flex; gap: .75rem; align-items: center; }
 .pagination .per-page { grid-column: 3; justify-self: end; display: flex; gap: .5rem; align-items: center; }
 .pagination .segmented a { padding: .2rem .55rem; }
+.pagination .button { white-space: nowrap; }
 @media (max-width: 45em) {
   .pagination { grid-template-columns: 1fr; justify-items: center; }
   .pagination .pages, .pagination .per-page { grid-column: 1; justify-self: center; }
@@ -162,8 +183,23 @@ body:has(.drawer.open) .bulkbar.visible { opacity: 0; visibility: hidden; pointe
   }
   .table:not(.keep) td::before { content: attr(data-label); color: var(--muted); font-size: .8rem; grid-column: 1; grid-row: 1 / span 6; }
   .table:not(.keep) td > * { grid-column: 2; }
-  .table:not(.keep) td > * { justify-self: start; }
+  .table:not(.keep) td > * { justify-self: start; max-width: 100%; }
+  /* a value that truncates itself (e.g. the identifier with its copy button) gets the whole width */
+  .table:not(.keep) td > .identifier-cell { justify-self: stretch; }
   .table-scroll { overflow-x: visible; width: auto; max-width: none; margin-left: 0; transform: none; }
+  /* the tables that stay tables (e.g. the permissions of a role) scroll in their box instead */
+  .table-scroll:has(> .table.keep) { overflow-x: auto; }
+  /* the checkbox in the top right corner of the card, not on a line of its own */
+  .table:not(.keep) tbody tr:has(> td.select) { position: relative; }
+  .table:not(.keep) td.select { position: absolute; top: .2rem; right: .2rem; width: auto; padding: .5rem; }
+  .table:not(.keep) td.select + td { padding-right: 2.75rem; }
+  .table:not(.keep) tbody tr.selected { background: var(--info-bg); border-color: var(--accent); }
+  /* "select all" above the cards: the header with its checkbox is hidden (table.js) */
+  .select-all-cards { display: flex; align-items: center; gap: .55rem; margin: 0 0 .6rem; padding: .4rem 1rem; cursor: pointer; }
+  /* the permissions of a role: narrow columns, the labels wrap */
+  .table.permissions th, .table.permissions td { padding: .35rem .2rem; }
+  .table.permissions thead th { font-size: .65rem; letter-spacing: 0; }
+  .table.permissions tbody th { overflow-wrap: anywhere; }
   .table:not(.keep) td[data-label=""] { display: block; }
   .table:not(.keep) td[data-label=""]::before { content: none; }
   .table:not(.keep) td.num { text-align: left; }

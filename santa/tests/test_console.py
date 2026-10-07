@@ -380,6 +380,32 @@ class ConsoleEventsTestCase(ConsoleBase):
         self.assertEqual((rows[0]["event_count"], rows[0]["machine_count"], rows[0]["user_count"]), (2, 2, 2))
         self.assertNotContains(response, "other-tool")
 
+    def test_unknown_in_monitor_mode_is_listed_with_the_blocks(self):
+        # monitor mode: unknown binaries run (ALLOW_UNKNOWN), lockdown would block them
+        unknown = self.make_event(sha256=SHA_B, file_name="unknown-tool", decision="ALLOW_UNKNOWN")
+        self.make_event(decision="BLOCK_UNKNOWN")
+        self.make_event(sha256="c" * 64, file_name="allowed-tool", decision="ALLOW_BINARY")
+        response = self.client.get(reverse("console:events"))
+        rows = {row["file_sha256"]: row for row in response.context["page"]}
+        self.assertEqual(set(rows), {SHA_A, SHA_B})
+        self.assertEqual((rows[SHA_A]["block_count"], rows[SHA_B]["block_count"]), (1, 0))
+        self.assertContains(response, "Monitor: blocked in lockdown", count=1)
+        self.assertNotContains(response, "allowed-tool")
+        self.assertEqual(
+            self.client.get(reverse("console:event", args=(unknown.pk,))).context["event"].blocked_in_lockdown, True)
+        # counted as open blocks of the Mac and its group
+        machine = self.client.get(reverse("console:machine", args=(self.machine.pk,)))
+        self.assertEqual(machine.context["open_blocks"], 2)
+        self.assertEqual(self.client.get(reverse("console:group", args=(self.dev.pk,))).context["open_blocks"], 2)
+        # selected and resolved like a block
+        self.client.post(reverse("console:events_resolve"), {"shas": [SHA_B]})
+        unknown.refresh_from_db()
+        self.assertIsNotNone(unknown.resolved_at)
+        # live updates of the list
+        new = self.make_event(sha256="d" * 64, file_name="new-unknown", decision="ALLOW_UNKNOWN")
+        response = self.client.get(reverse("console:event_updates"), {"after": new.pk - 1})
+        self.assertEqual([row["file_sha256"] for row in response.context["rows"]], ["d" * 64])
+
     def test_live_updates(self):
         first = self.make_event()
         url = reverse("console:event_updates")

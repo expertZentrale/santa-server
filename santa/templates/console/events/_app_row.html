@@ -1,7 +1,8 @@
 {% load console i18n %}<tr data-key="{{ row.file_sha256 }}">
           <td class="select"><input type="checkbox" name="shas" value="{{ row.file_sha256 }}" aria-label="{% translate 'Select' %} {{ row.file_name }}"></td>
           <td><a href="{% url 'console:event' row.last_pk %}" hx-get="{% url 'console:event' row.last_pk %}" hx-target="#drawer" class="strong">{{ row.file_name|default:_("(no name)") }}</a>
-            <small class="muted mono cell-path" title="{{ row.file_path }}">{{ row.file_path }}</small></td>
+            <small class="muted mono cell-path" title="{{ row.file_path }}">{{ row.file_path }}</small>
+            {% if not row.block_count %}<span class="badge warn" title="{% translate 'It ran in monitor mode because it is unknown: lockdown would block it.' %}">{% translate "Monitor: blocked in lockdown" %}</span>{% endif %}</td>
           <td class="mono small">{{ row.signing_id|default:"–" }}<br><span class="muted">{{ row.team_id|default:_("unsigned") }}</span></td>
           <td class="num">{{ row.event_count }}</td><td class="num">{{ row.machine_count }}</td><td class="num">{{ row.user_count }}</td>
           <td>{{ row.last_seen|date:"d.m.Y H:i" }}</td>

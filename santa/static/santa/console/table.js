@@ -9,6 +9,22 @@
     return [...form.querySelectorAll('tbody input[type="checkbox"]')];
   }
 
+  // Phones show the rows as cards without the header: "select all" goes above them
+  function addSelectAllCards(root) {
+    const text = document.getElementById("table-texts")?.dataset.selectAll;
+    root.querySelectorAll("[data-select-form] thead [data-select-all]").forEach((all) => {
+      const scroll = all.closest(".table-scroll") || all.closest("table");
+      if (!text || scroll.previousElementSibling?.matches(".select-all-cards")) return;
+      const label = document.createElement("label");
+      label.className = "select-all-cards";
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.dataset.selectAll = "";
+      label.append(box, text);
+      scroll.before(label);
+    });
+  }
+
   function updateSelection(form) {
     const boxes = rowBoxes(form);
     boxes.forEach((box) => box.closest("tr")?.classList.toggle("selected", box.checked));
@@ -20,10 +36,14 @@
       bar.classList.toggle("visible", checked > 0);
       bar.querySelector("[data-selected-count]").textContent = checked;
     }
-    const all = form.querySelector("[data-select-all]");
-    if (all) all.checked = checked > 0 && checked === boxes.length;
-    document.body.classList.toggle(
-      "has-bulkbar", !!document.querySelector("[data-bulkbar].visible"));
+    // the header checkbox, and its copy above the cards on phones
+    form.querySelectorAll("[data-select-all]").forEach((all) => {
+      all.checked = checked > 0 && checked === boxes.length;
+      all.indeterminate = checked > 0 && checked < boxes.length;
+    });
+    const visibleBar = document.querySelector("[data-bulkbar].visible");
+    document.body.classList.toggle("has-bulkbar", !!visibleBar);
+    if (visibleBar) document.body.style.setProperty("--bulkbar-h", `${visibleBar.offsetHeight / rem()}rem`);
   }
 
   function updateAllSelections() {
@@ -348,6 +368,11 @@
 
   const INTERACTIVE = "a, button, input, select, textarea, label, summary, [hx-get], [hx-post]";
 
+  function isTouch(event) {
+    return event.pointerType === "touch" || (!event.pointerType && window.matchMedia("(pointer: coarse)").matches
+                                             && event.detail > 0);
+  }
+
   // the whole cell of a switch toggles it, not only the small switch (else the click would select the row)
   document.addEventListener("click", (event) => {
     const cell = event.target.closest("td.toggle");
@@ -375,7 +400,8 @@
       if (!event.shiftKey && window.getSelection()?.toString()) return;
       if (canRange) {
         selectRange(boxes, box, true);
-      } else if (event.ctrlKey || event.metaKey) {
+      } else if (event.ctrlKey || event.metaKey || isTouch(event)) {
+        // touch has no ctrl key: a tap adds or removes the row, the others stay selected
         box.checked = !box.checked;
       } else {
         const onlyThis = box.checked && boxes.every((other) => other === box || !other.checked);
@@ -401,7 +427,7 @@
     const selectForm = event.target.closest("[data-select-form]");
     if (!selectForm) return;
     if (event.target.matches("[data-select-all]")) {
-      selectForm.querySelectorAll('tbody input[type="checkbox"]').forEach((box) => {
+      rowBoxes(selectForm).forEach((box) => {
         box.checked = event.target.checked;
       });
     }
@@ -418,12 +444,14 @@
 
   SantaConsole.onInit((root) => {
     labelTables(root);
+    addSelectAllCards(root);
     root.querySelectorAll("table[data-table]").forEach(setupTable);
     setupRowFocus(root);
     root.querySelectorAll("[data-select-form]").forEach(updateSelection);
   });
   SantaConsole.onSwap((target) => {
     labelTables(target.closest("table") || target);
+    addSelectAllCards(document);
     setupRowFocus(document);
     updateAllSelections();
   });

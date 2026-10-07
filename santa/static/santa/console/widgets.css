@@ -12,6 +12,7 @@
 .badge.ok { background: var(--ok-bg); color: var(--ok); }
 .badge.bad { background: var(--bad-bg); color: var(--bad); }
 .badge.info { background: var(--info-bg); color: var(--info); }
+.badge.warn { background: var(--warn-bg); color: var(--warn); }
 .chip {
   display: inline-flex;
   align-items: center;
@@ -188,6 +189,10 @@ a.chip:hover { text-decoration: none; border-color: var(--accent); }
 .tag-suggestion { padding: .4rem .7rem; }
 .package-list { margin: .4rem 0; }
 .package-list li, .packages-approve .with-icon { flex-wrap: nowrap; }
+/* the status of a package on the right, at the height of its name */
+.package-list li { align-items: flex-start; }
+.package-list .package-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.package-list li > .badge { flex: none; }
 .package-text { display: grid; }
 .packages-approve select { width: 100%; }
 

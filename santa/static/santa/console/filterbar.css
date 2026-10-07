@@ -49,6 +49,11 @@
 .saved-filter-new input { flex: 1; min-width: 0; }
 .views-picker .picker-panel > small, .views-picker .picker-panel > p { padding: .2rem .6rem; margin: 0; }
 @media (max-width: 40em) {
-  .filter-toolbar input[type="search"] { flex-basis: 100%; max-width: none; }
+  .filter-toolbar input[type="search"] { flex-basis: 100%; min-width: 0; max-width: none; }
   .filter-tools { margin-left: 0; }
+  /* the menus of the bar: as wide as the window below their button, wherever the button is */
+  .filter-bar .picker.down .picker-panel, .filter-tools .picker.down .picker-panel {
+    position: fixed; top: auto; left: 1rem; right: 1rem; min-width: 0; margin-top: .5rem; max-height: 60vh; overflow-y: auto;
+  }
+  .views-picker > summary { max-width: 10rem; }
 }

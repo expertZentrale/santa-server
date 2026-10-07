@@ -8,6 +8,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxLengthValidator
 from django.db import models
+from django.db.models import Q
 from django.utils.text import format_lazy
 from django.utils.translation import gettext
 from django.utils.translation import gettext_lazy as _
@@ -736,6 +737,11 @@ def payload_hash(payload):
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()[:16]
 
 
+# blocked, or in monitor mode unknown: blocked in lockdown, so it needs a rule just the same
+UNKNOWN_IN_MONITOR = "ALLOW_UNKNOWN"
+NEEDS_RULE = Q(decision__startswith="BLOCK_") | Q(decision=UNKNOWN_IN_MONITOR)
+
+
 class Event(models.Model):
     machine = models.ForeignKey(Machine, on_delete=models.CASCADE, related_name="events")
     group = models.ForeignKey(Group, on_delete=models.CASCADE, related_name="events")
@@ -772,6 +778,11 @@ class Event(models.Model):
     @property
     def is_blocked(self):
         return self.decision.startswith("BLOCK_")
+
+    @property
+    def blocked_in_lockdown(self):
+        """Allowed in monitor mode only because it is unknown"""
+        return self.decision == UNKNOWN_IN_MONITOR
 
     def identifier_for(self, rule_type):
         return {

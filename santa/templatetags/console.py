@@ -36,7 +36,10 @@ def identifier_parts(rule):
 
 @register.filter
 def decision_class(decision):
-    return "bad" if decision.startswith("BLOCK_") else "ok"
+    if decision.startswith("BLOCK_"):
+        return "bad"
+    # monitor mode: allowed only because it is unknown, lockdown would block it
+    return "warn" if decision == "ALLOW_UNKNOWN" else "ok"
 
 
 @register.filter
