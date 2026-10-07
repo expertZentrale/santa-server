@@ -40,9 +40,10 @@
           {% if field.is_logo %}{% include "console/groups/_logo_field.html" with logo=field %}
           {% elif show_when %}<div data-show-when="{{ show_when }}">{% include "console/_field.html" %}</div>
           {% else %}{% include "console/_field.html" %}{% endif %}
-          {% if field.name == "branding_company_name" and form.company_name_hidden %}<small class="help after-field" data-company-name-hidden><strong>{% translate "Not shown in Santa: the group has a company logo." %}</strong></small>{% endif %}
         {% endfor %}
         {% if block.key %}</div></div>{% endif %}
+        {# outside the own value: the name or the logo can be inherited #}
+        {% if block.key == "branding_company_name" and form.company_name_hidden %}<small class="help after-field" data-company-name-hidden><strong>{% translate "Not shown in Santa: the group has a company logo." %}</strong></small>{% endif %}
       {% endfor %}
     </section>
   {% endfor %}

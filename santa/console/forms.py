@@ -918,8 +918,8 @@ class GroupForm(forms.ModelForm):
         return [key for key in Group.INHERITABLE_SETTINGS if key not in own] if parent else []
 
     def company_name_hidden(self):
-        """Santa shows the company name only without a logo (the saved group)"""
-        group = self.instance
+        """Santa shows the company name only without a logo (the saved group, with what it inherits)"""
+        group = self.instance.effective()
         return bool(group.branding_company_name
                     and (group.branding_company_logo or group.branding_company_logo_dark))
 

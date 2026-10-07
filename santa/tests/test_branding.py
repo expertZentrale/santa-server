@@ -1,6 +1,7 @@
 from django.test import override_settings
 from django.urls import reverse
 
+from ..models import Group
 from .test_console import ConsoleBase
 
 
@@ -56,4 +57,21 @@ class CompanyBrandingTestCase(ConsoleBase):
         self.dev.branding_company_name = ""
         self.dev.branding_company_logo = self.LOGO
         self.dev.save()
+        self.assertNotContains(self.client.get(url), self.HINT)
+
+    def test_inherited_branding_hides_the_company_name(self):
+        self.dev.branding_company_name = "Example Corp"
+        self.dev.branding_company_logo = self.LOGO
+        self.dev.save()
+        child = Group.objects.create(name="Dev tools", parent=self.dev)
+        url = reverse("console:group", args=(child.pk,))
+        self.assertContains(self.client.get(url), self.HINT)
+        # an own name with the inherited logo: still hidden
+        child.overridden_settings = ["branding_company_name"]
+        child.branding_company_name = "Dev tools Corp"
+        child.save()
+        self.assertContains(self.client.get(url), self.HINT)
+        # an own empty logo: the name shows
+        child.overridden_settings = ["branding_company_name", "branding_company_logo"]
+        child.save()
         self.assertNotContains(self.client.get(url), self.HINT)

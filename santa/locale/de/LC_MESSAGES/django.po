@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: santa-server\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-07 12:04+0200\n"
+"POT-Creation-Date: 2026-10-07 13:09+0200\n"
 "Language: de\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -386,7 +386,7 @@ msgstr "Gruppen hinzufügen"
 #: santa/templates/console/administration/_tag_form.html:10
 #: santa/templates/console/administration/_user_form.html:34
 #: santa/templates/console/file_access/_form.html:45
-#: santa/templates/console/groups/_form.html:53
+#: santa/templates/console/groups/_form.html:54
 #: santa/templates/console/rules/_form.html:37
 #: santa/templates/console/rules/list.html:23
 #: santa/templates/console/sources/_form.html:42
@@ -3151,7 +3151,7 @@ msgstr ""
 #: santa/templates/console/administration/_tag_form.html:7
 #: santa/templates/console/administration/_user_form.html:31
 #: santa/templates/console/file_access/_form.html:42
-#: santa/templates/console/groups/_form.html:51
+#: santa/templates/console/groups/_form.html:52
 #: santa/templates/console/profile.html:33
 #: santa/templates/console/rules/_form.html:34
 #: santa/templates/console/sources/_form.html:39
@@ -3167,7 +3167,7 @@ msgstr "Rolle anlegen"
 #: santa/templates/console/administration/_tag_form.html:9
 #: santa/templates/console/administration/_user_form.html:33
 #: santa/templates/console/file_access/_form.html:44
-#: santa/templates/console/groups/_form.html:52
+#: santa/templates/console/groups/_form.html:53
 #: santa/templates/console/history/drawer.html:4
 #: santa/templates/console/history/page.html:2
 #: santa/templates/console/history/page.html:6
@@ -3874,15 +3874,15 @@ msgstr "Geerbt: der Wert der gewählten Gruppe, sobald gespeichert."
 msgid "Inherited from %(group)s."
 msgstr "Geerbt von %(group)s."
 
-#: santa/templates/console/groups/_form.html:43
+#: santa/templates/console/groups/_form.html:46
 msgid "Not shown in Santa: the group has a company logo."
 msgstr "Wird in Santa nicht angezeigt: Die Gruppe hat ein Firmenlogo."
 
-#: santa/templates/console/groups/_form.html:51
+#: santa/templates/console/groups/_form.html:52
 msgid "Create group"
 msgstr "Gruppe anlegen"
 
-#: santa/templates/console/groups/_form.html:57
+#: santa/templates/console/groups/_form.html:58
 #, python-format
 msgid "Delete the group %(name)s and its rules?"
 msgstr "Die Gruppe %(name)s und ihre Regeln löschen?"
