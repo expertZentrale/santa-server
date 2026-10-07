@@ -259,7 +259,8 @@ Server sendet es bei jeder Synchronisierung (`removable_media_policy`, für ält
 
 **Branding** (ab Santa 2026.1): Firmenname und Logo in den Dialogen von Santa. Ein hochgeladenes Logo (PNG oder JPEG,
 höchstens 256 KB) kommt als `data:`-URL ins Profil; alternativ eine `file:///`-URL eines Bildes, das Ihr MDM auf die
-Macs verteilt. `https://`-URLs unterstützt Santa nicht.
+Macs verteilt. `https://`-URLs unterstützt Santa nicht. Den Firmennamen zeigt Santa nur ohne Logo an: Mit Logo
+erscheint das Logo an seiner Stelle.
 
 **`MachineOwner`** (optional, `SANTA_PROFILE_MACHINE_OWNER`): die MDM-Variable des Hauptbenutzers, damit das
 Anfrageformular die Macs des angemeldeten Benutzers findet. Zum Beispiel `{{userprincipalname}}` (Intune) oder
@@ -788,7 +789,8 @@ the media already mounted when Santa starts (`OnStartUSBOptions`) is only in the
 
 **Branding** (Santa 2026.1 and newer): company name and logo in the dialogs of Santa. An uploaded logo (PNG or JPEG,
 at most 256 KB) goes into the profile as a `data:` URL; or a `file:///` URL of an image your MDM puts on the Macs.
-Santa doesn't support `https://` URLs.
+Santa doesn't support `https://` URLs. Santa shows the company name only without a logo: with a logo, the logo takes
+its place.
 
 **`MachineOwner`** (optional, `SANTA_PROFILE_MACHINE_OWNER`): the MDM variable of the primary user, so that the
 request form finds the Macs of the signed-in user. For example `{{userprincipalname}}` (Intune) or `$EMAIL`

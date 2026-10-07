@@ -826,7 +826,7 @@ class GroupForm(forms.ModelForm):
          ("unknown_block_message", "banned_block_message", "enable_bad_signature_protection",
           "file_access_block_message", "on_start_usb_options")),
         (_("Branding"), _("Profile only, Santa 2026.1 and newer: after a change, download the profile again and "
-                          "replace it in your MDM."),
+                          "replace it in your MDM. The company name only shows without a logo."),
          ("branding_company_name", "branding_company_logo", "branding_company_logo_dark")),
     ]
     # a change of these needs a new profile (the logo fields: _file, _url, _clear)
@@ -916,6 +916,12 @@ class GroupForm(forms.ModelForm):
         else:
             parent, own = self.instance.parent_id, set(self.instance.overridden_settings)
         return [key for key in Group.INHERITABLE_SETTINGS if key not in own] if parent else []
+
+    def company_name_hidden(self):
+        """Santa shows the company name only without a logo (the saved group, with what it inherits)"""
+        group = self.instance.effective()
+        return bool(group.branding_company_name
+                    and (group.branding_company_logo or group.branding_company_logo_dark))
 
     def profile_changed(self):
         return any(name.removeprefix("override_").startswith(self.PROFILE_FIELDS)

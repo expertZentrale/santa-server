@@ -218,11 +218,13 @@ class Group(models.Model):
     )
     branding_company_name = models.CharField(
         max_length=200, blank=True,
-        help_text=_("Profile only. Your company name in the dialogs and messages of Santa (Santa 2026.1 and newer)."),
+        help_text=_("Profile only. Your company name in the dialogs and messages of Santa, only when no company logo "
+                    "is set (Santa 2026.1 and newer)."),
     )
     branding_company_logo = models.TextField(
         blank=True, validators=[validate_logo_url],
-        help_text=_("Profile only. Shown instead of the company name (84 × 28 points)."),
+        help_text=_("Profile only. Shown instead of the company name: with a logo, Santa doesn't show the name "
+                    "(84 × 28 points)."),
     )
     branding_company_logo_dark = models.TextField(
         blank=True, validators=[validate_logo_url],

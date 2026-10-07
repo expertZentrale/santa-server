@@ -42,6 +42,8 @@
           {% else %}{% include "console/_field.html" %}{% endif %}
         {% endfor %}
         {% if block.key %}</div></div>{% endif %}
+        {# outside the own value: the name or the logo can be inherited #}
+        {% if block.key == "branding_company_name" and form.company_name_hidden %}<small class="help after-field" data-company-name-hidden><strong>{% translate "Not shown in Santa: the group has a company logo." %}</strong></small>{% endif %}
       {% endfor %}
     </section>
   {% endfor %}
