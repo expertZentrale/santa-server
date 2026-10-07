@@ -8,6 +8,12 @@
     if (form.dataset.filterReady) return;
     form.dataset.filterReady = "1";
     const submit = () => (form.requestSubmit ? form.requestSubmit() : form.submit());
+    // Enter in the search: the default button of the form can be the "Apply" of a hidden time filter, disabled
+    form.querySelector('input[type="search"]')?.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" || event.isComposing) return;
+      event.preventDefault();
+      submit();
+    });
     form.querySelectorAll("details[data-chip]").forEach((chip) => {
       let changed = false;
       chip.addEventListener("change", (event) => {

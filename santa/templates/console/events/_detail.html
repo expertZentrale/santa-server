@@ -29,7 +29,7 @@
     <input type="hidden" name="next" value="{{ request.META.HTTP_HX_CURRENT_URL|default:request.get_full_path }}">
     <input type="hidden" name="include" value="{{ event.file_sha256 }}">
     {% include "console/events/_rule_form.html" %}
-    <button class="button primary">{% translate "Create rule" %}</button>
+    <div class="actions"><button class="button primary">{% translate "Create rule" %}</button></div>
   </form>
   {% endif %}
   {% if same_binary %}
