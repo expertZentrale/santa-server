@@ -41,10 +41,19 @@
       all.checked = checked > 0 && checked === boxes.length;
       all.indeterminate = checked > 0 && checked < boxes.length;
     });
-    const visibleBar = document.querySelector("[data-bulkbar].visible");
-    document.body.classList.toggle("has-bulkbar", !!visibleBar);
-    if (visibleBar) document.body.style.setProperty("--bulkbar-h", `${visibleBar.offsetHeight / rem()}rem`);
+    document.body.classList.toggle("has-bulkbar", !!document.querySelector("[data-bulkbar].visible"));
+    reserveBarSpace();
   }
+
+  // the room below the last row follows the height of the bar (main padding in table.css)
+  function reserveBarSpace() {
+    const bar = document.querySelector("[data-bulkbar].visible");
+    if (bar) document.body.style.setProperty("--bulkbar-h", `${bar.offsetHeight / rem()}rem`);
+  }
+
+  // the bar changes its height after a selection too: fields shown for an action (forms.js), wrapping on a
+  // rotated phone or a resized window
+  const barObserver = "ResizeObserver" in window ? new ResizeObserver(reserveBarSpace) : null;
 
   function updateAllSelections() {
     document.querySelectorAll("[data-select-form]").forEach(updateSelection);
@@ -445,6 +454,7 @@
   SantaConsole.onInit((root) => {
     labelTables(root);
     addSelectAllCards(root);
+    root.querySelectorAll("[data-bulkbar]").forEach((bar) => barObserver?.observe(bar));
     root.querySelectorAll("table[data-table]").forEach(setupTable);
     setupRowFocus(root);
     root.querySelectorAll("[data-select-form]").forEach(updateSelection);

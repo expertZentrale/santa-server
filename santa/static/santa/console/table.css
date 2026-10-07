@@ -186,6 +186,8 @@ body:has(.drawer.open) .bulkbar.visible { opacity: 0; visibility: hidden; pointe
   .table:not(.keep) td > * { justify-self: start; max-width: 100%; }
   /* a value that truncates itself (e.g. the identifier with its copy button) gets the whole width */
   .table:not(.keep) td > .identifier-cell { justify-self: stretch; }
+  /* a long status (e.g. "Monitor: blocked in lockdown") wraps in the narrow value column */
+  .table:not(.keep) td .badge { white-space: normal; border-radius: var(--radius-sm); }
   .table-scroll { overflow-x: visible; width: auto; max-width: none; margin-left: 0; transform: none; }
   /* the tables that stay tables (e.g. the permissions of a role) scroll in their box instead */
   .table-scroll:has(> .table.keep) { overflow-x: auto; }
