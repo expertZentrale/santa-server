@@ -9,7 +9,7 @@
   <tbody>
   {% for group in sign_in_groups %}
     <tr>
-      <td>{% url 'console:admin_sign_in_group' group.pk as group_url %}<a class="strong" href="{{ group_url }}" hx-get="{{ group_url }}" hx-target="#drawer">{{ group.name }}</a>{% if group.no_email %} <span class="badge">{% translate "no e-mails" %}</span>{% endif %}</td>
+      <td>{% url 'console:admin_sign_in_group' group.pk as group_url %}<a class="strong" href="{{ group_url }}" hx-get="{{ group_url }}" hx-target="#drawer">{{ group.name }}</a>{% if group.no_email %} <span class="badge">{% translate "no e-mails" %}</span>{% elif group.notification_defaults %} <span class="badge">{% translate "e-mail defaults" %}</span>{% endif %}</td>
       <td>{% if group.claim_value == everyone %}<span class="muted">{% translate "everyone who signs in" %}</span>{% else %}<code>{{ group.claim_value }}</code>{% endif %}</td>
       <td>{% for role in group.roles.all %}{% url 'console:admin_role' role.pk as chip_url %}<a class="chip small" href="{{ chip_url }}" hx-get="{{ chip_url }}" hx-target="#drawer">{{ role.name }}</a>{% empty %}<span class="muted">–</span>{% endfor %}</td>
       <td>{{ group.console_access|yesno:_("yes,no") }}</td>

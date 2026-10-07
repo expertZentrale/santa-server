@@ -3,8 +3,14 @@
   {% if form.non_field_errors %}<div class="error">{{ form.non_field_errors }}</div>{% endif %}
   <fieldset class="plain"{% if sign_in_group and not perms.santa.change_signingroup %} disabled{% endif %}>
   <section class="card"><h2>{% translate "Sign-in group" %}</h2>
-    {% for field in form %}{% include "console/_field.html" %}{% endfor %}
+    {% for field in form.main_fields %}{% include "console/_field.html" %}{% endfor %}
   </section>
+  {% if form.notification_names %}
+  <section class="card"><h2>{% translate "E-mail defaults" %}</h2>
+    <p class="muted small">{% translate "The members start with these. They can change them in their profile, and only get the e-mails their roles allow. No e-mails above wins over them; in several sign-in groups, the one with the most e-mails applies." %}</p>
+    {% for field in form.notification_fields %}{% include "console/_field.html" %}{% endfor %}
+  </section>
+  {% endif %}
   </fieldset>
   {% if not sign_in_group or perms.santa.change_signingroup %}
   <div class="actions"><button class="button primary">{% if sign_in_group %}{% translate "Save" %}{% else %}{% translate "Create sign-in group" %}{% endif %}</button>

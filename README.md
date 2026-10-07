@@ -421,6 +421,11 @@ Konten ohne Postfach (z. B. Admin-Konten) nehmen Sie aus: An einer [Anmeldegrupp
 *Keine E-Mails* setzen, dann bekommen ihre Mitglieder keine Benachrichtigungen; einzelne Benutzer stellen Sie unter
 *Administration → Benutzer* auf *Keine E-Mails* oder, als Ausnahme in einer solchen Gruppe, auf *E-Mails erlaubt*.
 
+Unter *Standards für E-Mails* legt eine Anmeldegruppe fest, womit ihre Mitglieder beginnen (z. B. *Neue Anfragen*
+nur in der täglichen Zusammenfassung). Im Profil gilt dann *Standard*, bis der Benutzer selbst etwas wählt. Eine
+eigene Anmeldegruppe hat Vorrang vor `*`; bei mehreren gilt die mit den meisten E-Mails (*Sofort* vor
+*Tägliche Zusammenfassung* vor *Aus*). *Keine E-Mails* hat immer Vorrang.
+
 ### Konfiguration exportieren und importieren
 
 Gruppen, Paketregeln, manuelle Regeln und Dateizugriffsregeln können als JSON exportiert und auf einem anderen Server
@@ -916,6 +921,11 @@ The e-mails are in the language of the profile (else `LANGUAGE_CODE`) and link t
 Accounts without a mailbox (e.g. admin accounts) are left out: set *No e-mails* on a
 [sign-in group](#sign-in-groups-and-roles), then its members get no notifications; single users are set in
 *Administration → Users* to *No e-mails* or, as an exception in such a group, to *E-mails allowed*.
+
+Under *E-mail defaults* a sign-in group sets what its members start with (e.g. *New requests* only in the daily
+summary). The profile then shows *Default* until the user chooses something themselves. A group of its own wins over
+`*`; with several, the one with the most e-mails applies (*Immediately* before *Daily summary* before *Off*).
+*No e-mails* always wins.
 
 ### Export and import the configuration
 

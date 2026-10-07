@@ -1,8 +1,10 @@
 """E-mail notifications: who gets which mail, right after the change or in the daily summary.
 
 Every user chooses per notification in the profile (UserProfile.notifications): off, immediately or daily (the
-summary of the command send_notification_digest). Only the notifications the permissions of the user allow are
-offered and sent. Without EMAIL_HOST, or with EMAIL_NOTIFICATIONS_ENABLED=false, nothing is sent or offered.
+summary of the command send_notification_digest). Without a choice, the default of their sign-in groups applies
+(SignInGroup.notification_defaults), else the default of the notification. Only the notifications the permissions
+of the user allow are offered and sent. Without EMAIL_HOST, or with EMAIL_NOTIFICATIONS_ENABLED=false, nothing is
+sent or offered.
 """
 import logging
 import smtplib
@@ -19,13 +21,15 @@ from django.urls import reverse
 from django.utils import translation
 from django.utils.translation import gettext_lazy as _
 
-from .models import AccessRequest, UserProfile
+from .models import AccessRequest, SignInGroup, UserProfile
 from .users import profile_for
 
 logger = logging.getLogger(__name__)
 
 OFF, INSTANT, DAILY = "off", "instant", "daily"
 MODE_LABELS = {OFF: _("Off"), INSTANT: _("Immediately"), DAILY: _("Daily summary")}
+# when sign-in groups disagree, the one with the most mail wins
+RANK = {OFF: 0, DAILY: 1, INSTANT: 2}
 
 
 @dataclass(frozen=True)
@@ -85,10 +89,33 @@ def available(user):
             if (user.is_staff or not notification.staff) and user.has_perms(notification.perms)]
 
 
-def mode(user, key):
+def sign_in_groups(user):
+    """Cached on the user: users_for() and the daily summary ask for every notification"""
+    if not hasattr(user, "_santa_sign_in_groups"):
+        user._santa_sign_in_groups = list(user.sign_in_groups.all())
+    return user._santa_sign_in_groups
+
+
+def group_default(user, key):
+    """The default of the sign-in groups of the user, None without one. A group of its own wins over *."""
     notification = BY_KEY[key]
-    value = profile_for(user).notifications.get(key, notification.default)
-    return value if value in notification.modes else notification.default
+    values = {True: [], False: []}
+    for group in sign_in_groups(user):
+        value = group.notification_defaults.get(key)
+        if value in notification.modes:
+            values[group.claim_value == SignInGroup.EVERYONE].append(value)
+    chosen = values[False] or values[True]
+    return max(chosen, key=RANK.get) if chosen else None
+
+
+def default_mode(user, key):
+    """The mode without a choice of the user"""
+    return group_default(user, key) or BY_KEY[key].default
+
+
+def mode(user, key):
+    value = profile_for(user).notifications.get(key)
+    return value if value in BY_KEY[key].modes else default_mode(user, key)
 
 
 def absolute_url(name, *args):
