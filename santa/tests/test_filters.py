@@ -283,6 +283,13 @@ class FilterBarTestCase(ConsoleBase):
         response = self.client.get(url, {"scope": ["global", "machines"], "q": ""})
         self.assertEqual(response.context["bar"]["active_view"].name, "Global and Macs")
         self.assertContains(response, 'aria-current="true">Global and Macs</a>')
+        # the buttons of the console: icons, Save and Cancel
+        view = SavedFilter.objects.get(name="Global and Macs")
+        self.assertContains(response, f'<div class="actions"><button class="button primary" '
+                                      f'form="rename-filter-{view.pk}">Save</button><button type="button" '
+                                      'class="button" data-rename-cancel>Cancel</button></div>', html=True)
+        self.assertContains(response, '<path d="M16 4l4 4L9 19', count=2)
+        self.assertNotContains(response, "✎")
         self.assertIsNone(self.bar(url, q="", scope="global")["active_view"])
         view = SavedFilter.objects.get(name="Global and Macs")
         response = self.client.post(reverse("rename_filter", args=(view.pk,)), {"name": "Other"}, follow=True)

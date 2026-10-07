@@ -31,7 +31,8 @@
 .time-range input[type="date"] { width: auto; }
 /* the views: a link per view, rename and delete, and the name of a new one */
 .views-picker > summary { max-width: 16rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.views-picker .picker-panel { min-width: 20rem; gap: .2rem; }
+/* a fixed width: opening a rename doesn't resize the menu; long names are cut with … */
+.views-picker .picker-panel { width: 22.5rem; gap: .2rem; }
 /* the whole row up to its buttons opens the view */
 .saved-filter { display: flex; align-items: stretch; gap: .1rem; padding-right: .2rem; border-radius: var(--radius-sm); }
 .saved-filter > a { flex: 1; min-width: 0; display: flex; align-items: center; padding: .45rem .6rem; border-radius: var(--radius-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -42,8 +43,12 @@
 .saved-filter:hover { background: var(--surface-2); }
 .rename-view > summary { list-style: none; }
 .rename-view > summary::-webkit-details-marker { display: none; }
+/* renaming: the field and its buttons below the name, the pencil gives way to them (Cancel closes it) */
 .rename-view[open] { flex-basis: 100%; order: 3; }
-.saved-filter:has(.rename-view[open]) { flex-wrap: wrap; }
+.rename-view[open] > summary { display: none; }
+.saved-filter:has(.rename-view[open]) { flex-wrap: wrap; background: none; }
+.rename-view-form { display: grid; gap: .5rem; padding: .2rem .6rem .6rem; }
+.rename-view-form input { width: 100%; }
 .saved-filter-new { display: flex; gap: .4rem; padding: .4rem .2rem; }
 .views-picker .picker-panel > .saved-filter-new { border-top: 1px solid var(--border); margin-top: .2rem; }
 .saved-filter-new input { flex: 1; min-width: 0; }
@@ -56,4 +61,8 @@
     position: fixed; top: auto; left: 1rem; right: 1rem; min-width: 0; margin-top: .5rem; max-height: 60vh; overflow-y: auto;
   }
   .views-picker > summary { max-width: 10rem; }
+  /* one column as wide as the menu: the rows wrap instead of widening it */
+  .views-picker .picker-panel { width: auto; grid-template-columns: minmax(0, 1fr); }
+  .saved-filter-new { flex-wrap: wrap; }
+  .saved-filter-new input { flex-basis: 8rem; }
 }

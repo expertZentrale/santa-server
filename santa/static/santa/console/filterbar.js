@@ -29,6 +29,18 @@
         if (!chip.open && changed) submit();
       });
     });
+    // renaming a view: the field gets the focus; Cancel closes it with the saved name, back to the pencil
+    form.querySelectorAll("details.rename-view").forEach((rename) => {
+      const input = rename.querySelector("input");
+      rename.addEventListener("toggle", () => {
+        if (rename.open) input.focus();
+        else input.value = input.defaultValue;
+      });
+      rename.querySelector("[data-rename-cancel]").addEventListener("click", () => {
+        rename.open = false;
+        rename.querySelector("summary").focus();
+      });
+    });
     form.addEventListener("click", (event) => {
       const item = event.target.closest("[data-open-facet]");
       if (!item) return;
