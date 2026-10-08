@@ -144,7 +144,20 @@ class DynamicPagesTestCase(ConsoleBase):
         self.assertContains(response, 'role="menuitem" hx-boost="false">')
         self.assertContains(response, 'download data-download hx-boost="false"')
         self.client.logout()
-        self.assertContains(self.client.get(reverse("login")), '<form method="post" class="stack" hx-boost="false">')
+        # the sign-in too; a failed one shows its error in the local account, open
+        self.assertNotContains(self.client.get(reverse("login")), 'hx-boost="false"')
+        with self.settings(OIDC_RP_CLIENT_ID="console"):
+            self.assertContains(self.client.get(reverse("login")), "<details>")
+            response = self.client.post(reverse("login"), {"username": "admin", "password": "wrong"})
+        self.assertContains(response, "<details open>")
+
+    def test_the_connection_banner(self):
+        response = self.client.get(reverse("console:rules"), {"q": "x"})
+        self.assertContains(response, '<div id="connection"')
+        self.assertContains(response, 'data-lost="Connection to the server lost. Retrying…"')
+        # what it checks: no session, no database
+        self.client.logout()
+        self.assertEqual(self.client.get("/health").status_code, 200)
 
     def test_upload_binary_in_the_drawer(self):
         response = self.client.get(reverse("console:rule_upload"), HTTP_HX_REQUEST="true")

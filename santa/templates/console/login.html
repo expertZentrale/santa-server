@@ -12,10 +12,11 @@
     <a class="button wide{% if provider_icon %} sign-in{% if provider_icon == 'microsoft' %} sign-in-microsoft{% endif %}{% else %} primary{% endif %}" href="{{ sign_in_url }}{% if next %}?next={{ next|urlencode }}{% endif %}">
       {% if provider_icon == "microsoft" %}{% include "console/icons/microsoft.svg" %}{% elif provider_icon %}<img class="sign-in-logo" src="{{ provider_icon }}" alt="" width="21" height="21" referrerpolicy="no-referrer">{% endif %}
       <span>{% blocktranslate %}Sign in with {{ provider_name }}{% endblocktranslate %}</span></a>
-    <details><summary>{% translate "Local account" %}</summary>
+    {# open again after a failed sign-in: the error is in it #}
+    <details{% if form.errors %} open{% endif %}><summary>{% translate "Local account" %}</summary>
   {% endif %}
-  {# a new session (and CSRF token): the whole page #}
-  <form method="post" class="stack" hx-boost="false">
+  {# in place like every form; the new CSRF token of the session comes with the body (core.js) #}
+  <form method="post" class="stack">
     {% csrf_token %}
     {{ form.non_field_errors }}
     <label>{% translate "User name" %} {{ form.username }}</label>

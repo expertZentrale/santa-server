@@ -243,11 +243,15 @@
     }
     submitter = null;
   });
-  ["htmx:afterRequest", "htmx:sendError", "htmx:timeout", "htmx:abort"].forEach((name) => {
-    document.addEventListener(name, (event) => {
-      stopProgress();
-      setBusy(event.detail?.requestConfig?.busyButton, false);
-    });
+  // htmx sends afterRequest for every end (also errors, aborts, timeouts), and a second time on a parent when the
+  // element left the page with the swap: one stop per request
+  const finished = new WeakSet();
+  document.addEventListener("htmx:afterRequest", (event) => {
+    const xhr = event.detail?.xhr;
+    if (xhr && finished.has(xhr)) return;
+    if (xhr) finished.add(xhr);
+    stopProgress();
+    setBusy(event.detail?.requestConfig?.busyButton, false);
   });
   // an upload: the share sent so far
   document.addEventListener("htmx:xhr:progress", (event) => {
@@ -353,6 +357,128 @@
   // the rows could not be loaded: say so instead of loading forever
   document.addEventListener("htmx:responseError", (event) => failRows(event.detail.elt));
   document.addEventListener("htmx:sendError", (event) => failRows(event.detail.elt));
+
+  // The connection to the server (#connection): lost (a network error, or a request hanging while the server
+  // restarted), checked at /health every few seconds, recovered. Then the requests still hanging are aborted (they
+  // hold the browser's few connections, everything else would wait behind them) and the GETs that failed are
+  // repeated; a POST is not sent again, it may have changed something.
+  const inflight = new Map();
+  let connectionLost = false;
+  let checkTimer = null;
+  let failedGets = [];
+  let failedPost = false;
+  let bannerTimer = null;
+
+  function banner(text, state) {
+    const element = document.getElementById("connection");
+    if (!element) return;
+    clearTimeout(bannerTimer);
+    element.querySelector("span").textContent = text;
+    element.dataset.state = state;
+    element.hidden = false;
+    if (state !== "lost") bannerTimer = setTimeout(() => { element.hidden = true; }, state === "back" ? 2500 : 8000);
+  }
+
+  async function serverAnswers() {
+    try {
+      const response = await fetch("/health", { cache: "no-store", credentials: "omit",
+                                                 signal: AbortSignal.timeout(4000) });
+      return response.ok;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function lost(entry) {
+    if (entry?.verb === "get") failedGets.push(entry);
+    else if (entry) failedPost = true;
+    if (connectionLost) return;
+    connectionLost = true;
+    banner(document.getElementById("connection")?.dataset.lost || "Connection lost. Retrying…", "lost");
+    scheduleCheck(1000);
+  }
+
+  function scheduleCheck(delay) {
+    clearTimeout(checkTimer);
+    checkTimer = setTimeout(async () => {
+      if (await serverAnswers()) recovered();
+      else scheduleCheck(3000);
+    }, delay);
+  }
+
+  function repeat(entry) {
+    const elt = entry.elt;
+    if (!elt?.isConnected) return;
+    if (entry.boosted && elt.tagName === "A") elt.click();
+    else if (entry.boosted && elt.tagName === "FORM") elt.requestSubmit();
+    else htmx.ajax("GET", entry.path, { source: elt, target: entry.target?.isConnected ? entry.target : elt });
+  }
+
+  function recovered() {
+    connectionLost = false;
+    // still hanging from before: abort them (htmx:sendAbort), their GETs are repeated below
+    [...inflight].forEach(([xhr, entry]) => {
+      inflight.delete(xhr);
+      if (entry.verb === "get") failedGets.push(entry);
+      xhr.abort();
+    });
+    // once per element; of the pages, only the last one asked for
+    const byElement = new Map();
+    failedGets.forEach((entry) => byElement.set(entry.elt, entry));
+    const entries = [...byElement.values()];
+    const page = entries.filter((entry) => entry.boosted).pop();
+    const element = document.getElementById("connection");
+    banner(failedPost ? element?.dataset.notSaved || "" : element?.dataset.back || "", failedPost ? "not-saved" : "back");
+    failedGets = [];
+    failedPost = false;
+    entries.filter((entry) => !entry.boosted).forEach(repeat);
+    if (page) repeat(page);
+    // rows that showed "could not be loaded": loaded again
+    document.querySelectorAll(".rows-loading.failed").forEach((placeholder) => {
+      placeholder.classList.remove("failed");
+      htmx.ajax("GET", placeholder.getAttribute("hx-get"), {
+        source: placeholder, target: placeholder.closest("[data-list-rows]"), headers: { "X-Santa-Rows": "1" },
+      });
+    });
+  }
+
+  document.addEventListener("htmx:beforeSend", (event) => {
+    const config = event.detail.requestConfig || {};
+    inflight.set(event.detail.xhr, {
+      elt: event.detail.elt, verb: (config.verb || "get").toLowerCase(), path: config.path, target: event.detail.target,
+      boosted: Boolean(event.detail.boosted || config.boosted), started: Date.now(),
+    });
+  });
+  document.addEventListener("htmx:afterRequest", (event) => {
+    const entry = inflight.get(event.detail.xhr);
+    inflight.delete(event.detail.xhr);
+    // no answer at all (a network error; aborted ones left the list before): the server is gone
+    if (entry && event.detail.xhr.status === 0) lost(entry);
+  });
+  document.addEventListener("htmx:sendAbort", (event) => inflight.delete(event.detail.xhr));
+  // a GET hanging long: the server restarted under it (it never answers), or it is down
+  setInterval(async () => {
+    if (connectionLost || document.hidden) return;
+    const now = Date.now();
+    const hanging = [...inflight].filter(([, entry]) => entry.verb === "get" && now - entry.started > 15000
+                                                         && !entry.repeated);
+    if (!hanging.length) return;
+    if (!(await serverAnswers())) {
+      lost(null);
+      return;
+    }
+    // the server answers, these never will: abort and ask again, once
+    hanging.forEach(([xhr, entry]) => {
+      inflight.delete(xhr);
+      xhr.abort();
+      repeat({ ...entry, repeated: true });
+    });
+  }, 5000);
+  document.addEventListener("click", (event) => {
+    const element = event.target.closest("#connection");
+    if (element && element.dataset.state !== "lost") element.hidden = true;
+  });
+  SantaConsole.connection = { lost: () => lost(null), isLost: () => connectionLost };
 
   function failRows(element) {
     if (!element?.matches?.(".rows-loading")) return;

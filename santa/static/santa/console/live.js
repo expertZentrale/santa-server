@@ -68,11 +68,14 @@
     }
 
     async function poll() {
-      if (document.hidden) return;
+      // the connection check of core.js takes over while the server is gone
+      if (document.hidden || SantaConsole.connection?.isLost()) return;
       const url = new URL(table.dataset.liveUpdates, window.location.href);
       url.searchParams.set("after", after);
       try {
-        const response = await fetch(url, { headers: { "HX-Request": "true" }, credentials: "same-origin" });
+        // never hanging: a poll without an answer would hold one of the browser's few connections
+        const response = await fetch(url, { headers: { "HX-Request": "true" }, credentials: "same-origin",
+                                            signal: AbortSignal.timeout(9000) });
         if (response.status !== 200) return;
         const wrapper = document.createElement("template");
         wrapper.innerHTML = await response.text();
@@ -82,7 +85,8 @@
         // newest last, so that prepending keeps the newest on top
         apply([...update.content.querySelectorAll("tr[data-key]")].reverse());
       } catch (error) {
-        // offline for a moment: the next poll tries again
+        // no answer: the connection check of core.js shows it and finds out when the server is back
+        if (error.name !== "AbortError" || !document.hidden) SantaConsole.connection?.lost();
       }
     }
 
