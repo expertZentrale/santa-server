@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: santa-server\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-08 15:29+0200\n"
+"POT-Creation-Date: 2026-10-08 15:41+0200\n"
 "Language: de\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -1486,13 +1486,6 @@ msgid "Status"
 msgstr "Status"
 
 #: santa/console/views_events.py:141
-#: santa/templates/console/events/_app_row.html:12
-#: santa/templates/console/events/_row.html:12
-#: santa/templates/console/file_access/list.html:25
-#: santa/templates/console/groups/list.html:27
-#: santa/templates/console/machines/_rows.html:17
-#: santa/templates/console/requests/_rows.html:13
-#: santa/templates/console/rules/_row.html:21
 msgid "Open"
 msgstr "Offen"
 
@@ -3869,8 +3862,13 @@ msgstr "angefragt"
 
 #: santa/templates/console/events/_app_row.html:12
 #: santa/templates/console/events/_row.html:12
-msgid "Create rule…"
-msgstr "Regel anlegen…"
+#: santa/templates/console/file_access/list.html:25
+#: santa/templates/console/groups/list.html:27
+#: santa/templates/console/machines/_rows.html:17
+#: santa/templates/console/rules/_row.html:21
+msgctxt "action"
+msgid "Open"
+msgstr "Öffnen"
 
 #: santa/templates/console/events/_app_row.html:12
 #: santa/templates/console/events/_row.html:12
@@ -4697,8 +4695,8 @@ msgid "Request"
 msgstr "Anfrage"
 
 #: santa/templates/console/requests/_rows.html:13
-msgid "Approve or deny…"
-msgstr "Genehmigen oder ablehnen…"
+msgid "Review"
+msgstr "Prüfen"
 
 #: santa/templates/console/requests/_rows.html:16
 msgid "No requests."
@@ -5380,6 +5378,12 @@ msgstr "Unbekannter Regeltyp %(rule_type)s."
 #, python-format
 msgid "Line %(number)s (%(pattern)s): %(error)s"
 msgstr "Zeile %(number)s (%(pattern)s): %(error)s"
+
+#~ msgid "Create rule…"
+#~ msgstr "Regel anlegen…"
+
+#~ msgid "Approve or deny…"
+#~ msgstr "Genehmigen oder ablehnen…"
 
 #~ msgid "events"
 #~ msgstr "Ereignisse"

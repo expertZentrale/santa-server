@@ -10,7 +10,7 @@
       <td>{{ r.created_at|date:"d.m.Y H:i" }}</td>
       <td><span class="badge {% if r.status == 'APPROVED' %}ok{% elif r.status == 'DENIED' %}bad{% elif r.status == 'PENDING' %}info{% endif %}">{{ r.get_status_display }}</span></td>
       <td class="row-actions"><button type="button" class="icon-button row-menu-button" popovertarget="row-menu-request-{{ r.pk }}" aria-haspopup="menu" title="{% translate 'Actions' %}" aria-label="{% translate 'Actions' %}: {{ r.title }}">{% include "console/icons/more.svg" %}</button>
-        <div id="row-menu-request-{{ r.pk }}" class="row-menu" popover role="menu"><a class="menu-item" role="menuitem" href="{% url 'console:request' r.pk %}" hx-get="{% url 'console:request' r.pk %}" hx-target="#drawer">{% if r.is_pending and perms.santa.change_accessrequest %}{% translate "Approve or deny…" %}{% else %}{% translate "Open" %}{% endif %}</a></div></td>
+        <div id="row-menu-request-{{ r.pk }}" class="row-menu" popover role="menu"><a class="menu-item" role="menuitem" href="{% url 'console:request' r.pk %}" hx-get="{% url 'console:request' r.pk %}" hx-target="#drawer">{% translate "Review" %}</a></div></td>
     </tr>
   {% empty %}
     {% if skeleton %}{% include "console/_skeleton_rows.html" with columns=7 %}{% else %}<tr class="empty"><td colspan="7">{% translate "No requests." %}</td></tr>{% endif %}

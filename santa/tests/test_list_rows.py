@@ -222,3 +222,22 @@ class RowMenuTestCase(ConsoleBase):
         response = self.client.get(reverse("console:groups"))
         self.assertContains(response, reverse("console:group_profile", args=(self.dev.pk,)))
         self.assertContains(response, f'{reverse("console:machines")}?group={self.dev.pk}')
+
+
+class RowMenuTextsTestCase(ConsoleBase):
+    def test_open_is_an_action_in_german(self):
+        from santa.models import Event
+        Event.objects.create(machine=self.machine, group=self.dev, file_sha256=SHA_A, file_name="tool",
+                             decision="BLOCK_UNKNOWN", execution_time="2026-10-01T10:00:00Z")
+        profile = profile_for(self.admin)
+        profile.language = "de"
+        profile.save()
+        response = self.client.get(reverse("console:events"), {"view": "all", "days": ""}, **ROWS)
+        self.assertContains(response, "Öffnen</a>")
+        # Open leads there: no second item for it
+        self.assertNotContains(response, reverse("console:event_create_rule", args=(Event.objects.get().pk,)))
+
+    def test_requests_are_reviewed(self):
+        AccessRequest.objects.create(requester=self.user, kind="OTHER", title="Figma", justification="x")
+        response = self.client.get(reverse("console:requests"), {"q": ""}, **ROWS)
+        self.assertContains(response, ">Review</a>")
