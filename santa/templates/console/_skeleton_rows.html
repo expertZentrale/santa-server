@@ -1,0 +1,3 @@
+{% comment %}Grey rows where the rows of a list come (console/_rows.html): columns = the number of columns, select = the first
+one is the checkbox column{% endcomment %}{% for row in "12345678" %}
+<tr class="skeleton" aria-hidden="true">{% for cell in "x"|rjust:columns %}<td{% if forloop.first and select %} class="select"{% endif %}><span class="skeleton-bar"></span>{% if forloop.counter == 2 %}<span class="skeleton-bar short"></span>{% endif %}</td>{% endfor %}</tr>{% endfor %}

@@ -91,6 +91,10 @@
   {% endif %}
 </header>
 {# an action is running: a request, an upload, a download (core.js) #}
+{# the connection to the server: lost, back again (core.js) #}
+<div id="connection" class="connection" role="status" aria-live="polite" hidden
+     data-lost="{% translate 'Connection to the server lost. Retrying…' %}" data-back="{% translate 'Connected again.' %}"
+     data-not-saved="{% translate 'The server was unreachable: the last change may not have been saved. Check it before you try again.' %}"><span></span></div>
 <div id="progress" class="progress" role="progressbar" aria-label="{% translate 'Working…' %}" data-download-error="{% translate 'The download failed. Try again, or reload the page.' %}" hidden><span></span></div>
 <main class="{% block main_class %}{% endblock %}">
   {% if messages %}

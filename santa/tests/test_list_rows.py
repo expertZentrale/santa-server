@@ -3,10 +3,12 @@ from django.urls import reverse
 from santa.models import (
     AccessRequest,
     AccessRequestPackage,
+    FileAccessRule,
     ReleaseSource,
     ReleaseVersion,
     Rule,
     RuleType,
+    Tag,
     UserProfile,
 )
 from santa.users import profile_for
@@ -29,6 +31,10 @@ class ListRowsTestCase(ConsoleBase):
         self.assertContains(response, 'hx-trigger="load"')
         self.assertContains(response, "data-filter-form")
         self.assertNotContains(response, SHA_A)
+        # the real table with grey rows where the rows come, not "no rules"
+        self.assertContains(response, 'data-table="rules"')
+        self.assertContains(response, '<tr class="skeleton" aria-hidden="true">', count=8)
+        self.assertNotContains(response, "No rules for these filters.")
         self.assertIsNone(response.context["page"])
         for header in ("X-Santa-Rows", "HX-Request", "HX-Boosted", "HX-History-Restore-Request", "Sec-Fetch-Mode",
                        "X-Santa-Rerender"):
@@ -44,9 +50,10 @@ class ListRowsTestCase(ConsoleBase):
         for name in LISTS:
             with self.subTest(name):
                 url = reverse(name) + "?q=x"
-                self.assertContains(self.client.get(url, **NAVIGATE), "rows-loading")
+                self.assertContains(self.client.get(url, **NAVIGATE), 'class="skeleton"')
                 response = self.client.get(url, **ROWS)
                 self.assertNotContains(response, "rows-loading")
+                self.assertNotContains(response, 'class="skeleton"')
                 self.assertContains(response, "<table")
 
     def test_scripts_and_browsers_without_javascript_get_everything(self):
@@ -144,7 +151,20 @@ class DynamicPagesTestCase(ConsoleBase):
         self.assertContains(response, 'role="menuitem" hx-boost="false">')
         self.assertContains(response, 'download data-download hx-boost="false"')
         self.client.logout()
-        self.assertContains(self.client.get(reverse("login")), '<form method="post" class="stack" hx-boost="false">')
+        # the sign-in too; a failed one shows its error in the local account, open
+        self.assertNotContains(self.client.get(reverse("login")), 'hx-boost="false"')
+        with self.settings(OIDC_RP_CLIENT_ID="console"):
+            self.assertContains(self.client.get(reverse("login")), "<details>")
+            response = self.client.post(reverse("login"), {"username": "admin", "password": "wrong"})
+        self.assertContains(response, "<details open>")
+
+    def test_the_connection_banner(self):
+        response = self.client.get(reverse("console:rules"), {"q": "x"})
+        self.assertContains(response, '<div id="connection"')
+        self.assertContains(response, 'data-lost="Connection to the server lost. Retrying…"')
+        # what it checks: no session, no database
+        self.client.logout()
+        self.assertEqual(self.client.get("/health").status_code, 200)
 
     def test_upload_binary_in_the_drawer(self):
         response = self.client.get(reverse("console:rule_upload"), HTTP_HX_REQUEST="true")
@@ -168,3 +188,56 @@ class VersionFilterTestCase(ConsoleBase):
         chips = [chip for chip in response.context["bar"]["chips"] if chip["active"]]
         self.assertEqual([chip["facet"].name for chip in chips], ["version"])
         self.assertNotIn("version=", chips[0]["remove_url"])
+
+
+class RowMenuTestCase(ConsoleBase):
+    """Every list has a ⋯ menu per row with its actions"""
+
+    def test_every_list_has_row_menus(self):
+        Rule.objects.create(rule_type=RuleType.BINARY, identifier=SHA_A, is_global=True)
+        FileAccessRule.objects.create(name="Secrets", paths="/etc/secret")
+        Tag.objects.create(name="vendor")
+        for name in ("console:rules", "console:groups", "console:machines", "console:file_access_rules",
+                     "console:admin_users", "console:admin_roles", "console:admin_sign_in_groups",
+                     "console:admin_tags"):
+            with self.subTest(name):
+                response = self.client.get(reverse(name), {"q": ""}, **ROWS) if name in (
+                    "console:rules", "console:machines") else self.client.get(reverse(name))
+                self.assertContains(response, 'class="row-menu" popover role="menu"')
+
+    def test_the_admin_role_cannot_be_deleted_from_the_menu(self):
+        from django.contrib.auth.models import Group as AuthGroup
+
+        from santa.auth import ADMIN_GROUP_NAME
+        admin_role, _ = AuthGroup.objects.get_or_create(name=ADMIN_GROUP_NAME)
+        other = AuthGroup.objects.create(name="Viewers")
+        response = self.client.get(reverse("console:admin_roles"))
+        self.assertContains(response, reverse("console:admin_role_delete", args=(other.pk,)))
+        self.assertNotContains(response, reverse("console:admin_role_delete", args=(admin_role.pk,)))
+        # the columns of roles and sign-in groups can be resized and chosen like the other lists
+        self.assertContains(response, 'data-table="roles"')
+        self.assertContains(self.client.get(reverse("console:admin_sign_in_groups")), 'data-table="sign-in-groups"')
+
+    def test_the_group_menu(self):
+        response = self.client.get(reverse("console:groups"))
+        self.assertContains(response, reverse("console:group_profile", args=(self.dev.pk,)))
+        self.assertContains(response, f'{reverse("console:machines")}?group={self.dev.pk}')
+
+
+class RowMenuTextsTestCase(ConsoleBase):
+    def test_open_is_an_action_in_german(self):
+        from santa.models import Event
+        Event.objects.create(machine=self.machine, group=self.dev, file_sha256=SHA_A, file_name="tool",
+                             decision="BLOCK_UNKNOWN", execution_time="2026-10-01T10:00:00Z")
+        profile = profile_for(self.admin)
+        profile.language = "de"
+        profile.save()
+        response = self.client.get(reverse("console:events"), {"view": "all", "days": ""}, **ROWS)
+        self.assertContains(response, "Öffnen</a>")
+        # Open leads there: no second item for it
+        self.assertNotContains(response, reverse("console:event_create_rule", args=(Event.objects.get().pk,)))
+
+    def test_requests_are_reviewed(self):
+        AccessRequest.objects.create(requester=self.user, kind="OTHER", title="Figma", justification="x")
+        response = self.client.get(reverse("console:requests"), {"q": ""}, **ROWS)
+        self.assertContains(response, ">Review</a>")

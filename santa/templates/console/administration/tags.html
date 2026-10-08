@@ -6,7 +6,7 @@
 {% include "console/administration/_tabs.html" with help=help action_url=add_url action_label=add_label %}
 {% include "console/widgets/_filter_bar.html" %}
 <table class="table" data-table="tags">
-  <thead><tr>{% sort_th _("Tag") "name" %}<th>{% translate "Description" %}</th>{% sort_th _("Rules") "rules" "num" %}{% sort_th _("Package rules") "packages" "num" %}</tr></thead>
+  <thead><tr>{% sort_th _("Tag") "name" %}<th>{% translate "Description" %}</th>{% sort_th _("Rules") "rules" "num" %}{% sort_th _("Package rules") "packages" "num" %}<th class="row-actions" aria-label="{% translate 'Actions' %}"></th></tr></thead>
   <tbody>
   {% for tag in page %}
     <tr>
@@ -14,9 +14,11 @@
       <td>{{ tag.description|default:"–" }}</td>
       <td class="num"><a href="{% url 'console:rules' %}?tag={{ tag.pk }}">{{ tag.rule_count }}</a></td>
       <td class="num">{{ tag.source_count }}</td>
+      <td class="row-actions"><button type="button" class="icon-button row-menu-button" popovertarget="row-menu-tag-{{ tag.pk }}" aria-haspopup="menu" title="{% translate 'Actions' %}" aria-label="{% translate 'Actions' %}: {{ tag.name }}">{% include "console/icons/more.svg" %}</button>
+        <div id="row-menu-tag-{{ tag.pk }}" class="row-menu" popover role="menu"><a class="menu-item" role="menuitem" href="{{ tag_url }}" hx-get="{{ tag_url }}" hx-target="#drawer">{% translate "Edit" %}</a><a class="menu-item" role="menuitem" href="{% url 'console:rules' %}?tag={{ tag.pk }}">{% translate "Rules with this tag" %}</a>{% if perms.santa.delete_tag %}<form method="post" action="{% url 'console:admin_tag_delete' tag.pk %}" data-confirm="{% blocktranslate with name=tag.name %}Delete the tag {{ name }}? The rules stay.{% endblocktranslate %}">{% csrf_token %}<button class="menu-item danger" role="menuitem">{% translate "Delete" %}</button></form>{% endif %}</div></td>
     </tr>
   {% empty %}
-    <tr class="empty"><td colspan="4">{% translate "No tags for these filters." %}</td></tr>
+    <tr class="empty"><td colspan="5">{% translate "No tags for these filters." %}</td></tr>
   {% endfor %}
   </tbody>
 </table>

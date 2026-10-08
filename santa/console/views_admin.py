@@ -254,7 +254,8 @@ def roles(request):
     queryset = AuthGroup.objects.annotate(user_count=Count("user", distinct=True),
                                           permission_count=Count("permissions", distinct=True)) \
                                 .prefetch_related("sign_in_groups").order_by("name")
-    return render_section(request, "console/administration/roles.html", "roles", {"roles": queryset})
+    return render_section(request, "console/administration/roles.html", "roles",
+                          {"roles": queryset, "admin_role_name": ADMIN_GROUP_NAME})
 
 
 @staff_required

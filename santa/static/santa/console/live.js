@@ -8,7 +8,8 @@
   function setupLiveUpdates(root) {
     const table = root.querySelector("table[data-live-updates]");
     const pill = document.querySelector("[data-live-pill]");
-    if (!table || !pill || table.dataset.liveReady) return;
+    // the grey rows while the list loads: the real table comes with its rows
+    if (!table || !pill || table.dataset.liveReady || table.closest(".rows-loading")) return;
     table.dataset.liveReady = "1";
     const tbody = table.tBodies[0];
     const baseTitle = document.title;
@@ -68,11 +69,14 @@
     }
 
     async function poll() {
-      if (document.hidden) return;
+      // the connection check of core.js takes over while the server is gone
+      if (document.hidden || SantaConsole.connection?.isLost()) return;
       const url = new URL(table.dataset.liveUpdates, window.location.href);
       url.searchParams.set("after", after);
       try {
-        const response = await fetch(url, { headers: { "HX-Request": "true" }, credentials: "same-origin" });
+        // never hanging: a poll without an answer would hold one of the browser's few connections
+        const response = await fetch(url, { headers: { "HX-Request": "true" }, credentials: "same-origin",
+                                            signal: AbortSignal.timeout(SantaConsole.connection?.timeout() || 6000) });
         if (response.status !== 200) return;
         const wrapper = document.createElement("template");
         wrapper.innerHTML = await response.text();
@@ -82,7 +86,9 @@
         // newest last, so that prepending keeps the newest on top
         apply([...update.content.querySelectorAll("tr[data-key]")].reverse());
       } catch (error) {
-        // offline for a moment: the next poll tries again
+        // no answer in time: core.js checks the server; a network error: it is gone
+        if (error.name === "TimeoutError") SantaConsole.connection?.suspect();
+        else if (!document.hidden) SantaConsole.connection?.lost();
       }
     }
 

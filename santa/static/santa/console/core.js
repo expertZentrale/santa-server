@@ -243,11 +243,15 @@
     }
     submitter = null;
   });
-  ["htmx:afterRequest", "htmx:sendError", "htmx:timeout", "htmx:abort"].forEach((name) => {
-    document.addEventListener(name, (event) => {
-      stopProgress();
-      setBusy(event.detail?.requestConfig?.busyButton, false);
-    });
+  // htmx sends afterRequest for every end (also errors, aborts, timeouts), and a second time on a parent when the
+  // element left the page with the swap: one stop per request
+  const finished = new WeakSet();
+  document.addEventListener("htmx:afterRequest", (event) => {
+    const xhr = event.detail?.xhr;
+    if (xhr && finished.has(xhr)) return;
+    if (xhr) finished.add(xhr);
+    stopProgress();
+    setBusy(event.detail?.requestConfig?.busyButton, false);
   });
   // an upload: the share sent so far
   document.addEventListener("htmx:xhr:progress", (event) => {
@@ -354,12 +358,216 @@
   document.addEventListener("htmx:responseError", (event) => failRows(event.detail.elt));
   document.addEventListener("htmx:sendError", (event) => failRows(event.detail.elt));
 
+  // The connection to the server (#connection). Lost: a network error, or /health not answering twice. Behind a
+  // proxy or a forwarded port a stopped server doesn't refuse connections, requests just hang: a page request without
+  // an answer for a while makes the console check /health. The times follow the measured latency, so a slow network
+  // (3G) is no outage. Back (any answer): the requests still hanging are aborted (they hold the browser's few
+  // connections, everything else waits behind them), the failed GETs are repeated; a POST is not sent again, it may
+  // have changed something.
+  const inflight = new Map();
+  let connectionLost = false;
+  let checkTimer = null;
+  let failedGets = [];
+  let failedPost = false;
+  let bannerTimer = null;
+  // round trip of the answers, a running average (ms); to start, the browser's own estimate of the network
+  let latency = Math.max(300, Number(navigator.connection?.rtt) || 0);
+  // the last answer of the server: one during a check shows that it is there, also when /health was slower
+  let answeredAt = 0;
+
+  function measured(ms) {
+    latency = latency * 0.8 + Math.min(ms, 20000) * 0.2;
+    answeredAt = Date.now();
+  }
+  const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
+  const healthTimeout = () => clamp(4 * latency + 1500, 3000, 15000);
+  const hangingAfter = () => clamp(3 * latency + 2000, 3000, 12000);
+
+  function banner(text, state) {
+    const element = document.getElementById("connection");
+    if (!element) return;
+    clearTimeout(bannerTimer);
+    element.querySelector("span").textContent = text;
+    element.dataset.state = state;
+    element.hidden = false;
+    if (state !== "lost") bannerTimer = setTimeout(() => { element.hidden = true; }, state === "back" ? 2500 : 8000);
+  }
+
+  async function serverAnswers() {
+    const started = Date.now();
+    try {
+      const response = await fetch("/health", { cache: "no-store", credentials: "omit",
+                                                 signal: AbortSignal.timeout(healthTimeout()) });
+      if (response.ok) measured(Date.now() - started);
+      return response.ok;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function lost(entry) {
+    if (entry?.verb === "get") failedGets.push(entry);
+    else if (entry) failedPost = true;
+    if (connectionLost) return;
+    connectionLost = true;
+    banner(document.getElementById("connection")?.dataset.lost || "Connection lost. Retrying…", "lost");
+    scheduleCheck(500);
+  }
+
+  function scheduleCheck(delay) {
+    clearTimeout(checkTimer);
+    checkTimer = setTimeout(async () => {
+      if (!connectionLost) return;
+      if (await serverAnswers()) recovered();
+      else scheduleCheck(1000);
+    }, delay);
+  }
+
+  function repeat(entry) {
+    const elt = entry.elt;
+    if (!elt?.isConnected) return;
+    if (entry.boosted && elt.tagName === "A") elt.click();
+    else if (entry.boosted && elt.tagName === "FORM") elt.requestSubmit();
+    else htmx.ajax("GET", entry.path, { source: elt, target: entry.target?.isConnected ? entry.target : elt });
+  }
+
+  function recovered() {
+    if (!connectionLost) return;
+    connectionLost = false;
+    clearTimeout(checkTimer);
+    // still hanging from before: abort them, their GETs are repeated below
+    [...inflight].forEach(([xhr, entry]) => {
+      inflight.delete(xhr);
+      if (entry.verb === "get") failedGets.push(entry);
+      else failedPost = true;
+      xhr.abort();
+    });
+    // once per element; of the pages, only the last one asked for
+    const byElement = new Map();
+    failedGets.forEach((entry) => byElement.set(entry.elt, entry));
+    const entries = [...byElement.values()];
+    const page = entries.filter((entry) => entry.boosted).pop();
+    const element = document.getElementById("connection");
+    banner(failedPost ? element?.dataset.notSaved || "" : element?.dataset.back || "", failedPost ? "not-saved" : "back");
+    failedGets = [];
+    failedPost = false;
+    // the rows of a list: their placeholder loads them again below, once
+    entries.filter((entry) => entry.rows).forEach((entry) => failRows(entry.elt));
+    entries.filter((entry) => !entry.boosted && !entry.rows).forEach(repeat);
+    if (page) repeat(page);
+    // rows that showed "could not be loaded": loaded again
+    document.querySelectorAll(".rows-loading.failed").forEach((placeholder) => {
+      placeholder.classList.remove("failed");
+      placeholder.setAttribute("aria-busy", "true");
+      placeholder.querySelector(".rows-error")?.setAttribute("hidden", "");
+      htmx.ajax("GET", placeholder.getAttribute("hx-get"), {
+        source: placeholder, target: placeholder.closest("[data-list-rows]"), headers: { "X-Santa-Rows": "1" },
+      });
+    });
+  }
+
+  document.addEventListener("htmx:beforeSend", (event) => {
+    const config = event.detail.requestConfig || {};
+    const headers = config.headers || {};
+    inflight.set(event.detail.xhr, {
+      elt: event.detail.elt, verb: (config.verb || "get").toLowerCase(), path: config.path, target: event.detail.target,
+      boosted: Boolean(event.detail.boosted || config.boosted), rows: headers["X-Santa-Rows"] === "1",
+      started: Date.now(),
+    });
+  });
+  document.addEventListener("htmx:afterRequest", (event) => {
+    const xhr = event.detail.xhr;
+    const entry = inflight.get(xhr);
+    inflight.delete(xhr);
+    if (!entry) return;
+    if (xhr.status === 0) {
+      // no answer at all (a network error; aborted ones left the list before): the server is gone
+      lost(entry);
+      return;
+    }
+    measured(Date.now() - entry.started);
+    // an answer: the server is there
+    if (connectionLost) recovered();
+  });
+  document.addEventListener("htmx:sendAbort", (event) => inflight.delete(event.detail.xhr));
+
+  // a request without an answer in time: /health is asked, twice before the connection counts as lost
+  let suspecting = false;
+  async function suspect() {
+    if (connectionLost || suspecting) return true;
+    suspecting = true;
+    const since = Date.now();
+    let answers = await serverAnswers() || answeredAt > since;
+    if (!answers && !connectionLost) answers = await serverAnswers() || answeredAt > since;
+    suspecting = false;
+    if (!answers) lost(null);
+    return answers;
+  }
+
+  // The server answers, but a request still waits. A page or a drawer view answers quickly: it hangs on a connection
+  // the server dropped (a restart) and never will, so it is asked again at once. The rows of a list can be slow on a
+  // big list: only after 12 s. Once per address and minute.
+  const checked = new WeakSet();
+  const checkedLong = new WeakSet();
+  const repeatedAt = new Map();
+  setInterval(async () => {
+    if (connectionLost || document.hidden) return;
+    const now = Date.now();
+    const gets = [...inflight].filter(([, entry]) => entry.verb === "get");
+    const waiting = gets.filter(([xhr, entry]) => now - entry.started > hangingAfter() && !checked.has(xhr));
+    const long = gets.filter(([xhr, entry]) => entry.rows && now - entry.started > 12000 && !checkedLong.has(xhr));
+    if (!waiting.length && !long.length) return;
+    waiting.forEach(([xhr]) => checked.add(xhr));
+    long.forEach(([xhr]) => checkedLong.add(xhr));
+    if (!(await suspect())) return;
+    const later = Date.now();
+    waiting.filter(([, entry]) => !entry.rows).concat(long)
+      .filter(([xhr, entry]) => inflight.has(xhr) && later - (repeatedAt.get(entry.path) || 0) > 60000)
+      .forEach(([xhr, entry]) => {
+        inflight.delete(xhr);
+        repeatedAt.set(entry.path, later);
+        xhr.abort();
+        repeat(entry);
+      });
+  }, 1000);
+  document.addEventListener("click", (event) => {
+    const element = event.target.closest("#connection");
+    if (element && element.dataset.state !== "lost") element.hidden = true;
+  });
+  // lost: a network error; suspect: no answer in time, the server is checked first; timeout: for a request's own
+  // time limit
+  SantaConsole.connection = { lost: () => lost(null), suspect, isLost: () => connectionLost, timeout: healthTimeout };
+
   function failRows(element) {
     if (!element?.matches?.(".rows-loading")) return;
     element.classList.add("failed");
     element.removeAttribute("aria-busy");
-    element.querySelector("span:not(.spinner)").textContent = element.dataset.errorText;
+    element.querySelector(".rows-error")?.removeAttribute("hidden");
   }
+
+  // The ⋯ menu of a row (a popover, see table.css): under its button, right-aligned, above it when there is no room
+  // below. Closed by a choice, a click elsewhere or Escape (the browser's popover).
+  document.addEventListener("toggle", (event) => {
+    const menu = event.target;
+    if (!menu.matches?.(".row-menu") || event.newState !== "open") return;
+    const button = document.querySelector(`[popovertarget="${CSS.escape(menu.id)}"]`);
+    if (!button) return;
+    const box = button.getBoundingClientRect();
+    const width = menu.offsetWidth;
+    const height = menu.offsetHeight;
+    const below = box.bottom + 4 + height <= window.innerHeight;
+    menu.style.left = `${Math.max(8, Math.min(box.right - width, window.innerWidth - width - 8))}px`;
+    menu.style.top = `${below ? box.bottom + 4 : Math.max(8, box.top - 4 - height)}px`;
+    menu.querySelector("a, button")?.focus({ preventScroll: true });
+  }, true);
+  document.addEventListener("click", (event) => {
+    const item = event.target.closest(".row-menu .menu-item");
+    if (item) item.closest(".row-menu").hidePopover?.();
+  });
+  // the page scrolls: an open menu would stay where it was
+  window.addEventListener("scroll", () => {
+    document.querySelectorAll(".row-menu:popover-open").forEach((menu) => menu.hidePopover());
+  }, { passive: true });
 
   // the burger menu, the user menu and the copy buttons
   document.addEventListener("click", (event) => {

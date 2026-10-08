@@ -8,7 +8,7 @@
 </div>
 {% include "console/widgets/_filter_bar.html" %}
 <table class="table" data-table="file-access">
-  <thead><tr>{% sort_th _("Rule") "name" %}{% sort_th _("Rule type") "type" %}<th>{% translate "Paths" %}</th><th class="num">{% translate "Processes" %}</th><th>{% translate "Mode" %}</th><th>{% translate "Scope" %}</th>{% sort_th _("Changed") "changed" %}</tr></thead>
+  <thead><tr>{% sort_th _("Rule") "name" %}{% sort_th _("Rule type") "type" %}<th>{% translate "Paths" %}</th><th class="num">{% translate "Processes" %}</th><th>{% translate "Mode" %}</th><th>{% translate "Scope" %}</th>{% sort_th _("Changed") "changed" %}<th class="row-actions" aria-label="{% translate 'Actions' %}"></th></tr></thead>
   <tbody>
   {% for rule in page %}
     <tr{% if not rule.is_enabled %} class="disabled"{% endif %}>
@@ -21,9 +21,11 @@
       <td>{% if not rule.is_enabled %}<span class="badge">{% translate "disabled" %}</span>{% elif rule.audit_only %}<span class="badge info">{% translate "audit only" %}</span>{% else %}<span class="badge bad">{% translate "blocks" %}</span>{% endif %}</td>
       <td>{% if rule.is_global %}<span class="chip small">{% translate "All groups" %}</span>{% else %}{% for group in rule.groups.all %}<span class="chip small">{{ group.name }}</span>{% empty %}<span class="badge bad">{% translate "no scope" %}</span>{% endfor %}{% endif %}</td>
       <td>{% blocktranslate with since=rule.updated_at|timesince %}{{ since }} ago{% endblocktranslate %}</td>
+      <td class="row-actions"><button type="button" class="icon-button row-menu-button" popovertarget="row-menu-file-access-{{ rule.pk }}" aria-haspopup="menu" title="{% translate 'Actions' %}" aria-label="{% translate 'Actions' %}: {{ rule.name }}">{% include "console/icons/more.svg" %}</button>
+        <div id="row-menu-file-access-{{ rule.pk }}" class="row-menu" popover role="menu"><a class="menu-item" role="menuitem" href="{{ rule_url }}" hx-get="{{ rule_url }}" hx-target="#drawer">{% if perms.santa.change_fileaccessrule %}{% translate "Edit" %}{% else %}{% translate "Open" context "action" %}{% endif %}</a><a class="menu-item" role="menuitem" href="{% url 'console:history' 'fileaccessrule' rule.pk %}" hx-get="{% url 'console:history' 'fileaccessrule' rule.pk %}" hx-target="#drawer">{% translate "History" %}</a>{% if perms.santa.delete_fileaccessrule %}<form method="post" action="{% url 'console:file_access_rule_delete' rule.pk %}" data-confirm="{% blocktranslate with name=rule.name %}Delete the file access rule {{ name }}? It stays on the Macs until their profile is replaced.{% endblocktranslate %}">{% csrf_token %}<button class="menu-item danger" role="menuitem">{% translate "Delete" %}</button></form>{% endif %}</div></td>
     </tr>
   {% empty %}
-    <tr class="empty"><td colspan="7">{% translate "No file access rules for these filters." %}</td></tr>
+    <tr class="empty"><td colspan="8">{% translate "No file access rules for these filters." %}</td></tr>
   {% endfor %}
   </tbody>
 </table>
