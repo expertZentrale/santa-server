@@ -382,7 +382,7 @@
   async function serverAnswers() {
     try {
       const response = await fetch("/health", { cache: "no-store", credentials: "omit",
-                                                 signal: AbortSignal.timeout(4000) });
+                                                 signal: AbortSignal.timeout(2000) });
       return response.ok;
     } catch (error) {
       return false;
@@ -402,7 +402,7 @@
     clearTimeout(checkTimer);
     checkTimer = setTimeout(async () => {
       if (await serverAnswers()) recovered();
-      else scheduleCheck(3000);
+      else scheduleCheck(1500);
     }, delay);
   }
 
@@ -456,29 +456,45 @@
     if (entry && event.detail.xhr.status === 0) lost(entry);
   });
   document.addEventListener("htmx:sendAbort", (event) => inflight.delete(event.detail.xhr));
-  // a GET hanging long: the server restarted under it (it never answers), or it is down
+  // A request without an answer for a while: is the server there? Behind a proxy or a forwarded port a stopped
+  // server doesn't refuse the connection, the request just hangs: no network error tells it.
+  let suspecting = false;
+  async function suspect() {
+    if (connectionLost || suspecting) return true;
+    suspecting = true;
+    const answers = await serverAnswers();
+    suspecting = false;
+    if (!answers) lost(null);
+    return answers;
+  }
+
+  const checked = new WeakSet();
+  const repeatedAt = new Map();
   setInterval(async () => {
     if (connectionLost || document.hidden) return;
     const now = Date.now();
-    const hanging = [...inflight].filter(([, entry]) => entry.verb === "get" && now - entry.started > 15000
-                                                         && !entry.repeated);
-    if (!hanging.length) return;
-    if (!(await serverAnswers())) {
-      lost(null);
-      return;
+    const gets = [...inflight].filter(([, entry]) => entry.verb === "get");
+    // after 3 s: one check per request (a big list on a slow database is no outage)
+    const waiting = gets.filter(([xhr, entry]) => now - entry.started > 3000 && !checked.has(xhr));
+    if (waiting.length) {
+      waiting.forEach(([xhr]) => checked.add(xhr));
+      if (!(await suspect())) return;
     }
-    // the server answers, these never will: abort and ask again, once
-    hanging.forEach(([xhr, entry]) => {
+    // after 12 s while the server answers: it hung across a restart and never will; asked again, once per minute
+    gets.filter(([, entry]) => now - entry.started > 12000
+                               && now - (repeatedAt.get(entry.path) || 0) > 60000).forEach(([xhr, entry]) => {
       inflight.delete(xhr);
+      repeatedAt.set(entry.path, now);
       xhr.abort();
-      repeat({ ...entry, repeated: true });
+      repeat(entry);
     });
-  }, 5000);
+  }, 1000);
   document.addEventListener("click", (event) => {
     const element = event.target.closest("#connection");
     if (element && element.dataset.state !== "lost") element.hidden = true;
   });
-  SantaConsole.connection = { lost: () => lost(null), isLost: () => connectionLost };
+  // lost: a network error; suspect: no answer in time, the server is checked first
+  SantaConsole.connection = { lost: () => lost(null), suspect, isLost: () => connectionLost };
 
   function failRows(element) {
     if (!element?.matches?.(".rows-loading")) return;

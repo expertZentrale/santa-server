@@ -75,7 +75,7 @@
       try {
         // never hanging: a poll without an answer would hold one of the browser's few connections
         const response = await fetch(url, { headers: { "HX-Request": "true" }, credentials: "same-origin",
-                                            signal: AbortSignal.timeout(9000) });
+                                            signal: AbortSignal.timeout(6000) });
         if (response.status !== 200) return;
         const wrapper = document.createElement("template");
         wrapper.innerHTML = await response.text();
@@ -85,8 +85,9 @@
         // newest last, so that prepending keeps the newest on top
         apply([...update.content.querySelectorAll("tr[data-key]")].reverse());
       } catch (error) {
-        // no answer: the connection check of core.js shows it and finds out when the server is back
-        if (error.name !== "AbortError" || !document.hidden) SantaConsole.connection?.lost();
+        // no answer in time: core.js checks the server; a network error: it is gone
+        if (error.name === "TimeoutError") SantaConsole.connection?.suspect();
+        else if (!document.hidden) SantaConsole.connection?.lost();
       }
     }
 
