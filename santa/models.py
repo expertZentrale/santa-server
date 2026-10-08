@@ -635,6 +635,8 @@ class ReleaseVersion(models.Model):
     dependencies = models.JSONField(default=list, blank=True)
     # the dependencies were looked up: a version recorded before they were allowed gets them at the next check
     dependencies_resolved = models.BooleanField(default=False)
+    # the binaries of the dependencies in binary_count: the clean up takes them off with their rules
+    dependency_binary_count = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

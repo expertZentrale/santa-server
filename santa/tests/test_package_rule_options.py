@@ -11,12 +11,18 @@ from django.utils import timezone
 
 from santa import semver
 from santa.models import ReleaseSource, ReleaseVersion, Rule, RuleType
-from santa.releases import cleanup_preview, cleanup_release_source, prune_old_versions, sync_release_source
+from santa.releases import (
+    _npm_platform_ok,
+    cleanup_preview,
+    cleanup_release_source,
+    prune_old_versions,
+    sync_release_source,
+)
 
 from .test_console import ConsoleBase
 from .test_package_sources import VSCodeTestCase
 from .test_releases import FakeResponse, ReleaseSourceBase, fake_session, tar_gz, zip_file
-from .utils import build_macho
+from .utils import ARM64, X86_64, build_fat, build_macho
 
 
 class SemverTestCase(SimpleTestCase):
@@ -264,6 +270,58 @@ class DependenciesTestCase(ReleaseSourceBase):
         [version] = sync_release_source(source, fake_session(self.npm_routes()))
         self.assertEqual(version.binary_count, 0)
 
+    def test_only_the_packages_for_macos(self):
+        for platforms, expected in (([], True), (["darwin"], True), (["linux"], False), (["!win32"], True),
+                                    (["!darwin"], False), (["linux", "!win32"], False), (["darwin", "!win32"], True)):
+            with self.subTest(platforms):
+                self.assertEqual(_npm_platform_ok({"os": platforms}), expected)
+
+    @override_settings(RELEASE_MAX_DEPENDENCIES=2)
+    def test_the_limit_counts_every_version_of_a_name(self):
+        empty = tar_gz({"package/index.js": b"x" * 5000})
+        documents = {
+            "dep-b": {"1.0.0": npm_document("dep-b", "1.0.0", empty), "2.0.0": npm_document("dep-b", "2.0.0", empty)},
+            "dep-c": {"1.0.0": npm_document("dep-c", "1.0.0", empty, dependencies={"dep-b": "^2.0.0"})},
+        }
+        routes = {"https://registry.npmjs.org/tool/latest": FakeResponse(
+            npm_document("tool", "1.0.0", empty, dependencies={"dep-b": "^1.0.0", "dep-c": "^1.0.0"})),
+            "https://registry.example/tool-1.0.0.tgz": FakeResponse(content=empty)}
+        for name, versions in documents.items():
+            routes[f"https://registry.npmjs.org/{name}"] = FakeResponse({"versions": versions})
+            for version in versions:
+                routes[f"https://registry.example/{name}-{version}.tgz"] = FakeResponse(content=empty)
+        source = ReleaseSource.objects.create(name="tool", kind=ReleaseSource.Kind.NPM_PACKAGE, is_global=True,
+                                              identifier="tool", include_dependencies=True)
+        [version] = sync_release_source(source, fake_session(routes))
+        # two names, but three name@version: the third is not downloaded
+        self.assertEqual(version.dependencies, ["dep-b@1.0.0", "dep-c@1.0.0"])
+        self.assertIn("More than 2 dependencies", version.notes)
+
+    def test_the_clean_up_counts_binaries_not_rules(self):
+        # one binary of the package with two CDHashes (two rules), and a dependency with one
+        fat = build_fat((ARM64, build_macho(identifier="tool-arm64", team_id="", adhoc=True)),
+                        (X86_64, build_macho(identifier="tool-x86", team_id="", adhoc=True, cputype=X86_64)))
+        main = tar_gz({"package/bin/tool": fat})
+        helper = tar_gz({"package/bin/helper": unsigned("helper")})
+        routes = {"https://registry.npmjs.org/tool/latest": FakeResponse(
+            npm_document("tool", "1.0.0", main, dependencies={"dep-a": "^1.0.0"})),
+            "https://registry.example/tool-1.0.0.tgz": FakeResponse(content=main),
+            "https://registry.npmjs.org/dep-a": FakeResponse({"versions": {
+                "1.0.0": npm_document("dep-a", "1.0.0", helper)}}),
+            "https://registry.example/dep-a-1.0.0.tgz": FakeResponse(content=helper)}
+        source = ReleaseSource.objects.create(name="tool", kind=ReleaseSource.Kind.NPM_PACKAGE, is_global=True,
+                                              identifier="tool", include_dependencies=True,
+                                              rule_type=RuleType.CDHASH)
+        [version] = sync_release_source(source, fake_session(routes))
+        self.assertEqual((version.binary_count, version.dependency_binary_count), (2, 1))
+        source.include_dependencies = False
+        source.save()
+        cleanup_release_source(source)
+        version.refresh_from_db()
+        # the package's one binary, although it has two rules
+        self.assertEqual(version.rules.count(), 2)
+        self.assertEqual((version.binary_count, version.dependency_binary_count), (1, 0))
+
     def test_homebrew_runtime_dependencies(self):
         def formula(name, dependencies, binary):
             bottle = tar_gz({f"{name}/1.0/bin/{name}": binary})
@@ -305,9 +363,9 @@ class CleanupTestCase(ConsoleBase):
     def test_preview_and_clean_up(self):
         self.source.version_pattern = r"^v2\."
         self.source.save()
-        versions, rule_count, dependency_rules = cleanup_preview(self.source)
+        versions, rule_count, dependency_rule_count = cleanup_preview(self.source)
         self.assertEqual({version.version for version in versions}, {"v1.0", "v1"})
-        self.assertEqual((rule_count, dependency_rules.count()), (2, 1))
+        self.assertEqual((rule_count, dependency_rule_count), (2, 1))
         response = self.client.get(reverse("console:source_cleanup", args=(self.source.pk,)))
         self.assertContains(response, "package removed")
         self.assertContains(response, "outside the version pattern")
@@ -352,6 +410,21 @@ class CleanupTestCase(ConsoleBase):
         response = self.client.post(reverse("console:source_cleanup", args=(self.source.pk,)))
         self.assertEqual(response.status_code, 403)
         self.assertEqual(self.source.versions.count(), 4)
+
+    def test_options_the_catalog_hides_are_switched_off(self):
+        # ticked for npm, then the catalog changed to a cask: the browser still sends the hidden checkboxes
+        data = {"name": "tools", "kind": "HOMEBREW_CASK", "identifier": "figma", "rule_type": "BINARY",
+                "policy": "ALLOWLIST", "is_global": "on", "keep_versions": "3", "keep_unit": "VERSIONS",
+                "auto_approve_delay_days": "0", "include_dependencies": "on", "approve_kept_versions": "on"}
+        response = self.client.post(reverse("console:source_edit", args=(self.source.pk,)), data)
+        self.assertEqual(response.status_code, 302)
+        self.source.refresh_from_db()
+        self.assertEqual((self.source.include_dependencies, self.source.approve_kept_versions), (False, False))
+        # with 0 (keep all) no older versions either
+        data.update(kind="GITHUB_RELEASE", identifier="abiosoft/colima", keep_versions="0")
+        self.client.post(reverse("console:source_edit", args=(self.source.pk,)), data)
+        self.source.refresh_from_db()
+        self.assertFalse(self.source.approve_kept_versions)
 
     def test_saving_the_form_names_the_versions_no_longer_covered(self):
         data = {"name": "tools", "kind": "GITHUB_RELEASE", "identifier": "abiosoft/colima", "rule_type": "BINARY",

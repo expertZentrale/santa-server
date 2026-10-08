@@ -407,6 +407,18 @@ class ReleaseSourceForm(TagsMixin, forms.ModelForm):
     def clean_keep_unit(self):
         return self.cleaned_data["keep_unit"] or ReleaseSource.KeepUnit.VERSIONS
 
+    def clean(self):
+        cleaned_data = super().clean()
+        # options the form hides for another catalog (or with 0) stay ticked in the browser: they are off, not errors
+        kind = cleaned_data.get("kind")
+        if kind not in DEPENDENCY_KINDS:
+            cleaned_data["include_dependencies"] = False
+            self.instance.include_dependencies = False
+        if kind not in HISTORY_KINDS or not cleaned_data.get("keep_versions"):
+            cleaned_data["approve_kept_versions"] = False
+            self.instance.approve_kept_versions = False
+        return cleaned_data
+
     def save(self, commit=True):
         source = super().save(commit=False)
         if "kind" in self.changed_data:

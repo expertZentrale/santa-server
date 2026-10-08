@@ -78,7 +78,9 @@ def render_list(request, template, rows_template, context):
     else:
         response = render(request, template, {**context, "rows_template": rows_template})
     # the same URL answers with the page or the rows: a cached copy must not mix them up (Back button)
-    patch_vary_headers(response, [ROWS_HEADER, "HX-Request", "HX-Boosted"])
+    # every header defer_rows(), rows_only() and is_htmx() read
+    patch_vary_headers(response, [ROWS_HEADER, "HX-Request", "HX-Boosted", "HX-History-Restore-Request",
+                                  "Sec-Fetch-Mode", "X-Santa-Rerender"])
     return response
 
 

@@ -148,7 +148,7 @@ def source_cleanup(request, pk):
         else:
             messages.info(request, gettext("%(source)s: nothing to clean up.") % {"source": source})
         return drawer_done(request, reverse("console:source", args=[source.pk]))
-    versions, rule_count, dependency_rules = cleanup_preview(source)
+    versions, rule_count, dependency_rule_count = cleanup_preview(source)
     identifiers = set(source.identifiers)
     kept = {version.pk for version in stale_versions(source)}
     rows = []
@@ -162,7 +162,7 @@ def source_cleanup(request, pk):
         rows.append((version, reason))
     return render_drawer(request, "console/sources/cleanup.html", "console/sources/drawer_cleanup.html", {
         "source": source, "rows": rows, "rule_count": rule_count,
-        "dependency_rule_count": dependency_rules.count(),
+        "dependency_rule_count": dependency_rule_count,
     })
 
 

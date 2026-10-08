@@ -30,7 +30,9 @@ class ListRowsTestCase(ConsoleBase):
         self.assertContains(response, "data-filter-form")
         self.assertNotContains(response, SHA_A)
         self.assertIsNone(response.context["page"])
-        self.assertIn("X-Santa-Rows", response["Vary"])
+        for header in ("X-Santa-Rows", "HX-Request", "HX-Boosted", "HX-History-Restore-Request", "Sec-Fetch-Mode",
+                       "X-Santa-Rerender"):
+            self.assertIn(header, response["Vary"])
         response = self.client.get(url, **NAVIGATE, **ROWS)
         self.assertContains(response, SHA_A)
         # only the rows: no page around them, no filters

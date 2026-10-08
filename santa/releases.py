@@ -519,11 +519,11 @@ MAX_KEPT_VERSIONS_PER_SYNC = 10
 def _npm_platform_ok(manifest):
     # optional dependencies are often one package per platform (esbuild, swc, …): only the macOS ones
     platforms = manifest.get("os") or []
-    if not platforms:
-        return True
-    if any(platform.startswith("!") for platform in platforms):
-        return "!darwin" not in platforms
-    return "darwin" in platforms
+    if "!darwin" in platforms:
+        return False
+    # the systems named without "!" are the only ones; only exclusions: every other system
+    allowed = [platform for platform in platforms if not platform.startswith("!")]
+    return not allowed or "darwin" in allowed
 
 
 def npm_dependencies(session, release, errors):
@@ -556,6 +556,10 @@ def npm_dependencies(session, release, errors):
             continue
         if f"{name}@{version}" in found or not _npm_platform_ok(versions[version]):
             continue
+        # a name can come in several versions: the limit is on what is downloaded
+        if len(found) >= settings.RELEASE_MAX_DEPENDENCIES:
+            errors.append(f"More than {settings.RELEASE_MAX_DEPENDENCIES} dependencies, the others are skipped")
+            break
         dependency = _npm_release(name, versions[version])
         found[f"{name}@{version}"] = dependency
         queue += list((dependency.dependencies or {}).items())
@@ -725,32 +729,39 @@ def prune_old_versions(source):
 
 
 def cleanup_preview(source):
-    """What the clean up of a package rule deletes: (versions, number of their rules, the dependency rules left over
-    when the dependencies are no longer allowed)"""
+    """What the clean up of a package rule deletes: (versions, number of their rules, number of the dependency rules
+    left over when the dependencies are no longer allowed)"""
     versions = sorted(stale_versions(source, check_filters=True), key=_version_date, reverse=True)
     rule_count = sum(Rule.objects.filter(release_version__in=chunk).count()
                      for chunk in chunked([version.pk for version in versions]))
-    dependency_rules = Rule.objects.none()
-    if not uses_dependencies(source):
-        dependency_rules = source.rules.exclude(release_dependency="").exclude(
-            release_version__in=[version.pk for version in versions][:1000])
-    return versions, rule_count, dependency_rules
+    return versions, rule_count, len(_left_dependency_rules(source, versions))
+
+
+def _left_dependency_rules(source, versions):
+    """The pks of the rules of dependencies no longer allowed, outside the versions deleted anyway (their rules are
+    counted there). Compared in Python: an IN list could exceed the 2100 parameters of SQL Server."""
+    if uses_dependencies(source):
+        return []
+    deleted = {version.pk for version in versions}
+    return [rule.pk for rule in source.rules.exclude(release_dependency="").only("pk", "release_version")
+            if rule.release_version_id not in deleted]
 
 
 def cleanup_release_source(source):
     """Delete the versions and rules the package rule no longer covers. Returns (versions, rules) deleted."""
-    versions, rule_count, dependency_rules = cleanup_preview(source)
+    versions, rule_count, _count = cleanup_preview(source)
     with transaction.atomic():
-        dependency_count = dependency_rules.count()
-        changed = set(dependency_rules.values_list("release_version", flat=True))
-        dependency_rules.delete()
+        dependency_count = 0
+        for chunk in chunked(_left_dependency_rules(source, versions)):
+            dependency_count += Rule.objects.filter(pk__in=chunk).delete()[1].get("santa.Rule", 0)
         for version in versions:
             version.delete()
         if not uses_dependencies(source):
-            # allowed again later, the dependencies are looked up again
-            for version in source.versions.filter(pk__in=list(changed)[:1000]):
-                version.binary_count = version.rules.count()
-                version.save(update_fields=["binary_count"])
+            # the binaries of the dependencies leave the count; allowed again later, they are looked up again
+            for version in source.versions.filter(dependency_binary_count__gt=0):
+                version.binary_count = max(0, version.binary_count - version.dependency_binary_count)
+                version.dependency_binary_count = 0
+                version.save(update_fields=["binary_count", "dependency_binary_count"])
             source.versions.update(dependencies=[], dependencies_resolved=False)
     return len(versions), rule_count + dependency_count
 
@@ -785,6 +796,8 @@ def _record_release(session, source, identifier, release):
         release_version = ReleaseVersion.objects.create(
             source=source, identifier=identifier, version=version, published_at=release.published_at,
             binary_count=len({b.info.sha256 for b in binaries}),
+            dependency_binary_count=len({b.info.sha256 for b in binaries if b.dependency}
+                                        - {b.info.sha256 for b in binaries if not b.dependency}),
             auto_enable_pending=source.auto_approve and source.auto_approve_delay_days > 0,
             notes="\n".join(notes + errors)[:10000] or NO_EXECUTABLES_NOTE,
             dependencies=included, dependencies_resolved=uses_dependencies(source),
@@ -828,12 +841,15 @@ def _add_dependencies(session, source, identifier, latest, errors):
                 own_rules.filter(is_enabled=True).exists() if own_rules.exists() else None))
             version.dependencies = included
             version.dependencies_resolved = True
-            version.binary_count += len({b.info.sha256 for b in binaries})
+            added = len({b.info.sha256 for b in binaries})
+            version.binary_count += added
+            version.dependency_binary_count += added
             notes = [f"{b.dependency} – {b.asset}: {b.path} {b.info.sha256}" for b in binaries]
             if included:
                 notes.append(f"Dependencies: {', '.join(included)}")
             version.notes = "\n".join(filter(None, [version.notes, *notes, *warnings]))[:10000]
-            version.save(update_fields=["dependencies", "dependencies_resolved", "binary_count", "notes"])
+            version.save(update_fields=["dependencies", "dependencies_resolved", "binary_count",
+                                        "dependency_binary_count", "notes"])
         errors += [f"{version.version}: {warning}" for warning in warnings]
         logger.info("Release source %s: %s version %s, %s dependencies added",
                     source.name, identifier, version.version, len(included))

@@ -116,6 +116,15 @@ class ConfigIOTestCase(TestCase):
         self.assertTrue(Group.objects.filter(name="Sales EU").exists())
         self.assertFalse(Rule.objects.get(identifier=SHA_A).is_enabled)
 
+    def test_a_skipped_item_keeps_its_name(self):
+        data = json.loads(json.dumps(export_config()))
+        edited, keep, _warnings = apply_choices(data, skip={"release_sources:0"},
+                                                names={"release_sources:0": "Renamed"})
+        self.assertEqual(keep, {"source:colima"})
+        import_config(edited, delete_missing=True, keep=keep)
+        # not deleted, although renamed in the preview and not in the file any more
+        self.assertTrue(ReleaseSource.objects.filter(name="colima").exists())
+
     def test_a_skipped_group_the_target_does_not_have(self):
         data = json.loads(json.dumps(export_config()))
         data["groups"].append({**data["groups"][0], "name": "New", "parent": None})

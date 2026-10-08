@@ -87,7 +87,8 @@ def apply_choices(data, skip=(), disabled=None, names=None, keep=()):
     keep: the keys of deletions not to do. Every item gets its original token as "_token", for the report.
     """
     data = copy.deepcopy(data)
-    names = names or {}
+    # a skipped item keeps its name: it is protected from delete_missing by the name it has on the target
+    names = {token: name for token, name in (names or {}).items() if token not in skip}
     keep = set(keep)
     warnings = []
     for list_name in PREVIEW_LISTS:
