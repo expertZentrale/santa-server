@@ -49,8 +49,11 @@
     <div data-new-rule-fields>
       {% include "console/_field.html" with field=approve_form.new_name %}
       {% include "console/_field.html" with field=approve_form.rule_type %}
+      {% include "console/_field.html" with field=approve_form.policy %}
+      <div data-show-when="policy=CEL">{% include "console/_field.html" with field=approve_form.cel_expr %}{% include "console/rules/_cel_help.html" %}</div>
       {% include "console/_field.html" with field=approve_form.is_global %}
       <div data-hide-when="is_global">{% include "console/_field.html" with field=approve_form.groups %}</div>
+      {% include "console/sources/_keep_fields.html" with keep=approve_form.keep_versions unit=approve_form.keep_unit approve_kept=approve_form.approve_kept_versions dependencies=approve_form.include_dependencies %}
     </div>
     {% include "console/_field.html" with field=approve_form.note %}
     {% elif access_request.kind == "OTHER" %}
@@ -58,6 +61,8 @@
     {% else %}
     {% for field in approve_form.visible_fields %}
       {% if field.name == "groups" %}<div data-show-when="scope=groups">{% include "console/_field.html" %}</div>
+      {% elif field.name == "signing_prefixes" %}<div data-show-when="policy=CEL"><div data-show-when="rule_type=TEAMID">{% include "console/_field.html" %}</div></div>
+      {% elif field.name == "cel_expr" %}<div data-show-when="policy=CEL">{% include "console/_field.html" %}{% include "console/rules/_cel_help.html" %}</div>
       {% else %}{% include "console/_field.html" %}{% endif %}
     {% endfor %}
     {% endif %}

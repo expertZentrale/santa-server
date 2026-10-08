@@ -92,14 +92,16 @@ def po_translations(path):
     """{msgid: msgstr (the singular form for plurals)} of a .po file"""
     entries, current, field = {}, {}, None
     for line in path.read_text(encoding="utf-8").splitlines() + [""]:
-        if line.startswith(("msgid ", "msgid_plural ", "msgstr ", "msgstr[0] ", "msgstr[1] ")):
+        if line.startswith(("msgctxt ", "msgid ", "msgid_plural ", "msgstr ", "msgstr[0] ", "msgstr[1] ")):
             field, _, value = line.partition(" ")
             current[field] = ast.literal_eval(value)
         elif line.startswith('"') and field:
             current[field] += ast.literal_eval(line)
         elif not line.strip():
             if current.get("msgid"):
-                entries[current["msgid"]] = current.get("msgstr", current.get("msgstr[0]", ""))
+                # with a context, the catalog has the key "context\x04msgid"
+                key = f"{current['msgctxt']}\x04{current['msgid']}" if "msgctxt" in current else current["msgid"]
+                entries[key] = current.get("msgstr", current.get("msgstr[0]", ""))
             current, field = {}, None
     return entries
 

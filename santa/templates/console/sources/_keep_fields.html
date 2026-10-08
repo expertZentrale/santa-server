@@ -1,0 +1,12 @@
+{% load i18n %}{% comment %}The versions to keep, and what else a package rule allows: keep, unit, approve_kept, dependencies, kind (the name of the catalog field, if there is one){% endcomment %}
+<div class="field-row">
+  {% include "console/_field.html" with field=keep %}
+  {% include "console/_field.html" with field=unit %}
+</div>
+<small class="help after-field">{% translate "The last versions, or the versions of the last weeks or months, keep their rules; the rules of older versions are deleted. The newest version always stays. 0 = keep all." %}</small>
+<div data-disable-when="{{ keep.html_name }}=0|"{% if kind %} data-show-when="{{ kind }}=GITHUB_RELEASE|HOMEBREW_FORMULA|NPM_PACKAGE|VSCODE_EXTENSION|JETBRAINS_PLUGIN"{% endif %}>
+  {% include "console/_field.html" with field=approve_kept %}
+</div>
+<div{% if kind %} data-show-when="{{ kind }}=NPM_PACKAGE|HOMEBREW_FORMULA"{% endif %}>
+  {% include "console/_field.html" with field=dependencies %}
+</div>

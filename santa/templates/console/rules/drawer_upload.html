@@ -1,0 +1,3 @@
+{% extends "console/_drawer.html" %}{% load i18n %}
+{% block drawer_title %}{% translate "Allow or block a binary by upload" %}{% endblock %}
+{% block drawer_body %}{% include "console/rules/_upload.html" with in_drawer=True %}{% endblock %}

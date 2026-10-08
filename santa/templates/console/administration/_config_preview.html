@@ -1,0 +1,49 @@
+{% load i18n %}{# the file goes with the form (payload): "Import" needs no second upload #}
+<form method="post" class="stack config-preview" action="{{ request.path }}"{% if in_drawer %} hx-post="{{ request.path }}" hx-target="#drawer"{% endif %}>
+  {% csrf_token %}
+  <input type="hidden" name="payload" value="{{ payload }}">
+  <input type="hidden" name="edited" value="on">
+  <p class="small">{% translate "Nothing is saved yet. Skip, rename or disable items, then “Update preview” shows what changes, and “Import” saves it." %}</p>
+  {% if errors %}<section class="card"><h2>{% translate "Nothing imported, the file has errors" %}</h2>
+    <ul class="error">{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul></section>{% endif %}
+  {% if report.warnings %}<ul class="messages">{% for warning in report.warnings %}<li class="warning">{{ warning }}</li>{% endfor %}</ul>{% endif %}
+  {% for section in preview_sections %}
+  <details class="card preview-section" open>
+    <summary><h2>{{ section.heading }}</h2>
+      <span class="muted small">{% blocktranslate count count=section.rows|length %}{{ count }} item{% plural %}{{ count }} items{% endblocktranslate %}{% if section.counts.created %} · <span class="badge ok">{% blocktranslate with count=section.counts.created %}{{ count }} new{% endblocktranslate %}</span>{% endif %}{% if section.counts.updated %} · <span class="badge info">{% blocktranslate with count=section.counts.updated %}{{ count }} changed{% endblocktranslate %}</span>{% endif %}{% if section.counts.skipped %} · <span class="badge">{% blocktranslate with count=section.counts.skipped %}{{ count }} skipped{% endblocktranslate %}</span>{% endif %}</span></summary>
+    <table class="table compact preview-table">
+      <thead><tr><th>{% translate "Skip" %}</th><th>{% if section.name == "rules" %}{% translate "Identifier" %}{% else %}{% translate "Name" %}{% endif %}</th><th>{% translate "Import disabled" %}</th><th>{% translate "Status" %}</th></tr></thead>
+      <tbody>{% for row in section.rows %}
+        <tr class="{% if row.status == 'unchanged' or row.skipped %}disabled{% endif %}">
+          <td><input type="checkbox" name="skip" value="{{ row.token }}"{% if row.skipped %} checked{% endif %} aria-label="{% translate 'Skip' %} {{ row.label }}"></td>
+          <td>{% if row.renamable %}<input type="text" name="name-{{ row.token }}" value="{{ row.name|default:row.label }}" maxlength="200" aria-label="{% translate 'Name' %}">
+            {% else %}<span class="mono">{{ row.label }}</span>{% endif %}
+            {% if row.detail %}<small class="muted">{{ row.detail }}{% if row.description %} · {{ row.description|truncatechars:80 }}{% endif %}</small>{% endif %}</td>
+          <td>{% if row.switchable %}<input type="checkbox" name="disabled" value="{{ row.token }}"{% if not row.enabled %} checked{% endif %} aria-label="{% translate 'Import disabled' %} {{ row.label }}">{% else %}<span class="muted">–</span>{% endif %}</td>
+          <td>{% if row.status == "created" %}<span class="badge ok">{% translate "new" %}</span>{% elif row.status == "updated" %}<span class="badge info">{% translate "changed" %}</span>{% elif row.status == "unchanged" %}<span class="badge">{% translate "unchanged" %}</span>{% elif row.status == "skipped" %}<span class="badge">{% translate "skipped" %}</span>{% elif row.status == "error" %}<span class="badge bad">{% translate "error" %}</span>{% endif %}</td>
+        </tr>{% endfor %}</tbody>
+    </table>
+  </details>
+  {% endfor %}
+  <div class="field check" data-field="delete_missing">
+    <input type="checkbox" role="switch" name="delete_missing" id="id_preview_delete_missing"{% if delete_missing %} checked{% endif %}>
+    <label for="id_preview_delete_missing">{% translate "Delete what is not in the file" %}</label>
+    <small class="help">{% translate "Deletes the manual rules, package rules and file access rules that are not in the file." %}</small>
+  </div>
+  {% if deletions %}
+  <details class="card preview-section" open>
+    <summary><h2>{% translate "Deleted" %}</h2><span class="muted small">{% translate "Not in the file. Tick “Keep” to leave one." %}</span></summary>
+    <table class="table compact preview-table">
+      <thead><tr><th>{% translate "Keep" %}</th><th>{% translate "Type" %}</th><th>{% translate "Object" %}</th></tr></thead>
+      <tbody>{% for row in deletions %}<tr{% if row.kept %} class="disabled"{% endif %}>
+        <td><input type="checkbox" name="keep" value="{{ row.key }}"{% if row.kept %} checked{% endif %} aria-label="{% translate 'Keep' %} {{ row.label }}"></td>
+        <td>{{ row.model|default:"–" }}</td><td>{{ row.label }}</td></tr>{% endfor %}</tbody>
+    </table>
+  </details>
+  {% endif %}
+  <div class="actions">
+    <button class="button" name="action" value="preview">{% translate "Update preview" %}</button>
+    <button class="button primary" name="action" value="import"{% if errors %} disabled{% endif %}>{% translate "Import" %}</button>
+    {% if in_drawer %}<button type="button" class="button" data-drawer-close>{% translate "Cancel" %}</button>{% endif %}
+  </div>
+</form>

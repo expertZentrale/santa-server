@@ -1,0 +1,5 @@
+{% load i18n %}<table class="table compact">
+  <thead><tr><th>{% translate "Action" %}</th><th>{% translate "Type" %}</th><th>{% translate "Object" %}</th></tr></thead>
+  <tbody>{% for action, model, obj in report.changes %}<tr><td>{{ action }}</td><td>{{ model }}</td><td>{{ obj }}</td></tr>
+  {% empty %}<tr class="empty"><td colspan="3">{% translate "Already identical." %}</td></tr>{% endfor %}</tbody>
+</table>

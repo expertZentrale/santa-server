@@ -1,0 +1,8 @@
+{% extends "console/base.html" %}{% load i18n %}
+{% block title %}{% translate "Clean up" %} · {{ source.name }}{% endblock %}
+{% block main_class %}narrow{% endblock %}
+{% block content %}
+{% url 'console:source' source.pk as back_url %}{% include "console/_back.html" with url=back_url label=source.name %}
+<h1>{% translate "Clean up" %}</h1>
+{% include "console/sources/_cleanup.html" %}
+{% endblock %}

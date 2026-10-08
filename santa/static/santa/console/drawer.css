@@ -1,5 +1,7 @@
 /* Facts and drawer */
-.facts { display: grid; grid-template-columns: 9rem 1fr; gap: .4rem 1rem; margin: 0; }
+.facts { display: grid; grid-template-columns: 9rem minmax(0, 1fr); gap: .4rem 1rem; margin: 0; }
+/* a long status (e.g. "3 to add, 1 to remove at the next sync") wraps inside the card instead of running out of it */
+.facts .badge { white-space: normal; max-width: 100%; }
 .facts dt { color: var(--muted); }
 .facts dd { margin: 0; overflow-wrap: anywhere; }
 .facts.inline { grid-template-columns: repeat(auto-fill, minmax(8rem, max-content) minmax(10rem, 1fr)); }
@@ -12,9 +14,8 @@
   width: min(32.5rem, 100vw);
   background: var(--surface);
   border-left: 1px solid var(--border);
-  box-shadow: -8px 0 24px rgb(0 0 0 / 15%);
   transform: translateX(100%);
-  /* hidden when closed, else its shadow shows at the edge of every page */
+  /* hidden when closed, else its border shows at the edge of every page */
   visibility: hidden;
   transition: transform .2s ease, visibility 0s linear .2s;
   overflow-y: auto;
@@ -45,17 +46,16 @@
 /* forms and package rules need more room than an event */
 .drawer:has(.drawer-panel.wide) { width: min(47.5rem, 100vw); }
 /* the cards of a page are plain sections in the drawer */
-.drawer .card { background: none; border: 0; box-shadow: none; padding: 0; margin: 0 0 1.5rem; }
+.drawer .card { background: none; border: 0; padding: 0; margin: 0 0 1.5rem; }
 .drawer .card > h2 { font-size: 1rem; }
 /* long badges wrap in the narrow columns of the drawer */
-.drawer .facts .badge { white-space: normal; }
 .drawer .page-head { margin-bottom: 1rem; }
 /* tables of the drawer stay in it: not as wide as the page like in the main area */
 .drawer .table-scroll { width: auto; min-width: 0; max-width: none; margin-left: 0; transform: none; overflow-x: auto; }
 .detail-actions { margin-bottom: 1.25rem; }
 
 @media (max-width: 45em) {
-  .facts { grid-template-columns: 1fr; }
+  .facts { grid-template-columns: minmax(0, 1fr); }
   .facts dt { margin-top: .4rem; }
 }
 

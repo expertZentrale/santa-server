@@ -15,9 +15,12 @@ from django.utils.translation import gettext_lazy as _
 
 from .. import notifications
 from ..catalog import update_identifier_icons
+from ..config_io import PREVIEW_LISTS, RENAMABLE_LISTS, item_token
 from ..models import (
     BRANDING_LOGO_MAX_BYTES,
     BRANDING_LOGO_TYPES,
+    DEPENDENCY_KINDS,
+    HISTORY_KINDS,
     AccessRequest,
     FileAccessProcess,
     FileAccessRule,
@@ -50,7 +53,9 @@ RULE_TYPE_HELP = {
     RuleType.TEAMID: _("everything from this developer"),
 }
 ALLOW_POLICIES = [(Policy.ALLOWLIST, _("Allow")), (Policy.ALLOWLIST_COMPILER, _("Allow compiler"))]
-# rules from events can also block; CEL needs an expression per rule, that is the rule form
+# approving a request allows, or decides with a CEL expression (which can also block)
+APPROVE_POLICIES = [*ALLOW_POLICIES, (Policy.CEL, Policy.CEL.label)]
+# rules from events can also block
 EVENT_POLICIES = [*ALLOW_POLICIES, (Policy.BLOCKLIST, _("Block")), (Policy.SILENT_BLOCKLIST, _("Block silently")),
                   (Policy.CEL, Policy.CEL.label)]
 # labels of the model fields the console forms show (the admin keeps the English field names)
@@ -201,6 +206,39 @@ def clean_signing_prefixes(form, value):
     return prefixes
 
 
+def cel_expr_field():
+    return forms.CharField(required=False, label=_("CEL expression"),
+                           widget=forms.Textarea(attrs={"rows": 3, "class": "mono"}))
+
+
+def add_cel_suggestions(form):
+    # per form: the help texts in the language of the request
+    for name, field in form.fields.items():
+        if name.endswith("cel_expr"):
+            field.widget.attrs["data-cel-suggestions"] = cel_suggestions_json()
+
+
+def clean_cel_policy(form, cleaned_data, policy="policy", cel_expr="cel_expr", rule_type="rule_type"):
+    """The CEL expression and the signing ID prefixes of a form with a policy, cleaned in cleaned_data.
+
+    Only the CEL policy uses them, a leftover of another choice is dropped. With prefixes (Team ID rules)
+    the expression is written per Team ID (prefix_expression), so it is checked, not written, here.
+    """
+    cel = cleaned_data.get(policy) == Policy.CEL
+    expression = (cleaned_data.get(cel_expr) or "").strip()
+    prefixes = []
+    if cel and "signing_prefixes" in form.fields and cleaned_data.get(rule_type) == RuleType.TEAMID:
+        prefixes = clean_signing_prefixes(form, cleaned_data.get("signing_prefixes"))
+    if prefixes:
+        if expression and parse_prefix_expression(expression) is None:
+            form.add_error("signing_prefixes", gettext("Clear the CEL expression or the prefixes."))
+    elif cel and not expression:
+        form.add_error(cel_expr, gettext("Required for the CEL policy."))
+    cleaned_data[cel_expr] = expression if cel else ""
+    cleaned_data["signing_prefixes"] = prefixes
+    return prefixes
+
+
 class RuleForm(TagsMixin, forms.ModelForm):
     machines = MachinesField(label=_("Macs"))
     signing_prefixes = signing_prefixes_field()
@@ -312,6 +350,21 @@ class IdentifiersWidget(forms.Textarea):
     icons = {}
 
 
+def clean_picked(value):
+    """{identifier: {name, icon_url}} of the suggestions chosen in the browser"""
+    try:
+        data = json.loads(value or "{}")
+    except ValueError:
+        return {}
+    picked = {}
+    for identifier, item in (data.items() if isinstance(data, dict) else []):
+        if not isinstance(item, dict):
+            continue
+        picked[str(identifier)[:450]] = {"name": str(item.get("name") or "")[:200],
+                                          "icon_url": clean_icon_url(item.get("icon_url"))}
+    return picked
+
+
 class ReleaseSourceForm(TagsMixin, forms.ModelForm):
     picked = forms.CharField(required=False, widget=forms.HiddenInput)
 
@@ -319,7 +372,8 @@ class ReleaseSourceForm(TagsMixin, forms.ModelForm):
         model = ReleaseSource
         fields = ("name", "kind", "identifier", "is_enabled", "version_pattern", "asset_pattern", "binary_pattern",
                   "include_prereleases", "rule_type", "policy", "cel_expr", "custom_msg", "custom_url", "is_global",
-                  "groups", "auto_approve", "auto_approve_delay_days", "keep_versions", "tags")
+                  "groups", "auto_approve", "auto_approve_delay_days", "keep_versions", "keep_unit",
+                  "approve_kept_versions", "include_dependencies", "tags")
         widgets = {
             "identifier": IdentifiersWidget,
             "groups": forms.CheckboxSelectMultiple,
@@ -330,7 +384,9 @@ class ReleaseSourceForm(TagsMixin, forms.ModelForm):
             "asset_pattern": _("Asset pattern"), "binary_pattern": _("Binary pattern"),
             "include_prereleases": _("Include prereleases"), "rule_type": _("Preferred rule type"),
             "auto_approve": _("Auto approve"), "auto_approve_delay_days": _("Auto approve delay (days)"),
-            "keep_versions": _("Keep versions"),
+            "keep_versions": _("Keep"), "keep_unit": _("Unit"),
+            "approve_kept_versions": _("Also allow the older kept versions"),
+            "include_dependencies": _("Allow the dependencies"),
         }
 
     def __init__(self, *args, **kwargs):
@@ -338,24 +394,30 @@ class ReleaseSourceForm(TagsMixin, forms.ModelForm):
         self.fields["identifier"].widget.icons = self.instance.identifier_icons or {}
         self.fields["identifier"].label = _("Packages")
         self.fields["kind"].label = _("Catalog")
+        self.fields["keep_versions"].help_text = ""
+        self.fields["keep_unit"].required = False
         self.fields["cel_expr"].widget.attrs["data-cel-suggestions"] = cel_suggestions_json()
         self.fields["rule_type"].choices = rule_type_choices()
         self.fields["is_global"].label = _("All Macs (global)")
         self.fields["is_enabled"].label = _("Enabled")
 
     def clean_picked(self):
-        """{identifier: {name, icon_url}} of the suggestions chosen in the browser"""
-        try:
-            data = json.loads(self.cleaned_data["picked"] or "{}")
-        except ValueError:
-            return {}
-        picked = {}
-        for identifier, item in (data.items() if isinstance(data, dict) else []):
-            if not isinstance(item, dict):
-                continue
-            picked[str(identifier)[:450]] = {"name": str(item.get("name") or "")[:200],
-                                              "icon_url": clean_icon_url(item.get("icon_url"))}
-        return picked
+        return clean_picked(self.cleaned_data["picked"])
+
+    def clean_keep_unit(self):
+        return self.cleaned_data["keep_unit"] or ReleaseSource.KeepUnit.VERSIONS
+
+    def clean(self):
+        cleaned_data = super().clean()
+        # options the form hides for another catalog (or with 0) stay ticked in the browser: they are off, not errors
+        kind = cleaned_data.get("kind")
+        if kind not in DEPENDENCY_KINDS:
+            cleaned_data["include_dependencies"] = False
+            self.instance.include_dependencies = False
+        if kind not in HISTORY_KINDS or not cleaned_data.get("keep_versions"):
+            cleaned_data["approve_kept_versions"] = False
+            self.instance.approve_kept_versions = False
+        return cleaned_data
 
     def save(self, commit=True):
         source = super().save(commit=False)
@@ -414,26 +476,14 @@ class EventRuleForm(TagsMixin):
         cleaned_data = super().clean()
         if cleaned_data.get("scope") == SCOPE_GROUPS and not cleaned_data.get("groups"):
             self.add_error("groups", gettext("Choose at least one group."))
-        cel = cleaned_data.get("policy") == Policy.CEL
-        cel_expr = (cleaned_data.get("cel_expr") or "").strip()
-        prefixes = []
-        if cel and cleaned_data.get("rule_type") == RuleType.TEAMID:
-            prefixes = clean_signing_prefixes(self, cleaned_data.get("signing_prefixes"))
-        if prefixes:
-            # the expression is written per binary, from its own Team ID (see cel_expr_for)
-            if cel_expr and parse_prefix_expression(cel_expr) is None:
-                self.add_error("signing_prefixes", gettext("Clear the CEL expression or the prefixes."))
+        # with prefixes the expression is written per binary, from its own Team ID (see cel_expr_for)
+        if clean_cel_policy(self, cleaned_data):
             chosen = set(cleaned_data.get("include") or [])
             unsigned = [row[0].file_name or row[0].file_sha256 for row in self.rows
                         if row[0].file_sha256 in chosen and not row[0].team_id]
             if unsigned:
                 self.add_error("include", gettext("No Team ID, so no signing ID prefixes: %(binaries)s") % {
                     "binaries": ", ".join(unsigned)})
-        elif cel and not cel_expr:
-            self.add_error("cel_expr", gettext("Required for the CEL policy."))
-        # only the CEL policy uses them: a leftover of another choice is dropped
-        cleaned_data["cel_expr"] = cel_expr if cel else ""
-        cleaned_data["signing_prefixes"] = prefixes
         return cleaned_data
 
     @property
@@ -520,11 +570,47 @@ class RequestOtherForm(forms.Form):
                                     label=_("Justification"), help_text=_("Why do you need it?"))
 
 
-class ApproveEventForm(TagsMixin):
-    field_order = ["rule_type", "policy", "scope", "groups", "tags", "new_tags", "note"]
+def keep_versions_field():
+    # the help text is under the unit too (sources/_keep_fields.html)
+    return forms.IntegerField(min_value=0, initial=3, required=False, label=_("Keep"))
+
+
+def keep_unit_field():
+    return forms.ChoiceField(choices=ReleaseSource.KeepUnit.choices, initial=ReleaseSource.KeepUnit.VERSIONS,
+                             required=False, label=_("Unit"))
+
+
+def new_source_options(data, kind, prefix=""):
+    """The fields of a new ReleaseSource from an approval form. The options a catalog can't use are dropped
+    instead of failing the approval (the form offers them for every catalog)."""
+    keep = data.get(f"{prefix}keep_versions")
+    keep = 3 if keep is None else keep
+    return {
+        "policy": data.get(f"{prefix}policy") or Policy.ALLOWLIST,
+        "cel_expr": data.get(f"{prefix}cel_expr", ""),
+        "keep_versions": keep,
+        "keep_unit": data.get(f"{prefix}keep_unit") or ReleaseSource.KeepUnit.VERSIONS,
+        "approve_kept_versions": bool(data.get(f"{prefix}approve_kept_versions") and keep and kind in HISTORY_KINDS),
+        "include_dependencies": bool(data.get(f"{prefix}include_dependencies") and kind in DEPENDENCY_KINDS),
+    }
+
+
+class CelPolicyMixin:
+    """The expression of an approval with the CEL policy: per identifier, a Team ID gets the prefixes"""
+
+    def cel_expr_for(self, identifier):
+        prefixes = self.cleaned_data.get("signing_prefixes")
+        return prefix_expression(identifier, prefixes) if prefixes else self.cleaned_data.get("cel_expr", "")
+
+
+class ApproveEventForm(CelPolicyMixin, TagsMixin):
+    field_order = ["rule_type", "policy", "signing_prefixes", "cel_expr", "scope", "groups", "tags", "new_tags",
+                   "note"]
 
     rule_type = forms.ChoiceField(choices=rule_type_choices(), label=_("Rule type"))
-    policy = forms.ChoiceField(choices=ALLOW_POLICIES, initial=Policy.ALLOWLIST, label=_("Policy"))
+    policy = forms.ChoiceField(choices=APPROVE_POLICIES, initial=Policy.ALLOWLIST, label=_("Policy"))
+    signing_prefixes = signing_prefixes_field()
+    cel_expr = cel_expr_field()
     scope = forms.ChoiceField(choices=[(SCOPE_MACHINES, _("The Mac of the requester")),
                                        (SCOPE_GROUPS, _("Groups")), (SCOPE_GLOBAL, _("All Macs"))],
                               initial=SCOPE_GROUPS, widget=forms.RadioSelect, label=_("Scope"))
@@ -536,11 +622,13 @@ class ApproveEventForm(TagsMixin):
     def __init__(self, *args, available_types=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["rule_type"].choices = rule_type_choices(available_types)
+        add_cel_suggestions(self)
 
     def clean(self):
         cleaned_data = super().clean()
         if cleaned_data.get("scope") == SCOPE_GROUPS and not cleaned_data.get("groups"):
             self.add_error("groups", gettext("Choose at least one group."))
+        clean_cel_policy(self, cleaned_data)
         return cleaned_data
 
 
@@ -556,14 +644,21 @@ class ApprovePackagesForm(forms.Form):
                                help_text=_("One per catalog; with several catalogs the catalog is added to the name."))
     rule_type = forms.ChoiceField(choices=rule_type_choices(), initial=RuleType.BINARY, required=False,
                                   label=_("Preferred rule type"))
+    policy = forms.ChoiceField(choices=APPROVE_POLICIES, initial=Policy.ALLOWLIST, required=False, label=_("Policy"))
+    cel_expr = cel_expr_field()
     is_global = forms.BooleanField(required=False, label=_("All Macs (global)"))
     groups = forms.ModelMultipleChoiceField(queryset=Group.objects.all(), required=False, label=_("Groups"),
                                             widget=forms.CheckboxSelectMultiple)
+    keep_versions = keep_versions_field()
+    keep_unit = keep_unit_field()
+    approve_kept_versions = forms.BooleanField(required=False, label=_("Also allow the older kept versions"))
+    include_dependencies = forms.BooleanField(required=False, label=_("Allow the dependencies"))
     note = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 2}), label=_("Note"),
                            help_text=_("Shown to the user"))
 
     def __init__(self, *args, packages=(), **kwargs):
         super().__init__(*args, **kwargs)
+        add_cel_suggestions(self)
         self.packages = list(packages)
         sources = {}
         for source in ReleaseSource.objects.filter(kind__in={p.kind for p in self.packages}).order_by("name"):
@@ -614,10 +709,15 @@ class ApprovePackagesForm(forms.Form):
                     self.add_error("new_name", gettext("A package rule “%(name)s” exists already.") % {"name": name})
             if not cleaned_data.get("is_global") and not cleaned_data.get("groups"):
                 self.add_error("groups", gettext("Choose at least one group for the new package rule, or all Macs."))
+            clean_cel_policy(self, cleaned_data)
         return cleaned_data
 
+    def new_source_options(self, kind):
+        """The options of a new package rule of this catalog"""
+        return new_source_options(self.cleaned_data, kind)
 
-class ApproveOtherForm(TagsMixin):
+
+class ApproveOtherForm(CelPolicyMixin, TagsMixin):
     """Approve a request for other software: create the rule for it right here, a manual rule or a package rule"""
 
     RULE, PACKAGE, EXISTING, NONE = "rule", "package", "existing", "none"
@@ -638,7 +738,9 @@ class ApproveOtherForm(TagsMixin):
                                        "The file is only hashed, it is not stored."))
     binary_pattern = forms.CharField(required=False, max_length=200, label=_("Binary pattern"),
                                      help_text=_("Archives only: glob of the files to use, e.g. */bin/colima"))
-    policy = forms.ChoiceField(choices=ALLOW_POLICIES, initial=Policy.ALLOWLIST, label=_("Policy"))
+    policy = forms.ChoiceField(choices=APPROVE_POLICIES, initial=Policy.ALLOWLIST, label=_("Policy"))
+    signing_prefixes = signing_prefixes_field()
+    cel_expr = cel_expr_field()
     scope = forms.ChoiceField(choices=[(SCOPE_MACHINES, _("The Macs of the requester")),
                                        (SCOPE_GROUPS, _("Groups")), (SCOPE_GLOBAL, _("All Macs"))],
                               initial=SCOPE_GROUPS, widget=forms.RadioSelect, label=_("Scope"))
@@ -650,14 +752,23 @@ class ApproveOtherForm(TagsMixin):
     package_kind = forms.ChoiceField(choices=ReleaseSource.Kind.choices, initial=ReleaseSource.Kind.GITHUB_RELEASE,
                                      label=_("Catalog"))
     package_identifiers = forms.CharField(
-        required=False, label=_("Packages"), widget=forms.Textarea(attrs={"rows": 2, "class": "mono"}),
-        help_text=_("One per line. GitHub: owner/repo · Homebrew: formula or cask name · URL: the full URL · "
+        required=False, label=_("Packages"), widget=IdentifiersWidget,
+        help_text=_("GitHub: owner/repo · Homebrew: formula or cask name · URL: the full URL · "
                     "npm: package name · VS Code: publisher.name · JetBrains: plugin ID"))
+    # {identifier: {name, icon_url}} of the catalog suggestions picked (suggestions.js)
+    package_picked = forms.CharField(required=False, widget=forms.HiddenInput)
     package_name = forms.CharField(required=False, max_length=180, label=_("Name of the new package rule"))
     package_rule_type = forms.ChoiceField(choices=rule_type_choices(), initial=RuleType.BINARY,
                                           label=_("Preferred rule type"))
+    package_policy = forms.ChoiceField(choices=APPROVE_POLICIES, initial=Policy.ALLOWLIST, required=False,
+                                       label=_("Policy"))
+    package_cel_expr = cel_expr_field()
     package_auto_approve = forms.BooleanField(required=False, initial=True, label=_("Auto approve"),
                                               help_text=_("Enable the rules of new releases automatically."))
+    package_keep_versions = keep_versions_field()
+    package_keep_unit = keep_unit_field()
+    package_approve_kept_versions = forms.BooleanField(required=False, label=_("Also allow the older kept versions"))
+    package_include_dependencies = forms.BooleanField(required=False, label=_("Allow the dependencies"))
     package_is_global = forms.BooleanField(required=False, label=_("All Macs (global)"))
     package_groups = forms.ModelMultipleChoiceField(queryset=Group.objects.all(), required=False, label=_("Groups"),
                                                     widget=forms.CheckboxSelectMultiple)
@@ -673,10 +784,12 @@ class ApproveOtherForm(TagsMixin):
     note = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 2}), label=_("Note"),
                            help_text=_("Shown to the user"))
 
-    field_order = ["result", "rule_type", "identifier", "file", "binary_pattern", "policy", "scope", "groups",
-                   "tags", "new_tags", "package_target", "package_kind", "package_identifiers", "package_name",
-                   "package_rule_type", "package_auto_approve", "package_is_global", "package_groups",
-                   "rule_identifier", "rule", "note"]
+    field_order = ["result", "rule_type", "identifier", "file", "binary_pattern", "policy", "signing_prefixes",
+                   "cel_expr", "scope", "groups", "tags", "new_tags", "package_target", "package_kind",
+                   "package_identifiers", "package_picked", "package_name", "package_rule_type", "package_policy",
+                   "package_cel_expr", "package_auto_approve", "package_keep_versions", "package_keep_unit",
+                   "package_approve_kept_versions", "package_include_dependencies", "package_is_global",
+                   "package_groups", "rule_identifier", "rule", "note"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -687,6 +800,20 @@ class ApproveOtherForm(TagsMixin):
             (pk, gettext("Add to %(name)s") % {"name": f"{source.name} ({source.get_kind_display()})"})
             for pk, source in self.sources.items()]
         self.fields["package_target"].initial = self.NEW
+        self.fields["package_identifiers"].widget = IdentifiersWidget()
+        self.fields["package_identifiers"].widget.icons = {}
+        add_cel_suggestions(self)
+
+    @property
+    def target_kinds(self):
+        """{package rule pk: catalog}: the search of the package field uses the catalog of the target (JSON)"""
+        return json.dumps({pk: source.kind for pk, source in self.sources.items()})
+
+    def clean_package_picked(self):
+        return clean_picked(self.cleaned_data["package_picked"])
+
+    def new_source_options(self, kind):
+        return new_source_options(self.cleaned_data, kind, prefix="package_")
 
     def clean(self):
         cleaned_data = super().clean()
@@ -703,9 +830,11 @@ class ApproveOtherForm(TagsMixin):
                     self.add_error("identifier", e)
             if cleaned_data.get("scope") == SCOPE_GROUPS and not cleaned_data.get("groups"):
                 self.add_error("groups", gettext("Choose at least one group."))
+            clean_cel_policy(self, cleaned_data)
         elif result == self.PACKAGE:
-            identifiers = [line.strip() for line in (cleaned_data.get("package_identifiers") or "").splitlines()
-                           if line.strip()]
+            identifiers = list(dict.fromkeys(line.strip() for line in
+                                             (cleaned_data.get("package_identifiers") or "").splitlines()
+                                             if line.strip()))
             cleaned_data["package_identifiers"] = identifiers
             if not identifiers:
                 self.add_error("package_identifiers", gettext("Enter at least one identifier."))
@@ -717,6 +846,7 @@ class ApproveOtherForm(TagsMixin):
                 if not cleaned_data.get("package_is_global") and not cleaned_data.get("package_groups"):
                     self.add_error("package_groups",
                                    gettext("Choose at least one group for the new package rule, or all Macs."))
+                clean_cel_policy(self, cleaned_data, policy="package_policy", cel_expr="package_cel_expr")
         elif result == self.EXISTING:
             identifier = (cleaned_data.get("rule_identifier") or "").strip()
             picked = cleaned_data.get("rule")
@@ -1257,5 +1387,41 @@ class ConfigImportForm(forms.Form):
     delete_missing = forms.BooleanField(
         required=False, label=_("Delete what is not in the file"),
         help_text=_("Deletes the manual rules, package rules and file access rules that are not in the file."))
-    dry_run = forms.BooleanField(required=False, initial=True, label=_("Dry run"),
-                                 help_text=_("Only show what would change. Uncheck to import."))
+
+
+class ConfigPreviewForm(forms.Form):
+    """The preview of an import: the file again (no second upload) and what to change in it (config_io.apply_choices).
+
+    Only what differs from the file is sent (skipped, disabled, kept, renamed): a file with many rules stays far below
+    DATA_UPLOAD_MAX_NUMBER_FIELDS.
+    """
+    payload = forms.CharField(widget=forms.HiddenInput)
+    delete_missing = forms.BooleanField(
+        required=False, label=_("Delete what is not in the file"),
+        help_text=_("Deletes the manual rules, package rules and file access rules that are not in the file."))
+    # given: the import preview had choices (else the file is shown as it is)
+    edited = forms.BooleanField(required=False, widget=forms.HiddenInput)
+
+    def clean_payload(self):
+        try:
+            data = json.loads(self.cleaned_data["payload"])
+        except ValueError as e:
+            raise ValidationError(gettext("Not a JSON file: %(error)s") % {"error": e})
+        if not isinstance(data, dict):
+            raise ValidationError(gettext("Not a JSON file: %(error)s") % {"error": "object expected"})
+        return data
+
+    def clean(self):
+        cleaned_data = super().clean()
+        data = cleaned_data.get("payload")
+        if not isinstance(data, dict):
+            return cleaned_data
+        tokens = {item_token(list_name, index) for list_name in PREVIEW_LISTS
+                  for index in range(len(data.get(list_name) or []))}
+        cleaned_data["skip"] = set(self.data.getlist("skip")) & tokens
+        cleaned_data["disabled"] = set(self.data.getlist("disabled")) & tokens if cleaned_data.get("edited") else None
+        # a deletion is named by its key (config_io.deletion_key), not by an item of the file
+        cleaned_data["keep"] = {key[:600] for key in self.data.getlist("keep")[:5000]}
+        cleaned_data["names"] = {token: self.data.get(f"name-{token}", "").strip()[:200] for token in tokens
+                                 if token.split(":")[0] in RENAMABLE_LISTS and self.data.get(f"name-{token}")}
+        return cleaned_data

@@ -1,6 +1,6 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import QueryDict
+from django.http import HttpResponse, QueryDict
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import translation
 from django.views.decorators.http import require_POST
@@ -42,6 +42,9 @@ def set_preference(request):
         user_profile.language = language
     user_profile.save()
     _activate(request, user_profile)
+    if request.headers.get("X-Santa-Preference") == "1":
+        # saved in the background (core.js): the page applies it itself
+        return HttpResponse(status=204)
     return redirect(safe_next(request, "home"))
 
 

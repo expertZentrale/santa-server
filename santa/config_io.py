@@ -9,6 +9,8 @@ The sync tokens are never exported: a group keeps its token (and so its configur
 a new group gets a new one. The rules of the release sources are not exported either, the target builds them
 by checking the sources itself.
 """
+import copy
+
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
@@ -34,7 +36,7 @@ GROUP_FIELDS = (
 RELEASE_SOURCE_FIELDS = (
     "kind", "identifier", "version_pattern", "asset_pattern", "binary_pattern", "include_prereleases", "rule_type",
     "policy", "custom_msg", "custom_url", "cel_expr", "is_global", "auto_approve", "auto_approve_delay_days",
-    "keep_versions", "is_enabled",
+    "keep_versions", "keep_unit", "approve_kept_versions", "include_dependencies", "is_enabled",
 )
 FILE_ACCESS_RULE_FIELDS = (
     "description", "rule_type", "paths", "path_prefixes", "allow_read_access", "audit_only", "block_message",
@@ -53,6 +55,92 @@ def legacy_usb(item):
     flags = item.get("remount_usb_mode", "") if item["block_usb_mount"] else ""
     action = ("REMOUNT" if flags else "BLOCK") if item["block_usb_mount"] else "ALLOW"
     return {**item, "removable_media_action": action, "removable_media_remount_flags": flags}
+
+
+# The import preview (console): every item of the file by its list and index, e.g. "rules:3"
+PREVIEW_LISTS = ("groups", "release_sources", "rules", "file_access_rules")
+RENAMABLE_LISTS = ("groups", "release_sources", "file_access_rules")
+SWITCHABLE_LISTS = ("release_sources", "rules", "file_access_rules")
+
+
+def item_token(list_name, index):
+    return f"{list_name}:{index}"
+
+
+def deletion_key(list_name, item):
+    """What "delete what is not in the file" matches an item of the file by, or None (groups are never deleted)"""
+    if list_name == "release_sources":
+        return f"source:{item.get('name')}"
+    if list_name == "file_access_rules":
+        return f"file_access:{item.get('name')}"
+    if list_name == "rules":
+        return "rule:" + "|".join(str(item.get(field)) for field in RULE_KEY_FIELDS)
+    return None
+
+
+def apply_choices(data, skip=(), disabled=None, names=None, keep=()):
+    """The file as changed in the import preview. Returns (data, keep, warnings).
+
+    skip: tokens of the items left out; they are not deleted by delete_missing either (their keys go into keep).
+    disabled: tokens of the rules, package rules and file access rules imported disabled, None = as in the file.
+    names: {token: new name} of groups, package rules and file access rules; a group keeps its references.
+    keep: the keys of deletions not to do. Every item gets its original token as "_token", for the report.
+    """
+    data = copy.deepcopy(data)
+    # a skipped item keeps its name: it is protected from delete_missing by the name it has on the target
+    names = {token: name for token, name in (names or {}).items() if token not in skip}
+    keep = set(keep)
+    warnings = []
+    for list_name in PREVIEW_LISTS:
+        for index, item in enumerate(data.get(list_name) or []):
+            item["_token"] = item_token(list_name, index)
+    renamed = {}
+    for list_name in RENAMABLE_LISTS:
+        for item in data.get(list_name) or []:
+            name = (names.get(item["_token"]) or "").strip()
+            if name and name != item.get("name"):
+                if list_name == "groups":
+                    renamed[item.get("name")] = name
+                item["name"] = name
+    if renamed:
+        for item in data.get("groups") or []:
+            if item.get("parent") in renamed:
+                item["parent"] = renamed[item["parent"]]
+        for list_name in ("release_sources", "rules", "file_access_rules"):
+            for item in data.get(list_name) or []:
+                item["groups"] = [renamed.get(name, name) for name in item.get("groups") or []]
+    if disabled is not None:
+        for list_name in SWITCHABLE_LISTS:
+            for item in data.get(list_name) or []:
+                item["is_enabled"] = item["_token"] not in disabled
+    skipped_groups = set()
+    for list_name in PREVIEW_LISTS:
+        if list_name not in data:
+            continue
+        kept = []
+        for item in data[list_name]:
+            if item["_token"] not in skip:
+                kept.append(item)
+            elif list_name == "groups":
+                skipped_groups.add(item.get("name"))
+            else:
+                keep.add(deletion_key(list_name, item))
+        data[list_name] = kept
+    # a skipped group that the target doesn't have: the items of the file can't use it
+    missing = {name for name in skipped_groups if not Group.objects.filter(name=name).exists()}
+    if missing:
+        for item in data.get("groups") or []:
+            if item.get("parent") in missing:
+                warnings.append(f"Group {item.get('name')}: parent group {item['parent']!r} skipped, none")
+                item["parent"] = None
+        for list_name in ("release_sources", "rules", "file_access_rules"):
+            for item in data.get(list_name) or []:
+                dropped = [name for name in item.get("groups") or [] if name in missing]
+                if dropped:
+                    item["groups"] = [name for name in item["groups"] if name not in missing]
+                    label = item.get("name") or f"{item.get('rule_type')} {item.get('identifier')}"
+                    warnings.append(f"{label}: skipped group {', '.join(dropped)} left out")
+    return data, keep, warnings
 
 
 class ConfigImportError(Exception):
@@ -93,17 +181,33 @@ def export_config():
 
 
 class _Importer:
-    def __init__(self, data, delete_missing):
+    def __init__(self, data, delete_missing, keep=()):
         self.data = data
         self.delete_missing = delete_missing
+        # the keys of items not to delete (deletion_key): skipped in the preview, or kept there
+        self.keep = set(keep)
         self.errors = []
         self.warnings = []
         self.changes = []  # (action, model verbose name, str(object))
+        self.items = {}  # token of the file item: "created", "updated" or "unchanged"
+        self.deletions = []  # (key, model verbose name, str(object))
         self.groups = {}
         self.tags = {}
 
     def record(self, action, obj):
         self.changes.append((action, obj._meta.verbose_name, str(obj)))
+
+    def status(self, list_name, index, item, created, changed):
+        token = item.get("_token") or item_token(list_name, index)
+        self.items[token] = "created" if created else "updated" if changed else "unchanged"
+
+    def delete(self, key, obj):
+        """Delete obj (delete_missing), unless it is kept. Returns whether it is deleted."""
+        if key in self.keep:
+            return False
+        self.record("deleted", obj)
+        self.deletions.append((key, obj._meta.verbose_name, str(obj)))
+        return True
 
     def save(self, obj, label):
         try:
@@ -171,7 +275,7 @@ class _Importer:
         return True
 
     def import_groups(self):
-        for item in self.data.get("groups", []):
+        for index, item in enumerate(self.data.get("groups", [])):
             name = item.get("name")
             if not name:
                 self.errors.append("Group without name")
@@ -180,10 +284,12 @@ class _Importer:
             created = group is None
             if created:
                 group = Group(name=name)
-            if self._apply(group, legacy_usb(item), GROUP_FIELDS) or created:
+            changed = self._apply(group, legacy_usb(item), GROUP_FIELDS)
+            if changed or created:
                 if not self.save(group, f"Group {name}"):
                     continue
                 self.record("created" if created else "updated", group)
+            self.status("groups", index, item, created, changed)
             self.groups[name] = group
         self.import_group_parents()
 
@@ -206,7 +312,7 @@ class _Importer:
                 self.record("updated", group)
     def import_release_sources(self):
         names = set()
-        for item in self.data.get("release_sources", []):
+        for index, item in enumerate(self.data.get("release_sources", [])):
             name = item.get("name")
             if not name:
                 self.errors.append("Release source without name")
@@ -225,15 +331,15 @@ class _Importer:
                 changed = self.set_m2m(source.tags, self.resolve_tags(item["tags"])) or changed
             if changed:
                 self.record("created" if created else "updated", source)
+            self.status("release_sources", index, item, created, changed)
         if self.delete_missing:
             for source in ReleaseSource.objects.all():
-                if source.name not in names:
-                    self.record("deleted", source)
+                if source.name not in names and self.delete(f"source:{source.name}", source):
                     source.delete()
 
     def import_rules(self):
         kept = set()
-        for item in self.data.get("rules", []):
+        for index, item in enumerate(self.data.get("rules", [])):
             label = f"Rule {item.get('rule_type')} {item.get('identifier')}"
             if any(not item.get(f) for f in RULE_KEY_FIELDS):
                 self.errors.append(f"{label}: rule_type, identifier and policy are required")
@@ -271,17 +377,17 @@ class _Importer:
                 self.warnings.append(f"{label}: no scope on the target, it applies to no Mac")
             if changed:
                 self.record("created" if created else "updated", rule)
+            self.status("rules", index, item, created, changed)
         if self.delete_missing:
             # compared in Python: a NOT IN with every kept pk could exceed the 2100 parameters of SQL Server
-            to_delete = [rule for rule in Rule.objects.filter(release_source__isnull=True) if rule.pk not in kept]
-            for rule in to_delete:
-                self.record("deleted", rule)
+            to_delete = [rule for rule in Rule.objects.filter(release_source__isnull=True) if rule.pk not in kept
+                         and self.delete("rule:" + "|".join(str(getattr(rule, f)) for f in RULE_KEY_FIELDS), rule)]
             for start in range(0, len(to_delete), 1000):
                 Rule.objects.filter(pk__in=[rule.pk for rule in to_delete[start:start + 1000]]).delete()
 
     def import_file_access_rules(self):
         names = set()
-        for item in self.data.get("file_access_rules", []):
+        for index, item in enumerate(self.data.get("file_access_rules", [])):
             name = item.get("name")
             if not name:
                 self.errors.append("File access rule without name")
@@ -316,11 +422,11 @@ class _Importer:
             changed = self.set_m2m(rule.groups, self.resolve_groups(item.get("groups"), label)) or changed
             if changed:
                 self.record("created" if created else "updated", rule)
+            self.status("file_access_rules", index, item, created, changed)
         # files of older versions have no file access rules: nothing to compare with
         if self.delete_missing and "file_access_rules" in self.data:
             for rule in FileAccessRule.objects.all():
-                if rule.name not in names:
-                    self.record("deleted", rule)
+                if rule.name not in names and self.delete(f"file_access:{rule.name}", rule):
                     rule.delete()
 
     def run(self):
@@ -341,12 +447,14 @@ class _DryRun(Exception):
     pass
 
 
-def import_config(data, delete_missing=False, dry_run=False):
+def import_config(data, delete_missing=False, dry_run=False, keep=()):
     """Import the exported data in one transaction. Nothing is written if there is an error, or on a dry run.
 
-    Returns {"changes": [(action, model, object)], "warnings": [...]}, raises ConfigImportError.
+    keep: the keys (deletion_key) of the items delete_missing must leave.
+    Returns {"changes": [(action, model, object)], "warnings": [...], "items": {token: status},
+    "deletions": [(key, model, object)]}, raises ConfigImportError.
     """
-    importer = _Importer(data, delete_missing)
+    importer = _Importer(data, delete_missing, keep)
     try:
         with transaction.atomic():
             importer.run()
@@ -354,4 +462,5 @@ def import_config(data, delete_missing=False, dry_run=False):
                 raise _DryRun
     except _DryRun:
         pass
-    return {"changes": importer.changes, "warnings": importer.warnings}
+    return {"changes": importer.changes, "warnings": importer.warnings, "items": importer.items,
+            "deletions": importer.deletions}

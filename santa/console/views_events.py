@@ -14,12 +14,14 @@ from ..services import allow_identifier, existing_rules, is_allowed
 from .filters import TIME_DAYS, TIME_PRESETS, Facet, chosen, date_range, filter_bar, in_range, remember_filters
 from .forms import SCOPE_GLOBAL, SCOPE_GROUPS, SCOPE_MACHINES, EventRuleForm
 from .utils import (
+    defer_rows,
     drawer_done,
     is_htmx,
     log_addition,
     log_change,
     paginate,
     render_drawer,
+    render_list,
     require_perms,
     safe_next,
     sort_by,
@@ -169,19 +171,22 @@ def events(request):
     context = {**filter_context(request), "view": view, "max_pk": Event.objects.aggregate(m=Max("pk"))["m"] or 0,
                **filter_bar(request, page_key, event_facets(request, view), hidden=("view", "sort"), keep=("view",),
                             placeholder=gettext("File, signing ID, SHA-256, Mac, user…"))}
+    deferred = defer_rows(request)
     if view == "all":
         queryset, context["sort"] = sort_by(request, events.select_related("machine", "group"), EVENT_COLUMNS,
                                             "-time")
-        page = context["page"] = paginate(request, queryset)
+        page = None if deferred else paginate(request, queryset)
     else:
         binaries, context["sort"] = sort_by(request, blocked_apps(events), APP_COLUMNS, "-last",
                                             tiebreak="file_sha256")
-        page = paginate(request, binaries)
-        annotate_app_rows(page)
-        context["page"] = page
+        page = None if deferred else paginate(request, binaries)
+        if page is not None:
+            annotate_app_rows(page)
+    context["page"] = page
     # new rows are added on top by live.js, in the default order on the first page
-    context["live_insert"] = page.number == 1 and context["sort"] == ("-time" if view == "all" else "-last")
-    return render(request, "console/events/list.html", context)
+    context["live_insert"] = (page is not None and page.number == 1
+                              and context["sort"] == ("-time" if view == "all" else "-last"))
+    return render_list(request, "console/events/list.html", "console/events/_rows.html", context)
 
 
 def blocked_apps(events):

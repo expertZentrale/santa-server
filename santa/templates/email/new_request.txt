@@ -1,4 +1,4 @@
-{% load i18n %}{% autoescape off %}{% blocktranslate with name=access_request.requester.get_full_name|default:access_request.requester.get_username %}{{ name }} asks for software:{% endblocktranslate %}
+{% load i18n %}{% autoescape off %}{% include "email/_greeting.txt" %}{% blocktranslate with name=access_request.requester.get_full_name|default:access_request.requester.get_username %}{{ name }} asks for software:{% endblocktranslate %}
 
 {{ access_request.title }} ({{ access_request.get_kind_display }})
 {% for package in access_request.packages.all %}- {{ package.get_kind_display }}: {{ package.identifier }}

@@ -9,7 +9,7 @@ from django.core.management import CommandError, call_command
 from django.test import TestCase
 from django.urls import reverse
 
-from santa.config_io import ConfigImportError, export_config, import_config
+from santa.config_io import ConfigImportError, apply_choices, export_config, import_config
 from santa.models import Group, Machine, Policy, ReleaseSource, ReleaseVersion, Rule, RuleType
 
 SHA_A = "a" * 64
@@ -30,7 +30,9 @@ class ConfigIOTestCase(TestCase):
         source = ReleaseSource.objects.create(name="colima", kind=ReleaseSource.Kind.GITHUB_RELEASE,
                                               identifier="abiosoft/colima\nlima-vm/lima", asset_pattern="Darwin",
                                               version_pattern="^v1\\.", rule_type=RuleType.SIGNINGID,
-                                              policy=Policy.CEL, cel_expr=CEL_EXPR, custom_msg="Ask the IT")
+                                              policy=Policy.CEL, cel_expr=CEL_EXPR, custom_msg="Ask the IT",
+                                              keep_versions=2, keep_unit=ReleaseSource.KeepUnit.MONTHS,
+                                              approve_kept_versions=True)
         source.groups.add(self.dev)
         version = ReleaseVersion.objects.create(source=source, version="v1")
         Rule.objects.create(rule_type=RuleType.BINARY, identifier="c" * 64, release_source=source,
@@ -87,6 +89,51 @@ class ConfigIOTestCase(TestCase):
         self.assertEqual(source.identifiers, ["abiosoft/colima", "lima-vm/lima"])
         self.assertEqual((source.version_pattern, source.rule_type, source.policy, source.cel_expr, source.custom_msg),
                          ("^v1\\.", RuleType.SIGNINGID, Policy.CEL, CEL_EXPR, "Ask the IT"))
+        self.assertEqual((source.keep_versions, source.keep_unit, source.approve_kept_versions,
+                          source.include_dependencies), (2, ReleaseSource.KeepUnit.MONTHS, True, False))
+
+    def test_choices_of_the_preview(self):
+        data = json.loads(json.dumps(export_config()))
+        sales = next(index for index, item in enumerate(data["groups"]) if item["name"] == "Sales")
+        rule_a = next(index for index, item in enumerate(data["rules"]) if item["identifier"] == SHA_A)
+        cel = next(index for index, item in enumerate(data["rules"]) if item["policy"] == Policy.CEL)
+        edited, keep, warnings = apply_choices(
+            data, skip={f"rules:{cel}"}, disabled={f"rules:{rule_a}", "release_sources:0"},
+            names={f"groups:{sales}": "Sales EU", "release_sources:0": "Colima tools"})
+        # a renamed group keeps its references
+        self.assertIn("Sales EU", next(item for item in edited["rules"] if item["identifier"] == SHA_A)["groups"])
+        self.assertEqual(edited["release_sources"][0]["name"], "Colima tools")
+        self.assertFalse(edited["release_sources"][0]["is_enabled"])
+        self.assertTrue(all(item["is_enabled"] != (item["identifier"] == SHA_A) for item in edited["rules"]))
+        self.assertNotIn(Policy.CEL, [item["policy"] for item in edited["rules"]])
+        # skipped: not deleted by delete_missing either
+        self.assertEqual(keep, {"rule:SIGNINGID|EQHXZ8M8AV:com.google.Chrome|CEL"})
+        self.assertEqual(warnings, [])
+        report = import_config(edited, delete_missing=True, keep=keep)
+        self.assertTrue(Rule.objects.filter(policy=Policy.CEL).exists())
+        # a skipped item has no status: it is not in the file any more
+        self.assertNotIn(f"rules:{cel}", report["items"])
+        self.assertTrue(Group.objects.filter(name="Sales EU").exists())
+        self.assertFalse(Rule.objects.get(identifier=SHA_A).is_enabled)
+
+    def test_a_skipped_item_keeps_its_name(self):
+        data = json.loads(json.dumps(export_config()))
+        edited, keep, _warnings = apply_choices(data, skip={"release_sources:0"},
+                                                names={"release_sources:0": "Renamed"})
+        self.assertEqual(keep, {"source:colima"})
+        import_config(edited, delete_missing=True, keep=keep)
+        # not deleted, although renamed in the preview and not in the file any more
+        self.assertTrue(ReleaseSource.objects.filter(name="colima").exists())
+
+    def test_a_skipped_group_the_target_does_not_have(self):
+        data = json.loads(json.dumps(export_config()))
+        data["groups"].append({**data["groups"][0], "name": "New", "parent": None})
+        data["rules"][0]["groups"] = ["New"]
+        edited, _keep, warnings = apply_choices(data, skip={f"groups:{len(data['groups']) - 1}"})
+        self.assertEqual(edited["rules"][0]["groups"], [])
+        self.assertEqual(len(warnings), 1)
+        # without the warning it would be an error: the group is unknown on the target
+        import_config(edited, dry_run=True)
 
     def test_import_of_the_old_usb_settings(self):
         data = json.loads(json.dumps(export_config()))

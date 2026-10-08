@@ -32,14 +32,15 @@
       <button type="button" class="bulkbar-clear" data-clear-selection aria-label="{% translate 'Clear selection' %}" title="{% translate 'Clear selection (Esc)' %}">×</button>
     </div>
     {% endif %}
-    <table class="table compact">
+    <table class="table compact mac-rules">
       <thead><tr><th class="select"></th><th>{% translate "Identifier" %}</th><th>{% translate "Type" %}</th><th>{% translate "Policy" %}</th>
         <th>{% translate "Applies through" %}</th><th>{% translate "Tags" %}</th><th>{% translate "Enabled" %}</th></tr></thead>
       <tbody>{% for rule in page %}
         <tr{% if not rule.wins %} class="disabled"{% endif %}>
           <td class="select">{% if rule.on_mac and perms.santa.change_rule %}<input type="checkbox" name="rules" value="{{ rule.pk }}" aria-label="{% translate 'Select rule' %} {{ rule.pk }}">{% endif %}</td>
-          <td>{% url 'console:rule' rule.pk as rule_url %}<a class="mono" href="{{ rule_url }}" hx-get="{{ rule_url }}" hx-target="#drawer" title="{{ rule.identifier }}">{{ rule.identifier|short_hash:28 }}</a>
-            {% if rule.description %}<small class="muted">{{ rule.description|truncatechars:70 }}</small>{% endif %}</td>
+          <td>{% url 'console:rule' rule.pk as rule_url %}<div class="identifier-cell"><a class="mono identifier" href="{{ rule_url }}" hx-get="{{ rule_url }}" hx-target="#drawer" title="{{ rule.identifier }}">{{ rule.identifier }}</a>
+            {% include "console/_copy.html" with value=rule.identifier %}</div>
+            {% if rule.description %}<small class="muted cell-line" title="{{ rule.description }}">{{ rule.description }}</small>{% endif %}</td>
           <td>{{ rule.get_rule_type_display }}</td>
           <td><span class="badge {{ rule.policy|policy_class }}">{{ rule.get_policy_display }}</span></td>
           <td>{% if rule.scope_level == levels.machine %}<span class="chip small mac">{% translate "This Mac" %}</span>

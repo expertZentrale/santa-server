@@ -1,4 +1,6 @@
-{% load i18n %}
+{% load i18n %}{% if christmas %}
+{% translate "Merry Christmas and happy holidays! 🎄" %}
+{% endif %}
 -- 
 {% blocktranslate %}{{ server_name }}: change which e-mails you get in your profile:{% endblocktranslate %}
 {{ profile_url }}

@@ -36,10 +36,21 @@
     kept.set(shown, { view, scroll });
   }
 
+  // The page behind the drawer again, in place (as a boosted link, core.js): it shows what was saved and the
+  // messages; the scroll position stays
+  function refreshPage() {
+    drawerSaved = false;
+    const scroll = window.scrollY;
+    htmx.ajax("GET", window.location.href, {
+      target: document.body, swap: "innerHTML show:none", headers: { "HX-Boosted": "true", "X-Santa-Rerender": "1" },
+    }).then(() => window.scrollTo(0, scroll));
+  }
+
   function hideDrawer(drawer) {
     // the drawer saved something the page behind it doesn't show yet
     if (drawerSaved || drawer.querySelector("[data-refresh-on-close]")) {
-      window.location.reload();
+      drawer.classList.remove("open");
+      refreshPage();
       return;
     }
     keepView(drawer);
@@ -114,8 +125,33 @@
     }
   }
 
+  // Another page loaded without a reload (hx-boost, core.js): the views kept were views of the page before. Its
+  // history entry becomes the entry of a page without a view (like after a load): htmx would load the page again
+  // when the drawer closes back to it. An entry of another URL (Back to the page before) loads that page.
+  const here = () => window.location.pathname + window.location.search;
+  let pageUrl = here();
+  document.addEventListener("santa:page", () => {
+    kept.clear();
+    shown = 0;
+    chain = 0;
+  });
+  document.addEventListener("htmx:pushedIntoHistory", () => {
+    pageUrl = here();
+    history.replaceState({ index: 0, chain: 0 }, "");
+  });
+
   window.addEventListener("popstate", (event) => {
-    if (event.state?.htmx) return;
+    // an entry of htmx: it restores that page itself
+    if (event.state?.htmx) {
+      pageUrl = here();
+      return;
+    }
+    if (here() !== pageUrl) {
+      // the entry of another page (loaded in place before): that page again
+      pageUrl = here();
+      refreshPage();
+      return;
+    }
     showState(currentState());
   });
 
@@ -172,7 +208,7 @@
     drawer.querySelector("[data-drawer-title]")?.focus({ preventScroll: true });
   });
 
-  // drawer_done(): back to the view before and update it, or reload the page when there is none. With
+  // drawer_done(): back to the view before and update it, or the page again when there is none. With
   // {"drawerSaved": {"open": url}} the saved object opens in the drawer instead (e.g. a new group and its profile).
   document.addEventListener("drawerSaved", (event) => {
     const drawer = getDrawer();
@@ -187,7 +223,7 @@
       // the page again, without this view: a Back after the reload doesn't open the saved form again
       if (currentState()) history.replaceState({ index: shown }, "");
       drawer.classList.remove("open");
-      window.location.reload();
+      refreshPage();
     }
   });
 

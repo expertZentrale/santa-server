@@ -30,7 +30,7 @@
   <section class="card"><h2>{% translate "Approval" %}</h2>
     {% include "console/_field.html" with field=form.auto_approve %}
     {% include "console/_field.html" with field=form.auto_approve_delay_days %}
-    {% include "console/_field.html" with field=form.keep_versions %}
+    {% include "console/sources/_keep_fields.html" with keep=form.keep_versions unit=form.keep_unit approve_kept=form.approve_kept_versions dependencies=form.include_dependencies kind="kind" %}
   </section>
   <section class="card"><h2>{% translate "Tags" %}</h2>
     {% include "console/_field.html" with field=form.tags %}

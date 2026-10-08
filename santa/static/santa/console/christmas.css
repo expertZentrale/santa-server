@@ -1,0 +1,53 @@
+/* The Christmas theme (seasonal.py): only loaded in December with SANTA_CHRISTMAS_THEME, or with
+   SANTA_CHRISTMAS_THEME_FORCE. Fir green for the actions, red and gold for the decoration. */
+:root[data-season="christmas"] {
+  --accent: light-dark(#17703b, #6fd497);
+  --accent-text: light-dark(#ffffff, #0b1a10);
+  --xmas-red: light-dark(#c62828, #ff7b72);
+  --xmas-gold: light-dark(#c99a06, #f2c94c);
+  --snow: light-dark(rgb(120 140 170 / 55%), rgb(255 255 255 / 75%));
+}
+
+/* a string of lights under the top bar */
+[data-season="christmas"] .topbar { border-bottom-color: transparent; }
+[data-season="christmas"] .topbar::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -.3rem;
+  height: .55rem;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 70%, var(--xmas-red) 0 .17rem, transparent .19rem) 0 0 / 3rem 100% repeat-x,
+    radial-gradient(circle at 50% 70%, var(--accent) 0 .17rem, transparent .19rem) 1rem 0 / 3rem 100% repeat-x,
+    radial-gradient(circle at 50% 70%, var(--xmas-gold) 0 .17rem, transparent .19rem) 2rem 0 / 3rem 100% repeat-x,
+    linear-gradient(var(--border), var(--border)) 0 .1rem / 100% 1px no-repeat;
+}
+
+/* the Santa hat in front of the name */
+[data-season="christmas"] .brand { display: inline-flex; align-items: center; gap: .4rem; }
+[data-season="christmas"] .brand::before {
+  content: "";
+  width: 1.35rem;
+  height: 1.35rem;
+  flex: none;
+  background: url("../favicon.svg") center / contain no-repeat;
+  transform: rotate(-12deg) translateY(-.1rem);
+}
+
+/* the sign-in card and the request form: a ribbon on top */
+[data-season="christmas"] .card.login,
+[data-season="christmas"] .card.request-form { border-top: .25rem solid var(--xmas-red); }
+
+.xmas-greeting { color: var(--xmas-red); font-weight: 600; margin: -.25rem 0 1rem; }
+
+/* the snow falls behind the cards (christmas.js), never in the way of a click */
+.snow { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: -1; color: var(--snow); }
+
+@media print {
+  .snow, [data-season="christmas"] .topbar::after { display: none; }
+}
+
+/* the progress bar below the string of lights, not on it */
+[data-season="christmas"] .progress { top: calc(var(--topbar-h) + .3rem); }

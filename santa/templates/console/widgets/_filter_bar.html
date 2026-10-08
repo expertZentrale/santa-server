@@ -1,9 +1,10 @@
 {% load i18n %}{% comment %}The filter bar of a list (filters.filter_bar): search, "+ Filter", the views, the chips of the active
 filters.{% endcomment %}
-<form class="filter-bar" method="get" data-filter-form>
+{# applied without reloading the page (boosted like every form); the scroll position stays #}
+<form class="filter-bar" method="get" action="{{ request.path }}" data-filter-form hx-swap="innerHTML show:none">
   {% for name, value in bar.hidden %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
   <div class="filter-toolbar">
-    <input type="search" name="q" value="{{ bar.q }}" placeholder="{{ bar.placeholder }}" aria-label="{% translate 'Search' %}">
+    <input type="search" id="filter-search" name="q" value="{{ bar.q }}" placeholder="{{ bar.placeholder }}" aria-label="{% translate 'Search' %}">
     <noscript><button class="button">{% translate "Filter" %}</button></noscript>
     <div class="filter-tools" data-table-tools>
       <details class="picker down views-picker" data-picker>

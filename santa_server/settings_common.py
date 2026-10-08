@@ -139,6 +139,8 @@ RELEASE_MAX_DOWNLOAD_BYTES = 500 * 1024 * 1024
 RELEASE_MAX_FILE_BYTES = 512 * 1024 * 1024
 RELEASE_MAX_UNPACKED_BYTES = 2 * 1024 * 1024 * 1024
 RELEASE_HTTP_TIMEOUT = 60
+# packages a package rule with "allow the dependencies" resolves per release, the direct and the indirect ones
+RELEASE_MAX_DEPENDENCIES = 200
 
 LOGGING = {
     "version": 1,
@@ -152,6 +154,10 @@ LOGGING = {
 # The name in the title, the header and the Django admin, and the favicon: a URL or path, empty = the Santa hat
 SANTA_SERVER_NAME = "Santa Server"
 SANTA_FAVICON_URL = ""
+# The Christmas theme of the console, the request form and the e-mails: SANTA_CHRISTMAS_THEME switches it on for
+# December, SANTA_CHRISTMAS_THEME_FORCE all year (e.g. to try it)
+SANTA_CHRISTMAS_THEME = False
+SANTA_CHRISTMAS_THEME_FORCE = False
 
 # E-mail notifications (notifications.py): on with EMAIL_HOST, unless EMAIL_NOTIFICATIONS_ENABLED is false; when off,
 # the profile doesn't offer them. Sent right after the change, in a background thread over one connection (the

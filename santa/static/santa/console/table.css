@@ -6,7 +6,6 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: var(--shadow);
   /* clip, not hidden: keeps the rounded corners without breaking the sticky header */
   overflow: clip;
 }
@@ -69,6 +68,8 @@ a.badge:hover { text-decoration: none; filter: brightness(.95); outline: 1px sol
 .identifier-cell { display: flex; align-items: center; gap: .25rem; min-width: 0; }
 .identifier-cell .identifier { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .table[data-table="rules"] th[data-col="identifier"] { width: 26rem; }
+/* the rules of a Mac: no column widths to set, the identifier keeps a width of its own (the whole one in its title) */
+.mac-rules .identifier-cell { max-width: 22rem; }
 /* with the column "Comment" shown, the comment is not repeated under the identifier */
 .table[data-shown~="comment"] .description-inline { display: none; }
 
@@ -113,17 +114,24 @@ body:has(.drawer.open) .bulkbar.visible { opacity: 0; visibility: hidden; pointe
     border-radius: var(--radius); padding: .5rem;
   }
   .bulkbar:not(.visible) { transform: translateY(calc(100% + 1.5rem)); }
-  /* the count and × on the first line, the actions below, side by side as far as they fit */
-  .bulkbar > .count { flex: 1 1 auto; padding-left: .5rem; }
-  .bulkbar > .bulkbar-clear { order: 1; }
-  .bulkbar::before { content: ""; order: 2; flex-basis: 100%; }
-  .bulkbar > :not(.count, .bulkbar-clear) { order: 3; flex: 1 1 8rem; }
-  .bulkbar > .button { white-space: nowrap; }
+  /* one line: the count, the actions sharing the rest, ×; the fields an action needs (tag, policy, groups) on a
+     line below, only while they are shown */
+  .bulkbar { left: .5rem; right: .5rem; bottom: calc(.5rem + env(safe-area-inset-bottom, 0rem)); gap: .4rem; padding: .35rem; }
+  .bulkbar > .count { flex: none; padding-left: .4rem; }
+  .bulkbar > :not(.count, .bulkbar-clear) { flex: 1 1 0; min-width: 0; }
+  .bulkbar > .bulkbar-clear { order: 1; padding-inline: .35rem; }
+  .bulkbar > [data-show-when], .bulkbar > .combobox { order: 2; flex: 1 1 100%; }
+  /* a long label (e.g. in German) wraps in its button instead of being cut */
+  .bulkbar > .button { white-space: normal; line-height: 1.2; text-align: center; padding-inline: .5rem; }
+  .bulkbar > select { white-space: nowrap; padding-inline: .6rem; overflow: hidden; text-overflow: ellipsis; }
   .bulkbar > details > summary { width: 100%; justify-content: center; }
   .bulkbar .picker-panel { max-width: calc(100vw - 3rem); }
   .bulkbar .picker-panel label { white-space: normal; }
 }
 [data-select-form] tbody tr:has(td.select input) { cursor: pointer; }
+/* touch: no grey or blue flash over the whole row (drawn above everything, also the bar covering it); the
+   selected row shows the tap */
+.table tbody tr, .table tbody td { -webkit-tap-highlight-color: transparent; }
 .select-all-cards { display: none; }
 /* touch: larger checkboxes to select the rows */
 @media (pointer: coarse) {
@@ -162,7 +170,7 @@ body:has(.drawer.open) .bulkbar.visible { opacity: 0; visibility: hidden; pointe
 
 @media (max-width: 45em) {
   /* the tables become one card per row, the column names come from data-label (table.js) */
-  .table:not(.keep) { border: 0; box-shadow: none; background: none; }
+  .table:not(.keep) { border: 0; background: none; }
   .table:not(.keep) thead { display: none; }
   .table:not(.keep), .table:not(.keep) tbody, .table:not(.keep) tr, .table:not(.keep) td { display: block; width: 100%; }
   .table:not(.keep) tbody tr {
@@ -185,7 +193,9 @@ body:has(.drawer.open) .bulkbar.visible { opacity: 0; visibility: hidden; pointe
   .table:not(.keep) td > * { grid-column: 2; }
   .table:not(.keep) td > * { justify-self: start; max-width: 100%; }
   /* a value that truncates itself (e.g. the identifier with its copy button) gets the whole width */
-  .table:not(.keep) td > .identifier-cell { justify-self: stretch; }
+  .table:not(.keep) td > .identifier-cell { justify-self: stretch; max-width: none; }
+  /* the rules of a Mac: the whole identifier and comment, wrapped (no column chooser to show the comment) */
+  .mac-rules .identifier-cell .identifier, .mac-rules .cell-line { white-space: normal; overflow-wrap: anywhere; max-width: none; }
   /* a long status (e.g. "Monitor: blocked in lockdown") wraps in the narrow value column */
   .table:not(.keep) td .badge { white-space: normal; border-radius: var(--radius-sm); }
   .table-scroll { overflow-x: visible; width: auto; max-width: none; margin-left: 0; transform: none; }
@@ -196,6 +206,13 @@ body:has(.drawer.open) .bulkbar.visible { opacity: 0; visibility: hidden; pointe
   .table:not(.keep) td.select { position: absolute; top: .2rem; right: .2rem; width: auto; padding: .5rem; }
   .table:not(.keep) td.select + td { padding-right: 2.75rem; }
   .table:not(.keep) tbody tr.selected { background: var(--info-bg); border-color: var(--accent); }
+  /* a table inside a card (e.g. the versions of a package rule): rows with a line between them, no cards in the
+     card, the same distances as the rest of the card */
+  .card .table:not(.keep) tbody tr { border: 0; border-top: 1px solid var(--border); border-radius: 0; margin: 0; padding: .5rem 0; background: none; }
+  .card .table:not(.keep) tbody tr:first-child { border-top: 0; padding-top: 0; }
+  .card .table:not(.keep) tbody tr:last-child { padding-bottom: 0; }
+  .card .table:not(.keep) td { padding-inline: 0; }
+  .card .table:not(.keep) tbody tr.selected { background: var(--info-bg); }
   /* "select all" above the cards: the header with its checkbox is hidden (table.js) */
   .select-all-cards { display: flex; align-items: center; gap: .55rem; margin: 0 0 .6rem; padding: .4rem 1rem; cursor: pointer; }
   /* the permissions of a role: narrow columns, the labels wrap */
@@ -211,7 +228,21 @@ body:has(.drawer.open) .bulkbar.visible { opacity: 0; visibility: hidden; pointe
   .col-resize, .table-tools { display: none; }
 }
 
+/* the rows of a list while they load (console/_rows.html) */
+.rows-loading {
+  display: flex; align-items: center; justify-content: center; gap: .6rem; min-height: 8rem; padding: 2rem 1rem;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); color: var(--muted);
+}
+.rows-loading.failed { color: var(--bad); }
+.spinner {
+  width: 1.1rem; height: 1.1rem; border-radius: 50%; border: 2px solid var(--border); border-top-color: var(--accent);
+  animation: spin .8s linear infinite;
+}
+.rows-loading.failed .spinner { display: none; }
+@keyframes spin { to { transform: rotate(1turn); } }
+
 @media (prefers-reduced-motion: reduce) {
+  .spinner { animation-duration: 2.4s; }
   .bulkbar { transition: none; }
   .table tr.new > td { animation: none; }
 }

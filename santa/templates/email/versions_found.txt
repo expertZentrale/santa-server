@@ -1,4 +1,4 @@
-{% load i18n %}{% autoescape off %}{% blocktranslate with name=source.name %}The package rule “{{ name }}” found new versions:{% endblocktranslate %}
+{% load i18n %}{% autoescape off %}{% include "email/_greeting.txt" %}{% blocktranslate with name=source.name %}The package rule “{{ name }}” found new versions:{% endblocktranslate %}
 
 {% for version in versions %}- {% if version.identifier %}{{ version.identifier }} {% endif %}{{ version.version }} ({% blocktranslate count count=version.binary_count %}{{ count }} binary{% plural %}{{ count }} binaries{% endblocktranslate %}){% if version.auto_enable_pending %}, {% blocktranslate with date=version.auto_enable_at|date:"d.m.Y H:i" %}approved automatically on {{ date }}{% endblocktranslate %}{% endif %}
 {% endfor %}

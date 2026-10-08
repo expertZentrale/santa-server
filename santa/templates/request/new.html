@@ -4,13 +4,15 @@
 {% block content %}
 {% url 'requests:list' as back_url %}{% include "console/_back.html" with url=back_url label=_("My requests") %}
 <h1>{% translate "Request software" %}</h1>
+{% if christmas %}<p class="xmas-greeting">{% translate "Ho ho ho! Tell Santa what you wish for, the elves of your IT team take care of it." %}</p>{% endif %}
+{% if christmas %}{% translate "Send to the North Pole" as send_label %}{% else %}{% translate "Send request" as send_label %}{% endif %}
 {% if not kinds %}
 <section class="card empty">{% translate "You can't make requests. Ask your IT team if you need software." %}</section>
 {% else %}
 <div class="tabs" role="tablist">
   {% for value, label in kinds %}<a href="?kind={{ value }}" {% if kind == value %}class="active"{% endif %}>{{ label }}</a>{% endfor %}
 </div>
-<form method="post" class="stack card" {% if kind == "PACKAGE" %}data-package-form data-catalog-url="{% url 'requests:catalog_search' %}" data-searchable="{{ searchable_kinds|join:',' }}"{% endif %}>
+<form method="post" class="stack card request-form" {% if kind == "PACKAGE" %}data-package-form data-catalog-url="{% url 'requests:catalog_search' %}" data-searchable="{{ searchable_kinds|join:',' }}"{% endif %}>
   {% csrf_token %}
   <input type="hidden" name="kind" value="{{ kind }}">
   {% if form.non_field_errors %}<div class="error">{{ form.non_field_errors }}</div>{% endif %}
@@ -27,7 +29,7 @@
         {% for error in form.event.errors %}<small class="error">{{ error }}</small>{% endfor %}
       </div>
       {% include "console/_field.html" with field=form.justification %}
-      <button class="button primary">{% translate "Send request" %}</button>
+      <button class="button primary">{{ send_label }}</button>
     {% endif %}
   {% elif kind == "PACKAGE" %}
     <div class="field{% if form.packages.errors %} has-error{% endif %}" data-field="packages">
@@ -45,10 +47,10 @@
       {{ form.packages }}
     </div>
     {% include "console/_field.html" with field=form.justification %}
-    <button class="button primary">{% translate "Send request" %}</button>
+    <button class="button primary">{{ send_label }}</button>
   {% else %}
     {% for field in form %}{% include "console/_field.html" %}{% endfor %}
-    <button class="button primary">{% translate "Send request" %}</button>
+    <button class="button primary">{{ send_label }}</button>
   {% endif %}
 </form>
 {% endif %}

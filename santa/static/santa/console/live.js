@@ -4,10 +4,12 @@
 (function () {
   "use strict";
 
-  function setupLiveUpdates() {
-    const table = document.querySelector("table[data-live-updates]");
+  // root: the page, or the rows of the list loaded after it (console/_rows.html)
+  function setupLiveUpdates(root) {
+    const table = root.querySelector("table[data-live-updates]");
     const pill = document.querySelector("[data-live-pill]");
-    if (!table || !pill) return;
+    if (!table || !pill || table.dataset.liveReady) return;
+    table.dataset.liveReady = "1";
     const tbody = table.tBodies[0];
     const baseTitle = document.title;
     const unseen = new Set();
@@ -91,8 +93,12 @@
       const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       first.scrollIntoView({ block: "center", behavior: reduced ? "auto" : "smooth" });
     });
-    setInterval(poll, 10000);
+    // the page was switched (hx-boost): this table is gone, the new page sets up its own
+    const timer = setInterval(() => {
+      if (table.isConnected) poll();
+      else clearInterval(timer);
+    }, 10000);
   }
 
-  document.addEventListener("DOMContentLoaded", setupLiveUpdates);
+  SantaConsole.onInit(setupLiveUpdates);
 })();

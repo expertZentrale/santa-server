@@ -1,4 +1,4 @@
-{% load i18n %}{% autoescape off %}{% blocktranslate with name=source.name %}The package rule “{{ name }}” had problems checking for new versions:{% endblocktranslate %}
+{% load i18n %}{% autoescape off %}{% include "email/_greeting.txt" %}{% blocktranslate with name=source.name %}The package rule “{{ name }}” had problems checking for new versions:{% endblocktranslate %}
 
 {{ source.last_error }}
 

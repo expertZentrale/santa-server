@@ -24,10 +24,20 @@ from ..auth import (
     roles_managed_by_sign_in,
     sign_in_group_changed,
 )
-from ..config_io import EXPORT_PERMS, IMPORT_PERMS, ConfigImportError, export_config, import_config
+from ..config_io import (
+    EXPORT_PERMS,
+    IMPORT_PERMS,
+    RENAMABLE_LISTS,
+    SWITCHABLE_LISTS,
+    ConfigImportError,
+    apply_choices,
+    export_config,
+    import_config,
+    item_token,
+)
 from ..models import SignInGroup, Tag
 from .filters import Facet, any_of, chosen, filter_bar, remember_filters
-from .forms import ConfigImportForm, RoleForm, SignInGroupForm, TagForm, UserForm
+from .forms import ConfigImportForm, ConfigPreviewForm, RoleForm, SignInGroupForm, TagForm, UserForm
 from .utils import (
     changed_message,
     drawer_done,
@@ -405,39 +415,105 @@ def config(request):
     return render_form(request, "config", "config", {"can_import": can_import_config(request.user)})
 
 
+# the lists of the file in the preview: (list, heading)
+PREVIEW_SECTIONS = [("groups", _("Groups")), ("release_sources", _("Package rules")), ("rules", _("Rules")),
+                    ("file_access_rules", _("File access rules"))]
+
+
+def _preview_sections(data, report, choices):
+    """The items of the file with what the dry run would do, and the choices of the preview"""
+    skip, disabled, names = choices["skip"], choices["disabled"], choices["names"]
+    sections = []
+    for list_name, heading in PREVIEW_SECTIONS:
+        rows = []
+        for index, item in enumerate(data.get(list_name) or []):
+            token = item_token(list_name, index)
+            if list_name == "rules":
+                label = item.get("identifier", "")
+                detail = f"{item.get('rule_type', '')} · {item.get('policy', '')}"
+            else:
+                label, detail = item.get("name", ""), ""
+            enabled = item.get("is_enabled", True) if disabled is None else token not in disabled
+            rows.append({
+                "token": token, "label": label, "detail": detail, "description": item.get("description", ""),
+                "renamable": list_name in RENAMABLE_LISTS, "name": names.get(token, ""),
+                "switchable": list_name in SWITCHABLE_LISTS, "enabled": enabled, "skipped": token in skip,
+                "status": "skipped" if token in skip else report["items"].get(token, "error") if report else "",
+            })
+        if rows:
+            counts = {status: sum(1 for row in rows if row["status"] == status)
+                      for status in ("created", "updated", "unchanged", "skipped")}
+            sections.append({"name": list_name, "heading": heading, "rows": rows, "counts": counts})
+    return sections
+
+
+def _deletions(report, keep):
+    """The deletions of delete_missing: the ones the dry run does, and the ones kept in the preview"""
+    rows = [{"key": key, "model": model, "label": label, "kept": False} for key, model, label in report["deletions"]]
+    for key in sorted(keep):
+        kind, _sep, rest = key.partition(":")
+        if kind in ("rule", "source", "file_access") and key not in {row["key"] for row in rows}:
+            rows.append({"key": key, "model": "", "label": rest.replace("|", " · "), "kept": True})
+    return rows
+
+
 @staff_required
 def config_import(request):
+    """Upload a file, see what it would change and adjust it (skip, rename, disable, keep deletions), then import it.
+    The file goes with the preview form: no second upload, nothing kept on the server."""
     require_perms(request, *EXPORT_PERMS)
     can_import = can_import_config(request.user)
-    form = ConfigImportForm(request.POST or None, request.FILES or None)
-    report = errors = None
+    form = ConfigImportForm(None)
+    context = {"can_import": can_import, "form": form}
     if request.method == "POST":
         if not can_import:
             raise PermissionDenied
-        if form.is_valid():
+        if "payload" in request.POST:
+            preview_form = ConfigPreviewForm(request.POST)
+            if not preview_form.is_valid():
+                context["errors"] = [error for errors in preview_form.errors.values() for error in errors]
+                return render_form(request, "config_import", "config", context)
+            choices = preview_form.cleaned_data
+            data = choices["payload"]
+            final = request.POST.get("action") == "import"
+        else:
+            form = context["form"] = ConfigImportForm(request.POST, request.FILES)
+            if not form.is_valid():
+                return render_form(request, "config_import", "config", context)
             try:
                 data = json.load(form.cleaned_data["file"])
             except ValueError as e:
                 form.add_error("file", gettext("Not a JSON file: %(error)s") % {"error": e})
-            else:
-                dry_run = form.cleaned_data["dry_run"]
-                try:
-                    report = import_config(data, delete_missing=form.cleaned_data["delete_missing"], dry_run=dry_run)
-                except ConfigImportError as e:
-                    errors = e.errors
-                else:
-                    if not dry_run:
-                        logger.info("User %s imported a configuration: %s change(s)",
-                                    request.user, len(report["changes"]))
-                        count = len(report["changes"])
-                        messages.success(request, ngettext("Imported: %(count)s change.",
-                                                           "Imported: %(count)s changes.", count) % {"count": count})
-    dry_run = form.is_bound and form.is_valid() and form.cleaned_data["dry_run"]
-    return render_form(request, "config_import", "config", {
-        "form": form, "can_import": can_import, "report": report, "errors": errors, "dry_run": dry_run,
-        # the lists behind the drawer show the imported configuration after it closes
-        "imported": report is not None and not dry_run,
-    })
+                return render_form(request, "config_import", "config", context)
+            if not isinstance(data, dict):
+                form.add_error("file", gettext("Not a JSON file: %(error)s") % {"error": "object expected"})
+                return render_form(request, "config_import", "config", context)
+            choices = {"skip": set(), "disabled": None, "names": {}, "keep": set(),
+                       "delete_missing": form.cleaned_data["delete_missing"]}
+            final = False
+        edited, keep, warnings = apply_choices(data, choices["skip"], choices["disabled"], choices["names"],
+                                               choices["keep"])
+        report = None
+        try:
+            report = import_config(edited, delete_missing=choices["delete_missing"], dry_run=not final, keep=keep)
+        except ConfigImportError as e:
+            context["errors"] = e.errors
+        if report is not None:
+            report["warnings"] = warnings + report["warnings"]
+        if final and report is not None:
+            count = len(report["changes"])
+            logger.info("User %s imported a configuration: %s change(s)", request.user, count)
+            messages.success(request, ngettext("Imported: %(count)s change.", "Imported: %(count)s changes.",
+                                               count) % {"count": count})
+            # the lists behind the drawer show the imported configuration after it closes
+            context.update(report=report, imported=True)
+            return render_form(request, "config_import", "config", context)
+        context.update(
+            report=report, preview=True, payload=json.dumps(data, ensure_ascii=False),
+            delete_missing=choices["delete_missing"], preview_sections=_preview_sections(data, report, choices),
+            deletions=_deletions(report, choices["keep"]) if report and choices["delete_missing"] else [],
+        )
+    return render_form(request, "config_import", "config", context)
 
 
 @staff_required

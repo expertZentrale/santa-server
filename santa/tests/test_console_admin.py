@@ -9,9 +9,10 @@ from django.db.models import ProtectedError
 from django.urls import reverse
 
 from santa.auth import ADMIN_GROUP_NAME, REQUESTERS_GROUP_NAME
+from santa.config_io import export_config
 from santa.models import AccessRequest, Group, Rule, RuleType, SignInGroup, Tag
 
-from .test_console import SHA_A, ConsoleBase
+from .test_console import SHA_A, SHA_B, ConsoleBase
 
 
 class AdministrationTestCase(ConsoleBase):
@@ -189,12 +190,47 @@ class AdministrationTestCase(ConsoleBase):
         self.assertNotIn(self.dev.sync_token, response.content.decode())
         data["groups"].append({**data["groups"][0], "name": "Imported"})
         upload = SimpleUploadedFile("config.json", json.dumps(data).encode(), content_type="application/json")
-        response = self.client.post(reverse("console:admin_config_import"), {"file": upload, "dry_run": "on"})
-        self.assertContains(response, "Dry run: nothing saved")
+        # the upload shows the preview, nothing is saved
+        response = self.client.post(reverse("console:admin_config_import"), {"file": upload})
+        self.assertContains(response, "Update preview")
         self.assertFalse(Group.objects.filter(name="Imported").exists())
+        payload = response.context["payload"]
+        token = f"groups:{len(data['groups']) - 1}"
+        self.assertEqual([row["status"] for section in response.context["preview_sections"] for row in section["rows"]
+                          if row["token"] == token], ["created"])
+        # the import with the file of the preview, no second upload; the new group renamed on the way
+        self.client.post(reverse("console:admin_config_import"),
+                         {"payload": payload, "edited": "on", "action": "import", f"name-{token}": "Renamed"})
+        self.assertTrue(Group.objects.filter(name="Renamed").exists())
+        self.assertFalse(Group.objects.filter(name="Imported").exists())
+
+    def test_import_preview_choices(self):
+        rule = Rule.objects.create(rule_type=RuleType.BINARY, identifier=SHA_A, is_global=True)
+        data = export_config()
+        data["rules"].append({**data["rules"][0], "identifier": SHA_B})
+        rule.delete()
+        Rule.objects.create(rule_type=RuleType.TEAMID, identifier="ABCDE12345", is_global=True)
         upload = SimpleUploadedFile("config.json", json.dumps(data).encode(), content_type="application/json")
-        self.client.post(reverse("console:admin_config_import"), {"file": upload})
-        self.assertTrue(Group.objects.filter(name="Imported").exists())
+        response = self.client.post(reverse("console:admin_config_import"), {"file": upload, "delete_missing": "on"})
+        # the rule only on this server would be deleted
+        self.assertEqual([row["key"] for row in response.context["deletions"]], ["rule:TEAMID|ABCDE12345|ALLOWLIST"])
+        post = {"payload": response.context["payload"], "edited": "on", "delete_missing": "on",
+                "skip": ["rules:0"], "disabled": ["rules:1"], "keep": ["rule:TEAMID|ABCDE12345|ALLOWLIST"]}
+        response = self.client.post(reverse("console:admin_config_import"), {**post, "action": "preview"})
+        statuses = {row["token"]: row["status"] for row in response.context["preview_sections"][1]["rows"]}
+        self.assertEqual(statuses, {"rules:0": "skipped", "rules:1": "created"})
+        self.assertFalse(Rule.objects.filter(identifier=SHA_B).exists())
+        response = self.client.post(reverse("console:admin_config_import"), {**post, "action": "import"})
+        self.assertContains(response, "Imported")
+        self.assertFalse(Rule.objects.filter(identifier=SHA_A).exists())
+        self.assertFalse(Rule.objects.get(identifier=SHA_B).is_enabled)
+        # kept, although not in the file
+        self.assertTrue(Rule.objects.filter(identifier="ABCDE12345").exists())
+
+    def test_import_preview_with_a_broken_payload(self):
+        response = self.client.post(reverse("console:admin_config_import"),
+                                    {"payload": "not json", "action": "import"})
+        self.assertContains(response, "Not a JSON file")
 
     def test_import_needs_permissions(self):
         viewer = User.objects.create_user("viewer", is_staff=True)

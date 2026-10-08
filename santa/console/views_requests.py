@@ -14,6 +14,7 @@ from .. import catalog, notifications
 from ..catalog import update_identifier_icons
 from ..models import AccessRequest, AccessRequestPackage, Event, ReleaseSource, RuleType
 from ..releases import ReleaseError, find_binaries, sync_release_source
+from ..seasonal import christmas_active
 from ..services import (
     allow_identifier,
     allowed_packages,
@@ -40,11 +41,13 @@ from .forms import (
     RequestPackageForm,
 )
 from .utils import (
+    defer_rows,
     drawer_done,
     log_addition,
     log_change,
     paginate,
     render_drawer,
+    render_list,
     require_perms,
     sort_by,
     staff_required,
@@ -149,7 +152,12 @@ def new_request(request):
                     AccessRequestPackage(access_request=access_request, **package)
                     for package in form.cleaned_data.get("packages", []))
                 notifications.request_created(access_request)
-            messages.success(request, gettext("Your request was sent to your IT team. You'll see the answer here."))
+            if christmas_active():
+                messages.success(request, gettext("Your wish is on its way to the North Pole (your IT team). "
+                                                  "You'll see the answer here."))
+            else:
+                messages.success(request, gettext("Your request was sent to your IT team. You'll see the answer "
+                                                  "here."))
             return redirect("requests:list")
     return render(request, "request/new.html", {
         "form": form, "kind": kind, "kinds": [(value, label) for value, label in AccessRequest.Kind.choices
@@ -274,8 +282,8 @@ def admin_requests(request):
     columns = {"request": "title", "kind": "kind", "requester": "requester__username", "created": "created_at",
                "status": "status"}
     queryset, sort = sort_by(request, queryset, columns, "-created")
-    return render(request, "console/requests/list.html", {
-        "page": paginate(request, queryset), "sort": sort, "params": params,
+    return render_list(request, "console/requests/list.html", "console/requests/_rows.html", {
+        "page": None if defer_rows(request) else paginate(request, queryset), "sort": sort, "params": params,
         **filter_bar(request, "requests", [
             Facet("status", gettext("Status"), choices=AccessRequest.Status.choices,
                   default=[AccessRequest.Status.PENDING]),
@@ -332,6 +340,7 @@ def admin_request_detail(request, pk, approve_form=None, deny_form=None):
         "approve_form": approve_form or _approve_forms(access_request),
         "deny_form": deny_form or DenyForm(),
         "requester_machines": machines_for_user(access_request.requester).select_related("group"),
+        "searchable_kinds": list(catalog.SEARCHABLE_KINDS),
     })
 
 
@@ -397,7 +406,7 @@ def _allow_for_request(request, access_request, form, identifiers):
             data["rule_type"], identifier, data["policy"], data["scope"] == SCOPE_GLOBAL,
             data["groups"] if data["scope"] == SCOPE_GROUPS else [], request.user,
             f"{access_request.title} (request of {access_request.requester})", form.all_tags(),
-            machines=machines if data["scope"] == SCOPE_MACHINES else [],
+            machines=machines if data["scope"] == SCOPE_MACHINES else [], cel_expr=form.cel_expr_for(identifier),
         )
         (log_addition if created else log_change)(request.user, rule, f"Access request {access_request.pk}")
         rules.append(rule)
@@ -441,6 +450,12 @@ def _identifiers_of_upload(data):
     return identifiers
 
 
+def _add_picked_icons(source, picked):
+    # only what was picked: no catalog lookup while approving
+    source.identifier_icons = {**source.identifier_icons, **{identifier: item for identifier, item in picked.items()
+                                                             if identifier in source.identifiers}}
+
+
 def _package_rule_for_request(request, access_request, form):
     """A new package rule for the requested packages, or the packages added to an existing one"""
     data = form.cleaned_data
@@ -450,8 +465,10 @@ def _package_rule_for_request(request, access_request, form):
             source = ReleaseSource(name=data["package_name"].strip(), kind=data["package_kind"],
                                    identifier="\n".join(data["package_identifiers"]),
                                    rule_type=data["package_rule_type"], is_global=data["package_is_global"],
-                                   auto_approve=data["package_auto_approve"])
+                                   auto_approve=data["package_auto_approve"],
+                                   **form.new_source_options(data["package_kind"]))
             source.full_clean()
+            _add_picked_icons(source, data["package_picked"])
             source.save()
             source.groups.set([] if source.is_global else data["package_groups"])
             source.tags.add(*form.all_tags())
@@ -461,6 +478,7 @@ def _package_rule_for_request(request, access_request, form):
             if added:
                 source.identifier = "\n".join(source.identifiers + added)
                 source.full_clean()
+                _add_picked_icons(source, data["package_picked"])
                 source.save()
                 log_change(request.user, source,
                            f"Identifiers {', '.join(added)} added for access request {access_request.pk}")
@@ -477,7 +495,8 @@ def _approve_packages(request, access_request, form):
     for kind, name in form.new_rule_names().items():
         packages = [package for package, target in approved if target is None and package.kind == kind]
         source = ReleaseSource(name=name, kind=kind, identifier="\n".join(p.identifier for p in packages),
-                               rule_type=data["rule_type"] or RuleType.BINARY, is_global=data["is_global"])
+                               rule_type=data["rule_type"] or RuleType.BINARY, is_global=data["is_global"],
+                               **form.new_source_options(kind))
         source.full_clean()
         update_identifier_icons(source, {p.identifier: {"name": p.name, "icon_url": p.icon_url}
                                          for p in packages if p.name or p.icon_url})

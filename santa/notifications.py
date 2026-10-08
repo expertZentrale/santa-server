@@ -22,6 +22,7 @@ from django.utils import translation
 from django.utils.translation import gettext_lazy as _
 
 from .models import AccessRequest, SignInGroup, UserProfile
+from .seasonal import christmas_active
 from .users import profile_for
 
 logger = logging.getLogger(__name__)
@@ -142,13 +143,16 @@ def users_for(key):
 def message(user, subject, template, context):
     """One mail, in the language of the user. subject: (lazy text, its values)."""
     language = profile_for(user).language or settings.LANGUAGE_CODE
+    christmas = christmas_active()
     with translation.override(language):
         body = render_to_string(f"email/{template}.txt", {
             **context, "user": user, "server_name": settings.SANTA_SERVER_NAME,
-            "profile_url": absolute_url("profile"),
+            "profile_url": absolute_url("profile"), "christmas": christmas,
         })
         text, values = subject
-        subject = f"[{settings.SANTA_SERVER_NAME}] {str(text) % values}"
+        # the Christmas theme: a tree, or what the mail is about (context "christmas_emoji")
+        emoji = f"{context.get('christmas_emoji', '🎄')} " if christmas else ""
+        subject = f"[{settings.SANTA_SERVER_NAME}] {emoji}{str(text) % values}"
     return EmailMessage(subject, body, to=[user.email])
 
 
@@ -231,7 +235,9 @@ def request_decided(access_request):
         return
     notify("my_requests", [access_request.requester],
            (DECIDED_SUBJECTS[access_request.status], {"title": access_request.title}), "request_decided",
-           {"access_request": access_request, "url": absolute_url("requests:list")})
+           {"access_request": access_request, "url": absolute_url("requests:list"),
+            # a present, or a lump of coal
+            "christmas_emoji": "🎁" if access_request.status == AccessRequest.Status.APPROVED else "🪨"})
 
 
 def versions_found(source, versions):

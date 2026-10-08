@@ -10,23 +10,32 @@
     {% include "console/_field.html" with field=form.binary_pattern %}
   </details>
   {% include "console/_field.html" with field=form.policy %}
+  <div data-show-when="policy=CEL">
+    <div data-show-when="rule_type=TEAMID">{% include "console/_field.html" with field=form.signing_prefixes %}</div>
+    {% include "console/_field.html" with field=form.cel_expr %}
+    {% include "console/rules/_cel_help.html" %}</div>
   {% include "console/_field.html" with field=form.scope %}
   <div data-show-when="scope=groups">{% include "console/_field.html" with field=form.groups %}</div>
   {% include "console/_field.html" with field=form.new_tags %}
   {% else %}<p class="muted">{% translate "Creating execution rules needs the permission to add rules." %}</p>{% endif %}
 </div>
-<div data-show-when="result=package">
+<div data-show-when="result=package" data-source-form data-catalog-url="{% url 'console:catalog_search' %}"
+     data-searchable="{{ searchable_kinds|join:',' }}" data-kind-field="package_kind" data-picked-field="package_picked"
+     data-target-field="package_target" data-target-kinds="{{ form.target_kinds }}">
   {% if perms.santa.add_releasesource %}
-  <p class="help small">{% translate "A package rule watches the releases and allows every new version. More options (patterns, delay, versions to keep) are on the page of the package rule after the approval." %}</p>
+  <p class="help small">{% translate "A package rule watches the releases and allows every new version. More options (patterns, delay) are on the page of the package rule after the approval." %}</p>
   {% include "console/_field.html" with field=form.package_target %}
   <div data-show-when="package_target=new">{% include "console/_field.html" with field=form.package_kind %}</div>
   {% include "console/_field.html" with field=form.package_identifiers %}
   <div data-show-when="package_target=new">
     {% include "console/_field.html" with field=form.package_name %}
     {% include "console/_field.html" with field=form.package_rule_type %}
+    {% include "console/_field.html" with field=form.package_policy %}
+    <div data-show-when="package_policy=CEL">{% include "console/_field.html" with field=form.package_cel_expr %}{% include "console/rules/_cel_help.html" %}</div>
     {% include "console/_field.html" with field=form.package_auto_approve %}
     {% include "console/_field.html" with field=form.package_is_global %}
     <div data-hide-when="package_is_global">{% include "console/_field.html" with field=form.package_groups %}</div>
+    {% include "console/sources/_keep_fields.html" with keep=form.package_keep_versions unit=form.package_keep_unit approve_kept=form.package_approve_kept_versions dependencies=form.package_include_dependencies kind="package_kind" %}
   </div>
   {% else %}<p class="muted">{% translate "Creating package rules needs the permission to add package rules." %}</p>{% endif %}
 </div>

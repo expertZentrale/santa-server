@@ -60,8 +60,11 @@ Das Image (`santa_server/settings.py`) wird über Umgebungsvariablen konfigurier
 | `LANGUAGE_CODE` | | Standardsprache, `en` oder `de`; Browser und Benutzerprofil haben Vorrang |
 | `TIME_ZONE` | | Standard `UTC`; die Konsole zeigt die Zeiten in der Zeitzone des Browsers oder des Benutzerprofils |
 | `GITHUB_TOKEN` | empfohlen | für Paketregeln und die Katalogsuche; ohne erlaubt GitHub 60 Anfragen pro Stunde |
+| `RELEASE_MAX_DEPENDENCIES` | | Standard `200`: so viele Abhängigkeiten (direkte und indirekte) löst eine Paketregel mit *Abhängigkeiten erlauben* je Version höchstens auf |
 | `SANTA_SERVER_NAME` | | Name in Fenstertitel, Kopfzeile und Django-Admin, Standard `Santa Server` |
 | `SANTA_FAVICON_URL` | | eigenes Favicon: absolute URL oder Pfad ab `/` (SVG, PNG oder ICO); leer = die mitgelieferte Weihnachtsmütze |
+| `SANTA_CHRISTMAS_THEME` | | Standard `false`; `true` zeigt im Dezember das Weihnachtsdesign (Konsole, Anfrageformular, E-Mails) |
+| `SANTA_CHRISTMAS_THEME_FORCE` | | Standard `false`; `true` zeigt das Weihnachtsdesign das ganze Jahr, z. B. zum Ausprobieren |
 | `EMAIL_HOST`, `EMAIL_PORT` | | SMTP-Server für die [E-Mail-Benachrichtigungen](#e-mail-benachrichtigungen); leer = keine E-Mails. Port Standard `587` |
 | `EMAIL_NOTIFICATIONS_ENABLED` | | Standard `true`; `false` schaltet die E-Mail-Benachrichtigungen ab, auch mit `EMAIL_HOST`. Ohne sie bietet das Profil keine Auswahl an |
 | `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD` | | Anmeldung am SMTP-Server, leer = ohne |
@@ -393,8 +396,25 @@ wird für sich geprüft und behält seine eigenen Versionen. Eine Paketregel leg
 - **Richtlinie**: Erlauben, Compiler erlauben, Blockieren, still blockieren oder CEL, dazu Blockiermeldung und URL.
 - **Versionsmuster**: eine Regex, z. B. `^1\.`, um bei 1.x zu bleiben.
 - **Automatisch freigeben** und eine **Verzögerung** (z. B. 2 Tage nach der Veröffentlichung), um von einem
-  kompromittierten Release zu erfahren, bevor es auf den Macs läuft. *Versionen behalten*: Nur die letzten Releases
-  bleiben erlaubt.
+  kompromittierten Release zu erfahren, bevor es auf den Macs läuft.
+- **Behalten**: die letzten *n* Versionen, oder die Versionen der letzten *n* Wochen bzw. Monate; die Regeln älterer
+  Versionen werden gelöscht, die neueste Version bleibt immer. `0` behält alle.
+- **Auch die älteren behaltenen Versionen erlauben** (alle Kataloge außer Homebrew-Cask und URL, die nur auf den
+  aktuellen Download zeigen; Homebrew-Formulae aus der Bottle-Registry `ghcr.io`): legt die Regeln für die älteren
+  Versionen im behaltenen Bereich an, nicht nur für neue (höchstens 10 je Prüfung, der Rest bei den nächsten).
+  Nicht mit `0`, das würde jede je veröffentlichte Version erlauben.
+- **Abhängigkeiten erlauben** (npm, Homebrew-Formula): erlaubt auch die ausführbaren Dateien der Abhängigkeiten jeder
+  neuen Version, auch der indirekten (npm: `dependencies` und `optionalDependencies` für macOS, z. B. die
+  Plattformpakete von esbuild; Homebrew: die Laufzeitabhängigkeiten, z. B. lima für colima). Ihre Regeln gehören zur
+  Version und werden mit ihr gelöscht. Wird die Option bei bestehenden Versionen eingeschaltet, erhalten sie ihre
+  Abhängigkeiten bei der nächsten Prüfung. Jede Version zeigt ihre Abhängigkeiten; die meisten npm-Abhängigkeiten
+  sind Skripte ohne ausführbare Datei und brauchen keine Regel. Höchstens `RELEASE_MAX_DEPENDENCIES` Pakete je
+  Version.
+
+**Aufräumen**: Wird ein Paket aus der Paketregel entfernt, das Versionsmuster oder der behaltene Bereich geändert oder
+werden die Abhängigkeiten nicht mehr erlaubt, zeigt die Paketregel die Versionen, die sie nicht mehr abdeckt.
+*Aufräumen* zeigt sie mit der Zahl der Regeln und löscht sie nach der Bestätigung; die Macs entfernen die Regeln bei
+der nächsten Synchronisierung.
 
 Hinweise:
 - Homebrew-Bottles werden je macOS-Version gehasht. Homebrew kann ein Binary beim Installieren umschreiben
@@ -411,7 +431,8 @@ Blockierungen der letzten 30 Tage auf ihren Macs), *Paket* (ein oder mehrere Pak
 *Sonstiges*. Welche Arten ein Benutzer anfragen darf, legen seine Rollen fest. Administratoren sehen die Details unter
 *Anfragen* und genehmigen (eine Regel für den Mac des Anfragenden, Gruppen oder alle Macs; Pakete in eine neue oder
 bestehende Paketregel, jedes Paket für sich; bei *Sonstiges* gleich eine neue Ausführungsregel, per Kennung oder
-hochgeladener App, oder eine Paketregel) oder lehnen mit einer Notiz ab.
+hochgeladener App, oder eine Paketregel; als Richtlinie Erlauben, Compiler erlauben oder ein CEL-Ausdruck, bei Team-ID-Regeln
+auch per Signing-ID-Präfix; die Pakete mit der Suche in den Katalogen) oder lehnen mit einer Notiz ab.
 
 Um den Blockierdialog mit dem Formular zu verbinden, setzen Sie die *URL im Blockierdialog* der Gruppe auf
 `https://<host>/request/new/?sha256=%file_sha%` und den Text der Schaltfläche z. B. auf `Zugang anfragen`.
@@ -464,6 +485,11 @@ python manage.py import_config - < santa-config.json            # importieren, "
 - `--delete-missing` löscht die manuellen Regeln, Paketregeln und Dateizugriffsregeln, die nicht in der Datei sind.
   Gruppen werden nie gelöscht.
 - Alles oder nichts: Ist ein einziger Eintrag ungültig, wird nichts importiert und jeder Fehler aufgelistet.
+- In der Konsole zeigt das Hochladen zuerst eine **Vorschau**, ohne etwas zu speichern: je Eintrag neu, geändert oder
+  unverändert. Einträge lassen sich dort überspringen, Gruppen, Paketregeln und Dateizugriffsregeln umbenennen (die
+  Verweise auf eine umbenannte Gruppe folgen), Regeln, Paketregeln und Dateizugriffsregeln deaktiviert importieren und
+  mit „Löschen, was nicht in der Datei ist“ einzelne Löschungen behalten. Übersprungene Einträge werden nicht
+  gelöscht. *Importieren* übernimmt die Datei der Vorschau, sie muss nicht noch einmal hochgeladen werden.
 
 ### Entwicklung
 
@@ -603,8 +629,11 @@ The image (`santa_server/settings.py`) is configured with environment variables:
 | `LANGUAGE_CODE` | | default language, `en` or `de`; the browser and the user profile win over it |
 | `TIME_ZONE` | | default `UTC`; the console shows the times in the time zone of the browser, or of the user profile |
 | `GITHUB_TOKEN` | recommended | for package rules and the catalog search; without it GitHub allows 60 requests per hour |
+| `RELEASE_MAX_DEPENDENCIES` | | default `200`: at most this many dependencies (direct and indirect) a package rule with *Allow the dependencies* resolves per version |
 | `SANTA_SERVER_NAME` | | name in the window title, the header and the Django admin, default `Santa Server` |
 | `SANTA_FAVICON_URL` | | your own favicon: an absolute URL or a path from `/` (SVG, PNG or ICO); empty = the Santa hat that comes with it |
+| `SANTA_CHRISTMAS_THEME` | | default `false`; `true` shows the Christmas theme in December (console, request form, e-mails) |
+| `SANTA_CHRISTMAS_THEME_FORCE` | | default `false`; `true` shows the Christmas theme all year, e.g. to try it |
 | `EMAIL_HOST`, `EMAIL_PORT` | | SMTP server for the [e-mail notifications](#e-mail-notifications); empty = no e-mails. Port default `587` |
 | `EMAIL_NOTIFICATIONS_ENABLED` | | default `true`; `false` switches the e-mail notifications off, also with `EMAIL_HOST`. Without them the profile offers no choices |
 | `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD` | | sign-in at the SMTP server, empty = none |
@@ -914,7 +943,23 @@ on its own and keeps its own versions. A package rule also chooses what the rule
 - **Policy**: allow, allow compiler, block, block silently, or CEL, plus the block message and URL.
 - **Version pattern**: a regex, e.g. `^1\.` to stay on 1.x.
 - **Auto approve** and a **delay** (e.g. 2 days after the publication), to hear about a compromised release before it
-  runs on the Macs. *Keep versions*: only the last releases stay allowed.
+  runs on the Macs.
+- **Keep**: the last *n* versions, or the versions of the last *n* weeks or months; the rules of older versions are
+  deleted, the newest version always stays. `0` keeps all.
+- **Also allow the older kept versions** (every catalog except Homebrew casks and URLs, which only point to the
+  current download; Homebrew formulae from the bottle registry `ghcr.io`): adds the rules of the older versions
+  inside the kept range, not only of new ones (at most 10 per check, the rest at the next ones). Not with `0`: that
+  would allow every version ever published.
+- **Allow the dependencies** (npm, Homebrew formula): also allows the executables of the dependencies of every new
+  version, also the indirect ones (npm: `dependencies` and `optionalDependencies` for macOS, e.g. the platform
+  packages of esbuild; Homebrew: the runtime dependencies, e.g. lima for colima). Their rules belong to the version
+  and are deleted with it. Switched on for existing versions, they get their dependencies at the next check. Every
+  version shows its dependencies; most npm dependencies are scripts without an executable and need no rule. At most
+  `RELEASE_MAX_DEPENDENCIES` packages per version.
+
+**Clean up**: when a package is removed from the package rule, the version pattern or the kept range changes, or the
+dependencies are no longer allowed, the package rule shows the versions it no longer covers. *Clean up* lists them
+with the number of rules and deletes them after the confirmation; the Macs remove the rules at their next sync.
 
 Notes:
 - Homebrew bottles are hashed per macOS version. Homebrew can rewrite a binary when it installs it (relocation); if
@@ -928,7 +973,8 @@ Notes:
 30 days on their Macs), *Package* (one or more packages from the catalogs) or *Other*. Their roles decide which kinds
 they may request. Administrators see the details in *Requests* and approve (a rule for the requester's Mac, groups or
 all Macs; packages into a new or an existing package rule, each package on its own; for *Other* a new execution rule
-right away, by identifier or uploaded app, or a package rule) or deny with a note.
+right away, by identifier or uploaded app, or a package rule; as the policy allow, allow compiler or a CEL expression, for
+Team ID rules also by signing ID prefix; the packages with the search of the catalogs) or deny with a note.
 
 To link the block dialog to the form, set the group's *block dialog URL* to
 `https://<host>/request/new/?sha256=%file_sha%` and the button text to e.g. `Request access`.
@@ -979,6 +1025,11 @@ python manage.py import_config - < santa-config.json            # import, "-" re
 - `--delete-missing` deletes the manual rules, package rules and file access rules that are not in the file. Groups
   are never deleted.
 - Everything or nothing: if a single entry is invalid, nothing is imported and every error is listed.
+- In the console, the upload first shows a **preview** without saving anything: new, changed or unchanged per item.
+  There, items can be skipped, groups, package rules and file access rules renamed (the references to a renamed group
+  follow), rules, package rules and file access rules imported disabled, and with "delete what is not in the file"
+  single deletions kept. Skipped items are not deleted. *Import* takes the file of the preview, it doesn't have to be
+  uploaded again.
 
 ### Development
 

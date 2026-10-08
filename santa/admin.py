@@ -35,7 +35,7 @@ from .models import (
     generate_sync_token,
 )
 from .profiles import base_profile, group_profile
-from .releases import ReleaseError, find_binaries, sync_release_source
+from .releases import ReleaseError, cleanup_release_source, find_binaries, sync_release_source
 from .services import allow_identifier, can_see_sync_token, set_rules_enabled
 
 logger = logging.getLogger(__name__)
@@ -546,14 +546,14 @@ class ReleaseSourceAdmin(admin.ModelAdmin):
     filter_horizontal = ("groups", "tags")
     readonly_fields = ("last_checked_at", "last_error", "created_at", "updated_at")
     inlines = [ReleaseVersionInline]
-    actions = ["check_now"]
+    actions = ["check_now", "clean_up"]
     fieldsets = (
         (None, {"fields": ("name", "kind", "identifier", "is_enabled")}),
         ("Which versions and files", {"fields": ("version_pattern", "asset_pattern", "binary_pattern",
-                                                 "include_prereleases")}),
+                                                 "include_prereleases", "include_dependencies")}),
         ("Rules", {"fields": ("rule_type", "policy", "custom_msg", "custom_url", "cel_expr")}),
         ("Scope", {"fields": ("is_global", "groups", "auto_approve", "auto_approve_delay_days", "keep_versions",
-                              "tags")}),
+                              "keep_unit", "approve_kept_versions", "tags")}),
         ("Status", {"fields": ("last_checked_at", "last_error", "created_at", "updated_at")}),
     )
 
@@ -602,6 +602,17 @@ class ReleaseSourceAdmin(admin.ModelAdmin):
                 self.message_user(request, message + ".", messages.SUCCESS)
             if not release_versions:
                 self.message_user(request, f"{source}: already up to date.")
+
+    @admin.action(description="Clean up: delete the versions outside the package rule, with their rules",
+                  permissions=["change"])
+    def clean_up(self, request, queryset):
+        if not request.user.has_perm("santa.delete_rule"):
+            raise PermissionDenied
+        for source in queryset:
+            versions, rules = cleanup_release_source(source)
+            if versions or rules:
+                self.log_change(request, source, f"Cleaned up: {versions} version(s), {rules} rule(s) deleted")
+            self.message_user(request, f"{source}: {versions} version(s) and {rules} rule(s) deleted.")
 
 
 class FileAccessProcessInline(admin.TabularInline):

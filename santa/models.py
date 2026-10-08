@@ -10,6 +10,7 @@ from django.core.exceptions import ValidationError
 from django.core.validators import MaxLengthValidator
 from django.db import models
 from django.db.models import Q
+from django.utils import timezone
 from django.utils.text import format_lazy
 from django.utils.translation import gettext
 from django.utils.translation import gettext_lazy as _
@@ -524,8 +525,28 @@ class ReleaseSource(models.Model):
     )
     tags = models.ManyToManyField(Tag, blank=True, related_name="release_sources",
                                   help_text=_("Added to the rules of every new release"))
+    class KeepUnit(models.TextChoices):
+        VERSIONS = "VERSIONS", _("versions")
+        WEEKS = "WEEKS", _("weeks")
+        MONTHS = "MONTHS", _("months")
+
     keep_versions = models.PositiveIntegerField(
-        default=3, help_text=_("Rules of older versions are deleted. 0 = keep all.")
+        _("keep"), default=3,
+        help_text=_("The last versions, or the versions of the last weeks or months, keep their rules. The rules "
+                    "of older versions are deleted, the newest version always stays. 0 = keep all."),
+    )
+    keep_unit = models.CharField(max_length=8, choices=KeepUnit.choices, default=KeepUnit.VERSIONS)
+    approve_kept_versions = models.BooleanField(
+        _("also allow the older kept versions"), default=False,
+        help_text=_("Also add the rules of the older versions inside the kept range, not only of the new ones "
+                    "(not for Homebrew casks and URLs). Not with 0 (keep all): that would allow every version ever "
+                    "published."),
+    )
+    include_dependencies = models.BooleanField(
+        _("allow the dependencies"), default=False,
+        help_text=_("Also allow the executables of the dependencies of every new version, also indirect ones "
+                    "(npm: dependencies and optional dependencies for macOS; Homebrew formula: the runtime "
+                    "dependencies). Their rules belong to the version and are deleted with it."),
     )
     is_enabled = models.BooleanField(default=True)
 
@@ -575,8 +596,29 @@ class ReleaseSource(models.Model):
             errors["cel_expr"] = gettext("Required for the CEL policy.")
         if self.policy != Policy.CEL and self.cel_expr:
             errors["cel_expr"] = gettext("Only used with the CEL policy.")
+        if self.approve_kept_versions and not self.keep_versions:
+            errors["approve_kept_versions"] = gettext("Only with a limit: 0 keeps every version ever published.")
+        elif self.approve_kept_versions and self.kind not in HISTORY_KINDS:
+            errors["approve_kept_versions"] = gettext("This catalog only publishes the newest version.")
+        if self.include_dependencies and self.kind not in DEPENDENCY_KINDS:
+            errors["include_dependencies"] = gettext("Only for npm packages and Homebrew formulae.")
         if errors:
             raise ValidationError(errors)
+
+    def keep_cutoff(self, now=None):
+        """The publication date before which versions are dropped, with a time range to keep"""
+        if not self.keep_versions or self.keep_unit == self.KeepUnit.VERSIONS:
+            return None
+        days = 7 if self.keep_unit == self.KeepUnit.WEEKS else 30
+        return (now or timezone.now()) - timedelta(days=days * self.keep_versions)
+
+
+# the catalogs that list older versions (not casks and URLs: they only point to the current download), and the ones
+# whose dependencies are known
+HISTORY_KINDS = (ReleaseSource.Kind.GITHUB_RELEASE, ReleaseSource.Kind.HOMEBREW_FORMULA,
+                 ReleaseSource.Kind.NPM_PACKAGE, ReleaseSource.Kind.VSCODE_EXTENSION,
+                 ReleaseSource.Kind.JETBRAINS_PLUGIN)
+DEPENDENCY_KINDS = (ReleaseSource.Kind.NPM_PACKAGE, ReleaseSource.Kind.HOMEBREW_FORMULA)
 
 
 class ReleaseVersion(models.Model):
@@ -589,6 +631,12 @@ class ReleaseVersion(models.Model):
     notes = models.TextField(blank=True)
     # the rules are disabled until the auto approve delay of the source has passed
     auto_enable_pending = models.BooleanField(default=False)
+    # "name@version" of the dependencies whose executables are allowed with this version (include_dependencies)
+    dependencies = models.JSONField(default=list, blank=True)
+    # the dependencies were looked up: a version recorded before they were allowed gets them at the next check
+    dependencies_resolved = models.BooleanField(default=False)
+    # the binaries of the dependencies in binary_count: the clean up takes them off with their rules
+    dependency_binary_count = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -645,6 +693,8 @@ class Rule(models.Model):
                                        related_name="rules", editable=False)
     release_version = models.ForeignKey(ReleaseVersion, on_delete=models.CASCADE, null=True, blank=True,
                                         related_name="rules", editable=False)
+    # name@version of the dependency of the release the binary came from, empty for the package itself
+    release_dependency = models.CharField(max_length=300, blank=True, editable=False)
 
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
                                    related_name="+", editable=False)

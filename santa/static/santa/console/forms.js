@@ -20,6 +20,17 @@
       }
       element.hidden = !visible;
     });
+    // data-disable-when="keep_versions=0|": the option makes no sense then, it is switched off and greyed
+    root.querySelectorAll("[data-disable-when]").forEach((element) => {
+      const form = element.closest("form") || document;
+      const [name, values] = element.dataset.disableWhen.split("=");
+      const disabled = values.split("|").includes(controlValue(form, name).trim());
+      element.classList.toggle("is-disabled", disabled);
+      element.querySelectorAll("input, select, textarea").forEach((control) => {
+        control.disabled = disabled;
+        if (disabled && control.type === "checkbox") control.checked = false;
+      });
+    });
   }
 
   // A group based on another one: per setting the inherited value, or the own one ("Own value" ticked)
@@ -209,6 +220,12 @@
 
   document.addEventListener("santa:selection", (event) => syncCreateRules(event.target));
 
+  // a number typed changes the options that depend on it before leaving the field
+  document.addEventListener("input", (event) => {
+    const form = event.target.closest("form");
+    if (form && event.target.type === "number") updateConditional(form);
+  });
+
   document.addEventListener("change", (event) => {
     const form = event.target.closest("form");
     if (form) {
@@ -229,8 +246,12 @@
     }
   });
 
+  // capture: before htmx sends a boosted form; cancelled, the form is not sent at all
   document.addEventListener("submit", (event) => {
     const form = event.target;
-    if (form.dataset.confirm && !window.confirm(form.dataset.confirm)) event.preventDefault();
-  });
+    if (form.dataset.confirm && !window.confirm(form.dataset.confirm)) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }, true);
 })();

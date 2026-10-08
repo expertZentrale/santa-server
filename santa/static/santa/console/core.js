@@ -98,15 +98,268 @@
   }
 
   sendTimeZone();
+
+  // Pages switch without loading the whole page again (hx-boost on the body): htmx swaps the body. Back and Forward
+  // get the page from the server again (no copy kept: its scripts would not be set up), in place too.
+  if (window.htmx) {
+    htmx.config.historyCacheSize = 0;
+    htmx.config.refreshOnHistoryMiss = false;
+  }
+  document.addEventListener("htmx:historyRestore", () => {
+    SantaConsole.init(document.body);
+    document.dispatchEvent(new CustomEvent("santa:page"));
+  });
+
+  // Pages of another layout (the Django admin, the sign-in of the provider) load as a whole page
+  const OTHER_LAYOUTS = /^\/(admin|oidc)\//;
+  document.addEventListener("htmx:beforeRequest", (event) => {
+    if (!event.detail.boosted) return;
+    const url = new URL(event.detail.requestConfig.path, window.location.href);
+    if (url.origin === window.location.origin && !OTHER_LAYOUTS.test(url.pathname)) return;
+    event.preventDefault();
+    window.location.href = url.toString();
+  });
+  // a boosted link or form is a page: the body, also inside an element that targets the drawer
+  document.addEventListener("htmx:beforeSwap", (event) => {
+    if (event.detail.boosted && event.detail.target !== document.body) event.detail.target = document.body;
+  });
+
+  // the attributes of <html> of the new page: language, theme, season (a body swap leaves them)
+  // and of <body>: hx-headers has the CSRF token
+  const HTML_ATTRIBUTES = ["lang", "data-theme", "data-season"];
+  const BODY_ATTRIBUTES = ["hx-headers"];
+  document.addEventListener("htmx:beforeSwap", (event) => {
+    if (event.detail.target !== document.body || !event.detail.shouldSwap) return;
+    const response = event.detail.serverResponse || "";
+    const html = /<html[^>]*>/i.exec(response);
+    const body = /<body[^>]*>/i.exec(response);
+    if (!html) return;
+    const parsed = new DOMParser().parseFromString(`${html[0]}${body ? body[0] : ""}</body></html>`, "text/html");
+    HTML_ATTRIBUTES.forEach((name) => {
+      if (parsed.documentElement.hasAttribute(name)) {
+        document.documentElement.setAttribute(name, parsed.documentElement.getAttribute(name));
+      } else {
+        document.documentElement.removeAttribute(name);
+      }
+    });
+    BODY_ATTRIBUTES.forEach((name) => {
+      if (body && parsed.body.hasAttribute(name)) document.body.setAttribute(name, parsed.body.getAttribute(name));
+    });
+  });
+
+  // Theme and language of the user menu (form[data-preference]): saved in the background. The theme is applied right
+  // away; a language needs the texts of the server, so the page is rendered again in place and the menu opens again.
+  let reopenMenu = null;
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest("form[data-preference] button[name]");
+    if (!button || !window.fetch) return;
+    event.preventDefault();
+    const form = button.form;
+    const data = new FormData(form);
+    data.set(button.name, button.value);
+    form.querySelectorAll("button[name]").forEach((other) => {
+      other.setAttribute("aria-pressed", other === button ? "true" : "false");
+    });
+    if (button.name === "theme") document.documentElement.dataset.theme = button.value;
+    const saved = fetch(form.action, { method: "POST", body: data, credentials: "same-origin",
+                                       headers: { "X-Santa-Preference": "1" } });
+    if (button.name !== "language") return;
+    saved.then((response) => {
+      if (!response.ok) return;
+      reopenMenu = button.value;
+      const scroll = window.scrollY;
+      htmx.ajax("GET", window.location.href, {
+        target: document.body, swap: "innerHTML show:none",
+        headers: { "HX-Boosted": "true", "X-Santa-Rerender": "1" },
+      }).then(() => window.scrollTo(0, scroll));
+    });
+  });
+  document.addEventListener("santa:page", () => {
+    if (reopenMenu === null) return;
+    const menu = document.querySelector("[data-user-menu]");
+    if (menu) {
+      menu.open = true;
+      menu.querySelector(`button[name="language"][value="${reopenMenu}"]`)?.focus();
+    }
+    reopenMenu = null;
+  });
+
+  // The progress bar (#progress): something runs. htmx requests (shown after a moment: quick ones don't flash), forms
+  // that load a page, uploads and downloads (with their share).
+  let running = 0;
+  let showTimer = null;
+
+  function progressBar() {
+    return document.getElementById("progress");
+  }
+
+  function startProgress() {
+    running += 1;
+    if (running === 1) showTimer = setTimeout(() => {
+      const bar = progressBar();
+      if (bar) bar.hidden = false;
+    }, 150);
+  }
+
+  function stopProgress() {
+    running = Math.max(0, running - 1);
+    if (running) return;
+    clearTimeout(showTimer);
+    const bar = progressBar();
+    if (!bar) return;
+    bar.hidden = true;
+    bar.classList.remove("determinate");
+    bar.style.removeProperty("--progress");
+  }
+
+  function setBusy(button, busy) {
+    if (!button?.matches?.(".button, button")) return;
+    if (busy) {
+      button.setAttribute("aria-busy", "true");
+      button.disabled = true;
+    } else {
+      button.removeAttribute("aria-busy");
+      button.disabled = false;
+    }
+  }
+
+  // the button that sent a form, for the request htmx makes of it
+  let submitter = null;
+  document.addEventListener("submit", (event) => {
+    submitter = event.submitter || null;
+    // not taken over by htmx or a script: the browser loads the next page
+    setTimeout(() => {
+      if (event.defaultPrevented) return;
+      startProgress();
+      setBusy(event.submitter, true);
+    });
+  }, true);
+  document.addEventListener("htmx:beforeRequest", (event) => {
+    startProgress();
+    const elt = event.detail.elt;
+    if (elt?.tagName === "FORM" && submitter && elt.contains(submitter)) {
+      event.detail.requestConfig.busyButton = submitter;
+      setBusy(submitter, true);
+    }
+    submitter = null;
+  });
+  ["htmx:afterRequest", "htmx:sendError", "htmx:timeout", "htmx:abort"].forEach((name) => {
+    document.addEventListener(name, (event) => {
+      stopProgress();
+      setBusy(event.detail?.requestConfig?.busyButton, false);
+    });
+  });
+  // an upload: the share sent so far
+  document.addEventListener("htmx:xhr:progress", (event) => {
+    const { loaded, total } = event.detail;
+    const bar = progressBar();
+    if (!bar || !total || loaded >= total) return;
+    bar.classList.add("determinate");
+    bar.style.setProperty("--progress", `${Math.round(loaded / total * 100)}%`);
+  });
+  // Back to a page kept by the browser: nothing runs on it
+  window.addEventListener("pageshow", (event) => {
+    if (!event.persisted) return;
+    running = 1;
+    stopProgress();
+    document.querySelectorAll('.button[aria-busy="true"]').forEach((button) => setBusy(button, false));
+  });
+
+  // A download (a[data-download]): fetched in the page, with its progress, then saved from memory. The page stays.
+  function showError(text) {
+    let list = document.querySelector("main .messages");
+    if (!list) {
+      list = document.createElement("ul");
+      list.className = "messages";
+      document.querySelector("main")?.prepend(list);
+    }
+    const item = document.createElement("li");
+    item.className = "error";
+    item.textContent = text;
+    list.append(item);
+  }
+
+  function fileName(response, url) {
+    const header = response.headers.get("Content-Disposition") || "";
+    const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(header);
+    return match ? decodeURIComponent(match[1]) : url.pathname.split("/").filter(Boolean).pop() || "download";
+  }
+
+  async function download(link) {
+    const url = new URL(link.href, window.location.href);
+    const bar = progressBar();
+    startProgress();
+    setBusy(link, true);
+    try {
+      const response = await fetch(url, { credentials: "same-origin" });
+      if (!response.ok) throw new Error(String(response.status));
+      const total = Number(response.headers.get("Content-Length")) || 0;
+      const reader = response.body.getReader();
+      const chunks = [];
+      let loaded = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        loaded += value.length;
+        if (total && bar) {
+          bar.classList.add("determinate");
+          bar.style.setProperty("--progress", `${Math.round(loaded / total * 100)}%`);
+        }
+      }
+      const blob = new Blob(chunks, { type: response.headers.get("Content-Type") || "application/octet-stream" });
+      const save = document.createElement("a");
+      save.href = URL.createObjectURL(blob);
+      save.download = fileName(response, url);
+      document.body.append(save);
+      save.click();
+      save.remove();
+      setTimeout(() => URL.revokeObjectURL(save.href), 10000);
+    } catch (error) {
+      showError(link.dataset.downloadError || document.getElementById("progress")?.dataset.downloadError
+                || "The download failed.");
+    } finally {
+      stopProgress();
+      link.removeAttribute("aria-busy");
+    }
+  }
+
+  document.addEventListener("click", (event) => {
+    const link = event.target.closest("a[data-download]");
+    if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey
+        || !window.fetch || !window.ReadableStream) return;
+    event.preventDefault();
+    if (link.getAttribute("aria-busy") !== "true") download(link);
+  });
+
   document.addEventListener("DOMContentLoaded", () => SantaConsole.init(document));
   document.addEventListener("htmx:afterSwap", (event) => {
     const drawer = document.getElementById("drawer");
-    if (event.detail.target === drawer) {
+    // a page restored by Back / Forward has no target here (htmx:historyRestore sets it up)
+    if (!event.detail.target) return;
+    if (event.detail.target === document.body) {
+      // a boosted page: set up like a loaded one
+      SantaConsole.init(document.body);
+      document.dispatchEvent(new CustomEvent("santa:page"));
+    } else if (event.detail.target === drawer) {
       drawer.classList.add("open");
       SantaConsole.init(drawer);
+    } else if (event.detail.target.matches?.("[data-list-rows]")) {
+      // the rows of a list, loaded after the page (console/_rows.html)
+      SantaConsole.init(event.detail.target);
     }
     swapHooks.forEach((fn) => fn(event.detail.target));
   });
+  // the rows could not be loaded: say so instead of loading forever
+  document.addEventListener("htmx:responseError", (event) => failRows(event.detail.elt));
+  document.addEventListener("htmx:sendError", (event) => failRows(event.detail.elt));
+
+  function failRows(element) {
+    if (!element?.matches?.(".rows-loading")) return;
+    element.classList.add("failed");
+    element.removeAttribute("aria-busy");
+    element.querySelector("span:not(.spinner)").textContent = element.dataset.errorText;
+  }
 
   // the burger menu, the user menu and the copy buttons
   document.addEventListener("click", (event) => {
