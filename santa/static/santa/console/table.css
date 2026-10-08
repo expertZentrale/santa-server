@@ -229,10 +229,17 @@ body:has(.drawer.open) .bulkbar.visible { opacity: 0; visibility: hidden; pointe
 }
 
 /* the rows of a list while they load (console/_rows.html) */
+/* about the height of the rows, so the page doesn't jump; seen only after 400 ms, so a quick load doesn't flash it */
 .rows-loading {
-  display: flex; align-items: center; justify-content: center; gap: .6rem; min-height: 8rem; padding: 2rem 1rem;
+  display: flex; align-items: center; justify-content: center; gap: .6rem; min-height: 20rem; padding: 2rem 1rem;
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); color: var(--muted);
+  animation: rows-appear .2s ease-out .4s both;
 }
+@keyframes rows-appear { from { opacity: 0; } to { opacity: 1; } }
+/* the rows loaded after the page come in softly (htmx-added: the moment of the swap) */
+[data-list-rows] > * { transition: opacity .12s ease-out; }
+[data-list-rows] > .htmx-added { opacity: 0; }
+.columns-picker[data-placeholder] > summary { cursor: default; }
 .rows-loading.failed { color: var(--bad); }
 .spinner {
   width: 1.1rem; height: 1.1rem; border-radius: 50%; border: 2px solid var(--border); border-top-color: var(--accent);
@@ -242,6 +249,8 @@ body:has(.drawer.open) .bulkbar.visible { opacity: 0; visibility: hidden; pointe
 @keyframes spin { to { transform: rotate(1turn); } }
 
 @media (prefers-reduced-motion: reduce) {
+  .rows-loading { animation-duration: 0s; }
+  [data-list-rows] > * { transition: none; }
   .spinner { animation-duration: 2.4s; }
   .bulkbar { transition: none; }
   .table tr.new > td { animation: none; }

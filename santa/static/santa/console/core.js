@@ -358,16 +358,30 @@
   document.addEventListener("htmx:responseError", (event) => failRows(event.detail.elt));
   document.addEventListener("htmx:sendError", (event) => failRows(event.detail.elt));
 
-  // The connection to the server (#connection): lost (a network error, or a request hanging while the server
-  // restarted), checked at /health every few seconds, recovered. Then the requests still hanging are aborted (they
-  // hold the browser's few connections, everything else would wait behind them) and the GETs that failed are
-  // repeated; a POST is not sent again, it may have changed something.
+  // The connection to the server (#connection). Lost: a network error, or /health not answering twice. Behind a
+  // proxy or a forwarded port a stopped server doesn't refuse connections, requests just hang: a page request without
+  // an answer for a while makes the console check /health. The times follow the measured latency, so a slow network
+  // (3G) is no outage. Back (any answer): the requests still hanging are aborted (they hold the browser's few
+  // connections, everything else waits behind them), the failed GETs are repeated; a POST is not sent again, it may
+  // have changed something.
   const inflight = new Map();
   let connectionLost = false;
   let checkTimer = null;
   let failedGets = [];
   let failedPost = false;
   let bannerTimer = null;
+  // round trip of the answers, a running average (ms); to start, the browser's own estimate of the network
+  let latency = Math.max(300, Number(navigator.connection?.rtt) || 0);
+  // the last answer of the server: one during a check shows that it is there, also when /health was slower
+  let answeredAt = 0;
+
+  function measured(ms) {
+    latency = latency * 0.8 + Math.min(ms, 20000) * 0.2;
+    answeredAt = Date.now();
+  }
+  const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
+  const healthTimeout = () => clamp(4 * latency + 1500, 3000, 15000);
+  const hangingAfter = () => clamp(3 * latency + 2000, 3000, 12000);
 
   function banner(text, state) {
     const element = document.getElementById("connection");
@@ -380,9 +394,11 @@
   }
 
   async function serverAnswers() {
+    const started = Date.now();
     try {
       const response = await fetch("/health", { cache: "no-store", credentials: "omit",
-                                                 signal: AbortSignal.timeout(2000) });
+                                                 signal: AbortSignal.timeout(healthTimeout()) });
+      if (response.ok) measured(Date.now() - started);
       return response.ok;
     } catch (error) {
       return false;
@@ -395,14 +411,15 @@
     if (connectionLost) return;
     connectionLost = true;
     banner(document.getElementById("connection")?.dataset.lost || "Connection lost. Retrying…", "lost");
-    scheduleCheck(1000);
+    scheduleCheck(500);
   }
 
   function scheduleCheck(delay) {
     clearTimeout(checkTimer);
     checkTimer = setTimeout(async () => {
+      if (!connectionLost) return;
       if (await serverAnswers()) recovered();
-      else scheduleCheck(1500);
+      else scheduleCheck(1000);
     }, delay);
   }
 
@@ -415,11 +432,14 @@
   }
 
   function recovered() {
+    if (!connectionLost) return;
     connectionLost = false;
-    // still hanging from before: abort them (htmx:sendAbort), their GETs are repeated below
+    clearTimeout(checkTimer);
+    // still hanging from before: abort them, their GETs are repeated below
     [...inflight].forEach(([xhr, entry]) => {
       inflight.delete(xhr);
       if (entry.verb === "get") failedGets.push(entry);
+      else failedPost = true;
       xhr.abort();
     });
     // once per element; of the pages, only the last one asked for
@@ -444,57 +464,75 @@
 
   document.addEventListener("htmx:beforeSend", (event) => {
     const config = event.detail.requestConfig || {};
+    const headers = config.headers || {};
     inflight.set(event.detail.xhr, {
       elt: event.detail.elt, verb: (config.verb || "get").toLowerCase(), path: config.path, target: event.detail.target,
-      boosted: Boolean(event.detail.boosted || config.boosted), started: Date.now(),
+      boosted: Boolean(event.detail.boosted || config.boosted), rows: headers["X-Santa-Rows"] === "1",
+      started: Date.now(),
     });
   });
   document.addEventListener("htmx:afterRequest", (event) => {
-    const entry = inflight.get(event.detail.xhr);
-    inflight.delete(event.detail.xhr);
-    // no answer at all (a network error; aborted ones left the list before): the server is gone
-    if (entry && event.detail.xhr.status === 0) lost(entry);
+    const xhr = event.detail.xhr;
+    const entry = inflight.get(xhr);
+    inflight.delete(xhr);
+    if (!entry) return;
+    if (xhr.status === 0) {
+      // no answer at all (a network error; aborted ones left the list before): the server is gone
+      lost(entry);
+      return;
+    }
+    measured(Date.now() - entry.started);
+    // an answer: the server is there
+    if (connectionLost) recovered();
   });
   document.addEventListener("htmx:sendAbort", (event) => inflight.delete(event.detail.xhr));
-  // A request without an answer for a while: is the server there? Behind a proxy or a forwarded port a stopped
-  // server doesn't refuse the connection, the request just hangs: no network error tells it.
+
+  // a request without an answer in time: /health is asked, twice before the connection counts as lost
   let suspecting = false;
   async function suspect() {
     if (connectionLost || suspecting) return true;
     suspecting = true;
-    const answers = await serverAnswers();
+    const since = Date.now();
+    let answers = await serverAnswers() || answeredAt > since;
+    if (!answers && !connectionLost) answers = await serverAnswers() || answeredAt > since;
     suspecting = false;
     if (!answers) lost(null);
     return answers;
   }
 
+  // The server answers, but a request still waits. A page or a drawer view answers quickly: it hangs on a connection
+  // the server dropped (a restart) and never will, so it is asked again at once. The rows of a list can be slow on a
+  // big list: only after 12 s. Once per address and minute.
   const checked = new WeakSet();
+  const checkedLong = new WeakSet();
   const repeatedAt = new Map();
   setInterval(async () => {
     if (connectionLost || document.hidden) return;
     const now = Date.now();
     const gets = [...inflight].filter(([, entry]) => entry.verb === "get");
-    // after 3 s: one check per request (a big list on a slow database is no outage)
-    const waiting = gets.filter(([xhr, entry]) => now - entry.started > 3000 && !checked.has(xhr));
-    if (waiting.length) {
-      waiting.forEach(([xhr]) => checked.add(xhr));
-      if (!(await suspect())) return;
-    }
-    // after 12 s while the server answers: it hung across a restart and never will; asked again, once per minute
-    gets.filter(([, entry]) => now - entry.started > 12000
-                               && now - (repeatedAt.get(entry.path) || 0) > 60000).forEach(([xhr, entry]) => {
-      inflight.delete(xhr);
-      repeatedAt.set(entry.path, now);
-      xhr.abort();
-      repeat(entry);
-    });
+    const waiting = gets.filter(([xhr, entry]) => now - entry.started > hangingAfter() && !checked.has(xhr));
+    const long = gets.filter(([xhr, entry]) => entry.rows && now - entry.started > 12000 && !checkedLong.has(xhr));
+    if (!waiting.length && !long.length) return;
+    waiting.forEach(([xhr]) => checked.add(xhr));
+    long.forEach(([xhr]) => checkedLong.add(xhr));
+    if (!(await suspect())) return;
+    const later = Date.now();
+    waiting.filter(([, entry]) => !entry.rows).concat(long)
+      .filter(([xhr, entry]) => inflight.has(xhr) && later - (repeatedAt.get(entry.path) || 0) > 60000)
+      .forEach(([xhr, entry]) => {
+        inflight.delete(xhr);
+        repeatedAt.set(entry.path, later);
+        xhr.abort();
+        repeat(entry);
+      });
   }, 1000);
   document.addEventListener("click", (event) => {
     const element = event.target.closest("#connection");
     if (element && element.dataset.state !== "lost") element.hidden = true;
   });
-  // lost: a network error; suspect: no answer in time, the server is checked first
-  SantaConsole.connection = { lost: () => lost(null), suspect, isLost: () => connectionLost };
+  // lost: a network error; suspect: no answer in time, the server is checked first; timeout: for a request's own
+  // time limit
+  SantaConsole.connection = { lost: () => lost(null), suspect, isLost: () => connectionLost, timeout: healthTimeout };
 
   function failRows(element) {
     if (!element?.matches?.(".rows-loading")) return;

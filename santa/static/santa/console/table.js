@@ -312,7 +312,11 @@
     });
     const tools = document.querySelector("main [data-table-tools]");
     const filters = document.querySelector("main form.filters");
-    if (tools) {
+    const slot = tools?.querySelector(".columns-picker[data-placeholder]");
+    if (slot) {
+      // the place kept for it while the rows loaded
+      slot.replaceWith(picker);
+    } else if (tools) {
       // the right end of the filter bar, after the views
       tools.append(picker);
     } else if (filters) {
@@ -462,7 +466,27 @@
     });
   });
 
+  // The rows of the list load after the page (console/_rows.html): the column chooser gets its place in the filter
+  // bar already, so the bar doesn't move when they arrive
+  function keepPickerPlace(root) {
+    const tools = document.querySelector("main [data-table-tools]");
+    if (!root.querySelector?.(".rows-loading") || !tools || tools.querySelector(".columns-picker")) return;
+    const texts = document.getElementById("table-texts")?.dataset || {};
+    const slot = document.createElement("details");
+    slot.className = "picker down columns-picker";
+    slot.dataset.placeholder = "";
+    const summary = document.createElement("summary");
+    summary.className = "button";
+    summary.textContent = texts.columns || "Columns";
+    summary.setAttribute("aria-disabled", "true");
+    summary.tabIndex = -1;
+    summary.addEventListener("click", (event) => event.preventDefault());
+    slot.append(summary);
+    tools.append(slot);
+  }
+
   SantaConsole.onInit((root) => {
+    keepPickerPlace(root);
     labelTables(root);
     addSelectAllCards(root);
     root.querySelectorAll("[data-bulkbar]").forEach((bar) => barObserver?.observe(bar));

@@ -75,7 +75,7 @@
       try {
         // never hanging: a poll without an answer would hold one of the browser's few connections
         const response = await fetch(url, { headers: { "HX-Request": "true" }, credentials: "same-origin",
-                                            signal: AbortSignal.timeout(6000) });
+                                            signal: AbortSignal.timeout(SantaConsole.connection?.timeout() || 6000) });
         if (response.status !== 200) return;
         const wrapper = document.createElement("template");
         wrapper.innerHTML = await response.text();
