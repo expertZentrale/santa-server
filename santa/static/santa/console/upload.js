@@ -27,4 +27,29 @@
   }
 
   SantaConsole.onInit((root) => root.querySelectorAll("[data-file-drop]").forEach(setupDrop));
+
+  // A form with a file that comes back from the server (a field missing, e.g. no group): it gets the file again.
+  // The server can't fill a file input, and it keeps nothing of an upload, so the browser does.
+  let sent = null;
+  document.addEventListener("htmx:beforeRequest", (event) => {
+    const elt = event.detail.elt;
+    const form = elt?.tagName === "FORM" ? elt : elt?.closest?.("form");
+    const files = [...(form?.querySelectorAll("input[type=file]") || [])].filter((input) => input.files.length)
+      .map((input) => ({ name: input.name, files: [...input.files] }));
+    sent = files.length ? { config: event.detail.requestConfig, files } : null;
+  });
+  // after core.js has set up the new content (its drop zones listen for "change")
+  document.addEventListener("htmx:afterSwap", (event) => {
+    if (!sent || event.detail.requestConfig !== sent.config || !event.detail.target || !window.DataTransfer) return;
+    const { files } = sent;
+    sent = null;
+    files.forEach(({ name, files: chosen }) => {
+      const input = event.detail.target.querySelector(`input[type=file][name="${CSS.escape(name)}"]`);
+      if (!input || input.files.length) return;
+      const transfer = new DataTransfer();
+      chosen.forEach((file) => transfer.items.add(file));
+      input.files = transfer.files;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  });
 })();

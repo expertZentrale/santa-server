@@ -1,0 +1,7 @@
+{% load i18n %}{% comment %}The rows of a list (rows_template), or a placeholder that loads them right after the page (utils.render_list){% endcomment %}<div data-list-rows>{% if page is None %}
+  <div class="rows-loading" hx-get="{{ request.get_full_path }}" hx-trigger="load" hx-target="closest [data-list-rows]" hx-swap="innerHTML"
+       hx-headers='{"X-Santa-Rows": "1"}' aria-busy="true" data-error-text="{% translate 'The list could not be loaded. Reload the page to try again.' %}">
+    <span class="spinner" aria-hidden="true"></span><span>{% translate "Loading…" %}</span>
+    <noscript><a href="{% querystring rows='now' %}">{% translate "Show the list" %}</a></noscript>
+  </div>
+{% else %}{% include rows_template %}{% endif %}</div>

@@ -2,6 +2,7 @@
   {% if perms.santa.change_releasesource %}
   <form method="post" action="{% url 'console:source_check' source.pk %}" class="inline"{% if in_drawer %} hx-post="{% url 'console:source_check' source.pk %}" hx-target="#drawer"{% endif %}>{% csrf_token %}<input type="hidden" name="next" value="{% url 'console:source' source.pk %}"><button class="button">{% translate "Check now" %}</button></form>
   {% url 'console:source_edit' source.pk as edit_url %}<a class="button primary" href="{{ edit_url }}"{% if in_drawer %} hx-get="{{ edit_url }}" hx-target="#drawer"{% endif %}>{% translate "Edit" %}</a>{% endif %}
+  {% if perms.santa.change_releasesource and perms.santa.delete_rule %}{% url 'console:source_cleanup' source.pk as cleanup_url %}<a class="button" href="{{ cleanup_url }}" hx-get="{{ cleanup_url }}" hx-target="#drawer">{% translate "Clean up" %}{% if stale %} <span class="badge warn">{{ stale|length }}</span>{% endif %}</a>{% endif %}
   {% url 'console:history' 'releasesource' source.pk as history_url %}<a class="button right" href="{{ history_url }}" hx-get="{{ history_url }}" hx-target="#drawer">{% translate "History" %}</a>
 </div>
 {% if source.last_error %}<pre class="error-box">{{ source.last_error }}</pre>{% endif %}
@@ -11,7 +12,7 @@
     <dt>{% translate "Rules" %}</dt><dd>{{ source.get_rule_type_display }} · <span class="badge {{ source.policy|policy_class }}">{{ source.get_policy_display }}</span></dd>
     <dt>{% translate "Scope" %}</dt><dd>{% if source.is_global %}{% translate "All Macs" %}{% else %}{% for group in source.groups.all %}{% url 'console:group' group.pk as group_url %}<a href="{{ group_url }}" hx-get="{{ group_url }}" hx-target="#drawer">{{ group.name }}</a>{% if not forloop.last %}, {% endif %}{% empty %}{% translate "none" %}{% endfor %}{% endif %}</dd>
     <dt>{% translate "Approval" %}</dt><dd>{% if source.auto_approve %}{% if source.auto_approve_delay_days %}{% blocktranslate count days=source.auto_approve_delay_days %}automatic after {{ days }} day{% plural %}automatic after {{ days }} days{% endblocktranslate %}{% else %}{% translate "automatic" %}{% endif %}{% else %}{% translate "manual" %}{% endif %}
-      · {% if source.keep_versions %}{% blocktranslate count count=source.keep_versions %}keep {{ count }} version{% plural %}keep {{ count }} versions{% endblocktranslate %}{% else %}{% translate "keep all versions" %}{% endif %}</dd>
+      · {% if not source.keep_versions %}{% translate "keep all versions" %}{% elif source.keep_unit == "WEEKS" %}{% blocktranslate count count=source.keep_versions %}keep the versions of the last week{% plural %}keep the versions of the last {{ count }} weeks{% endblocktranslate %}{% elif source.keep_unit == "MONTHS" %}{% blocktranslate count count=source.keep_versions %}keep the versions of the last month{% plural %}keep the versions of the last {{ count }} months{% endblocktranslate %}{% else %}{% blocktranslate count count=source.keep_versions %}keep {{ count }} version{% plural %}keep {{ count }} versions{% endblocktranslate %}{% endif %}{% if source.approve_kept_versions %} · {% translate "also the older ones" %}{% endif %}{% if source.include_dependencies %} · {% translate "with dependencies" %}{% endif %}</dd>
     {% if source.version_pattern %}<dt>{% translate "Versions" %}</dt><dd class="mono">{{ source.version_pattern }}</dd>{% endif %}
     <dt>{% translate "Last check" %}</dt><dd>{{ source.last_checked_at|date:"d.m.Y H:i"|default:_("never") }}</dd>
   </dl>
@@ -26,7 +27,11 @@
     <tbody>
     {% for version in versions %}
       <tr>
-        <td class="strong">{{ version.version }}</td>
+        <td class="strong">{{ version.version }}{% if version.pk in stale and identifier in source.identifiers %} <span class="badge warn">{% translate "not covered" %}</span>{% endif %}
+          {% if version.dependency_rows %}<details class="dependencies"><summary>{% blocktranslate count count=version.dependency_rows|length %}{{ count }} dependency{% plural %}{{ count }} dependencies{% endblocktranslate %}</summary>
+            <ul class="plain">{% for label, has_rules in version.dependency_rows %}<li><code>{{ label }}</code>{% if has_rules %} <span class="badge ok">{% translate "executables allowed" %}</span>{% endif %}</li>{% endfor %}</ul>
+            <small class="muted">{% translate "Dependencies without a mark have no executable (scripts, libraries): nothing for Santa to allow." %}</small></details>
+          {% elif source.include_dependencies and not version.dependencies_resolved %}<small class="muted">{% translate "dependencies at the next check" %}</small>{% endif %}</td>
         <td>{{ version.published_at|default:version.created_at|date:"d.m.Y" }}</td>
         <td><a href="{% url 'console:rules' %}?version={{ version.pk }}">{{ version.binary_count }}</a></td>
         <td>{% if not version.binary_count %}<span class="muted">{% translate "no executable, nothing to allow" %}</span>

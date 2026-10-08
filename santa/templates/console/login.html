@@ -4,6 +4,7 @@
 {% block content %}
 <section class="card login">
   <h1>{% translate "Sign in" %}</h1>
+  {% if christmas %}<p class="xmas-greeting">{% translate "Merry Christmas! 🎄" %}</p>{% endif %}
   {% if failed %}<p class="error">{% translate "The sign-in failed. Try again, or ask your IT team." %}</p>{% endif %}
   {% if oidc_enabled %}
     {% url 'oidc_authentication_init' as sign_in_url %}
@@ -13,7 +14,8 @@
       <span>{% blocktranslate %}Sign in with {{ provider_name }}{% endblocktranslate %}</span></a>
     <details><summary>{% translate "Local account" %}</summary>
   {% endif %}
-  <form method="post" class="stack">
+  {# a new session (and CSRF token): the whole page #}
+  <form method="post" class="stack" hx-boost="false">
     {% csrf_token %}
     {{ form.non_field_errors }}
     <label>{% translate "User name" %} {{ form.username }}</label>

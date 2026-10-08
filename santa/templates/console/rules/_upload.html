@@ -1,0 +1,19 @@
+{% load i18n %}<form method="post" enctype="multipart/form-data" class="stack" action="{% url 'console:rule_upload' %}"{% if in_drawer %} hx-post="{% url 'console:rule_upload' %}" hx-target="#drawer" hx-encoding="multipart/form-data"{% endif %}>
+  {% csrf_token %}
+  <section class="card">
+    {% include "console/_field.html" with field=form.file %}
+    {% include "console/_field.html" with field=form.binary_pattern %}
+    {% include "console/_field.html" with field=form.rule_type %}
+    {% include "console/_field.html" with field=form.policy %}
+  </section>
+  <section class="card"><h2>{% translate "Scope" %}</h2>
+    {% include "console/_field.html" with field=form.is_global %}
+    <div data-hide-when="is_global">{% include "console/_field.html" with field=form.groups %}</div>
+    {% include "console/_field.html" with field=form.tags %}
+    {% include "console/_field.html" with field=form.new_tags %}
+    {% include "console/_field.html" with field=form.description %}
+  </section>
+  {% if found %}<section class="card"><h2>{% translate "Executables found" %}</h2><ul class="plain mono small">{% for path, info in found %}<li>{{ path }} · {{ info.sha256 }}</li>{% endfor %}</ul></section>{% endif %}
+  <div class="actions"><button class="button primary">{% translate "Create rules" %}</button>
+    {% if in_drawer %}<button type="button" class="button" data-drawer-close>{% translate "Cancel" %}</button>{% endif %}</div>
+</form>

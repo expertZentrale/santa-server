@@ -1,5 +1,5 @@
 {% load static console i18n %}{% get_current_language as LANGUAGE_CODE %}<!doctype html>
-<html lang="{{ LANGUAGE_CODE }}" data-theme="{{ ui_theme }}">
+<html lang="{{ LANGUAGE_CODE }}" data-theme="{{ ui_theme }}"{% if christmas %} data-season="christmas"{% endif %}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -22,8 +22,11 @@
   <script src="{% static 'santa/console/suggestions.js' %}" defer></script>
   <script src="{% static 'santa/console/tags.js' %}" defer></script>
   <script src="{% static 'santa/console/cel.js' %}" defer></script>
+  {% if christmas %}<link rel="stylesheet" href="{% static 'santa/console/christmas.css' %}">
+  <script src="{% static 'santa/console/christmas.js' %}" defer></script>{% endif %}
 </head>
-<body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+{# every link and form loads in place (hx-boost, core.js); the drawer links and forms have their own target #}
+<body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}' hx-boost="true">
 <header class="topbar" data-topbar>
   {% if user.is_authenticated %}
   <button type="button" class="burger" data-burger aria-expanded="false" aria-controls="main-nav" aria-label="{% translate 'Menu' %}">{% include "console/icons/menu.svg" %}</button>
@@ -53,9 +56,10 @@
     </summary>
     <div class="menu" role="menu">
       <div class="menu-head"><strong>{{ user.get_full_name|default:user.get_username }}</strong><small class="muted">{{ user.get_username }}</small></div>
-      <a href="{% url 'profile' %}" role="menuitem">{% translate "Profile and preferences" %}</a>
-      {% if user.is_staff %}<a href="{% url 'admin:index' %}" role="menuitem">{% translate "Django admin" %}</a>{% endif %}
-      <form method="post" action="{% url 'set_preference' %}" class="menu-row">
+      <a href="{% url 'profile' %}" role="menuitem">{% include "console/icons/user.svg" %}{% translate "Profile and preferences" %}</a>
+      {% if user.is_staff %}<a href="{% url 'admin:index' %}" role="menuitem" hx-boost="false">{% include "console/icons/shield.svg" %}{% translate "Django admin" %}</a>{% endif %}
+      {# applied right away and saved in the background (core.js); without JavaScript a normal form #}
+      <form method="post" action="{% url 'set_preference' %}" class="menu-row" data-preference>
         {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
         <span class="muted small">{% translate "Theme" %}</span>
         <span class="segmented" role="group" aria-label="{% translate 'Theme' %}">
@@ -64,7 +68,7 @@
           <button name="theme" value="dark" title="{% translate 'Dark' %}" aria-pressed="{% if ui_theme == 'dark' %}true{% else %}false{% endif %}">{% include "console/icons/moon.svg" %}<span class="sr-only">{% translate "Dark" %}</span></button>
         </span>
       </form>
-      <form method="post" action="{% url 'set_preference' %}" class="menu-row">
+      <form method="post" action="{% url 'set_preference' %}" class="menu-row" data-preference>
         {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
         <span class="muted small">{% translate "Language" %}</span>
         <span class="segmented" role="group" aria-label="{% translate 'Language' %}">
@@ -72,11 +76,22 @@
           {% for code, name in languages %}<button name="language" value="{{ code }}" aria-pressed="{% if code == LANGUAGE_CODE %}true{% else %}false{% endif %}" title="{{ name }}">{{ code|upper }}</button>{% endfor %}
         </span>
       </form>
-      <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="menu-item" role="menuitem">{% translate "Sign out" %}</button></form>
+      {% if christmas %}<div class="menu-row">
+        <span class="muted small">{% translate "Snow" %}</span>
+        {# kept in this browser (christmas.js) #}
+        <span class="segmented" role="group" aria-label="{% translate 'Snow' %}">
+          <button type="button" data-snow="on" aria-pressed="true">{% translate "On" context "switch" %}</button>
+          <button type="button" data-snow="off" aria-pressed="false">{% translate "Off" context "switch" %}</button>
+        </span>
+      </div>{% endif %}
+      {# a new session (and CSRF token): the whole page #}
+      <form method="post" action="{% url 'logout' %}" hx-boost="false">{% csrf_token %}<button class="menu-item" role="menuitem">{% include "console/icons/log-out.svg" %}{% translate "Sign out" %}</button></form>
     </div>
   </details>
   {% endif %}
 </header>
+{# an action is running: a request, an upload, a download (core.js) #}
+<div id="progress" class="progress" role="progressbar" aria-label="{% translate 'Working…' %}" data-download-error="{% translate 'The download failed. Try again, or reload the page.' %}" hidden><span></span></div>
 <main class="{% block main_class %}{% endblock %}">
   {% if messages %}
   <ul class="messages">{% for message in messages %}<li class="{{ message.tags }}">{{ message }}</li>{% endfor %}</ul>

@@ -18,12 +18,14 @@ from .filters import Facet, any_of, chosen, filter_bar, remember_filters
 from .forms import GroupForm
 from .utils import (
     changed_message,
+    defer_rows,
     drawer_done,
     log_addition,
     log_change,
     log_deletion,
     paginate,
     render_drawer,
+    render_list,
     require_perms,
     safe_next,
     sort_by,
@@ -197,11 +199,11 @@ def machines(request):
         "mac": ["hostname", "serial_number"], "user": "primary_user", "group": "group__name", "mode": "client_mode",
         "santa": "santa_version", "sync": "last_postflight_at",
     }, "mac")
-    page = paginate(request, queryset)
+    page = None if defer_rows(request) else paginate(request, queryset)
     stale_before = timezone.now() - STALE_AFTER
-    for machine in page:
+    for machine in page or []:
         machine.is_stale = not machine.last_postflight_at or machine.last_postflight_at < stale_before
-    return render(request, "console/machines/list.html", {
+    return render_list(request, "console/machines/list.html", "console/machines/_rows.html", {
         "page": page, "sort": sort, "params": request.GET,
         **filter_bar(request, "machines", [
             Facet("group", gettext("Group"), choices=Group.objects.order_by("name").values_list("pk", "name")),

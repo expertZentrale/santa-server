@@ -4,26 +4,5 @@
 <div class="page-head"><h1>{% translate "Macs" %}</h1>
   {% translate "Macs enroll themselves at their first sync with the profile of their group." as help %}{% include "console/_help.html" with text=help %}</div>
 {% include "console/widgets/_filter_bar.html" %}
-<table class="table" data-table="macs">
-  <thead><tr>{% sort_th _("Mac") "mac" %}{% sort_th _("User") "user" %}{% sort_th _("Group") "group" %}{% sort_th _("Mode") "mode" %}{% sort_th _("Santa / macOS") "santa" %}<th class="num">{% translate "Rules" %}</th>{% sort_th _("Last sync") "sync" %}</tr></thead>
-  <tbody>
-  {% for machine in page %}
-    <tr>
-      <td>{% url 'console:machine' machine.pk as machine_url %}<a class="strong" href="{{ machine_url }}" hx-get="{{ machine_url }}" hx-target="#drawer">{{ machine.hostname|default:machine.serial_number }}</a>
-        <small class="muted mono">{{ machine.serial_number }}</small></td>
-      <td>{{ machine.primary_user|default:"–" }}</td>
-      <td>{% url 'console:group' machine.group_id as group_url %}<a href="{{ group_url }}" hx-get="{{ group_url }}" hx-target="#drawer">{{ machine.group.name }}</a></td>
-      <td>{% if machine.client_mode %}<span class="badge {% if machine.client_mode == 'LOCKDOWN' %}bad{% else %}info{% endif %}">{{ machine.get_client_mode_display }}</span>{% else %}–{% endif %}</td>
-      <td class="small">{{ machine.santa_version|default:"–" }}<br><span class="muted">{{ machine.os_version }}</span></td>
-      <td class="num">{{ machine.reported_rule_count }}</td>
-      <td>{% if machine.last_postflight_at %}{% blocktranslate with since=machine.last_postflight_at|timesince asvar last_sync %}{{ since }} ago{% endblocktranslate %}{% else %}{% translate "never" as last_sync %}{% endif %}
-        {% if machine.is_stale %}<span class="badge bad">{{ last_sync }}</span>{% else %}{{ last_sync }}{% endif %}
-        {% if machine.clean_sync_requested %}<span class="badge info">{% translate "clean sync" %}</span>{% endif %}</td>
-    </tr>
-  {% empty %}
-    <tr class="empty"><td colspan="7">{% translate "No Macs for these filters." %}</td></tr>
-  {% endfor %}
-  </tbody>
-</table>
-{% include "console/_pagination.html" %}
+{% include "console/_rows.html" %}
 {% endblock %}

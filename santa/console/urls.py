@@ -39,6 +39,7 @@ urlpatterns = [
     path("packages/<int:pk>/edit/", views_sources.source_form, name="source_edit"),
     path("packages/<int:pk>/delete/", views_sources.source_delete, name="source_delete"),
     path("packages/<int:pk>/check/", views_sources.source_check, name="source_check"),
+    path("packages/<int:pk>/cleanup/", views_sources.source_cleanup, name="source_cleanup"),
     path("packages/versions/<int:pk>/approve/", views_sources.version_set_enabled, {"enabled": True},
          name="version_approve"),
     path("packages/versions/<int:pk>/disable/", views_sources.version_set_enabled, {"enabled": False},

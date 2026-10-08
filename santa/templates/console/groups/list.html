@@ -5,7 +5,7 @@
   <h1>{% translate "Groups" %}</h1>
   {% translate "A group is a set of Macs with one Santa configuration and one sync URL. Every Mac gets the base profile (same for all) and the profile of its group from your MDM." as help %}{% include "console/_help.html" with text=help %}
   <div class="actions">
-    <a class="button" href="{% url 'console:base_profile' %}">{% translate "Base profile (.mobileconfig)" %}</a>
+    <a class="button" href="{% url 'console:base_profile' %}" data-download hx-boost="false">{% translate "Base profile (.mobileconfig)" %}</a>
     {% if perms.santa.view_rule and perms.santa.view_releasesource and perms.santa.view_fileaccessrule %}{% url 'console:admin_config' as config_url %}<a class="button" href="{{ config_url }}" hx-get="{{ config_url }}" hx-target="#drawer">{% translate "Export / import" %}</a>{% endif %}
     {% if perms.santa.add_group %}{% url 'console:group_add' as add_url %}<a class="button primary" href="{{ add_url }}" hx-get="{{ add_url }}" hx-target="#drawer">{% translate "New group" %}</a>{% endif %}
   </div>
@@ -23,7 +23,7 @@
       <td class="num"><a href="{% url 'console:machines' %}?group={{ group.pk }}">{{ group.machine_count }}</a></td>
       <td class="num"><a href="{% url 'console:rules' %}?scope={{ group.pk }}">{{ group.rule_count }}</a></td>
       <td>{% if group.last_sync %}{% blocktranslate with since=group.last_sync|timesince %}{{ since }} ago{% endblocktranslate %}{% else %}–{% endif %}</td>
-      <td>{% if perms.santa.change_group %}<a class="button small" href="{% url 'console:group_profile' group.pk %}">{% translate "Profile" %}</a>{% endif %}</td>
+      <td>{% if perms.santa.change_group %}<a class="button small" href="{% url 'console:group_profile' group.pk %}" data-download hx-boost="false">{% translate "Profile" %}</a>{% endif %}</td>
     </tr>
   {% empty %}
     <tr class="empty"><td colspan="6">{% if bar.is_default %}{% translate "No groups yet." %}{% else %}{% translate "No groups for these filters." %}{% endif %}</td></tr>

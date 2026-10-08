@@ -49,17 +49,33 @@
     return img;
   }
 
+  // form: the package rule form, or a part of another form (approving a request) that names its fields:
+  // data-kind-field, data-picked-field, and data-target-field + data-target-kinds when the package can go into an
+  // existing package rule, whose catalog is then searched
   function setupIdentifiers(form) {
     const widget = form.querySelector("[data-identifiers-widget]");
     if (!widget) return;
+    const outer = form.closest("form") || form;
     const chips = widget.querySelector("[data-chips]");
     const textarea = widget.querySelector("textarea");
     const search = widget.querySelector("[data-search]");
     const box = widget.querySelector("[data-suggestions]");
-    const picked = form.querySelector('input[name="picked"]');
-    const kindSelect = form.querySelector('select[name="kind"]');
+    const picked = outer.querySelector(`input[name="${form.dataset.pickedField || "picked"}"]`);
+    const kindSelect = outer.querySelector(`select[name="${form.dataset.kindField || "kind"}"]`);
+    const targetSelect = form.dataset.targetField
+      ? outer.querySelector(`select[name="${form.dataset.targetField}"]`) : null;
+    let targetKinds = {};
+    try {
+      targetKinds = JSON.parse(form.dataset.targetKinds || "{}");
+    } catch (error) {
+      targetKinds = {};
+    }
     const searchable = (form.dataset.searchable || "").split(",");
     const pickedData = {};
+
+    function currentKind() {
+      return (targetSelect && targetKinds[targetSelect.value]) || (kindSelect ? kindSelect.value : "");
+    }
 
     function sync() {
       textarea.value = [...chips.children].map((chip) => chip.dataset.identifier).join("\n");
@@ -95,7 +111,7 @@
     }
 
     const lookup = debounce(() => {
-      const kind = kindSelect ? kindSelect.value : "";
+      const kind = currentKind();
       if (!searchable.includes(kind)) {
         closeSuggestions(box);
         return;
@@ -139,16 +155,20 @@
       chip.remove();
       sync();
     });
-    kindSelect?.addEventListener("change", () => {
-      search.placeholder = searchable.includes(kindSelect.value)
+    function updatePlaceholder() {
+      search.placeholder = searchable.includes(currentKind())
         ? search.dataset.placeholderSearch
         : search.dataset.placeholderPlain;
+    }
+    [kindSelect, targetSelect].forEach((select) => select?.addEventListener("change", () => {
+      updatePlaceholder();
       lookup();
-    });
-    // an identifier typed but not confirmed with Enter is kept too
-    form.addEventListener("submit", () => {
+    }));
+    updatePlaceholder();
+    // an identifier typed but not confirmed with Enter is kept too; capture: before htmx reads the form
+    outer.addEventListener("submit", () => {
       if (search.value.trim()) addChip(search.value, "", "");
-    });
+    }, true);
   }
 
   // Request form: several packages, from any catalog, as chips

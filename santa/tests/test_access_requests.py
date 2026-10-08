@@ -392,6 +392,79 @@ class AdminRequestTestCase(ConsoleBase):
         access_request.refresh_from_db()
         self.assertEqual(access_request.result_source, source)
 
+    def test_approve_event_with_a_cel_expression(self):
+        access_request = self.event_request()
+        response = self.client.get(reverse("console:request", args=(access_request.pk,)))
+        self.assertContains(response, 'data-show-when="policy=CEL"')
+        self.assertContains(response, "data-cel-suggestions=")
+        data = {"rule_type": RuleType.TEAMID, "policy": Policy.CEL, "scope": "groups", "groups": [self.dev.pk]}
+        response = self.client.post(reverse("console:request_approve", args=(access_request.pk,)), data)
+        self.assertContains(response, "Required for the CEL policy.")
+        response = self.client.post(reverse("console:request_approve", args=(access_request.pk,)),
+                                    {**data, "signing_prefixes": "com.example"})
+        self.assertRedirects(response, reverse("console:requests"))
+        rule = Rule.objects.get()
+        self.assertEqual((rule.identifier, rule.policy, rule.cel_expr),
+                         ("ABCDE12345", Policy.CEL,
+                          '(target.signing_id.startsWith("ABCDE12345:com.example")) ? ALLOWLIST : BLOCKLIST'))
+
+    def test_approve_other_with_a_cel_rule(self):
+        access_request = self.other_request()
+        expression = "target.signing_time >= timestamp('2025-01-01T00:00:00Z') ? ALLOWLIST : BLOCKLIST"
+        response, _ = self.approve(access_request, {
+            "result": "rule", "rule_type": RuleType.SIGNINGID, "identifier": "T8W5S5S6RA:com.figma.agent",
+            "policy": Policy.CEL, "cel_expr": expression, "scope": "machines", "package_target": "new",
+            "package_kind": "GITHUB_RELEASE", "package_rule_type": RuleType.BINARY})
+        self.assertRedirects(response, reverse("console:requests"))
+        self.assertEqual(Rule.objects.get().cel_expr, expression)
+
+    def test_approve_other_with_a_package_rule_and_its_options(self):
+        access_request = self.other_request()
+        response = self.client.get(reverse("console:request", args=(access_request.pk,)))
+        # the package field searches the catalogs, also of an existing package rule
+        self.assertContains(response, "data-identifiers-widget")
+        self.assertContains(response, 'data-kind-field="package_kind"')
+        response, _ = self.approve(access_request, {
+            "result": "package", "rule_type": RuleType.SIGNINGID, "policy": Policy.ALLOWLIST, "scope": "machines",
+            "package_target": "new", "package_kind": "NPM_PACKAGE", "package_identifiers": "esbuild",
+            "package_picked": json.dumps({"esbuild": {"name": "esbuild", "icon_url": "https://example.com/e.png"}}),
+            "package_name": "esbuild", "package_rule_type": RuleType.BINARY, "package_is_global": "on",
+            "package_policy": Policy.CEL, "package_cel_expr": "true ? ALLOWLIST : BLOCKLIST",
+            "package_keep_versions": "2", "package_keep_unit": "WEEKS", "package_approve_kept_versions": "on",
+            "package_include_dependencies": "on"})
+        self.assertRedirects(response, reverse("console:requests"))
+        source = ReleaseSource.objects.get()
+        self.assertEqual((source.policy, source.cel_expr, source.keep_versions, source.keep_unit,
+                          source.approve_kept_versions, source.include_dependencies),
+                         (Policy.CEL, "true ? ALLOWLIST : BLOCKLIST", 2, "WEEKS", True, True))
+        self.assertEqual(source.identifier_icons["esbuild"]["icon_url"], "https://example.com/e.png")
+
+    def test_options_a_catalog_cannot_use_are_dropped(self):
+        access_request = self.other_request()
+        response, _ = self.approve(access_request, {
+            "result": "package", "rule_type": RuleType.SIGNINGID, "policy": Policy.ALLOWLIST, "scope": "machines",
+            "package_target": "new", "package_kind": "HOMEBREW_CASK", "package_identifiers": "figma",
+            "package_name": "Figma", "package_rule_type": RuleType.BINARY, "package_is_global": "on",
+            "package_keep_versions": "0", "package_approve_kept_versions": "on",
+            "package_include_dependencies": "on"})
+        self.assertRedirects(response, reverse("console:requests"))
+        source = ReleaseSource.objects.get()
+        self.assertEqual((source.keep_versions, source.approve_kept_versions, source.include_dependencies),
+                         (0, False, False))
+
+    def test_approve_packages_with_a_cel_policy(self):
+        access_request, _ = self.package_request(("NPM_PACKAGE", "esbuild"))
+        data = {"new_name": "JS", "rule_type": RuleType.BINARY, "policy": Policy.CEL, "is_global": "on",
+                f"approve_{access_request.packages.get().pk}": "on",
+                f"target_{access_request.packages.get().pk}": "new", "keep_versions": "5"}
+        response, _ = self.approve(access_request, data)
+        self.assertContains(response, "Required for the CEL policy.")
+        response, _ = self.approve(access_request, {**data, "cel_expr": "true ? ALLOWLIST : BLOCKLIST",
+                                                    "include_dependencies": "on"})
+        self.assertRedirects(response, reverse("console:requests"))
+        source = ReleaseSource.objects.get()
+        self.assertEqual((source.policy, source.keep_versions, source.include_dependencies), (Policy.CEL, 5, True))
+
     def test_approve_other_into_an_existing_package_rule(self):
         source = ReleaseSource.objects.create(name="JS tools", kind="NPM_PACKAGE", identifier="esbuild",
                                               is_global=True)

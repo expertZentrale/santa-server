@@ -8,8 +8,10 @@
 {% include "console/widgets/_filter_bar.html" %}
 {% for r in page %}
 <section class="card request">
-  <div class="request-head"><strong>{{ r.title }}</strong>
-    <span class="badge {% if r.status == 'APPROVED' %}ok{% elif r.status == 'DENIED' %}bad{% elif r.status == 'PENDING' %}info{% endif %}">{{ r.get_status_display }}</span></div>
+  {# packages: every package shows its own status, the list its names #}
+  <div class="request-head">{% if r.kind == "PACKAGE" %}{% with count=r.packages.all|length %}<strong>{% blocktranslate count count=count %}{{ count }} package{% plural %}{{ count }} packages{% endblocktranslate %}</strong>{% endwith %}
+    {% else %}<strong>{{ r.title }}</strong>
+    <span class="badge {% if r.status == 'APPROVED' %}ok{% elif r.status == 'DENIED' %}bad{% elif r.status == 'PENDING' %}info{% endif %}">{{ r.get_status_display }}</span>{% endif %}</div>
   <small class="muted">{{ r.get_kind_display }} · {{ r.created_at|date:"d.m.Y H:i" }}{% if r.machine %} · {{ r.machine.hostname }}{% endif %}</small>
   {% if r.kind == "PACKAGE" %}{% include "request/_packages.html" with packages=r.packages.all %}{% endif %}
   {% if r.decision_note %}<p class="prewrap note">{{ r.decision_note }}</p>{% endif %}
@@ -17,7 +19,7 @@
   {% if r.is_pending %}<form method="post" action="{% url 'requests:cancel' r.pk %}">{% csrf_token %}<button class="link small">{% translate "Cancel request" %}</button></form>{% endif %}
 </section>
 {% empty %}
-<section class="card empty">{% if period == "all" %}{% translate "You haven't requested anything yet." %}{% else %}{% translate "You haven't requested anything in this time span." %}{% endif %}</section>
+<section class="card empty">{% if christmas %}{% translate "Your wish list is empty." %} {% endif %}{% if period == "all" %}{% translate "You haven't requested anything yet." %}{% else %}{% translate "You haven't requested anything in this time span." %}{% endif %}</section>
 {% endfor %}
 {% include "console/_pagination.html" %}
 {% endblock %}

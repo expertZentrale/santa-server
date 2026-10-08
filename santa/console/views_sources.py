@@ -8,12 +8,13 @@ from django.views.decorators.http import require_POST
 
 from .. import catalog
 from ..models import ReleaseSource, ReleaseVersion
-from ..releases import ReleaseError, sync_release_source
+from ..releases import ReleaseError, cleanup_preview, cleanup_release_source, stale_versions, sync_release_source
 from ..services import set_rules_enabled
 from .filters import Facet, any_of, chosen, filter_bar, remember_filters
 from .forms import ReleaseSourceForm
 from .utils import (
     changed_message,
+    defer_rows,
     drawer_done,
     is_htmx,
     log_addition,
@@ -21,6 +22,7 @@ from .utils import (
     log_deletion,
     paginate,
     render_drawer,
+    render_list,
     require_perms,
     safe_next,
     sort_by,
@@ -53,10 +55,10 @@ def sources(request):
         queryset = queryset.filter(name__icontains=q) | queryset.filter(identifier__icontains=q)
     queryset, sort = sort_by(request, queryset, {"name": "name", "kind": "kind", "checked": "last_checked_at"},
                              "name")
-    page = paginate(request, queryset)
-    for source in page:
+    page = None if defer_rows(request) else paginate(request, queryset)
+    for source in page or []:
         source.latest = latest_versions(source)
-    return render(request, "console/sources/list.html", {
+    return render_list(request, "console/sources/list.html", "console/sources/_rows.html", {
         "page": page, "params": request.GET, "sort": sort,
         **filter_bar(request, "sources", [
             Facet("kind", gettext("Catalog"), choices=ReleaseSource.Kind.choices),
@@ -72,13 +74,17 @@ def source_detail(request, pk):
     source = get_object_or_404(ReleaseSource.objects.prefetch_related("groups", "tags"), pk=pk)
     versions = {}
     for version in source.versions.prefetch_related("rules").order_by("-created_at"):
+        # the dependencies with executables (rules); the others are scripts, nothing to allow
+        with_rules = {rule.release_dependency for rule in version.rules.all()}
+        version.dependency_rows = [(label, label in with_rules) for label in version.dependencies]
         versions.setdefault(version.identifier, []).append(version)
     per_identifier = [(identifier, source.identifier_icons.get(identifier) or {}, versions.pop(identifier, []))
                       for identifier in source.identifiers]
     # versions of identifiers that were removed, deleted at the next check
     per_identifier += [(identifier, {}, items) for identifier, items in versions.items()]
+    stale = {version.pk for version in stale_versions(source, check_filters=True)}
     return render_drawer(request, "console/sources/detail.html", "console/sources/drawer_detail.html",
-                         {"source": source, "per_identifier": per_identifier})
+                         {"source": source, "per_identifier": per_identifier, "stale": stale})
 
 
 @staff_required
@@ -100,6 +106,12 @@ def source_form(request, pk=None):
         if not source.is_global and not source.groups.exists():
             messages.warning(request, gettext("%(source)s: no group and not global, its rules apply to no Mac.")
                              % {"source": source})
+        if not created and (stale := len(stale_versions(source, check_filters=True))):
+            # never deleted silently: the console shows them, "Clean up" deletes them
+            messages.info(request, ngettext(
+                "%(count)s version is no longer covered by the package rule: “Clean up” deletes it with its rules.",
+                "%(count)s versions are no longer covered by the package rule: “Clean up” deletes them with their "
+                "rules.", stale) % {"count": stale})
         messages.success(request, gettext("Package rule %(source)s saved. Use “Check now” to get the current "
                                           "releases.") % {"source": source})
         return drawer_done(request, reverse("console:source", args=[source.pk]))
@@ -117,6 +129,41 @@ def source_delete(request, pk):
     source.delete()
     messages.success(request, gettext("Package rule %(source)s deleted with its rules.") % {"source": source})
     return redirect("console:sources")
+
+
+@staff_required
+def source_cleanup(request, pk):
+    """Delete the versions (with their rules) the package rule no longer covers: removed packages, versions the
+    version pattern no longer matches, outside the range to keep, and the rules of dependencies no longer allowed"""
+    require_perms(request, "change_releasesource", "delete_rule")
+    source = get_object_or_404(ReleaseSource, pk=pk)
+    if request.method == "POST":
+        versions, rules = cleanup_release_source(source)
+        if versions or rules:
+            log_change(request.user, source, f"Cleaned up: {versions} version(s), {rules} rule(s) deleted")
+            messages.success(request, gettext("%(source)s cleaned up: %(versions)s, %(rules)s deleted.") % {
+                "source": source,
+                "versions": ngettext("%(count)s version", "%(count)s versions", versions) % {"count": versions},
+                "rules": ngettext("%(count)s rule", "%(count)s rules", rules) % {"count": rules}})
+        else:
+            messages.info(request, gettext("%(source)s: nothing to clean up.") % {"source": source})
+        return drawer_done(request, reverse("console:source", args=[source.pk]))
+    versions, rule_count, dependency_rules = cleanup_preview(source)
+    identifiers = set(source.identifiers)
+    kept = {version.pk for version in stale_versions(source)}
+    rows = []
+    for version in versions:
+        if version.identifier not in identifiers:
+            reason = gettext("package removed")
+        elif version.pk in kept:
+            reason = gettext("older than the versions to keep")
+        else:
+            reason = gettext("outside the version pattern")
+        rows.append((version, reason))
+    return render_drawer(request, "console/sources/cleanup.html", "console/sources/drawer_cleanup.html", {
+        "source": source, "rows": rows, "rule_count": rule_count,
+        "dependency_rule_count": dependency_rules.count(),
+    })
 
 
 @staff_required

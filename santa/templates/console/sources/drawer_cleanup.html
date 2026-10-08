@@ -1,0 +1,5 @@
+{% extends "console/_drawer.html" %}{% load i18n %}
+{% block drawer_class %} wide{% endblock %}
+{% block drawer_back %}{% url 'console:source' source.pk as source_url %}{% include "console/_back.html" with url=source_url label=source.name drawer=True %}{% endblock %}
+{% block drawer_title %}{% translate "Clean up" %}{% endblock %}
+{% block drawer_body %}{% include "console/sources/_cleanup.html" with in_drawer=True %}{% endblock %}

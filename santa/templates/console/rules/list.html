@@ -5,44 +5,11 @@
   <h1>{% translate "Execution rules" %}</h1>
   <div class="actions">
     {# the list and the export need the same permission (view_rule) #}
-    {% url 'console:rules_export' as export_url %}<a class="button" href="{{ export_url }}{% querystring page=None %}" download>{% translate "Export CSV" %}</a>
-    {% if perms.santa.add_rule %}<a class="button" href="{% url 'console:rule_upload' %}">{% translate "Upload binary" %}</a>
+    {% url 'console:rules_export' as export_url %}<a class="button" href="{{ export_url }}{% querystring page=None %}" download data-download hx-boost="false">{% translate "Export CSV" %}</a>
+    {% if perms.santa.add_rule %}{% url 'console:rule_upload' as upload_url %}<a class="button" href="{{ upload_url }}" hx-get="{{ upload_url }}" hx-target="#drawer">{% translate "Upload binary" %}</a>
     {% url 'console:rule_add' as add_url %}<a class="button primary" href="{{ add_url }}" hx-get="{{ add_url }}" hx-target="#drawer">{% translate "New rule" %}</a>{% endif %}
   </div>
 </div>
 {% include "console/widgets/_filter_bar.html" %}
-<form method="post" action="{% url 'console:rules_bulk' %}" data-select-form>
-  {% csrf_token %}
-  <input type="hidden" name="next" value="{{ request.get_full_path }}">
-  <div class="bulkbar" data-bulkbar hidden>
-    <span class="count" title="{% translate 'Click selects a row, Ctrl-click adds or removes one, Shift-click selects a range.' %}">{% blocktranslate %}<span data-selected-count>0</span> selected{% endblocktranslate %}</span>
-    <select name="action" aria-label="{% translate 'Action' %}">
-      <option value="enable">{% translate "Enable / approve" %}</option><option value="disable">{% translate "Disable" %}</option>
-      <option value="add_tag">{% translate "Add tag" %}</option><option value="remove_tag">{% translate "Remove tag" %}</option>
-      <option value="set_policy">{% translate "Set policy" %}</option>
-      <option value="add_groups">{% translate "Add groups" %}</option>{% if perms.santa.delete_rule %}<option value="delete">{% translate "Delete" %}</option>{% endif %}
-    </select>
-    <input name="tag" placeholder="{% translate 'tag' %}" aria-label="{% translate 'Tag' %}" data-tags data-show-when="action=add_tag|remove_tag">
-    <select name="policy" aria-label="{% translate 'Policy' %}" data-show-when="action=set_policy">{% for value, label in policies %}{% if value != "CEL" %}<option value="{{ value }}">{{ label }}</option>{% endif %}{% endfor %}</select>
-    <details class="picker" data-show-when="action=add_groups" data-picker>
-      <summary class="button">{% translate "Groups" %} <span class="badge" data-picker-count hidden></span></summary>
-      <fieldset class="picker-panel"><legend class="sr-only">{% translate "Groups" %}</legend>
-        {% for group in groups %}<label><input type="checkbox" name="groups" value="{{ group.pk }}"> {{ group.name }}</label>{% empty %}<span class="muted">{% translate "No groups yet." %}</span>{% endfor %}
-      </fieldset>
-    </details>
-    <button class="button primary" data-confirm-when="action=delete" data-confirm="{% translate 'Delete the selected rules?' %}">{% translate "Apply" %}</button>
-    <button type="button" class="bulkbar-clear" data-clear-selection aria-label="{% translate 'Clear selection' %}" title="{% translate 'Clear selection (Esc)' %}">×</button>
-  </div>
-  <table class="table" data-table="rules" data-optional="comment created">
-    <thead><tr><th class="select"><input type="checkbox" data-select-all aria-label="{% translate 'Select all' %}"></th>
-      {% sort_th _("Identifier") "identifier" %}<th data-col="comment">{% translate "Comment" %}</th>{% sort_th _("Type") "type" %}{% sort_th _("Policy") "policy" %}<th data-col="scope">{% translate "Scope" %}</th>
-      <th data-col="tags">{% translate "Tags" %}</th>{% sort_th _("Created") "created" %}<th data-col="origin">{% translate "Origin" %}</th>{% sort_th _("Enabled") "enabled" %}</tr></thead>
-    <tbody>
-    {% for rule in page %}{% include "console/rules/_row.html" %}{% empty %}
-      <tr class="empty"><td colspan="10">{% translate "No rules for these filters." %}</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
-</form>
-{% include "console/_pagination.html" %}
+{% include "console/_rows.html" %}
 {% endblock %}

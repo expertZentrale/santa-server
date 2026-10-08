@@ -7,6 +7,7 @@ from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
 from django.http import HttpResponse
 from django.shortcuts import redirect, render
+from django.utils.cache import patch_vary_headers
 from django.utils.http import url_has_allowed_host_and_scheme
 
 PAGE_SIZE = 50
@@ -32,12 +33,53 @@ def require_perms(request, *perms):
 
 
 def is_htmx(request):
-    return request.headers.get("HX-Request") == "true"
+    """A request of htmx for a part of a page (the drawer, a row). A boosted link or form (hx-boost: the menu, the
+    filters, the pages of a list) loads a whole page, like without htmx."""
+    return request.headers.get("HX-Request") == "true" and not is_boosted(request)
+
+
+def is_boosted(request):
+    # Back / Forward: htmx gets the page of that entry again
+    return (request.headers.get("HX-Boosted") == "true"
+            or request.headers.get("HX-History-Restore-Request") == "true")
 
 
 def render_drawer(request, page_template, drawer_template, context):
     """The side drawer for the links with hx-target="#drawer", the full page for everything else"""
     return render(request, drawer_template if is_htmx(request) else page_template, context)
+
+
+# The rows of a list come with a second request right after the page (console/_rows.html, hx-trigger="load"): the
+# page with its filters shows at once, also when the database is far away or slow
+ROWS_HEADER = "X-Santa-Rows"
+
+
+def rows_only(request):
+    return request.headers.get(ROWS_HEADER) == "1"
+
+
+def defer_rows(request):
+    """True: render the list page without its rows (page is None), they follow with their own request.
+
+    Only when a browser opens the page (Sec-Fetch-Mode: navigate, or a boosted link): scripts and older browsers get
+    everything at once.
+    Not in the drawer (htmx), and not with ?rows=now (the link for browsers without JavaScript).
+    """
+    return ((request.headers.get("Sec-Fetch-Mode") == "navigate" or is_boosted(request)) and not rows_only(request)
+            and not is_htmx(request) and request.GET.get("rows") != "now"
+            # the page rendered again in place (another language): with its rows, so the scroll position stays
+            and request.headers.get("X-Santa-Rerender") != "1")
+
+
+def render_list(request, template, rows_template, context):
+    """A list page, or only its rows (rows_template) for the request of console/_rows.html"""
+    if rows_only(request):
+        response = render(request, rows_template, context)
+    else:
+        response = render(request, template, {**context, "rows_template": rows_template})
+    # the same URL answers with the page or the rows: a cached copy must not mix them up (Back button)
+    patch_vary_headers(response, [ROWS_HEADER, "HX-Request", "HX-Boosted"])
+    return response
 
 
 def drawer_done(request, url, open_in_drawer=False):

@@ -19,7 +19,7 @@ from ..users import profile_for
 
 RANGE = "range"
 # the page of the list and its length are not part of a filter
-NOT_FILTERS = ("page", "per_page", "reset")
+NOT_FILTERS = ("page", "per_page", "reset", "rows")
 MAX_SAVED_FILTERS = 30
 # the lists with a filter bar (the page of filter_bar()), and whether they belong to the console (staff only)
 FILTER_PAGES = {"rules": True, "events-blocked": True, "events-all": True, "machines": True, "sources": True,

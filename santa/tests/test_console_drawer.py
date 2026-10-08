@@ -182,6 +182,11 @@ class DrawerTestCase(ConsoleBase):
         upload = SimpleUploadedFile("config.json", json.dumps(export_config()).encode(),
                                     content_type="application/json")
         response = self.client.post(reverse("console:admin_config_import"), {"file": upload}, **HTMX)
+        self.assertDrawer(response, "Update preview")
+        self.assertNotContains(response, "data-refresh-on-close")
+        response = self.client.post(reverse("console:admin_config_import"),
+                                    {"payload": response.context["payload"], "edited": "on", "action": "import"},
+                                    **HTMX)
         self.assertDrawer(response, "Imported")
         # the lists behind the drawer show the import after it closes
         self.assertContains(response, "data-refresh-on-close")

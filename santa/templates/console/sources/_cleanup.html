@@ -1,0 +1,24 @@
+{% load i18n %}{% if rows or dependency_rule_count %}
+<p>{% translate "These versions are no longer covered by the package rule. They are deleted with their rules, and the Macs remove the rules at their next sync." %}</p>
+{% if rows %}
+<section class="card">
+  <table class="table compact">
+    <thead><tr><th>{% translate "Package" %}</th><th>{% translate "Version" %}</th><th>{% translate "Published" %}</th><th>{% translate "Why" %}</th></tr></thead>
+    <tbody>{% for version, reason in rows %}
+      <tr><td><code>{{ version.identifier }}</code></td><td class="strong">{{ version.version }}</td>
+        <td>{{ version.published_at|default:version.created_at|date:"d.m.Y" }}</td>
+        <td>{{ reason }}</td></tr>
+    {% endfor %}</tbody>
+  </table>
+</section>
+{% endif %}
+<p>{% blocktranslate count count=rule_count %}{{ count }} rule of these versions is deleted.{% plural %}{{ count }} rules of these versions are deleted.{% endblocktranslate %}
+{% if dependency_rule_count %}{% blocktranslate count count=dependency_rule_count %}And {{ count }} rule of dependencies, which the package rule no longer allows.{% plural %}And {{ count }} rules of dependencies, which the package rule no longer allows.{% endblocktranslate %}{% endif %}</p>
+<form method="post" action="{% url 'console:source_cleanup' source.pk %}" class="actions"{% if in_drawer %} hx-post="{% url 'console:source_cleanup' source.pk %}" hx-target="#drawer"{% endif %}>
+  {% csrf_token %}
+  <button class="button danger">{% translate "Clean up" %}</button>
+  {% url 'console:source' source.pk as source_url %}<a class="button" href="{{ source_url }}"{% if in_drawer %} hx-get="{{ source_url }}" hx-target="#drawer"{% endif %}>{% translate "Cancel" %}</a>
+</form>
+{% else %}
+<p class="muted">{% translate "Nothing to clean up: every version is covered by the package rule." %}</p>
+{% endif %}

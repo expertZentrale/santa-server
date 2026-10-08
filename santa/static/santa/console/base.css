@@ -28,14 +28,10 @@
   --control-h: 2.25rem;
   --control-h-sm: 1.75rem;
   --topbar-h: 3.5rem;
-  --shadow: 0 1px 2px rgb(16 24 40 / 6%), 0 1px 3px rgb(16 24 40 / 8%);
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 :root[data-theme="light"] { color-scheme: light; }
-:root[data-theme="dark"] { color-scheme: dark; --shadow: none; }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) { --shadow: none; }
-}
+:root[data-theme="dark"] { color-scheme: dark; }
 
 * { box-sizing: border-box; }
 /* the room of the scrollbar is always kept: a long page doesn't move the content (and the avatar) to the left */
@@ -91,6 +87,18 @@ small.muted, small.help { display: block; }
   top: 0;
   z-index: 10;
 }
+/* the progress of a running action, under the top bar: a moving stripe, or the share of an upload */
+.progress { position: fixed; top: var(--topbar-h); left: 0; right: 0; height: 3px; z-index: 12; overflow: hidden; pointer-events: none; }
+.progress > span { position: absolute; top: 0; bottom: 0; left: 0; width: 35%; background: var(--accent); border-radius: 0 2px 2px 0; animation: progress 1.1s ease-in-out infinite; }
+.progress.determinate > span { width: var(--progress, 0%); animation: none; transition: width .2s; }
+@keyframes progress { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+@media (prefers-reduced-motion: reduce) {
+  .progress > span { width: 100%; opacity: .6; animation: none; }
+}
+/* the button of the running action */
+.button[aria-busy="true"] { cursor: progress; opacity: .75; }
+.button[aria-busy="true"]::before { content: ""; width: .85em; height: .85em; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin .8s linear infinite; }
+
 .brand { font-weight: 700; color: var(--text); white-space: nowrap; padding-block: .3rem; }
 .brand:hover { color: var(--accent); }
 .topbar nav { display: flex; gap: .25rem; flex: 1; overflow-x: auto; scrollbar-width: none; }
@@ -171,6 +179,9 @@ small.muted, small.help { display: block; }
   cursor: pointer;
 }
 .user-menu .menu a:hover, .menu-item:hover { background: var(--surface-2); text-decoration: none; }
+/* an icon before the text */
+.user-menu .menu a, .user-menu .menu-item { display: flex; align-items: center; gap: .55rem; }
+.user-menu .menu a > .icon, .user-menu .menu-item > .icon { color: var(--muted); }
 .user-menu form { margin: 0; }
 .menu-row { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .35rem .6rem; }
 .segmented { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
@@ -236,11 +247,10 @@ main.narrow { max-width: 51.25rem; }
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: var(--shadow);
   padding: 1.1rem 1.25rem;
   margin-bottom: 1rem;
 }
-.card.subtle { background: var(--surface-2); box-shadow: none; }
+.card.subtle { background: var(--surface-2); }
 .card.empty { color: var(--muted); text-align: center; }
 
 /* Messages */
@@ -326,6 +336,9 @@ form.stack { margin-bottom: 1rem; }
 .field.check > input + label, .field.check > input ~ .help, .field.check > input ~ .error { grid-column: 2; }
 .field input:not([type="checkbox"]):not([type="radio"]), .field select, .field textarea { width: 100%; }
 .field select[multiple] { min-height: 5rem; }
+/* short fields side by side, e.g. "keep 3 | versions" */
+.field-row { display: grid; grid-template-columns: minmax(0, 8rem) minmax(0, 12rem); column-gap: .75rem; align-items: start; }
+.is-disabled { opacity: .6; }
 .field ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: .25rem 1rem; }
 .field ul label { font-weight: 400; display: flex; gap: .35rem; align-items: center; }
 .help { color: var(--muted); }
@@ -418,6 +431,10 @@ ul.plain { list-style: none; padding: 0; margin: 0; display: grid; gap: .3rem; }
 .card-head h2 { margin: 0; }
 form.regenerate { margin: .5rem 0 0; }
 
+/* one distance between the parts of a request */
+.card.request { display: grid; gap: .5rem; }
+.card.request > * { margin: 0; }
+.card.request form { margin: 0; }
 /* a long title wraps, the status keeps its size next to it */
 .request .request-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: .25rem 1rem; }
 .request .request-head > strong { min-width: 0; overflow-wrap: anywhere; }
@@ -438,7 +455,14 @@ details.upload summary { cursor: pointer; color: var(--muted); margin-bottom: .5
 
 @media (max-width: 45em) {
   main { padding: 1rem; }
-  .page-head .actions { margin-left: 0; flex-wrap: wrap; }
+  .card { padding: 1rem; }
+  /* the buttons of a page or a detail in even rows: the main action on its own line first, the others side by
+     side below it, instead of ragged rows */
+  .page-head .actions, .detail-actions { display: flex; flex-wrap: wrap; gap: .5rem; width: 100%; margin-left: 0; }
+  .page-head .actions > *, .detail-actions > * { flex: 1 1 6rem; margin: 0; }
+  .page-head .actions > .primary, .detail-actions > .primary { flex-basis: 100%; order: -1; }
+  .page-head .actions .button, .detail-actions .button { width: 100%; justify-content: center; text-align: center; padding-inline: .5rem; }
+  .detail-actions > form.inline { display: block; }
   .filters input[type="search"] { min-width: 0; max-width: none; flex-basis: 100%; }
   .filters select { flex: 1 1 45%; }
   .profile-card { flex-direction: column; }
@@ -458,19 +482,22 @@ details.upload summary { cursor: pointer; color: var(--muted); margin-bottom: .5
 @supports (appearance: base-select) {
   select:not([multiple]), select:not([multiple])::picker(select) { appearance: base-select; }
   select:not([multiple]) { display: inline-flex; align-items: center; gap: .5rem; cursor: pointer; }
+  /* a long choice (e.g. a rule type with what it covers) wraps in its field instead of widening the form */
+  .field select:not([multiple]), td select:not([multiple]) { min-width: 0; max-width: 100%; white-space: normal; text-align: start; }
   select:not([multiple])::picker-icon { content: ""; width: .45em; height: .45em; border: solid var(--muted); border-width: 0 1.5px 1.5px 0; transform: translateY(-.15em) rotate(45deg); transition: transform .15s; margin-left: auto; }
   select:not([multiple]):open::picker-icon { transform: translateY(.1em) rotate(-135deg); }
   select:not([multiple])::picker(select) {
     margin-block: .25rem;
     padding: .3rem;
     max-height: 22.5rem;
+    max-width: min(36rem, calc(100vw - 1rem));
     background: var(--surface);
     color: var(--text);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
   }
-  select:not([multiple]) option { padding: .45rem .6rem; border-radius: var(--radius-sm); gap: .5rem; }
+  select:not([multiple]) option { padding: .45rem .6rem; border-radius: var(--radius-sm); gap: .5rem; white-space: normal; }
   select:not([multiple]) option:hover, select:not([multiple]) option:focus-visible { background: var(--surface-2); outline: none; }
   select:not([multiple]) option:checked { font-weight: 600; background: none; }
   select:not([multiple]) option::checkmark { color: var(--accent); }

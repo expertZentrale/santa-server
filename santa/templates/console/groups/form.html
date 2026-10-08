@@ -5,7 +5,7 @@
 {% url 'console:groups' as back_url %}{% include "console/_back.html" with url=back_url label=_("Groups") %}
 <div class="page-head">
   <h1>{% if group %}{{ group.name }}{% else %}{% translate "New group" %}{% endif %}</h1>
-  {% if group and can_see_sync_token %}<div class="actions"><a class="button primary" href="{% url 'console:group_profile' group.pk %}">{% translate "Download configuration profile" %}</a></div>{% endif %}
+  {% if group and can_see_sync_token %}<div class="actions"><a class="button primary" href="{% url 'console:group_profile' group.pk %}" data-download hx-boost="false">{% translate "Download configuration profile" %}</a></div>{% endif %}
 </div>
 {% include "console/groups/_form.html" %}
 {% endblock %}

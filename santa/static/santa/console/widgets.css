@@ -183,7 +183,12 @@ a.chip { color: inherit; }
 a.chip:hover { text-decoration: none; border-color: var(--accent); }
 .picker-row { display: flex; gap: .5rem; align-items: flex-start; }
 .picker-row select { flex: none; width: auto; }
-.picker-row .combobox { flex: 1; }
+.picker-row .combobox { flex: 1; min-width: 0; }
+/* phones: the catalog above the search, both the full width (and the suggestions with them) */
+@media (max-width: 40em) {
+  .picker-row { flex-wrap: wrap; }
+  .picker-row select, .picker-row .combobox { flex: 1 1 100%; width: 100%; }
+}
 .field .chips { list-style: none; padding: 0; margin: 0 0 .25rem; display: flex; flex-wrap: wrap; gap: .4rem; }
 .field .chips .chip { border-radius: var(--radius); padding: .3rem .4rem .3rem .35rem; }
 .tag-suggestion { padding: .4rem .7rem; }
@@ -281,3 +286,26 @@ ol.history > li:last-child { border-bottom: 0; }
 .inheritable .field[data-field^="override_"] { margin-bottom: .4rem; }
 .inheritable .inherited { display: grid; gap: .25rem; margin-bottom: .4rem; }
 .inheritable .inherited .pre { white-space: pre-wrap; }
+
+/* the dependencies of a version of a package rule (sources/_detail.html) */
+details.dependencies { font-weight: 400; margin-top: .25rem; }
+details.dependencies summary { cursor: pointer; color: var(--muted); }
+details.dependencies ul { margin: .35rem 0; }
+details.dependencies code { overflow-wrap: anywhere; }
+
+/* the import preview (administration/_config_preview.html): a card per list of the file, foldable */
+.preview-section > summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem .75rem; cursor: pointer; }
+.preview-section > summary h2 { display: inline; margin: 0; }
+.preview-section[open] > summary { margin-bottom: .75rem; }
+.preview-table input[type="text"] { width: 100%; min-width: 0; }
+/* the identifiers and paths of the rules break anywhere: they set no minimum width */
+.preview-table td:nth-child(2) { overflow-wrap: anywhere; }
+/* inside their card, also in the drawer: not the width of the window like the lists; scrolls if it must */
+.config-preview { grid-template-columns: minmax(0, 1fr); }
+.preview-section .table-scroll { width: auto; min-width: 0; max-width: none; margin-left: 0; transform: none; overflow-x: auto; }
+/* as a table: the name takes the room, the small columns are as wide as their longest word (any language; the
+   headings wrap between words), on phones the rows are cards */
+@media (min-width: 45.01em) {
+  .preview-table th:not(:nth-child(2)) { width: 1%; }
+  .preview-table td:not(:nth-child(2)) { white-space: nowrap; }
+}

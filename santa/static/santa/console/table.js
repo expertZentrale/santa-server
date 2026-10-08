@@ -74,7 +74,8 @@
 
   // Column names on every cell: on phones the rows become cards with "label: value"
   function labelTables(root) {
-    root.querySelectorAll("table.table").forEach((table) => {
+    const tables = root.matches?.("table.table") ? [root] : root.querySelectorAll("table.table");
+    tables.forEach((table) => {
       if (!table.parentElement.classList.contains("table-scroll")) {
         const wrapper = document.createElement("div");
         wrapper.className = "table-scroll";
@@ -123,6 +124,8 @@
     if (!Object.keys(widths).length || !tableColumns(table).length) return;
     // fixed layout: the visible columns keep their natural width, unless one was set; hidden ones get none
     const visible = cells.filter((th) => th.getClientRects().length);
+    // phones: the header is hidden (cards), there is nothing to measure until it is back
+    if (!visible.length) return;
     const natural = visible.map((th) => th.getBoundingClientRect().width / rem());
     visible.forEach((th, index) => {
       const key = th.dataset.col;
@@ -156,6 +159,9 @@
     box.classList.remove("fits");
     box.classList.toggle("fits", box.scrollWidth <= box.clientWidth + 1);
   }
+
+  // the width below which the tables are cards (table.css)
+  const cardLayout = window.matchMedia("(max-width: 45em)");
 
   // the column chooser shows at most this many columns without scrolling (the rules have 9)
   const MAX_COLUMN_ROWS = 9;
@@ -228,6 +234,12 @@
     });
     applyHidden(table, settings);
     applyWidths(table, settings);
+    // phone <-> desktop (a resized window, a rotated tablet): measured again in the new layout
+    cardLayout.addEventListener("change", () => {
+      if (!table.isConnected) return;
+      applyWidths(table, settings);
+      updateFits(table);
+    });
 
     // the column chooser: in the filter row, or above the table
     const picker = document.createElement("details");
@@ -377,20 +389,19 @@
 
   const INTERACTIVE = "a, button, input, select, textarea, label, summary, [hx-get], [hx-post]";
 
-  function isTouch(event) {
-    return event.pointerType === "touch" || (!event.pointerType && window.matchMedia("(pointer: coarse)").matches
-                                             && event.detail > 0);
-  }
+  // The device of the last press: Safari on iOS gives the click of a tap no pointerType, or "mouse", so the tap
+  // would select only its row instead of adding it
+  let lastPointer = "";
+  document.addEventListener("pointerdown", (event) => { lastPointer = event.pointerType; }, true);
+  document.addEventListener("touchstart", () => { lastPointer = "touch"; }, { capture: true, passive: true });
 
-  // the whole cell of a switch toggles it, not only the small switch (else the click would select the row)
-  document.addEventListener("click", (event) => {
-    const cell = event.target.closest("td.toggle");
-    if (!cell || event.target.closest(INTERACTIVE)) return;
-    const toggle = cell.querySelector(".switch");
-    if (!toggle) return;
-    event.stopImmediatePropagation();
-    toggle.click();
-  }, true);
+  function isTouch(event) {
+    if (event.pointerType === "touch" || event.pointerType === "pen") return true;
+    // a click from the keyboard (Space has its own handling)
+    if (event.detail === 0) return false;
+    if (lastPointer) return lastPointer === "touch" || lastPointer === "pen";
+    return window.matchMedia("(hover: none)").matches;
+  }
 
   document.addEventListener("click", (event) => {
     const clearButton = event.target.closest("[data-clear-selection]");
@@ -460,7 +471,8 @@
     root.querySelectorAll("[data-select-form]").forEach(updateSelection);
   });
   SantaConsole.onSwap((target) => {
-    labelTables(target.closest("table") || target);
+    // a row swapped as a whole (outerHTML, e.g. its switch): the old one is gone, the new one needs its labels
+    labelTables(target.isConnected ? target.closest("table") || target : document);
     addSelectAllCards(document);
     setupRowFocus(document);
     updateAllSelections();

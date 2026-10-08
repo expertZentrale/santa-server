@@ -4,11 +4,12 @@ from django.contrib import messages
 from django.db.models import Case, IntegerField, Q, Value, When, prefetch_related_objects
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import gettext, ngettext
 from django.views.decorators.http import require_POST
 
-from ..models import Group, Machine, Policy, Rule, RuleType, Tag
+from ..models import Group, Machine, Policy, ReleaseVersion, Rule, RuleType, Tag
 from ..releases import ReleaseError, find_binaries
 from ..services import allow_identifier, binary_identifiers, set_rules_enabled, set_rules_policy
 from .filters import (
@@ -25,6 +26,7 @@ from .filters import (
 from .forms import RuleBulkForm, RuleForm, UploadBinaryForm
 from .utils import (
     changed_message,
+    defer_rows,
     drawer_done,
     is_htmx,
     log_addition,
@@ -32,6 +34,7 @@ from .utils import (
     log_deletion,
     paginate,
     render_drawer,
+    render_list,
     require_perms,
     safe_next,
     sort_by,
@@ -82,8 +85,8 @@ def rules(request):
     if remembered := remember_filters(request, "rules"):
         return remembered
     queryset, sort = sort_by(request, filter_rules(request, Rule.objects.all()), RULE_COLUMNS, "-created")
-    page = paginate(request, queryset.select_related("release_source", "created_by")
-                                     .prefetch_related("groups", "tags", "machines"))
+    queryset = queryset.select_related("release_source", "created_by").prefetch_related("groups", "tags", "machines")
+    page = None if defer_rows(request) else paginate(request, queryset)
     groups = Group.objects.order_by("name")
     facets = [
         Facet("type", gettext("Type"), choices=RuleType.choices),
@@ -99,7 +102,12 @@ def rules(request):
         Facet("created", gettext("Created"), kind="time", choices=TIME_PRESETS, from_name="created_from",
               to_name="created_to"),
     ]
-    return render(request, "console/rules/list.html", {
+    # set by the link of a package rule version ("Binaries"): shown, so that it can be removed
+    if (version := request.GET.get("version", "")).isdigit():
+        found = ReleaseVersion.objects.select_related("source").filter(pk=version).first()
+        facets.append(Facet("version", gettext("Package version"), kind="fixed",
+                            text=str(found) if found else version))
+    return render_list(request, "console/rules/list.html", "console/rules/_rows.html", {
         "page": page, "sort": sort, "params": request.GET, "policies": Policy.choices,
         "groups": groups,
         **filter_bar(request, "rules", facets, hidden=("sort",),
@@ -325,8 +333,9 @@ def rule_upload(request):
             if not found:
                 form.add_error("file", gettext("No Mach-O executable found in this file."))
             elif _rules_from_upload(request, form, found):
-                return redirect("console:rules")
-    return render(request, "console/rules/upload.html", {"form": form, "found": found})
+                return drawer_done(request, reverse("console:rules"))
+    return render_drawer(request, "console/rules/upload.html", "console/rules/drawer_upload.html",
+                         {"form": form, "found": found})
 
 
 def _rules_from_upload(request, form, found):
