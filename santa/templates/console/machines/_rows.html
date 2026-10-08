@@ -15,7 +15,7 @@
         {% if machine.clean_sync_requested %}<span class="badge info">{% translate "clean sync" %}</span>{% endif %}</td>
     </tr>
   {% empty %}
-    <tr class="empty"><td colspan="7">{% translate "No Macs for these filters." %}</td></tr>
+    {% if skeleton %}{% include "console/_skeleton_rows.html" with columns=7 %}{% else %}<tr class="empty"><td colspan="7">{% translate "No Macs for these filters." %}</td></tr>{% endif %}
   {% endfor %}
   </tbody>
 </table>

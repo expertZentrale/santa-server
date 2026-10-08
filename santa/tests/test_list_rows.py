@@ -29,6 +29,10 @@ class ListRowsTestCase(ConsoleBase):
         self.assertContains(response, 'hx-trigger="load"')
         self.assertContains(response, "data-filter-form")
         self.assertNotContains(response, SHA_A)
+        # the real table with grey rows where the rows come, not "no rules"
+        self.assertContains(response, 'data-table="rules"')
+        self.assertContains(response, '<tr class="skeleton" aria-hidden="true">', count=8)
+        self.assertNotContains(response, "No rules for these filters.")
         self.assertIsNone(response.context["page"])
         for header in ("X-Santa-Rows", "HX-Request", "HX-Boosted", "HX-History-Restore-Request", "Sec-Fetch-Mode",
                        "X-Santa-Rerender"):
@@ -44,9 +48,10 @@ class ListRowsTestCase(ConsoleBase):
         for name in LISTS:
             with self.subTest(name):
                 url = reverse(name) + "?q=x"
-                self.assertContains(self.client.get(url, **NAVIGATE), "rows-loading")
+                self.assertContains(self.client.get(url, **NAVIGATE), 'class="skeleton"')
                 response = self.client.get(url, **ROWS)
                 self.assertNotContains(response, "rows-loading")
+                self.assertNotContains(response, 'class="skeleton"')
                 self.assertContains(response, "<table")
 
     def test_scripts_and_browsers_without_javascript_get_everything(self):

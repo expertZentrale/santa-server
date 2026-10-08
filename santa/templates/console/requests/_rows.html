@@ -11,7 +11,7 @@
       <td><span class="badge {% if r.status == 'APPROVED' %}ok{% elif r.status == 'DENIED' %}bad{% elif r.status == 'PENDING' %}info{% endif %}">{{ r.get_status_display }}</span></td>
     </tr>
   {% empty %}
-    <tr class="empty"><td colspan="6">{% translate "No requests." %}</td></tr>
+    {% if skeleton %}{% include "console/_skeleton_rows.html" with columns=6 %}{% else %}<tr class="empty"><td colspan="6">{% translate "No requests." %}</td></tr>{% endif %}
   {% endfor %}
   </tbody>
 </table>

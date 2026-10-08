@@ -109,6 +109,37 @@
     }
   }
 
+  // The column widths a list had when it was shown last (this session): the grey rows of the next load take them, so
+  // the columns don't move when the rows arrive. Only on wide screens: phones show cards.
+  function rememberLayout(table) {
+    if (cardLayout.matches || !table.dataset.table) return;
+    const cells = [...table.tHead.rows[0].cells];
+    if (!cells.some((th) => th.getClientRects().length)) return;
+    const layout = { table: table.getBoundingClientRect().width / rem(),
+                     widths: cells.map((th) => (th.getClientRects().length ? th.getBoundingClientRect().width / rem() : 0)) };
+    try {
+      sessionStorage.setItem(`santa.layout.${table.dataset.table}`, JSON.stringify(layout));
+    } catch (error) {
+      // private window or blocked storage: the grey rows have their own widths
+    }
+  }
+
+  function applyRememberedLayout(table) {
+    if (cardLayout.matches) return false;
+    let layout = null;
+    try {
+      layout = JSON.parse(sessionStorage.getItem(`santa.layout.${table.dataset.table}`));
+    } catch (error) {
+      return false;
+    }
+    const cells = [...table.tHead.rows[0].cells];
+    if (!layout || layout.widths?.length !== cells.length) return false;
+    cells.forEach((th, index) => { th.style.width = `${layout.widths[index]}rem`; });
+    table.classList.add("fixed");
+    table.style.width = `${layout.table}rem`;
+    return true;
+  }
+
   function tableColumns(table) {
     return [...table.tHead.rows[0].cells].map((th, index) => ({ th, index, key: th.dataset.col }))
       .filter((column) => column.key);
@@ -171,6 +202,13 @@
     table.dataset.tableReady = "1";
     const texts = document.getElementById("table-texts")?.dataset || {};
     const settings = tableSettings(table);
+    if (table.closest(".rows-loading")) {
+      // the grey rows while the list loads: the columns as shown last (or as the user set them), so the real table
+      // takes the same place
+      applyHidden(table, settings);
+      if (!applyRememberedLayout(table)) applyWidths(table, settings);
+      return;
+    }
     [...table.tHead.rows[0].cells].forEach((th) => {
       const name = th.textContent.trim();
       // a column without a name (e.g. the buttons) can't be chosen or resized: it would be an empty entry
@@ -330,6 +368,7 @@
       (table.closest(".table-scroll") || table).before(tools);
     }
     updateFits(table);
+    rememberLayout(table);
   }
 
   window.addEventListener("resize", () => document.querySelectorAll("table[data-table]").forEach(updateFits));
@@ -501,6 +540,15 @@
     setupRowFocus(document);
     updateAllSelections();
   });
+
+  // the widths as they are when the page is left (also after the user changed them)
+  const rememberAll = () => document.querySelectorAll("main table[data-table][data-table-ready]").forEach((table) => {
+    if (!table.closest(".rows-loading")) rememberLayout(table);
+  });
+  document.addEventListener("htmx:beforeSwap", (event) => {
+    if (event.detail.target === document.body) rememberAll();
+  });
+  window.addEventListener("pagehide", rememberAll);
 
   SantaConsole.table = { rowBoxes, updateSelection, updateAllSelections, labelTables, setupRowFocus };
 })();

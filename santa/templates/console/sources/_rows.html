@@ -17,7 +17,7 @@
       <td>{% if perms.santa.change_releasesource %}<form method="post" action="{% url 'console:source_check' source.pk %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="button small">{% translate "Check now" %}</button></form>{% endif %}</td>
     </tr>
   {% empty %}
-    <tr class="empty"><td colspan="7">{% translate "No package rules yet." %}</td></tr>
+    {% if skeleton %}{% include "console/_skeleton_rows.html" with columns=7 %}{% else %}<tr class="empty"><td colspan="7">{% translate "No package rules yet." %}</td></tr>{% endif %}
   {% endfor %}
   </tbody>
 </table>

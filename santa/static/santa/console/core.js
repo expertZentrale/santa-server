@@ -456,6 +456,7 @@
     // rows that showed "could not be loaded": loaded again
     document.querySelectorAll(".rows-loading.failed").forEach((placeholder) => {
       placeholder.classList.remove("failed");
+      placeholder.querySelector(".rows-error")?.setAttribute("hidden", "");
       htmx.ajax("GET", placeholder.getAttribute("hx-get"), {
         source: placeholder, target: placeholder.closest("[data-list-rows]"), headers: { "X-Santa-Rows": "1" },
       });
@@ -538,7 +539,7 @@
     if (!element?.matches?.(".rows-loading")) return;
     element.classList.add("failed");
     element.removeAttribute("aria-busy");
-    element.querySelector("span:not(.spinner)").textContent = element.dataset.errorText;
+    element.querySelector(".rows-error")?.removeAttribute("hidden");
   }
 
   // the burger menu, the user menu and the copy buttons

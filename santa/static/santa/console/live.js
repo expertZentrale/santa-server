@@ -8,7 +8,8 @@
   function setupLiveUpdates(root) {
     const table = root.querySelector("table[data-live-updates]");
     const pill = document.querySelector("[data-live-pill]");
-    if (!table || !pill || table.dataset.liveReady) return;
+    // the grey rows while the list loads: the real table comes with its rows
+    if (!table || !pill || table.dataset.liveReady || table.closest(".rows-loading")) return;
     table.dataset.liveReady = "1";
     const tbody = table.tBodies[0];
     const baseTitle = document.title;

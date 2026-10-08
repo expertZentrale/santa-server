@@ -15,7 +15,7 @@
         {% sort_th _("Mac") "mac" %}{% sort_th _("User") "user" %}{% sort_th _("Signing ID") "signing" %}<th data-col="status">{% translate "Status" %}</th></tr></thead>
       <tbody>
         {% for event in page %}{% include "console/events/_row.html" %}{% empty %}
-        <tr class="empty"><td colspan="8">{% translate "No events for these filters." %}</td></tr>{% endfor %}
+        {% if skeleton %}{% include "console/_skeleton_rows.html" with columns=8 select=True %}{% else %}<tr class="empty"><td colspan="8">{% translate "No events for these filters." %}</td></tr>{% endif %}{% endfor %}
       </tbody>
     </table>
   {% else %}
@@ -26,7 +26,7 @@
       <tbody>
       {% for row in page %}{% include "console/events/_app_row.html" %}
       {% empty %}
-        <tr class="empty"><td colspan="9">{% translate "Nothing blocked for these filters." %}</td></tr>
+        {% if skeleton %}{% include "console/_skeleton_rows.html" with columns=9 select=True %}{% else %}<tr class="empty"><td colspan="9">{% translate "Nothing blocked for these filters." %}</td></tr>{% endif %}
       {% endfor %}
       </tbody>
     </table>
