@@ -451,11 +451,14 @@
     banner(failedPost ? element?.dataset.notSaved || "" : element?.dataset.back || "", failedPost ? "not-saved" : "back");
     failedGets = [];
     failedPost = false;
-    entries.filter((entry) => !entry.boosted).forEach(repeat);
+    // the rows of a list: their placeholder loads them again below, once
+    entries.filter((entry) => entry.rows).forEach((entry) => failRows(entry.elt));
+    entries.filter((entry) => !entry.boosted && !entry.rows).forEach(repeat);
     if (page) repeat(page);
     // rows that showed "could not be loaded": loaded again
     document.querySelectorAll(".rows-loading.failed").forEach((placeholder) => {
       placeholder.classList.remove("failed");
+      placeholder.setAttribute("aria-busy", "true");
       placeholder.querySelector(".rows-error")?.setAttribute("hidden", "");
       htmx.ajax("GET", placeholder.getAttribute("hx-get"), {
         source: placeholder, target: placeholder.closest("[data-list-rows]"), headers: { "X-Santa-Rows": "1" },
