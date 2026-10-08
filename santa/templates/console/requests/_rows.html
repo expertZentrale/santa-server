@@ -1,5 +1,5 @@
 {% load console i18n %}<table class="table" data-table="requests">
-  <thead><tr>{% sort_th _("Request") "request" %}{% sort_th _("Kind") "kind" %}{% sort_th _("Requester") "requester" %}<th>{% translate "Mac" %}</th>{% sort_th _("Created") "created" %}{% sort_th _("Status") "status" %}</tr></thead>
+  <thead><tr>{% sort_th _("Request") "request" %}{% sort_th _("Kind") "kind" %}{% sort_th _("Requester") "requester" %}<th>{% translate "Mac" %}</th>{% sort_th _("Created") "created" %}{% sort_th _("Status") "status" %}<th class="row-actions" aria-label="{% translate 'Actions' %}"></th></tr></thead>
   <tbody>
   {% for r in page %}
     <tr>
@@ -9,9 +9,11 @@
       <td>{{ r.machine.hostname|default:"–" }}</td>
       <td>{{ r.created_at|date:"d.m.Y H:i" }}</td>
       <td><span class="badge {% if r.status == 'APPROVED' %}ok{% elif r.status == 'DENIED' %}bad{% elif r.status == 'PENDING' %}info{% endif %}">{{ r.get_status_display }}</span></td>
+      <td class="row-actions"><button type="button" class="icon-button row-menu-button" popovertarget="row-menu-request-{{ r.pk }}" aria-haspopup="menu" title="{% translate 'Actions' %}" aria-label="{% translate 'Actions' %}: {{ r.title }}">{% include "console/icons/more.svg" %}</button>
+        <div id="row-menu-request-{{ r.pk }}" class="row-menu" popover role="menu"><a class="menu-item" role="menuitem" href="{% url 'console:request' r.pk %}" hx-get="{% url 'console:request' r.pk %}" hx-target="#drawer">{% if r.is_pending and perms.santa.change_accessrequest %}{% translate "Approve or deny…" %}{% else %}{% translate "Open" %}{% endif %}</a></div></td>
     </tr>
   {% empty %}
-    {% if skeleton %}{% include "console/_skeleton_rows.html" with columns=6 %}{% else %}<tr class="empty"><td colspan="6">{% translate "No requests." %}</td></tr>{% endif %}
+    {% if skeleton %}{% include "console/_skeleton_rows.html" with columns=7 %}{% else %}<tr class="empty"><td colspan="7">{% translate "No requests." %}</td></tr>{% endif %}
   {% endfor %}
   </tbody>
 </table>

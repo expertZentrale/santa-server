@@ -545,6 +545,30 @@
     element.querySelector(".rows-error")?.removeAttribute("hidden");
   }
 
+  // The ⋯ menu of a row (a popover, see table.css): under its button, right-aligned, above it when there is no room
+  // below. Closed by a choice, a click elsewhere or Escape (the browser's popover).
+  document.addEventListener("toggle", (event) => {
+    const menu = event.target;
+    if (!menu.matches?.(".row-menu") || event.newState !== "open") return;
+    const button = document.querySelector(`[popovertarget="${CSS.escape(menu.id)}"]`);
+    if (!button) return;
+    const box = button.getBoundingClientRect();
+    const width = menu.offsetWidth;
+    const height = menu.offsetHeight;
+    const below = box.bottom + 4 + height <= window.innerHeight;
+    menu.style.left = `${Math.max(8, Math.min(box.right - width, window.innerWidth - width - 8))}px`;
+    menu.style.top = `${below ? box.bottom + 4 : Math.max(8, box.top - 4 - height)}px`;
+    menu.querySelector("a, button")?.focus({ preventScroll: true });
+  }, true);
+  document.addEventListener("click", (event) => {
+    const item = event.target.closest(".row-menu .menu-item");
+    if (item) item.closest(".row-menu").hidePopover?.();
+  });
+  // the page scrolls: an open menu would stay where it was
+  window.addEventListener("scroll", () => {
+    document.querySelectorAll(".row-menu:popover-open").forEach((menu) => menu.hidePopover());
+  }, { passive: true });
+
   // the burger menu, the user menu and the copy buttons
   document.addEventListener("click", (event) => {
     const burger = event.target.closest("[data-burger]");

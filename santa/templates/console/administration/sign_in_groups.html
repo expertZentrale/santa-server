@@ -4,8 +4,8 @@
 {% if perms.santa.add_signingroup %}{% url 'console:admin_sign_in_group_add' as add_url %}{% endif %}{% translate "New sign-in group" as add_label %}
 {% include "console/administration/_tabs.html" with action_url=add_url action_label=add_label %}
 <p class="muted small">{% translate "The groups of your identity provider that give roles. Only the groups listed here count: the other groups in the token are ignored and not stored. They apply at the next sign-in." %}</p>
-<table class="table">
-  <thead><tr><th>{% translate "Sign-in group" %}</th><th>{% translate "Value in the groups claim" %}</th><th>{% translate "Roles" %}</th><th>{% translate "Console" %}</th><th class="num">{% translate "Members" %}</th></tr></thead>
+<table class="table" data-table="sign-in-groups">
+  <thead><tr><th>{% translate "Sign-in group" %}</th><th>{% translate "Value in the groups claim" %}</th><th>{% translate "Roles" %}</th><th>{% translate "Console" %}</th><th class="num">{% translate "Members" %}</th><th class="row-actions" aria-label="{% translate 'Actions' %}"></th></tr></thead>
   <tbody>
   {% for group in sign_in_groups %}
     <tr>
@@ -14,9 +14,11 @@
       <td>{% for role in group.roles.all %}{% url 'console:admin_role' role.pk as chip_url %}<a class="chip small" href="{{ chip_url }}" hx-get="{{ chip_url }}" hx-target="#drawer">{{ role.name }}</a>{% empty %}<span class="muted">–</span>{% endfor %}</td>
       <td>{{ group.console_access|yesno:_("yes,no") }}</td>
       <td class="num">{{ group.member_count }}</td>
+      <td class="row-actions"><button type="button" class="icon-button row-menu-button" popovertarget="row-menu-sign-in-group-{{ group.pk }}" aria-haspopup="menu" title="{% translate 'Actions' %}" aria-label="{% translate 'Actions' %}: {{ group.name }}">{% include "console/icons/more.svg" %}</button>
+        <div id="row-menu-sign-in-group-{{ group.pk }}" class="row-menu" popover role="menu"><a class="menu-item" role="menuitem" href="{{ group_url }}" hx-get="{{ group_url }}" hx-target="#drawer">{% translate "Edit" %}</a>{% if perms.santa.delete_signingroup %}<form method="post" action="{% url 'console:admin_sign_in_group_delete' group.pk %}" data-confirm="{% blocktranslate with name=group.name %}Delete the sign-in group {{ name }}? Its members lose its roles right away.{% endblocktranslate %}">{% csrf_token %}<button class="menu-item danger" role="menuitem">{% translate "Delete" %}</button></form>{% endif %}</div></td>
     </tr>
   {% empty %}
-    <tr class="empty"><td colspan="5">{% translate "No sign-in groups yet." %}</td></tr>
+    <tr class="empty"><td colspan="6">{% translate "No sign-in groups yet." %}</td></tr>
   {% endfor %}
   </tbody>
 </table>

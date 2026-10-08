@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: santa-server\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-08 14:55+0200\n"
+"POT-Creation-Date: 2026-10-08 15:29+0200\n"
 "Language: de\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -158,7 +158,7 @@ msgstr "Tags"
 #: santa/console/forms.py:617 santa/console/forms.py:650
 #: santa/console/forms.py:745 santa/console/forms.py:747
 #: santa/console/forms.py:773 santa/console/forms.py:1349
-#: santa/console/views_admin.py:75 santa/console/views_admin.py:419
+#: santa/console/views_admin.py:75 santa/console/views_admin.py:420
 #: santa/templates/console/base.html:45
 #: santa/templates/console/groups/form.html:5
 #: santa/templates/console/groups/list.html:2
@@ -367,7 +367,8 @@ msgstr "Geltungsbereich wählen: global, einige Gruppen oder einige Macs."
 msgid "Enable / approve"
 msgstr "Aktivieren / freigeben"
 
-#: santa/console/forms.py:289 santa/templates/console/rules/_rows.html:7
+#: santa/console/forms.py:289 santa/templates/console/rules/_row.html:21
+#: santa/templates/console/rules/_rows.html:7
 #: santa/templates/console/sources/_detail.html:42
 msgid "Disable"
 msgstr "Deaktivieren"
@@ -393,7 +394,11 @@ msgstr "Gruppen hinzufügen"
 #: santa/templates/console/administration/_sign_in_group_form.html:19
 #: santa/templates/console/administration/_tag_form.html:10
 #: santa/templates/console/administration/_user_form.html:34
+#: santa/templates/console/administration/roles.html:17
+#: santa/templates/console/administration/sign_in_groups.html:18
+#: santa/templates/console/administration/tags.html:18
 #: santa/templates/console/file_access/_form.html:45
+#: santa/templates/console/file_access/list.html:25
 #: santa/templates/console/groups/_form.html:54
 #: santa/templates/console/rules/_form.html:37
 #: santa/templates/console/rules/_rows.html:10
@@ -1229,7 +1234,7 @@ msgstr ""
 "in der Datei sind."
 
 #: santa/console/forms.py:1409 santa/console/forms.py:1411
-#: santa/console/views_admin.py:486 santa/console/views_admin.py:489
+#: santa/console/views_admin.py:487 santa/console/views_admin.py:490
 #, python-format
 msgid "Not a JSON file: %(error)s"
 msgstr "Keine JSON-Datei: %(error)s"
@@ -1259,7 +1264,7 @@ msgstr "Anmeldegruppen"
 msgid "Export / import"
 msgstr "Export / Import"
 
-#: santa/console/views_admin.py:68 santa/console/views_admin.py:369
+#: santa/console/views_admin.py:68 santa/console/views_admin.py:370
 #: santa/templates/console/base.html:39
 #: santa/templates/console/rules/form.html:5
 #: santa/templates/console/rules/list.html:2
@@ -1269,8 +1274,8 @@ msgstr "Export / Import"
 msgid "Execution rules"
 msgstr "Ausführungsregeln"
 
-#: santa/console/views_admin.py:69 santa/console/views_admin.py:370
-#: santa/console/views_admin.py:419
+#: santa/console/views_admin.py:69 santa/console/views_admin.py:371
+#: santa/console/views_admin.py:420
 #: santa/templates/console/administration/tags.html:9
 #: santa/templates/console/base.html:40
 #: santa/templates/console/sources/detail.html:4
@@ -1284,7 +1289,7 @@ msgstr "Paketregeln"
 msgid "Package versions"
 msgstr "Paketversionen"
 
-#: santa/console/views_admin.py:71 santa/console/views_admin.py:420
+#: santa/console/views_admin.py:71 santa/console/views_admin.py:421
 #: santa/templates/console/groups/_form.html:10
 msgid "File access rules"
 msgstr "Dateizugriffsregeln"
@@ -1377,12 +1382,12 @@ msgstr ""
 msgid "User %(user)s deleted."
 msgstr "Benutzer %(user)s gelöscht."
 
-#: santa/console/views_admin.py:272
+#: santa/console/views_admin.py:273
 #, python-format
 msgid "Role %(role)s saved."
 msgstr "Rolle %(role)s gespeichert."
 
-#: santa/console/views_admin.py:289
+#: santa/console/views_admin.py:290
 #, python-format
 msgid ""
 "The role %(role)s is given by the admin role of the sign-in, it can't be "
@@ -1391,12 +1396,12 @@ msgstr ""
 "Die Rolle %(role)s wird über die Admin-Rolle der Anmeldung vergeben und kann "
 "nicht gelöscht werden."
 
-#: santa/console/views_admin.py:294
+#: santa/console/views_admin.py:295
 #, python-format
 msgid "Role %(role)s deleted."
 msgstr "Rolle %(role)s gelöscht."
 
-#: santa/console/views_admin.py:325
+#: santa/console/views_admin.py:326
 #, python-format
 msgid ""
 "Sign-in group %(group)s saved. It applies to its members now, new members "
@@ -1405,35 +1410,35 @@ msgstr ""
 "Anmeldegruppe %(group)s gespeichert. Sie gilt ab sofort für ihre Mitglieder, "
 "neue Mitglieder erhalten sie bei ihrer nächsten Anmeldung."
 
-#: santa/console/views_admin.py:341
+#: santa/console/views_admin.py:342
 #, python-format
 msgid "Sign-in group %(group)s deleted, its members lost its roles."
 msgstr ""
 "Anmeldegruppe %(group)s gelöscht, ihre Mitglieder haben ihre Rollen verloren."
 
-#: santa/console/views_admin.py:369
+#: santa/console/views_admin.py:370
 msgid "Used by"
 msgstr "Verwendet von"
 
-#: santa/console/views_admin.py:371
+#: santa/console/views_admin.py:372
 msgid "Nothing"
 msgstr "Nichts"
 
-#: santa/console/views_admin.py:372 santa/console/views_groups.py:70
+#: santa/console/views_admin.py:373 santa/console/views_groups.py:70
 msgid "Name, description…"
 msgstr "Name, Beschreibung…"
 
-#: santa/console/views_admin.py:388
+#: santa/console/views_admin.py:389
 #, python-format
 msgid "Tag %(tag)s saved."
 msgstr "Tag %(tag)s gespeichert."
 
-#: santa/console/views_admin.py:400
+#: santa/console/views_admin.py:401
 #, python-format
 msgid "Tag %(tag)s deleted. The rules stay, only the label is gone."
 msgstr "Tag %(tag)s gelöscht. Die Regeln bleiben, nur die Markierung ist weg."
 
-#: santa/console/views_admin.py:419
+#: santa/console/views_admin.py:420
 #: santa/templates/console/administration/tags.html:9
 #: santa/templates/console/groups/_form.html:7
 #: santa/templates/console/groups/list.html:15
@@ -1445,7 +1450,7 @@ msgstr "Tag %(tag)s gelöscht. Die Regeln bleiben, nur die Markierung ist weg."
 msgid "Rules"
 msgstr "Regeln"
 
-#: santa/console/views_admin.py:506
+#: santa/console/views_admin.py:507
 #, python-format
 msgid "Imported: %(count)s change."
 msgid_plural "Imported: %(count)s changes."
@@ -1481,6 +1486,13 @@ msgid "Status"
 msgstr "Status"
 
 #: santa/console/views_events.py:141
+#: santa/templates/console/events/_app_row.html:12
+#: santa/templates/console/events/_row.html:12
+#: santa/templates/console/file_access/list.html:25
+#: santa/templates/console/groups/list.html:27
+#: santa/templates/console/machines/_rows.html:17
+#: santa/templates/console/requests/_rows.html:13
+#: santa/templates/console/rules/_row.html:21
 msgid "Open"
 msgstr "Offen"
 
@@ -1672,6 +1684,7 @@ msgstr "Seit 2 Tagen nicht synchronisiert"
 
 #: santa/console/views_groups.py:212
 #: santa/templates/console/machines/_actions.html:4
+#: santa/templates/console/machines/_rows.html:17
 msgid "Clean sync pending"
 msgstr "Clean Sync ausstehend"
 
@@ -3434,18 +3447,24 @@ msgstr "Rolle anlegen"
 #: santa/templates/console/administration/_tag_form.html:9
 #: santa/templates/console/administration/_user_form.html:33
 #: santa/templates/console/file_access/_form.html:44
+#: santa/templates/console/file_access/list.html:25
 #: santa/templates/console/groups/_form.html:53
+#: santa/templates/console/groups/list.html:27
 #: santa/templates/console/history/drawer.html:4
 #: santa/templates/console/history/page.html:2
 #: santa/templates/console/history/page.html:6
 #: santa/templates/console/machines/_actions.html:5
+#: santa/templates/console/machines/_rows.html:17
 #: santa/templates/console/rules/_form.html:36
 #: santa/templates/console/rules/_package_rule.html:3
+#: santa/templates/console/rules/_row.html:21
 #: santa/templates/console/sources/_detail.html:6
+#: santa/templates/console/sources/_rows.html:18
 msgid "History"
 msgstr "Verlauf"
 
 #: santa/templates/console/administration/_role_form.html:31
+#: santa/templates/console/administration/roles.html:17
 #, python-format
 msgid "Delete the role %(name)s? Its users lose its permissions."
 msgstr ""
@@ -3476,6 +3495,7 @@ msgid "Create sign-in group"
 msgstr "Anmeldegruppe anlegen"
 
 #: santa/templates/console/administration/_sign_in_group_form.html:23
+#: santa/templates/console/administration/sign_in_groups.html:18
 #, python-format
 msgid ""
 "Delete the sign-in group %(name)s? Its members lose its roles right away."
@@ -3497,6 +3517,7 @@ msgid "Create tag"
 msgstr "Tag anlegen"
 
 #: santa/templates/console/administration/_tag_form.html:14
+#: santa/templates/console/administration/tags.html:18
 #, python-format
 msgid "Delete the tag %(name)s? The rules stay."
 msgstr "Das Tag %(name)s löschen? Die Regeln bleiben."
@@ -3550,7 +3571,7 @@ msgid "admin role of the sign-in"
 msgstr "Admin-Rolle der Anmeldung"
 
 #: santa/templates/console/administration/_user_form.html:26
-#: santa/templates/console/administration/roles.html:18
+#: santa/templates/console/administration/roles.html:20
 msgid "No roles yet."
 msgstr "Noch keine Rollen."
 
@@ -3607,6 +3628,50 @@ msgstr ""
 "Eine Rolle ist eine Sammlung von Berechtigungen. Benutzer erhalten Rollen "
 "über ihre Anmeldegruppen oder hier von Hand."
 
+#: santa/templates/console/administration/roles.html:8
+#: santa/templates/console/administration/roles.html:16
+#: santa/templates/console/administration/sign_in_groups.html:8
+#: santa/templates/console/administration/sign_in_groups.html:17
+#: santa/templates/console/administration/tags.html:9
+#: santa/templates/console/administration/tags.html:17
+#: santa/templates/console/administration/users.html:9
+#: santa/templates/console/administration/users.html:20
+#: santa/templates/console/events/_app_row.html:11
+#: santa/templates/console/events/_row.html:11
+#: santa/templates/console/events/_rows.html:15
+#: santa/templates/console/events/_rows.html:25
+#: santa/templates/console/file_access/list.html:11
+#: santa/templates/console/file_access/list.html:24
+#: santa/templates/console/groups/list.html:15
+#: santa/templates/console/groups/list.html:26
+#: santa/templates/console/machines/_rows.html:2
+#: santa/templates/console/machines/_rows.html:16
+#: santa/templates/console/requests/_rows.html:2
+#: santa/templates/console/requests/_rows.html:12
+#: santa/templates/console/rules/_row.html:20
+#: santa/templates/console/rules/_rows.html:26
+#: santa/templates/console/sources/_rows.html:2
+#: santa/templates/console/sources/_rows.html:17
+msgid "Actions"
+msgstr "Aktionen"
+
+#: santa/templates/console/administration/roles.html:17
+#: santa/templates/console/administration/sign_in_groups.html:18
+#: santa/templates/console/administration/tags.html:18
+#: santa/templates/console/administration/users.html:21
+#: santa/templates/console/file_access/list.html:25
+#: santa/templates/console/groups/list.html:27
+#: santa/templates/console/rules/_row.html:21
+#: santa/templates/console/sources/_detail.html:4
+#: santa/templates/console/sources/_rows.html:18
+#: santa/templates/console/sources/drawer_form.html:4
+msgid "Edit"
+msgstr "Bearbeiten"
+
+#: santa/templates/console/administration/roles.html:17
+msgid "Users with this role"
+msgstr "Benutzer mit dieser Rolle"
+
 #: santa/templates/console/administration/sign_in_groups.html:6
 msgid ""
 "The groups of your identity provider that give roles. Only the groups listed "
@@ -3638,11 +3703,15 @@ msgstr "E-Mail-Standards"
 msgid "everyone who signs in"
 msgstr "alle, die sich anmelden"
 
-#: santa/templates/console/administration/sign_in_groups.html:19
+#: santa/templates/console/administration/sign_in_groups.html:21
 msgid "No sign-in groups yet."
 msgstr "Noch keine Anmeldegruppen."
 
-#: santa/templates/console/administration/tags.html:19
+#: santa/templates/console/administration/tags.html:18
+msgid "Rules with this tag"
+msgstr "Regeln mit diesem Tag"
+
+#: santa/templates/console/administration/tags.html:21
 msgid "No tags for these filters."
 msgstr "Keine Tags für diese Filter."
 
@@ -3671,7 +3740,7 @@ msgstr "Superuser"
 msgid "inactive"
 msgstr "inaktiv"
 
-#: santa/templates/console/administration/users.html:22
+#: santa/templates/console/administration/users.html:24
 msgid "No users for these filters."
 msgstr "Keine Benutzer für diese Filter."
 
@@ -3798,9 +3867,16 @@ msgstr "Regel vorhanden"
 msgid "requested"
 msgstr "angefragt"
 
-#: santa/templates/console/events/_app_row.html:11
-msgid "events"
-msgstr "Ereignisse"
+#: santa/templates/console/events/_app_row.html:12
+#: santa/templates/console/events/_row.html:12
+msgid "Create rule…"
+msgstr "Regel anlegen…"
+
+#: santa/templates/console/events/_app_row.html:12
+#: santa/templates/console/events/_row.html:12
+#: santa/templates/console/requests/_detail.html:25
+msgid "All events of this binary"
+msgstr "Alle Ereignisse dieses Binarys"
 
 #: santa/templates/console/events/_create_rules_form.html:2
 msgid "Select events in the list."
@@ -4009,6 +4085,7 @@ msgid "Enforcement"
 msgstr "Durchsetzung"
 
 #: santa/templates/console/file_access/_form.html:49
+#: santa/templates/console/file_access/list.html:25
 #, python-format
 msgid ""
 "Delete the file access rule %(name)s? It stays on the Macs until their "
@@ -4087,7 +4164,7 @@ msgstr "kein Geltungsbereich"
 msgid "%(since)s ago"
 msgstr "vor %(since)s"
 
-#: santa/templates/console/file_access/list.html:26
+#: santa/templates/console/file_access/list.html:28
 msgid "No file access rules for these filters."
 msgstr "Keine Dateizugriffsregeln für diese Filter."
 
@@ -4220,18 +4297,20 @@ msgstr "Letzte Synchronisierung"
 msgid "based on %(parent)s"
 msgstr "basiert auf %(parent)s"
 
-#: santa/templates/console/groups/list.html:26
-#: santa/templates/console/profile.html:2
-#: santa/templates/console/profile.html:5
-msgid "Profile"
-msgstr "Profil"
+#: santa/templates/console/groups/list.html:27
+msgid "Download profile"
+msgstr "Profil herunterladen"
 
-#: santa/templates/console/groups/list.html:29
+#: santa/templates/console/groups/list.html:27
+msgid "Macs of this group"
+msgstr "Macs dieser Gruppe"
+
+#: santa/templates/console/groups/list.html:30
 #: santa/templates/console/rules/_rows.html:17
 msgid "No groups yet."
 msgstr "Noch keine Gruppen."
 
-#: santa/templates/console/groups/list.html:29
+#: santa/templates/console/groups/list.html:30
 msgid "No groups for these filters."
 msgstr "Keine Gruppen für diese Filter."
 
@@ -4273,6 +4352,7 @@ msgid "User name"
 msgstr "Benutzername"
 
 #: santa/templates/console/machines/_actions.html:3
+#: santa/templates/console/machines/_rows.html:17
 msgid ""
 "The Mac drops all its rules and downloads them again at its next sync. "
 "Continue?"
@@ -4312,7 +4392,17 @@ msgstr "nie"
 msgid "clean sync"
 msgstr "Clean Sync"
 
-#: santa/templates/console/machines/_rows.html:18
+#: santa/templates/console/machines/_rows.html:17
+#: santa/templates/console/machines/detail.html:11
+#: santa/templates/console/machines/drawer_detail.html:9
+msgid "Rules for this Mac"
+msgstr "Regeln für diesen Mac"
+
+#: santa/templates/console/machines/_rows.html:17
+msgid "Request a clean sync"
+msgstr "Clean Sync anfordern"
+
+#: santa/templates/console/machines/_rows.html:20
 msgid "No Macs for these filters."
 msgstr "Keine Macs für diese Filter."
 
@@ -4375,11 +4465,6 @@ msgstr ""
 "%(total)s Regeln: %(binary)s Binary, %(signing)s Signing ID, %(team)s Team "
 "ID, %(cert)s Zertifikat, %(cdhash)s CDHash, %(compiler)s Compiler, "
 "%(transitive)s transitiv"
-
-#: santa/templates/console/machines/detail.html:11
-#: santa/templates/console/machines/drawer_detail.html:9
-msgid "Rules for this Mac"
-msgstr "Regeln für diesen Mac"
 
 #: santa/templates/console/machines/detail.html:12
 msgid ""
@@ -4471,6 +4556,11 @@ msgid ""
 msgstr ""
 "Macs melden sich bei ihrer ersten Synchronisierung mit dem Profil ihrer "
 "Gruppe selbst an."
+
+#: santa/templates/console/profile.html:2
+#: santa/templates/console/profile.html:5
+msgid "Profile"
+msgstr "Profil"
 
 #: santa/templates/console/profile.html:13
 msgid "Administrator"
@@ -4574,10 +4664,6 @@ msgstr "%(date)s auf %(mac)s"
 msgid "– (unsigned)"
 msgstr "– (unsigniert)"
 
-#: santa/templates/console/requests/_detail.html:25
-msgid "All events of this binary"
-msgstr "Alle Ereignisse dieses Binarys"
-
 #: santa/templates/console/requests/_detail.html:29
 msgid "Other requests for the same thing"
 msgstr "Andere Anfragen für dasselbe"
@@ -4610,7 +4696,11 @@ msgstr "Ablehnen"
 msgid "Request"
 msgstr "Anfrage"
 
-#: santa/templates/console/requests/_rows.html:14
+#: santa/templates/console/requests/_rows.html:13
+msgid "Approve or deny…"
+msgstr "Genehmigen oder ablehnen…"
+
+#: santa/templates/console/requests/_rows.html:16
 msgid "No requests."
 msgstr "Keine Anfragen."
 
@@ -4693,6 +4783,10 @@ msgstr "nein – wartet auf Freigabe"
 #: santa/templates/console/sources/_detail.html:14
 msgid "manual"
 msgstr "manuell"
+
+#: santa/templates/console/rules/_row.html:21
+msgid "Enable"
+msgstr "Aktivieren"
 
 #: santa/templates/console/rules/_rows.html:12
 msgid "tag"
@@ -4778,6 +4872,7 @@ msgstr[1] ""
 
 #: santa/templates/console/sources/_cleanup.html:19
 #: santa/templates/console/sources/_detail.html:5
+#: santa/templates/console/sources/_rows.html:18
 #: santa/templates/console/sources/cleanup.html:2
 #: santa/templates/console/sources/cleanup.html:6
 #: santa/templates/console/sources/drawer_cleanup.html:4
@@ -4789,14 +4884,9 @@ msgid "Nothing to clean up: every version is covered by the package rule."
 msgstr "Nichts aufzuräumen: Jede Version ist von der Paketregel abgedeckt."
 
 #: santa/templates/console/sources/_detail.html:3
-#: santa/templates/console/sources/_rows.html:17
+#: santa/templates/console/sources/_rows.html:18
 msgid "Check now"
 msgstr "Jetzt prüfen"
-
-#: santa/templates/console/sources/_detail.html:4
-#: santa/templates/console/sources/drawer_form.html:4
-msgid "Edit"
-msgstr "Bearbeiten"
 
 #: santa/templates/console/sources/_detail.html:13
 msgid "none"
@@ -4960,7 +5050,7 @@ msgstr "nicht geprüft"
 msgid "never checked"
 msgstr "nie geprüft"
 
-#: santa/templates/console/sources/_rows.html:20
+#: santa/templates/console/sources/_rows.html:21
 msgid "No package rules yet."
 msgstr "Noch keine Paketregeln."
 
@@ -5290,6 +5380,9 @@ msgstr "Unbekannter Regeltyp %(rule_type)s."
 #, python-format
 msgid "Line %(number)s (%(pattern)s): %(error)s"
 msgstr "Zeile %(number)s (%(pattern)s): %(error)s"
+
+#~ msgid "events"
+#~ msgstr "Ereignisse"
 
 #~ msgid "Dry run"
 #~ msgstr "Probelauf"

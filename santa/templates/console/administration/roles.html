@@ -4,8 +4,8 @@
 {% if perms.auth.add_group %}{% url 'console:admin_role_add' as add_url %}{% endif %}{% translate "New role" as add_label %}
 {% include "console/administration/_tabs.html" with action_url=add_url action_label=add_label %}
 <p class="muted small">{% translate "A role is a set of permissions. Users get roles from their sign-in groups, or here by hand." %}</p>
-<table class="table">
-  <thead><tr><th>{% translate "Role" %}</th><th class="num">{% translate "Users" %}</th><th class="num">{% translate "Permissions" %}</th><th>{% translate "Sign-in groups" %}</th></tr></thead>
+<table class="table" data-table="roles">
+  <thead><tr><th>{% translate "Role" %}</th><th class="num">{% translate "Users" %}</th><th class="num">{% translate "Permissions" %}</th><th>{% translate "Sign-in groups" %}</th><th class="row-actions" aria-label="{% translate 'Actions' %}"></th></tr></thead>
   <tbody>
   {% for role in roles %}
     <tr>
@@ -13,9 +13,11 @@
       <td class="num"><a href="{% url 'console:admin_users' %}?role={{ role.pk }}">{{ role.user_count }}</a></td>
       <td class="num">{{ role.permission_count }}</td>
       <td>{% for group in role.sign_in_groups.all %}{% url 'console:admin_sign_in_group' group.pk as chip_url %}<a class="chip small" href="{{ chip_url }}" hx-get="{{ chip_url }}" hx-target="#drawer">{{ group.name }}</a>{% empty %}<span class="muted">–</span>{% endfor %}</td>
+      <td class="row-actions"><button type="button" class="icon-button row-menu-button" popovertarget="row-menu-role-{{ role.pk }}" aria-haspopup="menu" title="{% translate 'Actions' %}" aria-label="{% translate 'Actions' %}: {{ role.name }}">{% include "console/icons/more.svg" %}</button>
+        <div id="row-menu-role-{{ role.pk }}" class="row-menu" popover role="menu"><a class="menu-item" role="menuitem" href="{{ role_url }}" hx-get="{{ role_url }}" hx-target="#drawer">{% translate "Edit" %}</a><a class="menu-item" role="menuitem" href="{% url 'console:admin_users' %}?role={{ role.pk }}">{% translate "Users with this role" %}</a>{% if perms.auth.delete_group and role.name != admin_role_name %}<form method="post" action="{% url 'console:admin_role_delete' role.pk %}" data-confirm="{% blocktranslate with name=role.name %}Delete the role {{ name }}? Its users lose its permissions.{% endblocktranslate %}">{% csrf_token %}<button class="menu-item danger" role="menuitem">{% translate "Delete" %}</button></form>{% endif %}</div></td>
     </tr>
   {% empty %}
-    <tr class="empty"><td colspan="4">{% translate "No roles yet." %}</td></tr>
+    <tr class="empty"><td colspan="5">{% translate "No roles yet." %}</td></tr>
   {% endfor %}
   </tbody>
 </table>

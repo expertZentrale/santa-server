@@ -1,5 +1,5 @@
 {% load console i18n %}<table class="table" data-table="macs">
-  <thead><tr>{% sort_th _("Mac") "mac" %}{% sort_th _("User") "user" %}{% sort_th _("Group") "group" %}{% sort_th _("Mode") "mode" %}{% sort_th _("Santa / macOS") "santa" %}<th class="num">{% translate "Rules" %}</th>{% sort_th _("Last sync") "sync" %}</tr></thead>
+  <thead><tr>{% sort_th _("Mac") "mac" %}{% sort_th _("User") "user" %}{% sort_th _("Group") "group" %}{% sort_th _("Mode") "mode" %}{% sort_th _("Santa / macOS") "santa" %}<th class="num">{% translate "Rules" %}</th>{% sort_th _("Last sync") "sync" %}<th class="row-actions" aria-label="{% translate 'Actions' %}"></th></tr></thead>
   <tbody>
   {% for machine in page %}
     <tr>
@@ -13,9 +13,11 @@
       <td>{% if machine.last_postflight_at %}{% blocktranslate with since=machine.last_postflight_at|timesince asvar last_sync %}{{ since }} ago{% endblocktranslate %}{% else %}{% translate "never" as last_sync %}{% endif %}
         {% if machine.is_stale %}<span class="badge bad">{{ last_sync }}</span>{% else %}{{ last_sync }}{% endif %}
         {% if machine.clean_sync_requested %}<span class="badge info">{% translate "clean sync" %}</span>{% endif %}</td>
+      <td class="row-actions"><button type="button" class="icon-button row-menu-button" popovertarget="row-menu-mac-{{ machine.pk }}" aria-haspopup="menu" title="{% translate 'Actions' %}" aria-label="{% translate 'Actions' %}: {{ machine.hostname|default:machine.serial_number }}">{% include "console/icons/more.svg" %}</button>
+        <div id="row-menu-mac-{{ machine.pk }}" class="row-menu" popover role="menu"><a class="menu-item" role="menuitem" href="{% url 'console:machine' machine.pk %}" hx-get="{% url 'console:machine' machine.pk %}" hx-target="#drawer">{% translate "Open" %}</a><a class="menu-item" role="menuitem" href="{% url 'console:machine' machine.pk %}#rules">{% translate "Rules for this Mac" %}</a>{% if perms.santa.change_machine %}<form method="post" action="{% url 'console:machine_clean_sync' machine.pk %}" data-confirm="{% translate 'The Mac drops all its rules and downloads them again at its next sync. Continue?' %}">{% csrf_token %}<button class="menu-item" role="menuitem"{% if machine.clean_sync_requested %} disabled{% endif %}>{% if machine.clean_sync_requested %}{% translate "Clean sync pending" %}{% else %}{% translate "Request a clean sync" %}{% endif %}</button></form>{% endif %}<a class="menu-item" role="menuitem" href="{% url 'console:history' 'machine' machine.pk %}" hx-get="{% url 'console:history' 'machine' machine.pk %}" hx-target="#drawer">{% translate "History" %}</a></div></td>
     </tr>
   {% empty %}
-    {% if skeleton %}{% include "console/_skeleton_rows.html" with columns=7 %}{% else %}<tr class="empty"><td colspan="7">{% translate "No Macs for these filters." %}</td></tr>{% endif %}
+    {% if skeleton %}{% include "console/_skeleton_rows.html" with columns=8 %}{% else %}<tr class="empty"><td colspan="8">{% translate "No Macs for these filters." %}</td></tr>{% endif %}
   {% endfor %}
   </tbody>
 </table>

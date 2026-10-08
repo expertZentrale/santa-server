@@ -3,10 +3,12 @@ from django.urls import reverse
 from santa.models import (
     AccessRequest,
     AccessRequestPackage,
+    FileAccessRule,
     ReleaseSource,
     ReleaseVersion,
     Rule,
     RuleType,
+    Tag,
     UserProfile,
 )
 from santa.users import profile_for
@@ -186,3 +188,37 @@ class VersionFilterTestCase(ConsoleBase):
         chips = [chip for chip in response.context["bar"]["chips"] if chip["active"]]
         self.assertEqual([chip["facet"].name for chip in chips], ["version"])
         self.assertNotIn("version=", chips[0]["remove_url"])
+
+
+class RowMenuTestCase(ConsoleBase):
+    """Every list has a ⋯ menu per row with its actions"""
+
+    def test_every_list_has_row_menus(self):
+        Rule.objects.create(rule_type=RuleType.BINARY, identifier=SHA_A, is_global=True)
+        FileAccessRule.objects.create(name="Secrets", paths="/etc/secret")
+        Tag.objects.create(name="vendor")
+        for name in ("console:rules", "console:groups", "console:machines", "console:file_access_rules",
+                     "console:admin_users", "console:admin_roles", "console:admin_sign_in_groups",
+                     "console:admin_tags"):
+            with self.subTest(name):
+                response = self.client.get(reverse(name), {"q": ""}, **ROWS) if name in (
+                    "console:rules", "console:machines") else self.client.get(reverse(name))
+                self.assertContains(response, 'class="row-menu" popover role="menu"')
+
+    def test_the_admin_role_cannot_be_deleted_from_the_menu(self):
+        from django.contrib.auth.models import Group as AuthGroup
+
+        from santa.auth import ADMIN_GROUP_NAME
+        admin_role, _ = AuthGroup.objects.get_or_create(name=ADMIN_GROUP_NAME)
+        other = AuthGroup.objects.create(name="Viewers")
+        response = self.client.get(reverse("console:admin_roles"))
+        self.assertContains(response, reverse("console:admin_role_delete", args=(other.pk,)))
+        self.assertNotContains(response, reverse("console:admin_role_delete", args=(admin_role.pk,)))
+        # the columns of roles and sign-in groups can be resized and chosen like the other lists
+        self.assertContains(response, 'data-table="roles"')
+        self.assertContains(self.client.get(reverse("console:admin_sign_in_groups")), 'data-table="sign-in-groups"')
+
+    def test_the_group_menu(self):
+        response = self.client.get(reverse("console:groups"))
+        self.assertContains(response, reverse("console:group_profile", args=(self.dev.pk,)))
+        self.assertContains(response, f'{reverse("console:machines")}?group={self.dev.pk}')

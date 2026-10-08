@@ -220,6 +220,8 @@ body:has(.drawer.open) .bulkbar.visible { opacity: 0; visibility: hidden; pointe
   .table.permissions thead th { font-size: .65rem; letter-spacing: 0; }
   .table.permissions tbody th { overflow-wrap: anywhere; }
   .table:not(.keep) td[data-label=""] { display: block; }
+  /* the ⋯ of a card: at the end, on the right */
+  .table:not(.keep) td.row-actions { width: auto; text-align: right; }
   .table:not(.keep) td[data-label=""]::before { content: none; }
   .table:not(.keep) td.num { text-align: left; }
   .table:not(.keep) tr.empty td { display: block; }
@@ -229,6 +231,20 @@ body:has(.drawer.open) .bulkbar.visible { opacity: 0; visibility: hidden; pointe
 }
 
 /* the rows of a list while they load (console/_rows.html) */
+/* The actions of a row: ⋯ opens a menu (a popover: above the table, not cut off by its edge; core.js places it) */
+.table th.row-actions { width: 1px; }
+.row-menu-button { margin: -.3rem 0; }
+.row-menu {
+  position: fixed; inset: auto; margin: 0; min-width: 12rem; max-width: min(20rem, calc(100vw - 1rem)); padding: .35rem;
+  background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+}
+.row-menu:popover-open { display: grid; }
+.row-menu form { margin: 0; }
+.row-menu .menu-item { display: flex; align-items: center; gap: .5rem; white-space: nowrap; text-decoration: none; }
+.row-menu .menu-item.danger { color: var(--bad); }
+.row-menu .menu-item[aria-disabled="true"] { color: var(--muted); pointer-events: none; }
+
 /* The rows of a list while they load (console/_rows.html): the real table with grey rows of about the same height,
    replaced in place by the rows */
 .table tr.skeleton td { height: 3.1rem; }

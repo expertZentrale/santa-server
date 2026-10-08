@@ -23,10 +23,10 @@
   <table class="table" data-table="rules" data-optional="comment created">
     <thead><tr><th class="select"><input type="checkbox" data-select-all aria-label="{% translate 'Select all' %}"></th>
       {% sort_th _("Identifier") "identifier" %}<th data-col="comment">{% translate "Comment" %}</th>{% sort_th _("Type") "type" %}{% sort_th _("Policy") "policy" %}<th data-col="scope">{% translate "Scope" %}</th>
-      <th data-col="tags">{% translate "Tags" %}</th>{% sort_th _("Created") "created" %}<th data-col="origin">{% translate "Origin" %}</th>{% sort_th _("Enabled") "enabled" %}</tr></thead>
+      <th data-col="tags">{% translate "Tags" %}</th>{% sort_th _("Created") "created" %}<th data-col="origin">{% translate "Origin" %}</th>{% sort_th _("Enabled") "enabled" %}<th class="row-actions" aria-label="{% translate 'Actions' %}"></th></tr></thead>
     <tbody>
     {% for rule in page %}{% include "console/rules/_row.html" %}{% empty %}
-      {% if skeleton %}{% include "console/_skeleton_rows.html" with columns=10 select=True %}{% else %}<tr class="empty"><td colspan="10">{% translate "No rules for these filters." %}</td></tr>{% endif %}
+      {% if skeleton %}{% include "console/_skeleton_rows.html" with columns=11 select=True %}{% else %}<tr class="empty"><td colspan="11">{% translate "No rules for these filters." %}</td></tr>{% endif %}
     {% endfor %}
     </tbody>
   </table>

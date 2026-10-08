@@ -12,7 +12,7 @@
 </div>
 {% include "console/widgets/_filter_bar.html" %}
 <table class="table" data-table="groups">
-  <thead><tr>{% sort_th _("Group") "name" %}<th>{% translate "Mode" %}</th>{% sort_th _("Macs") "macs" "num" %}{% sort_th _("Rules") "rules" "num" %}{% sort_th _("Last sync") "sync" %}<th></th></tr></thead>
+  <thead><tr>{% sort_th _("Group") "name" %}<th>{% translate "Mode" %}</th>{% sort_th _("Macs") "macs" "num" %}{% sort_th _("Rules") "rules" "num" %}{% sort_th _("Last sync") "sync" %}<th class="row-actions" aria-label="{% translate 'Actions' %}"></th></tr></thead>
   <tbody>
   {% for group in page %}
     <tr>
@@ -23,7 +23,8 @@
       <td class="num"><a href="{% url 'console:machines' %}?group={{ group.pk }}">{{ group.machine_count }}</a></td>
       <td class="num"><a href="{% url 'console:rules' %}?scope={{ group.pk }}">{{ group.rule_count }}</a></td>
       <td>{% if group.last_sync %}{% blocktranslate with since=group.last_sync|timesince %}{{ since }} ago{% endblocktranslate %}{% else %}–{% endif %}</td>
-      <td>{% if perms.santa.change_group %}<a class="button small" href="{% url 'console:group_profile' group.pk %}" data-download hx-boost="false">{% translate "Profile" %}</a>{% endif %}</td>
+      <td class="row-actions"><button type="button" class="icon-button row-menu-button" popovertarget="row-menu-group-{{ group.pk }}" aria-haspopup="menu" title="{% translate 'Actions' %}" aria-label="{% translate 'Actions' %}: {{ group.name }}">{% include "console/icons/more.svg" %}</button>
+        <div id="row-menu-group-{{ group.pk }}" class="row-menu" popover role="menu"><a class="menu-item" role="menuitem" href="{{ group_url }}" hx-get="{{ group_url }}" hx-target="#drawer">{% if perms.santa.change_group %}{% translate "Edit" %}{% else %}{% translate "Open" %}{% endif %}</a>{% if perms.santa.change_group %}<a class="menu-item" role="menuitem" href="{% url 'console:group_profile' group.pk %}" data-download hx-boost="false">{% translate "Download profile" %}</a>{% endif %}<a class="menu-item" role="menuitem" href="{% url 'console:machines' %}?group={{ group.pk }}">{% translate "Macs of this group" %}</a><a class="menu-item" role="menuitem" href="{% url 'console:history' 'group' group.pk %}" hx-get="{% url 'console:history' 'group' group.pk %}" hx-target="#drawer">{% translate "History" %}</a></div></td>
     </tr>
   {% empty %}
     <tr class="empty"><td colspan="6">{% if bar.is_default %}{% translate "No groups yet." %}{% else %}{% translate "No groups for these filters." %}{% endif %}</td></tr>
