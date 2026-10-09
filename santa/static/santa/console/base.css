@@ -1,27 +1,37 @@
 /* Santa Server console: theme, layout, buttons and forms. The other files of console/ build on it. */
-/* light-dark(): one value per theme. data-theme="auto" follows the system, "light" / "dark" force one. */
+/* light-dark(): one value per theme. data-theme="auto" follows the system, "light" / "dark" force one.
+   Dark: lighter grays that stay readable in bright light, WCAG 2.2 AA on --surface and --surface-2: text >= 4.5:1
+   (also --ok/--bad/--info/--warn on their -bg), frames of controls (--control-border, --control-off) >= 3:1. */
 :root {
   color-scheme: light dark;
-  --bg: light-dark(#f6f7f9, #111418);
-  --surface: light-dark(#ffffff, #1a1e24);
-  --surface-2: light-dark(#f0f2f5, #232830);
-  --border: light-dark(#dde1e7, #2f3640);
-  --text: light-dark(#1c2129, #e6e9ee);
-  --muted: light-dark(#5f6b7a, #9aa5b3);
-  --accent: light-dark(#2459d6, #6d9bff);
+  --bg: light-dark(#f6f7f9, #1c2128);
+  --surface: light-dark(#ffffff, #272e38);
+  --surface-2: light-dark(#f0f2f5, #323b47);
+  --border: light-dark(#dde1e7, #4b5666);
+  --text: light-dark(#1c2129, #eef1f5);
+  --muted: light-dark(#5f6b7a, #b0bac7);
+  --accent: light-dark(#2459d6, #82adff);
   --accent-text: light-dark(#ffffff, #0d1117);
-  --ok: light-dark(#1f7a4d, #5fd39a);
-  --ok-bg: light-dark(#e3f4ea, #143324);
-  --bad: light-dark(#b42318, #ff8a80);
-  --bad-bg: light-dark(#fde7e5, #3a1a18);
-  --info: light-dark(#1d5fa8, #8ab8ff);
-  --info-bg: light-dark(#e3eefb, #182a44);
-  --warn: light-dark(#8a5300, #ffcf70);
-  --warn-bg: light-dark(#fff4d6, #3a3017);
-  --scrollbar: light-dark(#c3c9d2, #46505d);
+  --ok: light-dark(#1f7a4d, #6ddba5);
+  --ok-bg: light-dark(#e3f4ea, #1d4030);
+  --bad: light-dark(#b42318, #ff9b92);
+  --bad-bg: light-dark(#fde7e5, #4a2523);
+  --info: light-dark(#1d5fa8, #9cc4ff);
+  --info-bg: light-dark(#e3eefb, #203858);
+  --warn: light-dark(#8a5300, #ffd47f);
+  --warn-bg: light-dark(#fff4d6, #473b1c);
+  /* the frame of inputs, buttons and switches; --border is for cards, tables and dividers */
+  --control-border: light-dark(#dde1e7, #6e7a8a);
+  --scrollbar: light-dark(#c3c9d2, #566272);
   /* a switch that is off, and the frame of a checkbox: stronger than --border, visible on white */
-  --control-off: light-dark(#b9c0ca, #4f5966);
-  --scrollbar-hover: light-dark(#9aa3af, #66717f);
+  --control-off: light-dark(#b9c0ca, #6e7a8a);
+  --scrollbar-hover: light-dark(#9aa3af, #7a8696);
+  /* the Microsoft sign-in button, as Microsoft's branding guidelines describe it; in dark with the frame of the
+     controls, #2f2f2f alone runs into --surface */
+  --microsoft-bg: light-dark(#ffffff, #2f2f2f);
+  --microsoft-border: light-dark(#8c8c8c, var(--control-off));
+  --microsoft-text: light-dark(#5e5e5e, #ffffff);
+  --microsoft-hover: light-dark(#f3f3f3, #3b3b3b);
   /* sizes in rem so they follow the text size of the browser; px only for hairlines, outlines and shadows */
   --radius: .5rem;
   --radius-sm: .375rem;
@@ -161,9 +171,9 @@ small.muted, small.help { display: block; }
 .live-pill:not([hidden]) + .user-menu { margin-left: 0; }
 @keyframes pulse { 50% { opacity: .35; } }
 @media (max-width: 40em) { .live-pill-text { display: none; } }
-.user-menu summary { list-style: none; cursor: pointer; border-radius: 50%; display: block; }
-.user-menu summary::-webkit-details-marker { display: none; }
-.user-menu summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.user-menu > summary { list-style: none; cursor: pointer; border-radius: 50%; display: block; }
+.user-menu > summary::-webkit-details-marker { display: none; }
+.user-menu > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .avatar { border-radius: 50%; display: block; background: var(--surface-2); object-fit: cover; width: 2rem; height: 2rem; }
 .avatar.large { width: 6rem; height: 6rem; }
 .user-menu .menu {
@@ -198,7 +208,7 @@ small.muted, small.help { display: block; }
 .user-menu .menu a > .icon, .user-menu .menu-item > .icon { color: var(--muted); }
 .user-menu form { margin: 0; }
 .menu-row { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .35rem .6rem; }
-.segmented { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+.segmented { display: inline-flex; border: 1px solid var(--control-border); border-radius: var(--radius-sm); overflow: hidden; }
 .segmented button, .segmented a {
   border: 0;
   background: none;
@@ -211,7 +221,7 @@ small.muted, small.help { display: block; }
   align-items: center;
   min-height: 1.5rem;
 }
-.segmented > * + * { border-left: 1px solid var(--border); }
+.segmented > * + * { border-left: 1px solid var(--control-border); }
 .segmented a:hover, .segmented button:hover { background: var(--surface-2); color: var(--text); }
 .segmented [aria-pressed="true"], .segmented [aria-current] { background: var(--accent); color: var(--accent-text); }
 .segmented [aria-pressed="true"]:hover, .segmented [aria-current]:hover { background: var(--accent); color: var(--accent-text); }
@@ -282,7 +292,7 @@ main.narrow { max-width: 51.25rem; }
   gap: .35rem;
   min-height: var(--control-h);
   padding: .3rem .9rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--control-border);
   border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--text);
@@ -304,7 +314,7 @@ input, select, textarea {
   font: inherit;
   color: var(--text);
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 1px solid var(--control-border);
   border-radius: var(--radius-sm);
   padding: .3rem .55rem;
   max-width: 100%;
@@ -376,11 +386,11 @@ small.help.after-field { margin: -.5rem 0 .9rem; }
 /* the colors of the Microsoft sign-in button (light: white, gray frame; dark: #2f2f2f) */
 .button.sign-in-microsoft {
   font-family: "Segoe UI", system-ui, sans-serif;
-  background: light-dark(#fff, #2f2f2f);
-  border-color: light-dark(#8c8c8c, #2f2f2f);
-  color: light-dark(#5e5e5e, #fff);
+  background: var(--microsoft-bg);
+  border-color: var(--microsoft-border);
+  color: var(--microsoft-text);
 }
-.button.sign-in-microsoft:hover { background: light-dark(#f3f3f3, #3b3b3b); }
+.button.sign-in-microsoft:hover { background: var(--microsoft-hover); }
 form.inline { display: inline; margin: 0; }
 
 /* Tabs and filters */

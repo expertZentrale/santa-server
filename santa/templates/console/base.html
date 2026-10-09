@@ -76,14 +76,24 @@
           {% for code, name in languages %}<button name="language" value="{{ code }}" aria-pressed="{% if code == LANGUAGE_CODE %}true{% else %}false{% endif %}" title="{{ name }}">{{ code|upper }}</button>{% endfor %}
         </span>
       </form>
-      {% if christmas %}<div class="menu-row">
-        <span class="muted small">{% translate "Snow" %}</span>
+      {% if christmas %}<details class="submenu">
+        <summary class="menu-item">{% include "console/icons/sparkles.svg" %}{% translate "Decoration" %}</summary>
         {# kept in this browser (christmas.js) #}
-        <span class="segmented" role="group" aria-label="{% translate 'Snow' %}">
-          <button type="button" data-snow="on" aria-pressed="true">{% translate "On" context "switch" %}</button>
-          <button type="button" data-snow="off" aria-pressed="false">{% translate "Off" context "switch" %}</button>
-        </span>
-      </div>{% endif %}
+        <div class="menu-row">
+          <span class="muted small">{% translate "Snow" %}</span>
+          <span class="segmented" role="group" aria-label="{% translate 'Snow' %}">
+            <button type="button" data-snow="on" aria-pressed="true">{% translate "On" context "switch" %}</button>
+            <button type="button" data-snow="off" aria-pressed="false">{% translate "Off" context "switch" %}</button>
+          </span>
+        </div>
+        <div class="menu-row">
+          <span class="muted small">{% translate "Lights" %}</span>
+          <span class="segmented" role="group" aria-label="{% translate 'Lights' %}">
+            <button type="button" data-lights="on" aria-pressed="true">{% translate "On" context "switch" %}</button>
+            <button type="button" data-lights="off" aria-pressed="false">{% translate "Off" context "switch" %}</button>
+          </span>
+        </div>
+      </details>{% endif %}
       {# a new session (and CSRF token): the whole page #}
       <form method="post" action="{% url 'logout' %}" hx-boost="false">{% csrf_token %}<button class="menu-item" role="menuitem">{% include "console/icons/log-out.svg" %}{% translate "Sign out" %}</button></form>
     </div>

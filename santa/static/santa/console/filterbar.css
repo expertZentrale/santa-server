@@ -4,7 +4,7 @@
 .filter-toolbar input[type="search"] { flex: 1 1 16rem; min-width: 12rem; max-width: 30rem; }
 .filter-tools { display: flex; gap: .5rem; align-items: center; margin-left: auto; }
 .filter-chips { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; min-height: var(--control-h-sm); }
-.filter-chip { display: inline-flex; align-items: center; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); }
+.filter-chip { display: inline-flex; align-items: center; border: 1px solid var(--control-border); border-radius: 999px; background: var(--surface); }
 .filter-chip[data-active] { border-color: var(--accent); background: var(--info-bg); }
 /* chosen, but not filtering ("all") */
 .filter-chip:not([data-active]) .filter-chip-label { color: var(--muted); }
