@@ -39,6 +39,21 @@
       else textarea.removeAttribute("aria-activedescendant");
     }
 
+    // the cursor is inside a string: the open quote ("…" or '…') with its escapes (\" does not close it)
+    function inString(text) {
+      let quote = null;
+      for (let index = 0; index < text.length; index++) {
+        const char = text[index];
+        if (quote) {
+          if (char === "\\") index++;
+          else if (char === quote) quote = null;
+        } else if (char === '"' || char === "'") {
+          quote = char;
+        }
+      }
+      return quote !== null;
+    }
+
     function current() {
       const before = textarea.value.slice(0, textarea.selectionStart);
       const token = before.match(/[A-Za-z_][A-Za-z0-9_.]*$/)?.[0] || "";
@@ -51,8 +66,7 @@
       const { token, last } = current();
       const before = textarea.value.slice(0, textarea.selectionStart);
       // not inside a string ("com.example…"), and with nothing typed only where a value can start: not after one
-      const inString = (before.match(/(?<!\\)"/g) || []).length % 2 || (before.match(/(?<!\\)'/g) || []).length % 2;
-      if (inString || (!token && !/(^|[(!&|?:,[=<>+\-*/])\s*$/.test(before))) {
+      if (inString(before) || (!token && !/(^|[(!&|?:,[=<>+\-*/])\s*$|\bin\s+$/.test(before))) {
         setOpen(false);
         return;
       }

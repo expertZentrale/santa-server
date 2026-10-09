@@ -24,8 +24,9 @@
       }
       element.hidden = !visible;
     });
-    // a field that was just shown had no height to fit while it was hidden
-    fitTextareas(root);
+    // a field that was just shown had no height to fit while it was hidden; after the other updates of this event
+    // (updateInherited, updateNewRuleFields), which may show more
+    queueMicrotask(() => fitTextareas(root));
     // data-disable-when="keep_versions=0|": the option makes no sense then, it is switched off and greyed
     root.querySelectorAll("[data-disable-when]").forEach((element) => {
       const form = element.closest("form") || document;
