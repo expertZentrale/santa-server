@@ -3,7 +3,11 @@
 (function () {
   "use strict";
 
-  const { controlValue } = SantaConsole;
+  const { controlValue, fitTextarea } = SantaConsole;
+
+  function fitTextareas(root) {
+    root.querySelectorAll("textarea").forEach(fitTextarea);
+  }
 
   // data-show-when="policy=BLOCKLIST|CEL", data-show-when="parent" (not empty), data-hide-when="is_global"
   function updateConditional(root) {
@@ -20,6 +24,8 @@
       }
       element.hidden = !visible;
     });
+    // a field that was just shown had no height to fit while it was hidden
+    fitTextareas(root);
     // data-disable-when="keep_versions=0|": the option makes no sense then, it is switched off and greyed
     root.querySelectorAll("[data-disable-when]").forEach((element) => {
       const form = element.closest("form") || document;
@@ -219,6 +225,22 @@
   });
 
   document.addEventListener("santa:selection", (event) => syncCreateRules(event.target));
+
+  document.addEventListener("input", (event) => {
+    if (event.target.tagName === "TEXTAREA") fitTextarea(event.target);
+  });
+  // the handle of a textarea was dragged: that height stays (fitTextarea)
+  document.addEventListener("pointerup", (event) => {
+    const textarea = event.target;
+    if (textarea.tagName !== "TEXTAREA" || !textarea.dataset.fitHeight) return;
+    const height = textarea.getBoundingClientRect().height;
+    if (Math.abs(height - parseFloat(textarea.dataset.fitHeight)) > 1) {
+      textarea.dataset.userHeight = height;
+      textarea.dataset.fitHeight = height;
+    }
+  });
+  // other widths wrap the lines differently
+  window.addEventListener("resize", SantaConsole.debounce(() => fitTextareas(document), 150));
 
   // a number typed changes the options that depend on it before leaving the field
   document.addEventListener("input", (event) => {

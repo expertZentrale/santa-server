@@ -57,6 +57,21 @@
     },
 
     rem: () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16,
+
+    // a textarea as high as its text: its rows are the minimum, 20rem the most it grows by itself (then it scrolls).
+    // A height dragged by hand (data-user-height, forms.js) is kept and may go beyond that. A hidden one is fitted
+    // when it is shown.
+    fitTextarea(textarea) {
+      if (!textarea.offsetParent) return;
+      const style = getComputedStyle(textarea);
+      textarea.style.height = "auto";
+      const borders = parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth);
+      const content = textarea.scrollHeight + borders;
+      const dragged = parseFloat(textarea.dataset.userHeight) || 0;
+      const height = Math.max(dragged, Math.min(content, 20 * SantaConsole.rem()));
+      textarea.style.height = `${height}px`;
+      textarea.dataset.fitHeight = height;
+    },
   };
   window.SantaConsole = SantaConsole;
 

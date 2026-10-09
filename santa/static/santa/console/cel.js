@@ -45,9 +45,14 @@
       return { token, last: token.includes(".") ? token.slice(token.lastIndexOf(".") + 1) : token };
     }
 
+    // with nothing typed at the cursor (empty field, after "(", "&&", "?", "==", …) everything that can start there is
+    // offered, and after a dot everything that can follow it: nobody has to guess the first letter
     function show() {
       const { token, last } = current();
-      if (!token) {
+      const before = textarea.value.slice(0, textarea.selectionStart);
+      // not inside a string ("com.example…"), and with nothing typed only where a value can start: not after one
+      const inString = (before.match(/(?<!\\)"/g) || []).length % 2 || (before.match(/(?<!\\)'/g) || []).length % 2;
+      if (inString || (!token && !/(^|[(!&|?:,[=<>+\-*/])\s*$/.test(before))) {
         setOpen(false);
         return;
       }
@@ -57,13 +62,13 @@
         // functions follow a value: target.signing_id.sta… → startsWith(""), but not target.s…
         if (item.kind === "function") {
           const owner = token.includes(".") ? token.slice(0, token.lastIndexOf(".")) : "";
-          return owner && !["target", "ancestors"].includes(owner) && last
+          return owner && !["target", "ancestors"].includes(owner)
                  && text.startsWith(last.toLowerCase()) && text !== last.toLowerCase();
         }
         // global functions (timestamp, duration) start a value, like the fields
         if (item.kind === "global" && token.includes(".")) return false;
         return text.startsWith(lower) && text !== lower;
-      }).slice(0, 8);
+      }).slice(0, last ? 8 : items.length);
       match = { token, last };
       box.replaceChildren(...found.map((item, index) => {
         const option = document.createElement("button");
@@ -107,6 +112,7 @@
 
     textarea.addEventListener("input", show);
     textarea.addEventListener("click", show);
+    textarea.addEventListener("focus", show);
     textarea.addEventListener("keydown", (event) => {
       if (!box.classList.contains("open")) return;
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -151,6 +157,8 @@
     expression.value = values.length && team
       ? `(${values.map((prefix) => `target.signing_id.startsWith("${team}:${prefix}")`).join(" || ")}) ? ALLOWLIST : BLOCKLIST`
       : "";
+    // a value set by the script fires no input event
+    SantaConsole.fitTextarea(expression);
   });
 
   SantaConsole.onInit((root) => root.querySelectorAll("textarea[data-cel-suggestions]").forEach(setupCelInput));

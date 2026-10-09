@@ -78,6 +78,8 @@ code, .mono { font-family: var(--mono); font-size: .9em; }
 .muted { color: var(--muted); }
 .small, small { font-size: .85em; }
 small.muted, small.help { display: block; }
+/* long examples (CEL expressions) break instead of widening the form on small screens */
+.help code { overflow-wrap: anywhere; }
 .strong { font-weight: 600; }
 .nowrap { white-space: nowrap; }
 .prewrap { white-space: pre-wrap; }
@@ -324,7 +326,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, .button:focus
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
-textarea { width: 100%; }
+/* grows with its text (fitTextarea, core.js); only the height can be dragged, the width follows the column */
+textarea { width: 100%; overflow-y: auto; resize: vertical; }
 input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); width: 1rem; height: 1rem; margin: 0; flex: none; }
 /* checkboxes like the other controls of the console (the yes / no fields are switches, widgets.css) */
 input[type="checkbox"]:not([role="switch"]) {
