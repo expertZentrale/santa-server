@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: santa-server\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-08 15:41+0200\n"
+"POT-Creation-Date: 2026-10-09 10:24+0200\n"
 "Language: de\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -3753,33 +3753,41 @@ msgstr "Profil und Einstellungen"
 msgid "Django admin"
 msgstr "Django-Admin"
 
-#: santa/templates/console/base.html:80 santa/templates/console/base.html:82
+#: santa/templates/console/base.html:80
+msgid "Decoration"
+msgstr "Dekoration"
+
+#: santa/templates/console/base.html:83 santa/templates/console/base.html:84
 msgid "Snow"
 msgstr "Schnee"
 
-#: santa/templates/console/base.html:83
+#: santa/templates/console/base.html:85 santa/templates/console/base.html:92
 msgctxt "switch"
 msgid "On"
 msgstr "Ein"
 
-#: santa/templates/console/base.html:84
+#: santa/templates/console/base.html:86 santa/templates/console/base.html:93
 msgctxt "switch"
 msgid "Off"
 msgstr "Aus"
 
-#: santa/templates/console/base.html:88
+#: santa/templates/console/base.html:90 santa/templates/console/base.html:91
+msgid "Lights"
+msgstr "Lichterkette"
+
+#: santa/templates/console/base.html:98
 msgid "Sign out"
 msgstr "Abmelden"
 
-#: santa/templates/console/base.html:96
+#: santa/templates/console/base.html:106
 msgid "Connection to the server lost. Retrying…"
 msgstr "Verbindung zum Server unterbrochen. Neuer Versuch …"
 
-#: santa/templates/console/base.html:96
+#: santa/templates/console/base.html:106
 msgid "Connected again."
 msgstr "Wieder verbunden."
 
-#: santa/templates/console/base.html:97
+#: santa/templates/console/base.html:107
 msgid ""
 "The server was unreachable: the last change may not have been saved. Check "
 "it before you try again."
@@ -3787,36 +3795,36 @@ msgstr ""
 "Der Server war nicht erreichbar: Die letzte Änderung wurde möglicherweise "
 "nicht gespeichert. Prüfen Sie das, bevor Sie es erneut versuchen."
 
-#: santa/templates/console/base.html:98
+#: santa/templates/console/base.html:108
 msgid "Working…"
 msgstr "Wird ausgeführt …"
 
-#: santa/templates/console/base.html:98
+#: santa/templates/console/base.html:108
 msgid "The download failed. Try again, or reload the page."
 msgstr ""
 "Der Download ist fehlgeschlagen. Versuchen Sie es erneut oder laden Sie die "
 "Seite neu."
 
-#: santa/templates/console/base.html:106
+#: santa/templates/console/base.html:116
 msgid "Resize column"
 msgstr "Spaltenbreite ändern"
 
-#: santa/templates/console/base.html:106
+#: santa/templates/console/base.html:116
 msgid "Columns"
 msgstr "Spalten"
 
-#: santa/templates/console/base.html:106
+#: santa/templates/console/base.html:116
 msgid "Reset widths and columns"
 msgstr "Breiten und Spalten zurücksetzen"
 
-#: santa/templates/console/base.html:106
+#: santa/templates/console/base.html:116
 #: santa/templates/console/events/_rows.html:13
 #: santa/templates/console/events/_rows.html:23
 #: santa/templates/console/rules/_rows.html:24
 msgid "Select all"
 msgstr "Alle auswählen"
 
-#: santa/templates/console/base.html:107
+#: santa/templates/console/base.html:117
 msgid "Back"
 msgstr "Zurück"
 

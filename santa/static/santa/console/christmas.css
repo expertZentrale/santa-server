@@ -3,12 +3,12 @@
 :root[data-season="christmas"] {
   --accent: light-dark(#17703b, #6fd497);
   --accent-text: light-dark(#ffffff, #0b1a10);
-  --xmas-red: light-dark(#c62828, #ff7b72);
+  --xmas-red: light-dark(#c62828, #ff8a82);
   --xmas-gold: light-dark(#c99a06, #f2c94c);
   --snow: light-dark(rgb(120 140 170 / 55%), rgb(255 255 255 / 75%));
 }
 
-/* a string of lights under the top bar */
+/* a string of lights under the top bar: straight without JavaScript, in swags with it (christmas.js) */
 [data-season="christmas"] .topbar { border-bottom-color: transparent; }
 [data-season="christmas"] .topbar::after {
   content: "";
@@ -25,6 +25,19 @@
     linear-gradient(var(--border), var(--border)) 0 .1rem / 100% 1px no-repeat;
 }
 
+[data-season="christmas"] .topbar[data-garland]::after { display: none; }
+[data-season="christmas"] .topbar[data-garland] { border-bottom-color: var(--border); }
+/* room for the bulbs above the page heading */
+[data-season="christmas"] body:has(.topbar[data-garland="on"]) main { padding-top: 2.25rem; }
+@media (max-width: 45em) {
+  [data-season="christmas"] body:has(.topbar[data-garland="on"]) main { padding-top: 2rem; }
+}
+/* below the open menus of the top bar (its stacking context), above the page; never in the way of a click */
+.garland { position: absolute; left: 0; top: 100%; width: 100%; height: 2rem;
+  pointer-events: none; z-index: -1; opacity: .8; }
+/* the open navigation on small screens covers it; visibility keeps its size for the next drawing */
+.topbar.nav-open .garland { visibility: hidden; }
+
 /* the Santa hat in front of the name */
 [data-season="christmas"] .brand { display: inline-flex; align-items: center; gap: .4rem; }
 [data-season="christmas"] .brand::before {
@@ -40,13 +53,28 @@
 [data-season="christmas"] .card.login,
 [data-season="christmas"] .card.request-form { border-top: .25rem solid var(--xmas-red); }
 
+/* the decoration in the user menu: snow and lights, each on its own; the chevron like the pickers (widgets.css) */
+.submenu > summary { list-style: none; }
+.submenu > summary::-webkit-details-marker { display: none; }
+.submenu > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.submenu > summary::after {
+  content: "";
+  width: .45em;
+  height: .45em;
+  margin-left: auto;
+  border: solid var(--muted);
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(-45deg);
+}
+.submenu[open] > summary::after { transform: translateY(-.15em) rotate(45deg); }
+
 .xmas-greeting { color: var(--xmas-red); font-weight: 600; margin: -.25rem 0 1rem; }
 
 /* the snow falls behind the cards (christmas.js), never in the way of a click */
 .snow { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: -1; color: var(--snow); }
 
 @media print {
-  .snow, [data-season="christmas"] .topbar::after { display: none; }
+  .snow, .garland, [data-season="christmas"] .topbar::after { display: none; }
 }
 
 /* the progress bar below the string of lights, not on it */

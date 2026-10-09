@@ -37,6 +37,7 @@ class ChristmasThemeTestCase(ConsoleBase):
         self.assertContains(response, 'data-season="christmas"')
         self.assertContains(response, "christmas.css")
         self.assertContains(response, 'data-snow="off"')
+        self.assertContains(response, 'data-lights="off"')
         self.client.force_login(self.user)
         response = self.client.get(reverse("requests:new"), {"kind": "OTHER"})
         self.assertContains(response, "Send to the North Pole")
