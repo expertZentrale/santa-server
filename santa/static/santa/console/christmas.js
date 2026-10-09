@@ -389,7 +389,17 @@
   });
   document.addEventListener("pointermove", nudge, { passive: true });
   window.addEventListener("resize", refresh);
-  document.addEventListener("visibilitychange", () => { if (document.hidden) sleep(); });
+  // a hidden tab pauses a swing that was still going on; it goes on where it stopped when the tab is shown again
+  let interrupted = false;
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      interrupted = frame !== null;
+      sleep();
+    } else if (interrupted) {
+      interrupted = false;
+      wake();
+    }
+  });
   reduced.addEventListener("change", refresh);
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", recolor);
   new MutationObserver(recolor).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
