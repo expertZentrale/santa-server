@@ -119,8 +119,12 @@
   if (window.htmx) {
     htmx.config.historyCacheSize = 0;
     htmx.config.refreshOnHistoryMiss = false;
+    // htmx gives a new element the class and style of the old one with its id, and puts its own back ~20 ms later:
+    // that undid what the setup after the swap set (the height of a textarea after "Open as page", a menu's place)
+    htmx.config.attributesToSettle = [];
   }
   document.addEventListener("htmx:historyRestore", () => {
+    applyProgress();
     SantaConsole.init(document.body);
     document.dispatchEvent(new CustomEvent("santa:page"));
   });
@@ -201,30 +205,48 @@
 
   // The progress bar (#progress): something runs. htmx requests (shown after a moment: quick ones don't flash), forms
   // that load a page, uploads and downloads (with their share).
+  // The bar is hidden a moment after the last end: a page and the request of its rows right after show one bar.
   let running = 0;
+  let visible = false;
   let showTimer = null;
+  let hideTimer = null;
 
   function progressBar() {
     return document.getElementById("progress");
   }
 
+  // also on the bar of a page swapped in, which comes hidden
+  function applyProgress() {
+    const bar = progressBar();
+    if (!bar) return;
+    bar.hidden = !visible;
+    if (!visible) {
+      bar.classList.remove("determinate");
+      bar.style.removeProperty("--progress");
+    }
+  }
+
   function startProgress() {
     running += 1;
-    if (running === 1) showTimer = setTimeout(() => {
-      const bar = progressBar();
-      if (bar) bar.hidden = false;
-    }, 150);
+    clearTimeout(hideTimer);
+    if (running === 1 && !visible) {
+      clearTimeout(showTimer);
+      showTimer = setTimeout(() => {
+        visible = true;
+        applyProgress();
+      }, 150);
+    }
   }
 
   function stopProgress() {
     running = Math.max(0, running - 1);
     if (running) return;
     clearTimeout(showTimer);
-    const bar = progressBar();
-    if (!bar) return;
-    bar.hidden = true;
-    bar.classList.remove("determinate");
-    bar.style.removeProperty("--progress");
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => {
+      visible = false;
+      applyProgress();
+    }, 150);
   }
 
   function setBusy(button, busy) {
@@ -250,23 +272,24 @@
     });
   }, true);
   document.addEventListener("htmx:beforeRequest", (event) => {
-    startProgress();
     const elt = event.detail.elt;
     if (elt?.tagName === "FORM" && submitter && elt.contains(submitter)) {
       event.detail.requestConfig.busyButton = submitter;
-      setBusy(submitter, true);
     }
     submitter = null;
   });
-  // htmx sends afterRequest for every end (also errors, aborts, timeouts), and a second time on a parent when the
-  // element left the page with the swap: one stop per request
-  const finished = new WeakSet();
-  document.addEventListener("htmx:afterRequest", (event) => {
-    const xhr = event.detail?.xhr;
-    if (xhr && finished.has(xhr)) return;
-    if (xhr) finished.add(xhr);
-    stopProgress();
-    setBusy(event.detail?.requestConfig?.busyButton, false);
+  // Counted from the send (a request cancelled before never ends) to the end of its XHR: htmx:afterRequest doesn't
+  // reach the document when the element left the page meanwhile (its row replaced, the drawer view kept aside)
+  document.addEventListener("htmx:beforeSend", (event) => {
+    const xhr = event.detail.xhr;
+    if (!xhr) return;
+    const button = event.detail.requestConfig?.busyButton;
+    startProgress();
+    setBusy(button, true);
+    xhr.addEventListener("loadend", () => {
+      stopProgress();
+      setBusy(button, false);
+    }, { once: true });
   });
   // an upload: the share sent so far
   document.addEventListener("htmx:xhr:progress", (event) => {
@@ -279,8 +302,11 @@
   // Back to a page kept by the browser: nothing runs on it
   window.addEventListener("pageshow", (event) => {
     if (!event.persisted) return;
-    running = 1;
-    stopProgress();
+    running = 0;
+    visible = false;
+    clearTimeout(showTimer);
+    clearTimeout(hideTimer);
+    applyProgress();
     document.querySelectorAll('.button[aria-busy="true"]').forEach((button) => setBusy(button, false));
   });
 
@@ -358,6 +384,7 @@
     if (!event.detail.target) return;
     if (event.detail.target === document.body) {
       // a boosted page: set up like a loaded one
+      applyProgress();
       SantaConsole.init(document.body);
       document.dispatchEvent(new CustomEvent("santa:page"));
     } else if (event.detail.target === drawer) {
@@ -562,17 +589,34 @@
 
   // The ⋯ menu of a row (a popover, see table.css): under its button, right-aligned, above it when there is no room
   // below. Closed by a choice, a click elsewhere or Escape (the browser's popover).
-  document.addEventListener("toggle", (event) => {
+  // Placed before it shows (beforetoggle): toggle comes after the first paint, the menu flashed at its old place.
+  let menuButton = null;
+  document.addEventListener("click", (event) => {
+    menuButton = event.target.closest?.("[popovertarget]") || null;
+  }, true);
+  document.addEventListener("beforetoggle", (event) => {
     const menu = event.target;
     if (!menu.matches?.(".row-menu") || event.newState !== "open") return;
-    const button = document.querySelector(`[popovertarget="${CSS.escape(menu.id)}"]`);
+    // the button clicked, not just the first one in the page that names the menu
+    const button = [menuButton, event.source].find((element) => element?.getAttribute?.("popovertarget") === menu.id)
+                   || document.querySelector(`[popovertarget="${CSS.escape(menu.id)}"]`);
+    menuButton = null;
     if (!button) return;
-    const box = button.getBoundingClientRect();
+    // not shown yet: measured as it will be, without being seen
+    menu.style.display = "grid";
+    menu.style.visibility = "hidden";
     const width = menu.offsetWidth;
     const height = menu.offsetHeight;
+    menu.style.removeProperty("display");
+    menu.style.removeProperty("visibility");
+    const box = button.getBoundingClientRect();
     const below = box.bottom + 4 + height <= window.innerHeight;
     menu.style.left = `${Math.max(8, Math.min(box.right - width, window.innerWidth - width - 8))}px`;
     menu.style.top = `${below ? box.bottom + 4 : Math.max(8, box.top - 4 - height)}px`;
+  }, true);
+  document.addEventListener("toggle", (event) => {
+    const menu = event.target;
+    if (!menu.matches?.(".row-menu") || event.newState !== "open") return;
     menu.querySelector("a, button")?.focus({ preventScroll: true });
   }, true);
   document.addEventListener("click", (event) => {
