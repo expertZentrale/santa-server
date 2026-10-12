@@ -41,7 +41,7 @@
   function refreshPage() {
     drawerSaved = false;
     const scroll = window.scrollY;
-    htmx.ajax("GET", window.location.href, {
+    return htmx.ajax("GET", window.location.href, {
       target: document.body, swap: "innerHTML show:none", headers: { "HX-Boosted": "true", "X-Santa-Rerender": "1" },
     }).then(() => window.scrollTo(0, scroll));
   }
@@ -139,6 +139,16 @@
     pageUrl = here();
     history.replaceState({ index: 0, chain: 0 }, "");
   });
+  // Before it pushes the next page, htmx marks the entry it leaves as its own ({htmx: true}): the view of the drawer
+  // of that entry ("Open as page") would be lost, and Back to it would let htmx load the page again on every close
+  let leaving = null;
+  document.addEventListener("htmx:beforeHistorySave", () => {
+    leaving = currentState();
+  });
+  document.addEventListener("htmx:beforeHistoryUpdate", () => {
+    if (leaving) history.replaceState(leaving, "");
+    leaving = null;
+  });
 
   window.addEventListener("popstate", (event) => {
     // an entry of htmx: it restores that page itself
@@ -147,9 +157,14 @@
       return;
     }
     if (here() !== pageUrl) {
-      // the entry of another page (loaded in place before): that page again
+      // the entry of another page (loaded in place before): that page again, with the view of its drawer
       pageUrl = here();
-      refreshPage();
+      const url = pageUrl;
+      const state = currentState();
+      refreshPage().then(() => {
+        // unless Back / Forward went on meanwhile
+        if (state?.drawer && here() === url && currentState()?.index === state.index) showState(state);
+      });
       return;
     }
     showState(currentState());
