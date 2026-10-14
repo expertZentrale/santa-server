@@ -71,6 +71,78 @@
     });
   }
 
+  // Events → package rules: a package rule of another catalog is not offered for a row; when the catalog changes,
+  // a chosen one of the old catalog goes back to "new package rule"
+  function updatePackageTargets(root) {
+    const forms = root.matches?.("form[data-event-packages]") ? [root]
+      : root.querySelectorAll("form[data-event-packages]");
+    forms.forEach((form) => {
+      let kinds = {};
+      try {
+        kinds = JSON.parse(form.dataset.sourceKinds || "{}");
+      } catch (error) {
+        return;
+      }
+      form.querySelectorAll('select[name^="kind_"]').forEach((kindSelect) => {
+        const target = form.querySelector(`select[name="target_${kindSelect.name.slice(5)}"]`);
+        if (!target) return;
+        [...target.options].forEach((option) => {
+          option.hidden = option.value !== "new" && kinds[option.value] !== kindSelect.value;
+          option.disabled = option.hidden;
+        });
+        if (target.selectedOptions[0]?.hidden) target.value = "new";
+      });
+    });
+  }
+
+  // Events → package rules, the bar "for all checked packages": a catalog and a package rule copied into every
+  // checked row. A package rule brings its catalog; the rows change as if chosen by hand (change events).
+  function setupPackageBulk(root) {
+    root.querySelectorAll("[data-package-bulk]").forEach((bar) => {
+      if (bar.dataset.bulkReady) return;
+      bar.dataset.bulkReady = "1";
+      const form = bar.closest("form");
+      const kindSelect = bar.querySelector("[data-bulk-kind]");
+      const targetSelect = bar.querySelector("[data-bulk-target]");
+      const status = bar.querySelector("[data-bulk-status]");
+      let kinds = {};
+      try {
+        kinds = JSON.parse(form.dataset.sourceKinds || "{}");
+      } catch (error) {
+        return;
+      }
+      const filterTargets = () => {
+        [...targetSelect.options].forEach((option) => {
+          const other = kinds[option.value] && kindSelect.value && kinds[option.value] !== kindSelect.value;
+          option.hidden = Boolean(other);
+          option.disabled = Boolean(other);
+        });
+        if (targetSelect.selectedOptions[0]?.hidden) targetSelect.value = "";
+      };
+      kindSelect.addEventListener("change", filterTargets);
+      targetSelect.addEventListener("change", () => {
+        if (kinds[targetSelect.value]) kindSelect.value = kinds[targetSelect.value];
+        filterTargets();
+      });
+      const set = (select, value) => {
+        if (!select || select.value === value) return;
+        select.value = value;
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+      };
+      bar.querySelector("[data-bulk-apply]").addEventListener("click", () => {
+        const kind = kindSelect.value || kinds[targetSelect.value] || "";
+        let count = 0;
+        form.querySelectorAll('input[type="checkbox"][name^="approve_"]:checked').forEach((checkbox) => {
+          const index = checkbox.name.slice("approve_".length);
+          if (kind) set(form.querySelector(`select[name="kind_${index}"]`), kind);
+          if (targetSelect.value) set(form.querySelector(`select[name="target_${index}"]`), targetSelect.value);
+          count += 1;
+        });
+        status.textContent = bar.dataset.applied.replace("%(count)s", count);
+      });
+    });
+  }
+
   // Rule type preview: which identifier of the binary the rule will use
   function updateRulePreviews(root) {
     root.querySelectorAll("select[data-identifiers]").forEach((select) => {
@@ -216,6 +288,8 @@
     updateBinaryPreviews(root);
     updateConditional(root);
     updateInherited(root);
+    updatePackageTargets(root);
+    setupPackageBulk(root);
     updateNewRuleFields(root);
     if (root.id === "drawer") uncheckSaved(root);
   });
@@ -254,6 +328,7 @@
     if (form) {
       updateConditional(form);
       updateInherited(form);
+      updatePackageTargets(form);
       updateNewRuleFields(form);
     }
     if (event.target.matches("select[data-identifiers]")) updateRulePreviews(event.target.parentElement);

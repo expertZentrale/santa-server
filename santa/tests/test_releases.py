@@ -1,3 +1,4 @@
+import gzip
 import hashlib
 import io
 import tarfile
@@ -12,10 +13,10 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from santa.models import Group, ReleaseSource, ReleaseVersion, Rule, Tag
+from santa.models import Group, ReleaseSource, ReleaseVersion, Rule, RuleType, Tag
 from santa.releases import ReleaseError, enable_due_releases, find_binaries, sync_release_source
 
-from .utils import build_macho
+from .utils import FakeSevenZip, build_cpio, build_dmg, build_macho, build_pkg
 
 
 def tar_gz(files):
@@ -37,9 +38,10 @@ def zip_file(files):
 
 
 class FakeResponse:
-    def __init__(self, json_data=None, content=b""):
+    def __init__(self, json_data=None, content=b"", status_code=200):
         self._json = json_data
         self.content = content
+        self.status_code = status_code
 
     def raise_for_status(self):
         pass
@@ -101,10 +103,6 @@ class FindBinariesTestCase(TestCase):
             data = tar_gz({"bin/tool": binary, "lib/other": binary})
             found = list(find_binaries(io.BytesIO(data), "tools.tar.gz", "bin/*"))
             self.assertEqual([path for path, _ in found], ["bin/tool"])
-
-    def test_dmg_not_supported(self):
-        with self.assertRaises(ReleaseError):
-            list(find_binaries(io.BytesIO(b"x"), "Tool.dmg"))
 
 
 class ReleaseSourceBase(TestCase):
@@ -185,6 +183,31 @@ class ReleaseSourceTestCase(ReleaseSourceBase):
             sync_release_source(source, fake_session(routes))
         source.refresh_from_db()
         self.assertIn("SHA-256 mismatch", source.last_error)
+
+    def test_homebrew_cask_with_a_disk_image(self):
+        source = ReleaseSource.objects.create(name="tool", kind=ReleaseSource.Kind.HOMEBREW_CASK, identifier="tool",
+                                              rule_type=RuleType.SIGNINGID, is_global=True)
+        image = build_dmg(b"image")
+        cask = {"version": "1.2.0", "url": "https://downloads.example/Tool-1.2.0.dmg",
+                "sha256": hashlib.sha256(image).hexdigest()}
+        routes = {"https://formulae.brew.sh/api/cask/tool.json": FakeResponse(cask),
+                  "https://downloads.example/Tool-1.2.0.dmg": FakeResponse(content=image)}
+        seven_zip = FakeSevenZip({"Tool/Tool.app/Contents/MacOS/Tool": (build_macho(identifier="com.example.tool"),
+                                                                       "-rwxr-xr-x")})
+        with (patch("santa.archives.shutil.which", return_value="/usr/bin/7zz"),
+              patch("santa.archives.subprocess.run", side_effect=seven_zip)):
+            [release_version] = sync_release_source(source, fake_session(routes))
+        self.assertEqual(release_version.binary_count, 1)
+        rule = Rule.objects.get(release_source=source)
+        self.assertEqual((rule.rule_type, rule.identifier), (RuleType.SIGNINGID, "ABCDE12345:com.example.tool"))
+
+    def test_github_release_with_a_package(self):
+        source = self.github_source(asset_pattern=r"\.pkg$")
+        payload = gzip.compress(build_cpio({"usr/local/bin/colima": (build_macho(identifier="colima", team_id="",
+                                                                                 adhoc=True), 0o100755)}))
+        routes = self.github_routes("v1.0.0", {"colima.pkg": build_pkg({"Payload": payload})})
+        [release_version] = sync_release_source(source, fake_session(routes))
+        self.assertEqual(release_version.binary_count, 1)
 
     def test_no_matching_asset(self):
         source = self.github_source(asset_pattern="Windows")

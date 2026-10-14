@@ -3,7 +3,7 @@ from django.contrib import admin
 from django.urls import include, path
 from django.utils.functional import lazy
 
-from santa.console import views_auth, views_profile
+from santa.console import views_auth, views_notifications, views_profile
 
 # read when a page is rendered, not when the URLs are loaded
 server_name = lazy(lambda: settings.SANTA_SERVER_NAME, str)()
@@ -21,6 +21,11 @@ urlpatterns = [
     path("profile/filters/save/", views_profile.save_filter, name="save_filter"),
     path("profile/filters/<int:pk>/delete/", views_profile.delete_filter, name="delete_filter"),
     path("profile/filters/<int:pk>/rename/", views_profile.rename_filter, name="rename_filter"),
+    path("notifications/", views_notifications.notifications, name="notifications"),
+    path("notifications/panel/", views_notifications.panel, name="notifications_panel"),
+    path("notifications/unread/", views_notifications.unread, name="notifications_unread"),
+    path("notifications/clear/", views_notifications.clear, name="notifications_clear"),
+    path("notifications/<int:pk>/dismiss/", views_notifications.dismiss, name="notification_dismiss"),
     path("oidc/", include("mozilla_django_oidc.urls")),
     path("console/", include("santa.console.urls")),
     path("request/", include("santa.console.request_urls")),

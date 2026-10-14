@@ -1,0 +1,10 @@
+{% load i18n %}{# The settings of the new package rules (ApprovePackagesForm and its forms): requests and events #}
+<div data-new-rule-fields>
+  {% include "console/_field.html" with field=form.new_name %}
+  {% include "console/_field.html" with field=form.rule_type %}
+  {% include "console/_field.html" with field=form.policy %}
+  <div data-show-when="policy=CEL">{% include "console/_field.html" with field=form.cel_expr %}{% include "console/rules/_cel_help.html" %}</div>
+  {% include "console/_field.html" with field=form.is_global %}
+  <div data-hide-when="is_global">{% include "console/_field.html" with field=form.groups %}</div>
+  {% include "console/sources/_keep_fields.html" with keep=form.keep_versions unit=form.keep_unit approve_kept=form.approve_kept_versions dependencies=form.include_dependencies %}
+</div>

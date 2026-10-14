@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 CACHE_TIMEOUT = 3600
 # part of the cache keys: bump it when the queries or the results change
-CACHE_VERSION = 4
+CACHE_VERSION = 5
 MAX_RESULTS = 10
 SEARCH_TIMEOUT = 10
 # Homebrew has no search API: the whole list of formulae (~30 MB) or casks (~20 MB) is loaded once a day
@@ -149,17 +149,54 @@ def _search_jetbrains(session, query):
 
 
 def _homebrew_entry(kind, data):
-    """identifier, name, other names (aliases, old names), description, homepage"""
+    """identifier, name, other names (aliases, old names), description, homepage, details: a cask its apps and the
+    bundle IDs it names (to find the cask of a blocked app), a formula its current version"""
     if kind == Kind.HOMEBREW_CASK:
         names = data.get("name") or [data["token"]]
         return [data["token"], names[0], [*names[1:], *(data.get("old_tokens") or [])],
-                data.get("desc") or "", data.get("homepage") or ""]
+                data.get("desc") or "", data.get("homepage") or "", _cask_details(data)]
     return [data["name"], data["name"], [*(data.get("aliases") or []), *(data.get("oldnames") or [])],
-            data.get("desc") or "", data.get("homepage") or ""]
+            data.get("desc") or "", data.get("homepage") or "",
+            {"version": ((data.get("versions") or {}).get("stable") or "")}]
+
+
+# a bundle ID in the uninstall and zap entries of a cask (com.brave.Browser, also in a path or a file name)
+BUNDLE_ID_RE = re.compile(r"^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+){2,}$")
+BUNDLE_ID_SUFFIXES = (".plist", ".savedState", ".binarycookies", ".sfl2", ".sfl3", ".help", ".pkg")
+MAX_CASK_BUNDLE_IDS = 20
+
+
+def _strings(value):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, list):
+        for item in value:
+            yield from _strings(item)
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from _strings(item)
+
+
+def _cask_details(data):
+    apps = []
+    bundle_ids = []
+    for artifact in data.get("artifacts") or []:
+        if not isinstance(artifact, dict):
+            continue
+        apps += [app for app in _strings(artifact.get("app")) if app.endswith(".app")]
+        for text in _strings([artifact.get("uninstall"), artifact.get("zap")]):
+            for part in text.split("/"):
+                for suffix in BUNDLE_ID_SUFFIXES:
+                    part = part.removesuffix(suffix)
+                # com.apple.*: lists of macOS every cask cleans up, group.*: app groups
+                if (BUNDLE_ID_RE.match(part) and part not in bundle_ids and not part[0].isdigit()
+                        and not part.startswith(("com.apple.", "group."))):
+                    bundle_ids.append(part)
+    return {"apps": [app.rsplit("/", 1)[-1] for app in apps], "bundle_ids": bundle_ids[:MAX_CASK_BUNDLE_IDS]}
 
 
 def _homebrew_suggestion(entry):
-    identifier, name, _others, description, homepage = entry
+    identifier, name, _others, description, homepage, *_details = entry
     return Suggestion(identifier=identifier, name=name, description=description, icon_url=_github_avatar(homepage))
 
 
@@ -175,9 +212,25 @@ def _load_homebrew_index(session, kind):
     return [_homebrew_entry(kind, data) for data in json.loads(content) if not data.get("disabled")]
 
 
+def _homebrew_index_key(kind):
+    return f"santa:catalog:v{CACHE_VERSION}:homebrew-index:{kind}"
+
+
+def homebrew_entries(kind, session=None, cached_only=False):
+    """The list of the formulae or casks; cached_only: only when it is loaded already (rendering a page)"""
+    if cached_only:
+        stored = cache.get(_homebrew_index_key(kind))
+        return stored["entries"] if stored else []
+    try:
+        return _homebrew_index(session or http_session(), kind)
+    except (CatalogError, requests.RequestException, KeyError, ValueError) as e:
+        logger.info("Homebrew %s list: %s", kind, e)
+        return []
+
+
 def _homebrew_index(session, kind):
     """The list of the formulae or casks. One worker at a time loads it, the others use the older one meanwhile."""
-    key = f"santa:catalog:v{CACHE_VERSION}:homebrew-index:{kind}"
+    key = _homebrew_index_key(kind)
     stored = cache.get(key)
     if stored and time.time() - stored["loaded_at"] < HOMEBREW_INDEX_TIMEOUT:
         return stored["entries"]
@@ -200,7 +253,7 @@ def _homebrew_index(session, kind):
 
 
 def _homebrew_rank(entry, query):
-    identifier, name, others, description, _homepage = entry
+    identifier, name, others, description, _homepage, *_details = entry
     names = [identifier.lower(), name.lower(), *(other.lower() for other in others)]
     if query in names:
         return 0

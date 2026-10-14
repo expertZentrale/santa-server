@@ -8,7 +8,18 @@ from django.views.decorators.http import require_POST
 
 from .. import catalog
 from ..models import ReleaseSource, ReleaseVersion
-from ..releases import ReleaseError, cleanup_preview, cleanup_release_source, stale_versions, sync_release_source
+from ..progress import progress_for
+from ..releases import (
+    RULE_OUTSIDE_ASSET_PATTERN,
+    ReleaseError,
+    cleanup_preview,
+    cleanup_release_source,
+    pattern_stale_versions,
+    preview_release_source,
+    stale_rules,
+    stale_versions,
+    sync_release_source,
+)
 from ..services import set_rules_enabled
 from .filters import Facet, any_of, chosen, filter_bar, remember_filters
 from .forms import ReleaseSourceForm
@@ -84,7 +95,8 @@ def source_detail(request, pk):
     per_identifier += [(identifier, {}, items) for identifier, items in versions.items()]
     stale = {version.pk for version in stale_versions(source, check_filters=True)}
     return render_drawer(request, "console/sources/detail.html", "console/sources/drawer_detail.html",
-                         {"source": source, "per_identifier": per_identifier, "stale": stale})
+                         {"source": source, "per_identifier": per_identifier, "stale": stale,
+                          "stale_count": len(stale) + len(stale_rules(source))})
 
 
 @staff_required
@@ -112,12 +124,37 @@ def source_form(request, pk=None):
                 "%(count)s version is no longer covered by the package rule: “Clean up” deletes it with its rules.",
                 "%(count)s versions are no longer covered by the package rule: “Clean up” deletes them with their "
                 "rules.", stale) % {"count": stale})
+        if not created and (outside := len(stale_rules(source))):
+            messages.info(request, ngettext(
+                "%(count)s rule is outside the asset or binary pattern now: “Clean up” deletes it.",
+                "%(count)s rules are outside the asset or binary pattern now: “Clean up” deletes them.",
+                outside) % {"count": outside})
         messages.success(request, gettext("Package rule %(source)s saved. Use “Check now” to get the current "
                                           "releases.") % {"source": source})
         return drawer_done(request, reverse("console:source", args=[source.pk]))
     return render_drawer(request, "console/sources/form.html", "console/sources/drawer_form.html", {
         "form": form, "source": source, "searchable_kinds": list(catalog.SEARCHABLE_KINDS),
     })
+
+
+@staff_required
+@require_POST
+def source_preview(request, pk=None):
+    """What the patterns of the form take (htmx partial under the filters): the latest releases of every package
+    with their assets, the recorded files against the binary pattern, and what the clean up would delete"""
+    source = get_object_or_404(ReleaseSource, pk=pk) if pk else None
+    require_perms(request, "view_releasesource", "change_releasesource" if source else "add_releasesource")
+    form = ReleaseSourceForm(request.POST, instance=source)
+    if not form.is_valid():
+        return render(request, "console/sources/_preview.html", {"form": form, "invalid": True})
+    # validating filled the instance; never saved here (save() would also look up the icons in the catalogs)
+    source = form.instance
+    with progress_for(request) as progress:
+        context = {"form": form, "source": source, "results": preview_release_source(source, progress=progress)}
+    if source.pk:
+        context["stale_versions"] = len(stale_versions(source, check_filters=True))
+        context["stale_rules"] = len(stale_rules(source))
+    return render(request, "console/sources/_preview.html", context)
 
 
 @staff_required
@@ -151,18 +188,25 @@ def source_cleanup(request, pk):
     versions, rule_count, dependency_rule_count = cleanup_preview(source)
     identifiers = set(source.identifiers)
     kept = {version.pk for version in stale_versions(source)}
+    outside_files = pattern_stale_versions(source)
     rows = []
     for version in versions:
         if version.identifier not in identifiers:
             reason = gettext("package removed")
         elif version.pk in kept:
             reason = gettext("older than the versions to keep")
+        elif version.pk in outside_files:
+            reason = gettext("no file inside the asset or binary pattern")
         else:
             reason = gettext("outside the version pattern")
         rows.append((version, reason))
+    rule_rows = [(rule, gettext("outside the asset pattern") if reason == RULE_OUTSIDE_ASSET_PATTERN
+                  else gettext("outside the binary pattern"))
+                 for rule, reason in stale_rules(source)]
     return render_drawer(request, "console/sources/cleanup.html", "console/sources/drawer_cleanup.html", {
         "source": source, "rows": rows, "rule_count": rule_count,
         "dependency_rule_count": dependency_rule_count,
+        "rule_rows": rule_rows,
     })
 
 
@@ -173,7 +217,8 @@ def source_check(request, pk):
     source = get_object_or_404(ReleaseSource, pk=pk)
     failed = False
     try:
-        new_versions = sync_release_source(source)
+        with progress_for(request) as progress:
+            new_versions = sync_release_source(source, progress=progress)
     except ReleaseError as e:
         messages.error(request, f"{source}: {e}")
         new_versions, failed = e.new_versions, True

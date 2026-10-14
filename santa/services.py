@@ -1,3 +1,5 @@
+from dataclasses import dataclass, field
+
 from django.db.models import Q
 from django.utils import timezone
 
@@ -13,6 +15,7 @@ from .models import (
     RuleType,
     with_parent_groups,
 )
+from .progress import Progress
 
 EVENT_IDENTIFIER_FIELDS = {
     RuleType.BINARY: "file_sha256",
@@ -40,6 +43,13 @@ def allow_identifier(rule_type, identifier, policy, is_global, groups, user, des
         rule = Rule(rule_type=rule_type, identifier=identifier, policy=policy, created_by=user,
                     description=description[:500], cel_expr=cel_expr if policy == Policy.CEL else "")
         rule.full_clean(exclude=["groups", "machines"])
+    widen_rule(rule, is_global, groups, machines, user, tags)
+    return rule, created
+
+
+def widen_rule(rule, is_global, groups, machines, user, tags=()):
+    """Enable the rule and add the scope (all Macs, or the groups and Macs); the open events it covers now are
+    resolved"""
     rule.is_global = rule.is_global or is_global
     rule.is_enabled = True
     rule.save()
@@ -48,7 +58,6 @@ def allow_identifier(rule_type, identifier, policy, is_global, groups, user, des
         rule.machines.add(*machines)
     rule.tags.add(*tags)
     resolve_events(rule, user)
-    return rule, created
 
 
 def resolve_events(rule, user):
@@ -59,9 +68,33 @@ def resolve_events(rule, user):
     return events.update(resolved_at=timezone.now(), resolved_by=user, resolution_rule=rule)
 
 
+def resolve_binary_events(file_sha256, machines, user, rule=None):
+    """Resolve the open events of a binary on these Macs (an approval with an existing rule, or without one)"""
+    return (Event.objects.filter(resolved_at__isnull=True, file_sha256=file_sha256, machine__in=machines)
+                         .update(resolved_at=timezone.now(), resolved_by=user, resolution_rule=rule))
+
+
 # the most specific rule type wins on the Mac
 RULE_TYPE_PRECEDENCE = [RuleType.CDHASH, RuleType.BINARY, RuleType.SIGNINGID, RuleType.CERTIFICATE, RuleType.TEAMID]
 ALLOW_POLICIES = (Policy.ALLOWLIST, Policy.ALLOWLIST_COMPILER)
+
+
+def _matching_rules(identifiers_of):
+    """{key: [rules]} of the rules with an identifier of {key: {rule_type: [identifier, …]}}"""
+    found = {key: [] for key in identifiers_of}
+    for rule_type in EVENT_IDENTIFIER_FIELDS:
+        keys_of = {}
+        for key, identifiers in identifiers_of.items():
+            for identifier in identifiers.get(rule_type, ()):
+                keys_of.setdefault(identifier, set()).add(key)
+        # SQL Server: at most 2100 parameters per query
+        for chunk in chunked(keys_of):
+            for rule in (Rule.objects.filter(rule_type=rule_type, identifier__in=chunk)
+                                     .prefetch_related("groups", "machines")):
+                for key in keys_of[rule.identifier]:
+                    found[key].append(rule)
+    return {key: sorted(rules, key=lambda rule: RULE_TYPE_PRECEDENCE.index(rule.rule_type))
+            for key, rules in found.items()}
 
 
 def existing_rules(events):
@@ -73,21 +106,10 @@ def existing_rules(events):
     events_of = {}
     for event in events:
         events_of.setdefault(event.file_sha256, []).append(event)
-    found = {sha: [] for sha in events_of}
-    for rule_type, field in EVENT_IDENTIFIER_FIELDS.items():
-        binaries_of = {}
-        for sha, binary_events in events_of.items():
-            for event in binary_events:
-                if getattr(event, field):
-                    binaries_of.setdefault(getattr(event, field), set()).add(sha)
-        identifiers = list(binaries_of)
-        # SQL Server: at most 2100 parameters per query
-        for start in range(0, len(identifiers), 1000):
-            rules = (Rule.objects.filter(rule_type=rule_type, identifier__in=identifiers[start:start + 1000])
-                                 .prefetch_related("groups", "machines"))
-            for rule in rules:
-                for sha in binaries_of[rule.identifier]:
-                    found[sha].append(rule)
+    found = _matching_rules({sha: {rule_type: {getattr(event, field) for event in binary_events
+                                               if getattr(event, field)}
+                                   for rule_type, field in EVENT_IDENTIFIER_FIELDS.items()}
+                             for sha, binary_events in events_of.items()})
     result = {}
     rule_groups = {}
     for sha, rules in found.items():
@@ -99,8 +121,19 @@ def existing_rules(events):
         result[sha] = [{"rule": rule, "applies": rule.is_enabled and (
             rule.is_global or any(group.pk in groups for group in rule.groups.all())
             or any(machine.pk in machines for machine in rule.machines.all()))}
-            for rule in sorted(rules, key=lambda rule: RULE_TYPE_PRECEDENCE.index(rule.rule_type))]
+            for rule in rules]
     return result
+
+
+def existing_rules_for_binaries(binaries):
+    """The rules that already match uploaded binaries, by SHA-256: [{"rule", "applies"}]
+
+    No Mac ran them yet: applies is the rule being enabled, its scope is shown with it.
+    """
+    found = _matching_rules({binary.sha256: {rule_type: binary_identifiers(rule_type, binary)
+                                             for rule_type in EVENT_IDENTIFIER_FIELDS}
+                             for binary in binaries})
+    return {sha: [{"rule": rule, "applies": rule.is_enabled} for rule in rules] for sha, rules in found.items()}
 
 
 def is_allowed(matches):
@@ -155,6 +188,73 @@ def binary_identifiers(rule_type, info):
         RuleType.SIGNINGID: [info.signing_id],
         RuleType.CDHASH: info.cdhashes,
     }[rule_type] if identifier]
+
+
+@dataclass
+class UploadedBinary:
+    """An executable of an uploaded file, as the console keeps it between the check and the rules (signed in the
+    form: the file itself is never stored)"""
+    path: str
+    sha256: str
+    signing_id: str = ""
+    team_id: str = ""
+    cert_sha256: str = ""
+    cert_cn: str = ""
+    cdhashes: list = field(default_factory=list)
+    archs: list = field(default_factory=list)
+    signature: str = "unsigned"
+
+    @classmethod
+    def from_info(cls, path, info):
+        signed = [s for s in info.slices if s.signed]
+        signature = "unsigned" if not signed else "adhoc" if all(s.adhoc for s in signed) else "signed"
+        return cls(path=path, sha256=info.sha256, signing_id=info.signing_id, team_id=info.team_id,
+                   cert_sha256=info.cert_sha256, cert_cn=info.cert_cn, cdhashes=info.cdhashes,
+                   archs=[s.arch for s in info.slices], signature=signature)
+
+    # the names of an event: the rule forms of the events take these binaries too
+    @property
+    def file_sha256(self):
+        return self.sha256
+
+    @property
+    def file_name(self):
+        return self.path.rsplit("/", 1)[-1]
+
+    machine_id = None
+
+    @property
+    def rule_types(self):
+        return [rule_type for rule_type in RuleType.values if binary_identifiers(rule_type, self)]
+
+    @property
+    def suggested_rule_type(self):
+        return RuleType.SIGNINGID if self.signing_id else RuleType.BINARY
+
+    def rule_type_for(self, rule_type):
+        """The chosen rule type, or the suggestion when the binary has no identifier of that type"""
+        return rule_type if rule_type in self.rule_types else self.suggested_rule_type
+
+
+def allow_binaries(choices, policy, is_global, groups, user, description, tags=(), cel_expr_for=None,
+                   progress=None):
+    """The rules of uploaded binaries, choices: [(UploadedBinary, rule type)]. One rule per identifier (CDHash: per
+    architecture); binaries with the same identifier (the helpers of an app with one Team ID) share it.
+
+    description: a text, or a function of the binary. Returns [(rule, created)].
+    """
+    progress = progress or Progress()
+    progress.add_total(len(choices))
+    rules = {}
+    for binary, rule_type in choices:
+        progress.start(binary.path)
+        for identifier in binary_identifiers(rule_type, binary):
+            if (rule_type, identifier) not in rules:
+                rules[(rule_type, identifier)] = allow_identifier(
+                    rule_type, identifier, policy, is_global, groups, user,
+                    description(binary) if callable(description) else description, tags,
+                    cel_expr=cel_expr_for(binary) if cel_expr_for else "")
+    return list(rules.values())
 
 
 def can_see_sync_token(user):
@@ -241,3 +341,43 @@ def latest_binary_requests(sha256s, exclude_user=None):
         for access_request in found:
             latest.setdefault(access_request.file_sha256, access_request)
     return latest
+
+
+def add_packages_to_sources(approved, new_names, data, options_for):
+    """Put packages into package rules: one new ReleaseSource per catalog (new_names {kind: name}) for the packages
+    without a target, the others appended to their target unless it has them already.
+
+    approved: [(package, target ReleaseSource or None)], a package has kind, identifier, name and icon_url.
+    data: rule_type, is_global and groups of the new rules; options_for(kind): their other fields.
+    Returns ({kind: new source}, [(target, identifier)] appended, {package: its source}). The caller logs them.
+    """
+    from .catalog import update_identifier_icons
+
+    def picked(packages):
+        return {p.identifier: {"name": p.name, "icon_url": p.icon_url} for p in packages if p.name or p.icon_url}
+
+    new_sources = {}
+    for kind, name in new_names.items():
+        packages = [package for package, target in approved if target is None and package.kind == kind]
+        source = ReleaseSource(name=name, kind=kind, identifier="\n".join(dict.fromkeys(p.identifier
+                                                                                       for p in packages)),
+                               rule_type=data.get("rule_type") or RuleType.BINARY, is_global=data["is_global"],
+                               **options_for(kind))
+        source.full_clean()
+        update_identifier_icons(source, picked(packages))
+        source.save()
+        source.groups.set(data["groups"])
+        new_sources[kind] = source
+    appended = []
+    sources_of = {}
+    for package, target in approved:
+        source = target or new_sources[package.kind]
+        sources_of[package] = source
+        if target is not None and package.identifier not in target.identifiers:
+            target.refresh_from_db()
+            target.identifier = "\n".join(target.identifiers + [package.identifier])
+            target.full_clean()
+            update_identifier_icons(target, picked([package]) or None)
+            target.save()
+            appended.append((target, package.identifier))
+    return new_sources, appended, sources_of

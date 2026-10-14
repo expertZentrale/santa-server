@@ -1,0 +1,33 @@
+{% load i18n %}{# What the patterns of the form take (source_preview): nothing is saved or downloaded #}
+{% if invalid %}
+<p class="error">{% translate "Correct these fields first, then preview again:" %}</p>
+<ul class="errorlist">{% for field in form %}{% for error in field.errors %}<li>{{ field.label }}: {{ error }}</li>{% endfor %}{% endfor %}{% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}</ul>
+{% else %}
+{% if stale_versions or stale_rules %}<ul class="messages"><li class="warning">{% if stale_versions %}{% blocktranslate count count=stale_versions %}With these patterns, “Clean up” deletes {{ count }} version{% plural %}With these patterns, “Clean up” deletes {{ count }} versions{% endblocktranslate %}{% if stale_rules %} {% blocktranslate count count=stale_rules %}and {{ count }} more rule.{% plural %}and {{ count }} more rules.{% endblocktranslate %}{% else %}.{% endif %}{% else %}{% blocktranslate count count=stale_rules %}With these patterns, “Clean up” deletes {{ count }} rule.{% plural %}With these patterns, “Clean up” deletes {{ count }} rules.{% endblocktranslate %}{% endif %}</li></ul>{% endif %}
+{% for result in results %}
+<section class="preview-package">
+  <h3><code>{{ result.identifier }}</code></h3>
+  {% if result.error %}<pre class="error-box">{{ result.error }}</pre>{% endif %}
+  {% if result.releases %}
+  <table class="table compact">
+    <thead><tr><th>{% translate "Version" %}</th><th>{% translate "Files" %}</th></tr></thead>
+    <tbody>{% for release in result.releases %}
+      <tr><td><span class="badge {% if release.version_ok %}ok{% else %}bad{% endif %}">{% if release.version_ok %}✓{% else %}✗{% endif %}</span>
+          <span class="strong">{{ release.version|default:"–" }}</span>
+          {% if release.published_at %}<div class="small muted">{{ release.published_at|date:"d.m.Y" }}</div>{% endif %}</td>
+        <td>{% for asset in release.assets %}
+          <div class="small"><span class="badge {% if asset.ok %}ok{% else %}bad{% endif %}">{% if asset.ok %}✓{% else %}✗{% endif %}</span>
+            <code class="binary-path">{{ asset.name }}</code>{% if asset.also %} <span class="muted">{% blocktranslate with tags=asset.also|join:", " %}also for {{ tags }}{% endblocktranslate %}</span>{% endif %}</div>
+        {% empty %}<span class="muted">{% translate "no file for macOS" %}</span>{% endfor %}</td></tr>
+    {% endfor %}</tbody>
+  </table>
+  {% elif not result.error %}<p class="muted">{% translate "No release found." %}</p>{% endif %}
+  {% if result.files %}
+  <details><summary>{% translate "Recorded files and the binary pattern" %}</summary>
+    {% for file in result.files %}<div class="small"><span class="badge {% if file.ok %}ok{% else %}bad{% endif %}">{% if file.ok %}✓{% else %}✗{% endif %}</span> <code class="binary-path">{{ file.path }}</code></div>{% endfor %}
+  </details>
+  {% endif %}
+</section>
+{% endfor %}
+<p class="help small">{% translate "✓ taken by the patterns, ✗ left out. The binary pattern is checked inside the files when they are downloaded; here only against the files of the versions recorded so far." %}</p>
+{% endif %}

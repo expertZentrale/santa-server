@@ -7,6 +7,10 @@ socket are fixed here. Flags on the command line still win over this file.
 import os
 import sys
 
+from gunicorn.glogging import Logger
+
+from santa.log_redaction import RedactSyncTokens, redact_sync_path
+
 
 def env_int(name, default, minimum=1):
     value = os.environ.get(name, "").strip()
@@ -43,3 +47,21 @@ control_socket_disable = True
 accesslog = "-"
 # the PID of the worker as <pid> (to find a restarted one) and the duration in ms
 access_log_format = '%(p)s %(h)s %(u)s %(t)s "%(r)s" %(s)s %(b)s %(M)sms "%(a)s"'
+
+
+class SyncTokenRedactingLogger(Logger):
+    """The sync URLs contain the token of the group, a secret: never in the access or error log"""
+
+    def setup(self, cfg):
+        super().setup(cfg)
+        self.error_log.addFilter(RedactSyncTokens())
+
+    def atoms(self, resp, req, environ, request_time):
+        atoms = super().atoms(resp, req, environ, request_time)
+        for key in ("r", "U", "{raw_uri}e", "{path_info}e", "{request_uri}e"):
+            if key in atoms:
+                atoms[key] = redact_sync_path(atoms[key])
+        return atoms
+
+
+logger_class = SyncTokenRedactingLogger

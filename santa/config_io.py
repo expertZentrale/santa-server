@@ -34,9 +34,10 @@ GROUP_FIELDS = (
     "inherit_file_access_rules", "overridden_settings",
 )
 RELEASE_SOURCE_FIELDS = (
-    "kind", "identifier", "version_pattern", "asset_pattern", "binary_pattern", "include_prereleases", "rule_type",
-    "policy", "custom_msg", "custom_url", "cel_expr", "is_global", "auto_approve", "auto_approve_delay_days",
-    "keep_versions", "keep_unit", "approve_kept_versions", "include_dependencies", "is_enabled",
+    "kind", "description", "identifier", "version_pattern", "asset_pattern", "binary_pattern", "macos_minimum",
+    "macos_nearest", "include_prereleases", "rule_type", "policy", "custom_msg", "custom_url", "cel_expr",
+    "is_global", "auto_approve", "auto_approve_delay_days", "keep_versions", "keep_unit", "approve_kept_versions",
+    "include_dependencies", "is_enabled",
 )
 FILE_ACCESS_RULE_FIELDS = (
     "description", "rule_type", "paths", "path_prefixes", "allow_read_access", "audit_only", "block_message",

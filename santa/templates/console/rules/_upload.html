@@ -1,19 +1,10 @@
-{% load i18n %}<form method="post" enctype="multipart/form-data" class="stack" action="{% url 'console:rule_upload' %}"{% if in_drawer %} hx-post="{% url 'console:rule_upload' %}" hx-target="#drawer" hx-encoding="multipart/form-data"{% endif %}>
+{% load i18n %}{% url 'console:rule_upload' as upload_url %}{% if binaries %}{% include "console/rules/_upload_rules.html" %}{% else %}<form method="post" enctype="multipart/form-data" class="stack" data-progress action="{{ upload_url }}"{% if in_drawer %} hx-post="{{ upload_url }}" hx-target="#drawer" hx-encoding="multipart/form-data"{% endif %}>
   {% csrf_token %}
   <section class="card">
-    {% include "console/_field.html" with field=form.file %}
-    {% include "console/_field.html" with field=form.binary_pattern %}
-    {% include "console/_field.html" with field=form.rule_type %}
-    {% include "console/_field.html" with field=form.policy %}
+    {% include "console/_field.html" with field=check_form.file %}
+    {% include "console/_field.html" with field=check_form.binary_pattern %}
+    <p class="help small">{% translate "The server lists the executables of the file with their Signing ID, Team ID and hashes. Then you choose which of them get a rule, and of which type." %}</p>
   </section>
-  <section class="card"><h2>{% translate "Scope" %}</h2>
-    {% include "console/_field.html" with field=form.is_global %}
-    <div data-hide-when="is_global">{% include "console/_field.html" with field=form.groups %}</div>
-    {% include "console/_field.html" with field=form.tags %}
-    {% include "console/_field.html" with field=form.new_tags %}
-    {% include "console/_field.html" with field=form.description %}
-  </section>
-  {% if found %}<section class="card"><h2>{% translate "Executables found" %}</h2><ul class="plain mono small">{% for path, info in found %}<li>{{ path }} · {{ info.sha256 }}</li>{% endfor %}</ul></section>{% endif %}
-  <div class="actions"><button class="button primary">{% translate "Create rules" %}</button>
+  <div class="actions"><button class="button primary">{% translate "Check file" %}</button>
     {% if in_drawer %}<button type="button" class="button" data-drawer-close>{% translate "Cancel" %}</button>{% endif %}</div>
-</form>
+</form>{% endif %}

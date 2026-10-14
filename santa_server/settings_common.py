@@ -34,6 +34,7 @@ MIDDLEWARE = [
     "santa.middleware.UserLanguageMiddleware",
     "santa.middleware.UserTimeZoneMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
+    "santa.middleware.NotificationTriggerMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "django_prometheus.middleware.PrometheusAfterMiddleware",
 ]
@@ -139,16 +140,29 @@ RELEASE_MAX_DOWNLOAD_BYTES = 500 * 1024 * 1024
 RELEASE_MAX_FILE_BYTES = 512 * 1024 * 1024
 RELEASE_MAX_UNPACKED_BYTES = 2 * 1024 * 1024 * 1024
 RELEASE_HTTP_TIMEOUT = 60
+# seconds 7-Zip may take to list or unpack a disk image (.dmg)
+RELEASE_UNPACK_TIMEOUT = 120
 # packages a package rule with "allow the dependencies" resolves per release, the direct and the indirect ones
 RELEASE_MAX_DEPENDENCIES = 200
+
+# the messages are also kept for their user: the bell in the top bar of the console (message_storage.py)
+MESSAGE_STORAGE = "santa.message_storage.NotificationStorage"
 
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "formatters": {"plain": {"format": "%(asctime)s %(levelname)s %(name)s %(message)s"}},
-    "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "plain"}},
+    # the sync URLs contain the token of the group: "Not Found: /sync/<token>/…" must not reach the logs
+    "filters": {"redact_sync_tokens": {"()": "santa.log_redaction.RedactSyncTokens"}},
+    "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "plain",
+                             "filters": ["redact_sync_tokens"]}},
     "root": {"handlers": ["console"], "level": "INFO"},
-    "loggers": {"django.db.backends": {"level": "WARNING"}},
+    "loggers": {
+        "django.db.backends": {"level": "WARNING"},
+        # also before the handlers Django adds itself (runserver, DEBUG)
+        "django.request": {"filters": ["redact_sync_tokens"]},
+        "django.server": {"filters": ["redact_sync_tokens"]},
+    },
 }
 
 # The name in the title, the header and the Django admin, and the favicon: a URL or path, empty = the Santa hat

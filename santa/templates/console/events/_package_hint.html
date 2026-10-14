@@ -1,0 +1,6 @@
+{% load i18n %}{# The package of the binary (package_detection.py): a suggestion, the form changes it #}
+<section class="package-hint">
+  <p>{% if package.contained_in %}{% blocktranslate with kind=package.get_kind_label identifier=package.identifier names=package.contained_in|join:", " %}Belongs to {{ kind }} <code>{{ identifier }}</code>, already in {{ names }}.{% endblocktranslate %}{% else %}{% blocktranslate with kind=package.get_kind_label identifier=package.identifier %}Probably from {{ kind }} <code>{{ identifier }}</code>.{% endblocktranslate %}{% endif %}</p>
+  {% if perms.santa.add_releasesource and perms.santa.change_releasesource and perms.santa.add_rule %}{% url 'console:events_packages' as packages_url %}
+  <a class="button" href="{{ packages_url }}?ids={{ event.pk }}" hx-get="{{ packages_url }}?ids={{ event.pk }}" hx-target="#drawer">{% translate "Allow as package…" %}</a>{% endif %}
+</section>

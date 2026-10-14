@@ -11,11 +11,12 @@ from django.utils.translation import gettext
 from django.views.decorators.http import require_POST
 
 from .. import catalog, notifications
-from ..catalog import update_identifier_icons
 from ..models import AccessRequest, AccessRequestPackage, Event, ReleaseSource, RuleType
+from ..progress import progress_for
 from ..releases import ReleaseError, find_binaries, sync_release_source
 from ..seasonal import christmas_active
 from ..services import (
+    add_packages_to_sources,
     allow_identifier,
     allowed_packages,
     binary_identifiers,
@@ -25,6 +26,8 @@ from ..services import (
     latest_package_requests,
     machines_for_user,
     request_kinds_for,
+    resolve_binary_events,
+    widen_rule,
 )
 from .filters import TIME_DAYS, TIME_PRESETS, Facet, chosen, date_range, filter_bar, in_range, remember_filters
 from .forms import (
@@ -303,13 +306,18 @@ def _event_of(access_request):
     return None
 
 
-def _approve_forms(access_request, data=None, files=None):
+def _matches_of(event):
+    return existing_rules([event]).get(event.file_sha256, []) if event else []
+
+
+def _approve_forms(access_request, data=None, files=None, matches=None):
     if access_request.kind == AccessRequest.Kind.EVENT:
         event = _event_of(access_request)
         available = available_rule_types(event) if event else [RuleType.BINARY]
         initial = {"rule_type": default_rule_type(event) if event else RuleType.BINARY,
                    "groups": [event.group_id] if event else []}
-        form = ApproveEventForm(data, initial=initial, available_types=available)
+        form = ApproveEventForm(data, initial=initial, available_types=available,
+                                matches=_matches_of(event) if matches is None else matches)
         if event:
             show_rule_preview(form.fields["rule_type"], event)
         return form
@@ -334,10 +342,11 @@ def admin_request_detail(request, pk, approve_form=None, deny_form=None):
     elif access_request.kind == AccessRequest.Kind.PACKAGE:
         identifiers = list(access_request.packages.values_list("identifier", flat=True))
         others = AccessRequest.objects.filter(packages__identifier__in=identifiers).exclude(pk=pk).distinct()
+    matches = _matches_of(event)
     return render_drawer(request, "console/requests/detail.html", "console/requests/drawer_detail.html", {
         "access_request": access_request, "event": event, "others": others.select_related("requester")[:20],
-        "matches": existing_rules([event]).get(event.file_sha256, []) if event else [],
-        "approve_form": approve_form or _approve_forms(access_request),
+        "matches": matches,
+        "approve_form": approve_form or _approve_forms(access_request, matches=matches),
         "deny_form": deny_form or DenyForm(),
         "requester_machines": machines_for_user(access_request.requester).select_related("group"),
         "searchable_kinds": list(catalog.SEARCHABLE_KINDS),
@@ -367,7 +376,6 @@ def admin_request_approve(request, pk):
     try:
         with transaction.atomic():
             if access_request.kind == AccessRequest.Kind.EVENT:
-                require_perms(request, "add_rule", "change_rule")
                 _approve_event(request, access_request, form)
             elif access_request.kind == AccessRequest.Kind.PACKAGE:
                 require_perms(request, "add_releasesource", "change_releasesource")
@@ -381,11 +389,12 @@ def admin_request_approve(request, pk):
     source_ids = {p.result_source_id for p in access_request.packages.all() if p.result_source_id}
     if access_request.result_source_id:
         source_ids.add(access_request.result_source_id)
-    for source in ReleaseSource.objects.filter(pk__in=source_ids):
-        try:
-            sync_release_source(source)
-        except ReleaseError as e:
-            messages.warning(request, f"{source}: {e}")
+    with progress_for(request) as progress:
+        for source in ReleaseSource.objects.filter(pk__in=source_ids):
+            try:
+                sync_release_source(source, progress=progress)
+            except ReleaseError as e:
+                messages.warning(request, f"{source}: {e}")
     messages.success(request, gettext("Request “%(title)s” approved.") % {"title": access_request.title})
     return drawer_done(request, "console:requests")
 
@@ -396,8 +405,7 @@ def _allow_for_request(request, access_request, form, identifiers):
     Returns the first rule.
     """
     data = form.cleaned_data
-    machines = [access_request.machine] if access_request.machine else list(
-        machines_for_user(access_request.requester))
+    machines = _requester_machines(access_request)
     if data["scope"] == SCOPE_MACHINES and not machines:
         raise ValidationError(gettext("The Mac of the requester is not known, choose groups or all Macs."))
     rules = []
@@ -413,13 +421,32 @@ def _allow_for_request(request, access_request, form, identifiers):
     return rules[0]
 
 
+def _requester_machines(access_request):
+    return [access_request.machine] if access_request.machine else list(machines_for_user(access_request.requester))
+
+
 def _approve_event(request, access_request, form):
     data = form.cleaned_data
-    event = _event_of(access_request)
-    identifier = event.identifier_for(data["rule_type"]) if event else access_request.file_sha256
-    if not identifier:
-        raise ValidationError(gettext("The binary has no %(rule_type)s.") % {"rule_type": data["rule_type"]})
-    access_request.result_rule = _allow_for_request(request, access_request, form, [identifier])
+    if data["result"] == ApproveEventForm.RULE:
+        require_perms(request, "add_rule", "change_rule")
+        event = _event_of(access_request)
+        identifier = event.identifier_for(data["rule_type"]) if event else access_request.file_sha256
+        if not identifier:
+            raise ValidationError(gettext("The binary has no %(rule_type)s.") % {"rule_type": data["rule_type"]})
+        access_request.result_rule = _allow_for_request(request, access_request, form, [identifier])
+        return
+    rule = data["existing_rule"] if data["result"] != ApproveEventForm.NONE else None
+    if data["result"] == ApproveEventForm.EXTEND:
+        require_perms(request, "change_rule")
+        machines = _requester_machines(access_request)
+        if data["scope"] == SCOPE_MACHINES and not machines:
+            raise ValidationError(gettext("The Mac of the requester is not known, choose groups or all Macs."))
+        widen_rule(rule, data["scope"] == SCOPE_GLOBAL, data["groups"] if data["scope"] == SCOPE_GROUPS else [],
+                   machines if data["scope"] == SCOPE_MACHINES else [], request.user)
+        log_change(request.user, rule, f"Scope extended for access request {access_request.pk}")
+    if access_request.file_sha256:
+        resolve_binary_events(access_request.file_sha256, _requester_machines(access_request), request.user, rule)
+    access_request.result_rule = rule
 
 
 def _approve_other(request, access_request, form):
@@ -489,34 +516,16 @@ def _package_rule_for_request(request, access_request, form):
 
 def _approve_packages(request, access_request, form):
     """Add the approved packages to their package rules; the others are not approved"""
-    data = form.cleaned_data
     approved = form.approved()
-    new_sources = {}
-    for kind, name in form.new_rule_names().items():
-        packages = [package for package, target in approved if target is None and package.kind == kind]
-        source = ReleaseSource(name=name, kind=kind, identifier="\n".join(p.identifier for p in packages),
-                               rule_type=data["rule_type"] or RuleType.BINARY, is_global=data["is_global"],
-                               **form.new_source_options(kind))
-        source.full_clean()
-        update_identifier_icons(source, {p.identifier: {"name": p.name, "icon_url": p.icon_url}
-                                         for p in packages if p.name or p.icon_url})
-        source.save()
-        source.groups.set(data["groups"])
+    new_sources, appended, sources_of = add_packages_to_sources(approved, form.new_rule_names(), form.cleaned_data,
+                                                                form.new_source_options)
+    for source in new_sources.values():
         log_addition(request.user, source, f"Created for access request {access_request.pk}")
-        new_sources[kind] = source
-    for package, target in approved:
-        source = target or new_sources[package.kind]
-        if target is not None and package.identifier not in target.identifiers:
-            target.refresh_from_db()
-            target.identifier = "\n".join(target.identifiers + [package.identifier])
-            target.full_clean()
-            update_identifier_icons(target, {package.identifier: {"name": package.name, "icon_url": package.icon_url}}
-                                    if package.name or package.icon_url else None)
-            target.save()
-            log_change(request.user, target,
-                       f"Identifier {package.identifier} added for access request {access_request.pk}")
+    for target, identifier in appended:
+        log_change(request.user, target, f"Identifier {identifier} added for access request {access_request.pk}")
+    for package, _target in approved:
         package.status = AccessRequestPackage.Status.APPROVED
-        package.result_source = source
+        package.result_source = sources_of[package]
         package.save(update_fields=["status", "result_source"])
     approved_pks = {package.pk for package, _ in approved}
     access_request.packages.exclude(pk__in=approved_pks).update(status=AccessRequestPackage.Status.DENIED)

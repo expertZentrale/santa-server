@@ -1,3 +1,4 @@
+import hashlib
 import json
 from datetime import timedelta
 from unittest.mock import patch
@@ -5,6 +6,7 @@ from unittest.mock import patch
 from django.contrib.admin.models import ADDITION, CHANGE, LogEntry
 from django.contrib.auth.models import Group as AuthGroup
 from django.contrib.auth.models import Permission, User
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -15,6 +17,8 @@ from santa.models import Event, Group, Machine, Policy, ReleaseSource, ReleaseVe
 from santa.services import existing_rules, is_allowed
 
 from .test_catalog import LOCMEM
+from .test_releases import zip_file
+from .utils import ARM64, X86_64, build_fat, build_macho, cdhash_of
 
 SHA_A = "a" * 64
 SHA_B = "b" * 64
@@ -305,6 +309,16 @@ class ConsoleSourcesTestCase(ConsoleBase):
             "policy": Policy.ALLOWLIST, "groups": [self.dev.pk], "auto_approve": "on", "is_enabled": "on",
             "auto_approve_delay_days": 0, "keep_versions": 3, **data})
 
+    def test_the_comment_with_the_tags(self):
+        html = self.client.get(reverse("console:source_add")).content.decode()
+        tags_section = html[html.index("Tags and comment"):]
+        self.assertIn('name="description"', tags_section)
+        self.assertNotIn("<h2>Tags</h2>", html)
+        self.post_source(identifier="rust-lang.rust-analyzer", description="For the Rust team")
+        source = ReleaseSource.objects.get()
+        response = self.client.get(reverse("console:source", args=(source.pk,)))
+        self.assertContains(response, "<dt>Comment</dt><dd>For the Rust team</dd>", html=True)
+
     def test_create_with_picked_icons(self):
         picked = {"rust-lang.rust-analyzer": {"name": "rust-analyzer", "icon_url": "https://cdn.example/i.png"},
                   "evil.one": {"name": "x", "icon_url": "javascript:alert(1)"}}
@@ -463,7 +477,7 @@ class ConsoleEventsTestCase(ConsoleBase):
         if response.status_code == 200:
             self.fail(response.context["form"].errors)
         self.assertEqual(response.status_code, 204)
-        self.assertEqual(response["HX-Trigger"], "drawerSaved")
+        self.assertIn("drawerSaved", response["HX-Trigger"].split(", "))
 
     def create_rules(self, events, htmx=True, **data):
         data = {"ids": [e.pk for e in events], "apply": "1", "policy": Policy.ALLOWLIST, "scope": "groups",
@@ -485,7 +499,7 @@ class ConsoleEventsTestCase(ConsoleBase):
         # suggested per binary: a signing ID rule and a binary rule, both on the Macs of their events
         response = self.create_rules([a, other, b], scope="machines", include=[SHA_A, SHA_B], new_tags="cli")
         self.assertEqual(response.status_code, 204)
-        self.assertEqual(response["HX-Trigger"], "drawerSaved")
+        self.assertIn("drawerSaved", response["HX-Trigger"].split(", "))
         signed = Rule.objects.get(rule_type=RuleType.SIGNINGID)
         self.assertEqual({m.pk for m in signed.machines.all()}, {self.machine.pk, self.other_machine.pk})
         self.assertFalse(signed.groups.exists())
@@ -721,3 +735,113 @@ class ConsoleEventsTestCase(ConsoleBase):
         response = self.client.post(reverse("console:events_resolve"), {"shas": [SHA_A], "next": "https://evil/"})
         self.assertEqual(response.url, reverse("console:events"))
         self.assertFalse(Event.objects.filter(resolved_at__isnull=True).exists())
+
+
+class ConsoleUploadTestCase(ConsoleBase):
+    def check(self, files, **data):
+        archive = SimpleUploadedFile("tools.zip", zip_file(files), content_type="application/zip")
+        return self.client.post(reverse("console:rule_upload"), {"file": archive, **data},
+                                headers={"HX-Request": "true"})
+
+    def create(self, token, **data):
+        data = {"token": token, "policy": Policy.ALLOWLIST, "scope": "groups", "groups": [self.dev.pk],
+                "rule_type": "", **data}
+        return self.client.post(reverse("console:rule_upload"), data, headers={"HX-Request": "true"})
+
+    def tools(self):
+        signed = build_macho(identifier="com.example.tool")
+        unsigned = build_macho(identifier="helper", team_id="", signed=False)
+        return signed, unsigned, {"Tool.app/Contents/MacOS/Tool": signed, "bin/helper": unsigned,
+                                  "README": b"x" * 5000}
+
+    def test_the_check_shows_the_executables_without_creating_rules(self):
+        signed, unsigned, files = self.tools()
+        response = self.check(files)
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Rule.objects.exists())
+        self.assertTemplateUsed(response, "console/rules/drawer_upload.html")
+        self.assertEqual([item["binary"].path for item in response.context["binaries"]],
+                         ["Tool.app/Contents/MacOS/Tool", "bin/helper"])
+        self.assertContains(response, "2 executables in <strong>tools.zip</strong>.")
+        self.assertContains(response, "ABCDE12345:com.example.tool")
+        self.assertContains(response, hashlib.sha256(unsigned).hexdigest())
+        self.assertContains(response, "unsigned")
+        self.assertContains(response, "Suggested per binary")
+        # the file is not sent again: the second step has no file field
+        self.assertNotContains(response, 'type="file"')
+
+    def test_suggested_rule_types_and_a_second_decision(self):
+        signed, unsigned, files = self.tools()
+        response = self.check(files)
+        token = response.context["token"]
+        response = self.create(token, include=[hashlib.sha256(signed).hexdigest()], new_tags="upload")
+        self.assertEqual(response.status_code, 200)
+        rule = Rule.objects.get()
+        self.assertEqual((rule.rule_type, rule.identifier), (RuleType.SIGNINGID, "ABCDE12345:com.example.tool"))
+        self.assertEqual(rule.description, "Upload tools.zip: Tool.app/Contents/MacOS/Tool")
+        self.assertEqual([t.name for t in rule.tags.all()], ["upload"])
+        self.assertTrue(LogEntry.objects.filter(object_id=str(rule.pk), action_flag=ADDITION).exists())
+        # the unsigned helper is left, for another decision: blocked on all Macs
+        self.assertContains(response, "1 binary left")
+        self.assertContains(response, "data-refresh-on-close")
+        self.assertEqual([item["binary"].path for item in response.context["binaries"]], ["bin/helper"])
+        response = self.create(response.context["token"], include=[hashlib.sha256(unsigned).hexdigest()],
+                               rule_type=RuleType.BINARY, policy=Policy.BLOCKLIST, scope="global", saved="1")
+        self.assertEqual(response.status_code, 204)
+        blocked = Rule.objects.get(rule_type=RuleType.BINARY)
+        self.assertEqual((blocked.identifier, blocked.policy, blocked.is_global),
+                         (hashlib.sha256(unsigned).hexdigest(), Policy.BLOCKLIST, True))
+
+    def test_a_rule_type_a_binary_lacks_falls_back_to_its_suggestion(self):
+        signed, unsigned, files = self.tools()
+        token = self.check(files).context["token"]
+        shas = [hashlib.sha256(signed).hexdigest(), hashlib.sha256(unsigned).hexdigest()]
+        response = self.create(token, include=shas, rule_type=RuleType.SIGNINGID)
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(set(Rule.objects.values_list("rule_type", "identifier")),
+                         {(RuleType.SIGNINGID, "ABCDE12345:com.example.tool"),
+                          (RuleType.BINARY, hashlib.sha256(unsigned).hexdigest())})
+
+    def test_one_rule_per_identifier(self):
+        tool = build_fat((ARM64, build_macho(identifier="com.example.tool")),
+                         (X86_64, build_macho(identifier="com.example.tool", cputype=X86_64)))
+        helper = build_macho(identifier="com.example.helper")
+        response = self.check({"Tool.app/Contents/MacOS/Tool": tool, "Tool.app/Contents/MacOS/helper": helper})
+        token = response.context["token"]
+        shas = [hashlib.sha256(tool).hexdigest(), hashlib.sha256(helper).hexdigest()]
+        # one Team ID for both
+        self.create(token, include=shas, rule_type=RuleType.TEAMID)
+        self.assertEqual(list(Rule.objects.values_list("rule_type", "identifier")), [(RuleType.TEAMID, "ABCDE12345")])
+        # a CDHash per architecture
+        Rule.objects.all().delete()
+        self.create(token, include=shas[:1], rule_type=RuleType.CDHASH)
+        self.assertEqual(set(Rule.objects.values_list("identifier", flat=True)),
+                         {cdhash_of("com.example.tool", "ABCDE12345")})
+        self.assertEqual(Rule.objects.count(), 1)
+
+    def test_allowed_binaries_start_unchecked(self):
+        signed, unsigned, files = self.tools()
+        Rule.objects.create(rule_type=RuleType.SIGNINGID, identifier="ABCDE12345:com.example.tool", is_global=True)
+        response = self.check(files)
+        self.assertEqual(response.context["form"]["include"].value(), [hashlib.sha256(unsigned).hexdigest()])
+        self.assertContains(response, "Already:")
+
+    def test_a_changed_check_is_refused(self):
+        signed, unsigned, files = self.tools()
+        token = self.check(files).context["token"]
+        response = self.create(token[:-2] + "xx", include=[hashlib.sha256(signed).hexdigest()])
+        self.assertContains(response, "The check of the file is too old, upload it again.")
+        self.assertFalse(Rule.objects.exists())
+
+    def test_errors_of_the_check(self):
+        response = self.check({"README": b"x" * 5000})
+        self.assertContains(response, "No Mach-O executable found in this file.")
+        archive = SimpleUploadedFile("Tool.dmg", b"x" * 5000)
+        response = self.client.post(reverse("console:rule_upload"), {"file": archive})
+        self.assertContains(response, "not a Mach-O binary, zip or tar archive, package or disk image")
+
+    def test_needs_the_permission_to_add_rules(self):
+        viewer = User.objects.create_user("viewer", password="pw", is_staff=True)
+        viewer.user_permissions.add(Permission.objects.get(codename="view_rule"))
+        self.client.force_login(viewer)
+        self.assertEqual(self.client.get(reverse("console:rule_upload")).status_code, 403)

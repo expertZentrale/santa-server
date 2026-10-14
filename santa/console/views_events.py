@@ -10,6 +10,8 @@ from django.utils.translation import gettext, ngettext
 from django.views.decorators.http import require_POST
 
 from ..models import NEEDS_RULE, AccessRequest, Event, Group, Machine, RuleType
+from ..package_detection import package_hints
+from ..progress import Progress, progress_for
 from ..services import allow_identifier, existing_rules, is_allowed
 from .filters import TIME_DAYS, TIME_PRESETS, Facet, chosen, date_range, filter_bar, in_range, remember_filters
 from .forms import SCOPE_GLOBAL, SCOPE_GROUPS, SCOPE_MACHINES, EventRuleForm
@@ -211,10 +213,13 @@ def annotate_app_rows(rows):
     for chunk in chunked(shas):
         pending.update(AccessRequest.objects.filter(status=AccessRequest.Status.PENDING, file_sha256__in=chunk)
                                             .values_list("file_sha256", flat=True))
-    matches = existing_rules(events_by_ids([row["last_pk"] for row in rows]))
+    events = events_by_ids([row["last_pk"] for row in rows])
+    matches = existing_rules(events)
+    packages = package_hints(events)
     for row in rows:
         row["has_request"] = row["file_sha256"] in pending
         row["rules"] = matches.get(row["file_sha256"], [])
+        row["package"] = packages.get(row["file_sha256"])
 
 
 @staff_required
@@ -255,7 +260,8 @@ def event_detail(request, pk):
     matches = existing_rules([event]).get(event.file_sha256, [])
     return render(request, template, {"event": event, "same_binary": same_binary, "form": event_rule_form([[event]]),
                                       "requests": event.access_requests.select_related("requester"),
-                                      "matches": matches})
+                                      "matches": matches,
+                                      "package": package_hints([event]).get(event.file_sha256)})
 
 
 def event_rule_form(rows, data=None, preview=True, initial=None, include=None):
@@ -304,11 +310,15 @@ def rule_from_event(user, event, rule_type, policy, scope, groups, tags, descrip
     return rule, created
 
 
-def save_event_rules(user, form):
+def save_event_rules(user, form, progress=None):
     """The rules of the included binaries. Returns (saved, created)."""
     data = form.cleaned_data
+    progress = progress or Progress()
+    rows = form.included_rows()
+    progress.add_total(len(rows))
     saved = created = 0
-    for row in form.included_rows():
+    for row in rows:
+        progress.start(row[0].bundle_name or row[0].file_name or row[0].file_path)
         result = rule_from_event(user, row[0], rule_type_for(row[0], data["rule_type"]), data["policy"],
                                  data["scope"], data["groups"], form.all_tags(), data["description"],
                                  machines=list({event.machine for event in row}), cel_expr=form.cel_expr_for(row[0]))
@@ -393,7 +403,8 @@ def events_create_rules(request):
         form = event_rule_form(rows, request.POST if "apply" in request.POST else None, preview=False,
                                include=wanted)
     if form.is_bound and form.is_valid():
-        saved, created = save_event_rules(request.user, form)
+        with progress_for(request) as progress:
+            saved, created = save_event_rules(request.user, form, progress)
         messages.success(request, ngettext(
             "%(count)s rule saved (%(new)s new). The Macs get it at their next sync.",
             "%(count)s rules saved (%(new)s new). The Macs get them at their next sync.", saved,
@@ -414,6 +425,7 @@ def events_create_rules(request):
         "form": form, "binaries": _binaries(rows, matches), "events": events,
         "rule_types": json.dumps({value: str(label) for value, label in RuleType.choices}), "saved": saved_before,
         "saved_shas": " ".join(saved_shas), "resolved": request.POST.get("resolved", "open"),
+        "tab": "rules", "package_count": len({s.key for s in package_hints(events).values()}),
     })
 
 

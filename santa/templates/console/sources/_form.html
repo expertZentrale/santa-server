@@ -13,7 +13,14 @@
     {% include "console/_field.html" with field=form.version_pattern %}
     {% include "console/_field.html" with field=form.asset_pattern %}
     {% include "console/_field.html" with field=form.binary_pattern %}
+    <div data-show-when="kind=HOMEBREW_FORMULA">
+      {% include "console/_field.html" with field=form.macos_minimum %}
+      {% include "console/_field.html" with field=form.macos_nearest %}</div>
     {% include "console/_field.html" with field=form.include_prereleases %}
+    {% if source %}{% url 'console:source_preview' source.pk as preview_url %}{% else %}{% url 'console:source_preview' as preview_url %}{% endif %}
+    <div class="actions"><button type="button" class="button" hx-post="{{ preview_url }}" hx-target="#source-preview" hx-swap="innerHTML" data-progress>{% translate "Preview" %}</button>
+      <small class="help">{% translate "The latest releases of the packages: what the patterns take. Nothing is saved." %}</small></div>
+    <div id="source-preview" aria-live="polite"></div>
   </section>
   <section class="card"><h2>{% translate "Rules" %}</h2>
     {% include "console/_field.html" with field=form.rule_type %}
@@ -32,9 +39,10 @@
     {% include "console/_field.html" with field=form.auto_approve_delay_days %}
     {% include "console/sources/_keep_fields.html" with keep=form.keep_versions unit=form.keep_unit approve_kept=form.approve_kept_versions dependencies=form.include_dependencies kind="kind" %}
   </section>
-  <section class="card"><h2>{% translate "Tags" %}</h2>
+  <section class="card"><h2>{% translate "Tags and comment" %}</h2>
     {% include "console/_field.html" with field=form.tags %}
     {% include "console/_field.html" with field=form.new_tags %}
+    {% include "console/_field.html" with field=form.description %}
   </section>
   <div class="actions"><button class="button primary">{% translate "Save" %}</button>
     {% if in_drawer %}<button type="button" class="button" data-drawer-close>{% translate "Cancel" %}</button>{% endif %}

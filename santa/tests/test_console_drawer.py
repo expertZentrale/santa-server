@@ -65,7 +65,7 @@ class DrawerTestCase(ConsoleBase):
                 "is_enabled": "on"}
         response = self.client.post(url, {**data, "description": "new text"}, **HTMX)
         self.assertEqual(response.status_code, 204)
-        self.assertEqual(response["HX-Trigger"], "drawerSaved")
+        self.assertIn("drawerSaved", response["HX-Trigger"].split(", "))
         self.rule.refresh_from_db()
         self.assertEqual(self.rule.description, "new text")
         # without htmx: the redirect as before
@@ -83,7 +83,7 @@ class DrawerTestCase(ConsoleBase):
     def test_approve_and_deny_in_the_drawer(self):
         response = self.client.post(reverse("console:request_deny", args=(self.request_other.pk,)),
                                     {"note": "no"}, **HTMX)
-        self.assertEqual(response["HX-Trigger"], "drawerSaved")
+        self.assertIn("drawerSaved", response["HX-Trigger"].split(", "))
         self.request_other.refresh_from_db()
         self.assertEqual(self.request_other.status, AccessRequest.Status.DENIED)
 
@@ -162,9 +162,9 @@ class DrawerTestCase(ConsoleBase):
 
     def test_saving_administration_in_the_drawer(self):
         response = self.client.post(reverse("console:admin_tag_add"), {"name": "new-tag"}, **HTMX)
-        self.assertEqual(response["HX-Trigger"], "drawerSaved")
+        self.assertIn("drawerSaved", response["HX-Trigger"].split(", "))
         response = self.client.post(reverse("console:admin_role_add"), {"name": "Auditors"}, **HTMX)
-        self.assertEqual(response["HX-Trigger"], "drawerSaved")
+        self.assertIn("drawerSaved", response["HX-Trigger"].split(", "))
         self.assertRedirects(self.client.post(reverse("console:admin_tag_add"), {"name": "page-tag"}),
                              reverse("console:admin_tags"))
 
@@ -174,7 +174,7 @@ class DrawerTestCase(ConsoleBase):
         response = self.client.post(reverse("console:group_add"), data, **HTMX)
         group = Group.objects.get(name="Design")
         url = reverse("console:group", args=(group.pk,))
-        self.assertEqual(json.loads(response["HX-Trigger"]), {"drawerSaved": {"open": url}})
+        self.assertEqual(json.loads(response["HX-Trigger"])["drawerSaved"], {"open": url})
         # the message comes with the group in the drawer
         self.assertDrawer(self.client.get(url, **HTMX), "Download its configuration profile below")
 
@@ -195,7 +195,7 @@ class DrawerTestCase(ConsoleBase):
         url = reverse("console:rule", args=(self.rule.pk,))
         self.assertContains(self.client.get(url, **HTMX), reverse("console:rule_delete", args=(self.rule.pk,)))
         response = self.client.post(reverse("console:rule_delete", args=(self.rule.pk,)), **HTMX)
-        self.assertEqual(response["HX-Trigger"], "drawerSaved")
+        self.assertIn("drawerSaved", response["HX-Trigger"].split(", "))
         self.assertFalse(Rule.objects.filter(pk=self.rule.pk).exists())
         self.assertTrue(LogEntry.objects.filter(object_repr=str(self.rule), action_flag=3).exists())
         # the rules of a package rule are disabled there, not deleted

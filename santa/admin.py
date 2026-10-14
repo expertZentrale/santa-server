@@ -28,7 +28,6 @@ from .models import (
     ReleaseSource,
     ReleaseVersion,
     Rule,
-    RuleType,
     SavedFilter,
     SignInGroup,
     Tag,
@@ -36,7 +35,14 @@ from .models import (
 )
 from .profiles import base_profile, group_profile
 from .releases import ReleaseError, cleanup_release_source, find_binaries, sync_release_source
-from .services import allow_identifier, can_see_sync_token, set_rules_enabled
+from .services import (
+    UploadedBinary,
+    allow_binaries,
+    allow_identifier,
+    binary_identifiers,
+    can_see_sync_token,
+    set_rules_enabled,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -372,42 +378,26 @@ class RuleAdmin(admin.ModelAdmin):
 
     def _create_rules_from_upload(self, request, form, found):
         rule_type = form.cleaned_data["rule_type"]
-        identifiers = []
-        for path_in_file, info in found:
-            candidates = {
-                RuleType.BINARY: [info.sha256],
-                RuleType.CERTIFICATE: [info.cert_sha256],
-                RuleType.TEAMID: [info.team_id],
-                RuleType.SIGNINGID: [info.signing_id],
-                RuleType.CDHASH: info.cdhashes,
-            }[rule_type]
-            for identifier in candidates:
-                if identifier and (identifier, path_in_file) not in identifiers:
-                    identifiers.append((identifier, path_in_file))
-        if not identifiers:
+        binaries = [UploadedBinary.from_info(path, info) for path, info in found]
+        choices = [(binary, rule_type) for binary in binaries if binary_identifiers(rule_type, binary)]
+        if not choices:
             form.add_error("rule_type", f"The file has no {rule_type} (unsigned or ad-hoc signed?). "
                                         "Use a binary rule instead.")
             return 0
-        created_count = 0
-        seen = set()
-        for identifier, path_in_file in identifiers:
-            if identifier in seen:
-                continue
-            seen.add(identifier)
-            description = (form.cleaned_data["description"]
-                           or f"Upload {form.cleaned_data['file'].name}: {path_in_file}")
-            rule, created = allow_identifier(
-                rule_type, identifier, form.cleaned_data["policy"],
-                form.cleaned_data["scope"] == form.SCOPE_GLOBAL, form.cleaned_data["groups"],
-                request.user, description, form.cleaned_data["tags"],
-            )
+        name = form.cleaned_data["file"].name
+        results = allow_binaries(
+            choices, form.cleaned_data["policy"], form.cleaned_data["scope"] == form.SCOPE_GLOBAL,
+            form.cleaned_data["groups"], request.user,
+            form.cleaned_data["description"] or (lambda binary: f"Upload {name}: {binary.path}"),
+            form.cleaned_data["tags"])
+        for rule, created in results:
             if created:
-                created_count += 1
                 self.log_addition(request, rule, "Created from an uploaded file")
             else:
                 self.log_change(request, rule, "Scope extended from an uploaded file")
-        self.message_user(request, f"{len(seen)} rule(s) saved ({created_count} new).", messages.SUCCESS)
-        return len(seen)
+        self.message_user(request, f"{len(results)} rule(s) saved ({sum(c for _r, c in results)} new).",
+                          messages.SUCCESS)
+        return len(results)
 
 
 class ExecutingUserFilter(admin.AllValuesFieldListFilter):
@@ -549,11 +539,11 @@ class ReleaseSourceAdmin(admin.ModelAdmin):
     actions = ["check_now", "clean_up"]
     fieldsets = (
         (None, {"fields": ("name", "kind", "identifier", "is_enabled")}),
-        ("Which versions and files", {"fields": ("version_pattern", "asset_pattern", "binary_pattern",
-                                                 "include_prereleases", "include_dependencies")}),
+        ("Which versions and files", {"fields": ("version_pattern", "asset_pattern", "binary_pattern", "macos_minimum",
+                                                 "macos_nearest", "include_prereleases", "include_dependencies")}),
         ("Rules", {"fields": ("rule_type", "policy", "custom_msg", "custom_url", "cel_expr")}),
         ("Scope", {"fields": ("is_global", "groups", "auto_approve", "auto_approve_delay_days", "keep_versions",
-                              "keep_unit", "approve_kept_versions", "tags")}),
+                              "keep_unit", "approve_kept_versions", "tags", "description")}),
         ("Status", {"fields": ("last_checked_at", "last_error", "created_at", "updated_at")}),
     )
 

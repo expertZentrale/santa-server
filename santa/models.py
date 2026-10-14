@@ -456,6 +456,27 @@ class Tag(models.Model):
 # ReleaseVersion.identifier is part of a unique index
 IDENTIFIER_MAX_LENGTH = 450
 
+def pattern_lines(text):
+    """The patterns of a package rule field, one per line"""
+    return [line.strip() for line in (text or "").splitlines() if line.strip()]
+
+
+# the macOS releases of the Homebrew bottle tags, newest first (Homebrew: Library/Homebrew/macos_version.rb)
+MACOS_RELEASES = (
+    ("golden_gate", "macOS 27 (golden_gate)"),
+    ("tahoe", "macOS 26 Tahoe"),
+    ("sequoia", "macOS 15 Sequoia"),
+    ("sonoma", "macOS 14 Sonoma"),
+    ("ventura", "macOS 13 Ventura"),
+    ("monterey", "macOS 12 Monterey"),
+    ("big_sur", "macOS 11 Big Sur"),
+    ("catalina", "macOS 10.15 Catalina"),
+    ("mojave", "macOS 10.14 Mojave"),
+    ("high_sierra", "macOS 10.13 High Sierra"),
+    ("sierra", "macOS 10.12 Sierra"),
+    ("el_capitan", "OS X 10.11 El Capitan"),
+)
+
 
 class ReleaseSource(models.Model):
     """Watches the releases of an unsigned tool and allowlists the hashes of every new version."""
@@ -471,30 +492,42 @@ class ReleaseSource(models.Model):
 
     name = models.CharField(max_length=200, unique=True)
     kind = models.CharField(max_length=32, choices=Kind.choices)
+    description = models.TextField(_("description"), max_length=1000, blank=True)
     identifier = models.TextField(
         _("identifiers"),
         help_text=_("One per line, each one is checked on its own and keeps its own versions. "
-                  "GitHub: owner/repo (e.g. abiosoft/colima) · Homebrew: formula or cask name · URL: the full URL · "
+                  "GitHub: owner/repo (e.g. abiosoft/colima) · Homebrew: formula or cask name, from a tap with its "
+                  "full name (e.g. hashicorp/tap/terraform) · URL: the full URL · "
                   "npm: package name (e.g. @esbuild/darwin-arm64) · VS Code: publisher.name "
                   "(e.g. rust-lang.rust-analyzer) · JetBrains: plugin ID (e.g. com.intellij.plugins.watcher)"),
     )
-    asset_pattern = models.CharField(
-        max_length=200, blank=True,
-        help_text=_("Regex. GitHub: matched against the asset names (e.g. Darwin). "
+    asset_pattern = models.TextField(
+        blank=True,
+        help_text=_("Regexes, one per line: an asset is taken when one of them matches. "
+                  "GitHub: matched against the asset names (e.g. Darwin). "
                   "Homebrew formula: matched against the bottle tags (e.g. ^arm64_). "
                   "Homebrew cask: matched against the download URLs. "
                   "VS Code: matched against the target platforms (darwin-arm64, darwin-x64, universal). "
                   "JetBrains: matched against the compatible products (e.g. ^PHPSTORM$). Empty = everything."),
     )
-    version_pattern = models.CharField(
-        max_length=200, blank=True,
-        help_text=_("Regex. Only releases whose version matches are taken (e.g. ^1\\. to stay on 1.x). "
-                  "Empty = every version."),
+    version_pattern = models.TextField(
+        blank=True,
+        help_text=_("Regexes, one per line. Only releases whose version matches one of them are taken "
+                  "(e.g. ^1\\. to stay on 1.x). Empty = every version."),
     )
-    binary_pattern = models.CharField(
-        max_length=200, blank=True,
-        help_text=_("Glob matched against the paths inside an archive (e.g. */bin/colima). "
+    binary_pattern = models.TextField(
+        blank=True,
+        help_text=_("Globs, one per line, matched against the paths inside an archive (e.g. */bin/colima). "
                   "Empty = every Mach-O executable found."),
+    )
+    macos_minimum = models.CharField(
+        _("minimum macOS"), max_length=32, blank=True, choices=MACOS_RELEASES,
+        help_text=_("Homebrew formula: only the bottles for Macs with this macOS or newer. Empty = every bottle."),
+    )
+    macos_nearest = models.BooleanField(
+        _("take the nearest bottle"), default=True,
+        help_text=_("Homebrew formula: a bottle for an older macOS counts for the newer ones it runs on, like in "
+                  "Homebrew (portable-ruby has only arm64_big_sur, which serves arm64_sequoia too)."),
     )
     include_prereleases = models.BooleanField(default=False, help_text=_("GitHub, VS Code, JetBrains (EAP)"))
 
@@ -588,10 +621,17 @@ class ReleaseSource(models.Model):
         else:
             self.identifier = "\n".join(identifiers)
         for name in ("asset_pattern", "version_pattern"):
-            try:
-                re.compile(getattr(self, name))
-            except re.error as e:
-                errors[name] = gettext("Invalid regex: %(error)s") % {"error": e}
+            pattern_errors = []
+            for line in pattern_lines(getattr(self, name)):
+                try:
+                    re.compile(line)
+                except re.error as e:
+                    pattern_errors.append(gettext("Invalid regex %(pattern)s: %(error)s") % {
+                        "pattern": line[:50], "error": e})
+            if pattern_errors:
+                errors[name] = pattern_errors
+            setattr(self, name, "\n".join(pattern_lines(getattr(self, name))))
+        self.binary_pattern = "\n".join(pattern_lines(self.binary_pattern))
         if self.policy == Policy.CEL and not self.cel_expr:
             errors["cel_expr"] = gettext("Required for the CEL policy.")
         if self.policy != Policy.CEL and self.cel_expr:
@@ -695,6 +735,9 @@ class Rule(models.Model):
                                         related_name="rules", editable=False)
     # name@version of the dependency of the release the binary came from, empty for the package itself
     release_dependency = models.CharField(max_length=300, blank=True, editable=False)
+    # the files of the release the rule allows: [{"asset", "match", "path", "sha256"}]; the clean up checks them
+    # against the asset and binary pattern
+    release_files = models.JSONField(default=list, blank=True, editable=False)
 
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
                                    related_name="+", editable=False)
@@ -1048,6 +1091,30 @@ class UserProfile(models.Model):
 
     def __str__(self):
         return f"Profile of {self.user}"
+
+
+class UserNotification(models.Model):
+    """A message of the console (django.contrib.messages) kept for its user: the bell in the top bar lists them.
+    Not the e-mails (notifications.py)."""
+
+    class Level(models.TextChoices):
+        SUCCESS = "success", _("Success")
+        INFO = "info", _("Info")
+        WARNING = "warning", _("Warning")
+        ERROR = "error", _("Error")
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="console_notifications")
+    level = models.CharField(max_length=16, choices=Level.choices, default=Level.INFO)
+    text = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    read_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-pk"]
+        indexes = [models.Index(fields=["user", "created_at"], name="santa_notification_user_time")]
+
+    def __str__(self):
+        return f"{self.user}: {self.text[:50]}"
 
 
 class SavedFilter(models.Model):

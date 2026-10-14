@@ -1,3 +1,5 @@
+import json
+
 from django.conf import settings
 from django.db import connection
 from django.http import HttpResponse
@@ -60,3 +62,31 @@ class UserTimeZoneMiddleware:
         else:
             timezone.deactivate()
         return self.get_response(request)
+
+
+class NotificationTriggerMiddleware:
+    """A request that added a message (message_storage.py) tells the page with htmx: the bell counts again.
+
+    An HX-Trigger of the view (drawerSaved, also as JSON with details) is kept.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+        if getattr(request, "notifications_added", False) and request.headers.get("HX-Request") == "true":
+            response["HX-Trigger"] = add_trigger(response.get("HX-Trigger", ""), "notificationsChanged")
+        return response
+
+
+def add_trigger(header, name):
+    """An event added to an HX-Trigger header: a name, names with commas, or JSON"""
+    header = header.strip()
+    if not header:
+        return name
+    if header.startswith("{"):
+        events = json.loads(header)
+        events.setdefault(name, None)
+        return json.dumps(events)
+    return f"{header}, {name}"

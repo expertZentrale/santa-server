@@ -1,0 +1,5 @@
+{% extends "console/_drawer.html" %}{% load i18n %}
+{% block drawer_class %} wide{% endblock %}
+{% block drawer_attrs %}{% if results %} data-refresh-on-close{% endif %}{% endblock %}
+{% block drawer_title %}{% translate "Allow as package" %}{% endblock %}
+{% block drawer_body %}{% include "console/events/_packages_form.html" with in_drawer=True %}{% endblock %}

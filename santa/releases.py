@@ -4,6 +4,7 @@ Every release asset is downloaded, the Mach-O executables inside are hashed, and
 is created per hash. Santa then allows exactly these files, and nothing else built by someone else.
 """
 import base64
+import copy
 import fnmatch
 import hashlib
 import logging
@@ -22,8 +23,18 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.utils.http import urlencode
 
-from . import macho, notifications, semver
-from .models import DEPENDENCY_KINDS, HISTORY_KINDS, ReleaseSource, ReleaseVersion, Rule, RuleType
+from . import archives, macho, notifications, semver
+from .models import (
+    DEPENDENCY_KINDS,
+    HISTORY_KINDS,
+    MACOS_RELEASES,
+    ReleaseSource,
+    ReleaseVersion,
+    Rule,
+    RuleType,
+    pattern_lines,
+)
+from .progress import Progress
 from .services import chunked
 
 logger = logging.getLogger(__name__)
@@ -31,7 +42,8 @@ logger = logging.getLogger(__name__)
 SKIPPED_ASSET_SUFFIXES = (".sha256", ".sha256sum", ".sha512", ".md5", ".txt", ".sig", ".asc", ".pem",
                           ".sbom", ".json", ".spdx", ".intoto.jsonl", ".bundle", ".deb", ".rpm", ".apk", ".exe",
                           ".msi")
-UNSUPPORTED_SUFFIXES = (".dmg", ".pkg")
+# read inside an archive, package or disk image: the .pkg in a .dmg, …
+NESTED_SUFFIXES = (".pkg", ".dmg", ".zip", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz", ".tar.xz", ".txz")
 # anonymous token accepted by ghcr.io for the Homebrew bottles
 HOMEBREW_BOTTLE_TOKEN = "QQ=="
 MAX_ARCHIVE_MEMBERS = 20000
@@ -52,6 +64,9 @@ class Asset:
     headers: dict = None
     # npm only publishes a SHA-512
     sha512: str = ""
+    # what the asset pattern is matched against: the name (GitHub), the bottle tags the bottle serves, the URL
+    # (cask), the target platform (VS Code), the compatible products (JetBrains). Empty: the name.
+    match: tuple = ()
 
 
 @dataclass
@@ -70,6 +85,7 @@ class FoundBinary:
     info: macho.MachOInfo
     # name@version of the dependency it came from, empty for the package itself
     dependency: str = ""
+    asset_match: tuple = ()
 
 
 # Downloads and archives
@@ -140,7 +156,20 @@ def _worth_unpacking(path, size, pattern):
 
 
 def _matches(path, pattern):
-    return not pattern or fnmatch.fnmatch(path, pattern) or fnmatch.fnmatch(path.rsplit("/", 1)[-1], pattern)
+    """The binary pattern (globs, one per line) against a path, or its file name"""
+    globs = pattern_lines(pattern)
+    name = path.rsplit("/", 1)[-1]
+    return not globs or any(fnmatch.fnmatch(path, glob) or fnmatch.fnmatch(name, glob) for glob in globs)
+
+
+def binary_path_matches(path, pattern):
+    """The binary pattern against a path found by find_binaries: inside a nested archive ("x.dmg/x.pkg/bin/tool")
+    the pattern was matched against the path inside it"""
+    if _matches(path, pattern):
+        return True
+    parts = path.split("/")
+    return any(_matches("/".join(parts[index + 1:]), pattern)
+               for index, part in enumerate(parts[:-1]) if part.lower().endswith(NESTED_SUFFIXES))
 
 
 def _inspect_candidate(fileobj, path, pattern):
@@ -156,11 +185,20 @@ def _inspect_candidate(fileobj, path, pattern):
     return info
 
 
+def _is_nested(path, size):
+    return path.lower().endswith(NESTED_SUFFIXES) and size <= settings.RELEASE_MAX_FILE_BYTES
+
+
 def find_binaries(fileobj, name, pattern=""):
-    """Yield (path, MachOInfo) for the Mach-O executables in a raw binary, a zip or a tar archive"""
-    if name.lower().endswith(UNSUPPORTED_SUFFIXES):
-        raise ReleaseError(f"{name}: .dmg and .pkg files cannot be unpacked here. "
-                           "Signed apps are better allowed with a Team ID or Signing ID rule.")
+    """Yield (path, MachOInfo) for the Mach-O executables in a raw binary, a zip or tar archive, a flat package
+    (.pkg) or a disk image (.dmg). An archive inside one (the .pkg in a .dmg) is read too, one level deep."""
+    try:
+        yield from _find_binaries(fileobj, name, pattern, _UnpackBudget(name), nested=False)
+    except archives.ArchiveError as e:
+        raise ReleaseError(f"{name}: {e}") from e
+
+
+def _find_binaries(fileobj, name, pattern, budget, nested):
     fileobj.seek(0)
     header = fileobj.read(8)
     fileobj.seek(0)
@@ -168,47 +206,142 @@ def find_binaries(fileobj, name, pattern=""):
         info = _inspect_candidate(fileobj, name, pattern)
         if info:
             yield name, info
+        return
+
+    def wanted(path, size, executable):
+        # packages and disk images keep the x bit: only executables are worth unpacking there
+        return ((not nested and _is_nested(path, size))
+                or (executable is not False and _worth_unpacking(path, size, pattern)))
+
+    if archives.is_pkg(header):
+        members = archives.pkg_members(fileobj, budget.consume, MAX_ARCHIVE_MEMBERS)
+    elif archives.is_dmg(fileobj):
+        members = archives.dmg_members(fileobj, wanted, budget.consume, MAX_ARCHIVE_MEMBERS,
+                                       settings.RELEASE_UNPACK_TIMEOUT)
     elif zipfile.is_zipfile(fileobj):
-        fileobj.seek(0)
-        budget = _UnpackBudget(name)
-        with zipfile.ZipFile(fileobj) as archive:
-            for member in archive.infolist()[:MAX_ARCHIVE_MEMBERS]:
-                if member.is_dir() or not _worth_unpacking(member.filename, member.file_size, pattern):
-                    continue
-                with archive.open(member) as member_fileobj, _spool(member_fileobj, budget) as spooled:
-                    info = _inspect_candidate(spooled, member.filename, pattern)
-                    if info:
-                        yield member.filename, info
+        members = _zip_members(fileobj)
     else:
-        fileobj.seek(0)
         try:
-            archive = tarfile.open(fileobj=fileobj, mode="r:*")
+            members = _tar_members(tarfile.open(fileobj=fileobj, mode="r:*"))
         except tarfile.TarError:
-            raise ReleaseError(f"{name}: not a Mach-O binary, zip or tar archive")
-        budget = _UnpackBudget(name)
-        with archive:
-            for index, member in enumerate(archive):
-                if index >= MAX_ARCHIVE_MEMBERS:
-                    break
-                if not member.isfile() or not _worth_unpacking(member.name, member.size, pattern):
-                    continue
+            if nested:
+                return
+            raise ReleaseError(f"{name}: not a Mach-O binary, zip or tar archive, package or disk image") from None
+    for path, size, executable, open_member in members:
+        if not wanted(path, size, executable):
+            continue
+        with open_member() as member_fileobj, _spool(member_fileobj, budget) as spooled:
+            if not nested and _is_nested(path, size):
+                for inner_path, info in _find_binaries(spooled, path, pattern, budget, nested=True):
+                    yield f"{path}/{inner_path}", info
+                continue
+            info = _inspect_candidate(spooled, path, pattern)
+            if info:
+                yield path, info
+
+
+def _zip_members(fileobj):
+    fileobj.seek(0)
+    with zipfile.ZipFile(fileobj) as archive:
+        for member in archive.infolist()[:MAX_ARCHIVE_MEMBERS]:
+            if not member.is_dir():
+                yield member.filename, member.file_size, None, lambda member=member: archive.open(member)
+
+
+def _tar_members(archive):
+    with archive:
+        for index, member in enumerate(archive):
+            if index >= MAX_ARCHIVE_MEMBERS:
+                break
+            if member.isfile():
                 member_fileobj = archive.extractfile(member)
-                if member_fileobj is None:
-                    continue
-                with member_fileobj, _spool(member_fileobj, budget) as spooled:
-                    info = _inspect_candidate(spooled, member.name, pattern)
-                    if info:
-                        yield member.name, info
+                if member_fileobj is not None:
+                    yield member.name, member.size, None, lambda member_fileobj=member_fileobj: member_fileobj
 
 
 # Release providers
 
 
-def _asset_regex(source):
+def compile_patterns(text, label="pattern"):
+    """The regexes of a pattern field, one per line; None when it is empty (everything matches)"""
+    lines = pattern_lines(text)
     try:
-        return re.compile(source.asset_pattern) if source.asset_pattern else None
+        return [re.compile(line) for line in lines] or None
     except re.error as e:
-        raise ReleaseError(f"Invalid asset pattern: {e}")
+        raise ReleaseError(f"Invalid {label}: {e}")
+
+
+def _asset_regex(source):
+    return compile_patterns(source.asset_pattern, "asset pattern")
+
+
+def version_matches(source, version):
+    """The version pattern: one of its regexes matches (an empty pattern takes every version)"""
+    try:
+        patterns = compile_patterns(source.version_pattern)
+    except ReleaseError:
+        return True
+    return patterns is None or not version or any(pattern.search(version) for pattern in patterns)
+
+
+# the kinds that use the asset pattern (npm and URL have one file per release)
+ASSET_PATTERN_KINDS = (ReleaseSource.Kind.GITHUB_RELEASE, ReleaseSource.Kind.HOMEBREW_FORMULA,
+                       ReleaseSource.Kind.HOMEBREW_CASK, ReleaseSource.Kind.VSCODE_EXTENSION,
+                       ReleaseSource.Kind.JETBRAINS_PLUGIN)
+
+
+def asset_matches(patterns, values):
+    """The asset pattern takes an asset when one of its regexes matches one of its values (Asset.match)"""
+    return patterns is None or any(pattern.search(value) for pattern in patterns for value in values)
+
+
+# the macOS releases of the bottle tags, newest first
+MACOS_NAMES = tuple(name for name, _label in MACOS_RELEASES)
+
+
+def bottle_coverage(tags):
+    """{bottle tag: the tags of the Macs it serves}. Like Homebrew: a Mac gets the bottle of the newest macOS that
+    is not newer than its own, of the same architecture; "all" serves every Mac. A formula built only for
+    arm64_big_sur (portable-ruby) is installed on arm64_sequoia too."""
+    coverage = {tag: [tag] for tag in tags}
+    for prefix in ("arm64_", ""):
+        current = None
+        for release in reversed(MACOS_NAMES):
+            tag = prefix + release
+            if tag in coverage:
+                current = tag
+            elif current:
+                coverage[current].append(tag)
+    if "all" in coverage:
+        coverage["all"] += [prefix + release for prefix in ("arm64_", "") for release in MACOS_NAMES
+                            if prefix + release not in coverage]
+    return coverage
+
+
+def bottle_served(source, served):
+    """The tags of the Macs a bottle is taken for. served: its coverage, its own tag first (Asset.match).
+    Without "nearest bottle" only its own tag counts; the minimum macOS leaves out the older Macs."""
+    tags = list(served) if source.macos_nearest else list(served[:1])
+    if source.macos_minimum in MACOS_NAMES:
+        newer = MACOS_NAMES[:MACOS_NAMES.index(source.macos_minimum) + 1]
+        wanted = {prefix + name for prefix in ("arm64_", "") for name in newer}
+        tags = [tag for tag in tags if tag == "all" or tag in wanted]
+    return tags
+
+
+def bottle_taken(source, patterns, served):
+    tags = bottle_served(source, served)
+    return bool(tags) and asset_matches(patterns, tags)
+
+
+def _bottle_assets(source, name, version, bottles):
+    """The assets of the bottles a source takes. bottles: {tag: (url, sha256, headers)}"""
+    patterns = _asset_regex(source)
+    coverage = bottle_coverage(bottles)
+    return [Asset(name=f"{name}-{version}.{tag}.bottle.tar.gz", url=url, sha256=sha256, headers=headers,
+                  match=tuple(coverage[tag]))
+            for tag, (url, sha256, headers) in sorted(bottles.items())
+            if bottle_taken(source, patterns, coverage[tag])]
 
 
 def latest_github_release(session, source, identifier):
@@ -252,16 +385,19 @@ def _github_release(source, data):
         name = asset["name"]
         if name.lower().endswith(SKIPPED_ASSET_SUFFIXES):
             continue
-        if regex and not regex.search(name):
+        if not asset_matches(regex, (name,)):
             continue
         digest = asset.get("digest") or ""
         assets.append(Asset(name=name, url=asset["browser_download_url"],
-                            sha256=digest.removeprefix("sha256:") if digest.startswith("sha256:") else ""))
+                            sha256=digest.removeprefix("sha256:") if digest.startswith("sha256:") else "",
+                            match=(name,)))
     published_at = parse_datetime(data.get("published_at") or "")
     return Release(version=data["tag_name"], assets=assets, published_at=published_at)
 
 
 def latest_homebrew_formula(session, source, identifier):
+    if is_tap_identifier(identifier):
+        return latest_homebrew_tap(session, source, identifier, cask=False)
     response = session.get(f"https://formulae.brew.sh/api/formula/{identifier}.json",
                            timeout=settings.RELEASE_HTTP_TIMEOUT)
     response.raise_for_status()
@@ -269,14 +405,12 @@ def latest_homebrew_formula(session, source, identifier):
     version = data["versions"]["stable"]
     if data.get("revision"):
         version = f"{version}_{data['revision']}"
-    regex = _asset_regex(source)
-    assets = []
-    for tag, bottle in sorted(data.get("bottle", {}).get("stable", {}).get("files", {}).items()):
-        if tag.startswith(("x86_64_linux", "arm64_linux")) or (regex and not regex.search(tag)):
-            continue
-        assets.append(Asset(name=f"{identifier}-{version}.{tag}.bottle.tar.gz", url=bottle["url"],
-                            sha256=bottle["sha256"], headers={"Authorization": f"Bearer {HOMEBREW_BOTTLE_TOKEN}"}))
-    return Release(version=version, assets=assets, dependencies=list(data.get("dependencies") or []))
+    headers = {"Authorization": f"Bearer {HOMEBREW_BOTTLE_TOKEN}"}
+    bottles = {tag: (bottle["url"], bottle["sha256"], headers)
+               for tag, bottle in data.get("bottle", {}).get("stable", {}).get("files", {}).items()
+               if not tag.startswith(("x86_64_linux", "arm64_linux"))}
+    return Release(version=version, assets=_bottle_assets(source, identifier, version, bottles),
+                   dependencies=list(data.get("dependencies") or []))
 
 
 def _ghcr_repository(name):
@@ -290,11 +424,13 @@ def homebrew_formula_releases(session, source, identifier, limit):
     formulae.brew.sh only knows the current version. Every tag of the registry is a version (a rebuild of the same
     bottle gets "-1", "-2"…); its index lists the bottles per macOS with their SHA-256 and the publication date.
     """
+    if is_tap_identifier(identifier):
+        # a tap has only its current version
+        return [latest_homebrew_tap(session, source, identifier, cask=False)]
     headers = {"Authorization": f"Bearer {HOMEBREW_BOTTLE_TOKEN}"}
     base = f"https://ghcr.io/v2/homebrew/core/{_ghcr_repository(identifier)}"
     response = session.get(f"{base}/tags/list", headers=headers, timeout=settings.RELEASE_HTTP_TIMEOUT)
     response.raise_for_status()
-    regex = _asset_regex(source)
     cutoff = source.keep_cutoff()
     releases = {}
     # the tags come oldest first; a looked-up version older than the range ends the search
@@ -313,24 +449,25 @@ def homebrew_formula_releases(session, source, identifier, limit):
         if version in releases:
             # an older build of a version already found
             continue
-        assets = []
+        digests = {}
         for manifest in index.get("manifests") or []:
             if (manifest.get("platform") or {}).get("os") != "darwin":
                 continue
             bottle = manifest.get("annotations") or {}
             # "0.9.1.arm64_sequoia.1": version, bottle tag, rebuild
             bottle_tag = bottle.get("org.opencontainers.image.ref.name", "").removeprefix(f"{version}.").split(".")[0]
-            digest = bottle.get("sh.brew.bottle.digest")
-            if not digest or (regex and not regex.search(bottle_tag)):
-                continue
-            assets.append(Asset(name=f"{identifier}-{version}.{bottle_tag}.bottle.tar.gz",
-                                url=f"{base}/blobs/sha256:{digest}", sha256=digest, headers=headers))
-        releases[version] = Release(version=version, assets=sorted(assets, key=lambda asset: asset.name),
+            if digest := bottle.get("sh.brew.bottle.digest"):
+                digests[bottle_tag] = digest
+        bottles = {bottle_tag: (f"{base}/blobs/sha256:{digest}", digest, headers)
+                   for bottle_tag, digest in digests.items()}
+        releases[version] = Release(version=version, assets=_bottle_assets(source, identifier, version, bottles),
                                     published_at=published_at)
     return list(releases.values())
 
 
 def latest_homebrew_cask(session, source, identifier):
+    if is_tap_identifier(identifier):
+        return latest_homebrew_tap(session, source, identifier, cask=True)
     response = session.get(f"https://formulae.brew.sh/api/cask/{identifier}.json",
                            timeout=settings.RELEASE_HTTP_TIMEOUT)
     response.raise_for_status()
@@ -342,11 +479,195 @@ def latest_homebrew_cask(session, source, identifier):
     regex = _asset_regex(source)
     assets = []
     for url, sha256 in sorted(candidates.items()):
-        if regex and not regex.search(url):
+        if not asset_matches(regex, (url,)):
             continue
         name = url.split("?")[0].rsplit("/", 1)[-1]
-        assets.append(Asset(name=name, url=url, sha256="" if sha256 in (None, "no_check") else sha256))
+        assets.append(Asset(name=name, url=url, sha256="" if sha256 in (None, "no_check") else sha256,
+                            match=(url,)))
     return Release(version=str(data["version"]), assets=assets)
+
+
+# Homebrew taps (owner/tap/name): no JSON API, the Ruby file of the formula or cask in the GitHub repository
+# owner/homebrew-tap is read with regexes. It covers the usual forms (url + sha256, per OS and architecture,
+# bottle blocks), not every Ruby expression; a download it can't read is left out and named in the error.
+TAP_FILE_MAX_BYTES = 512 * 1024
+_TAP_SKIPPED_BLOCKS = ("resource", "patch", "head", "livecheck", "test", "service", "caveats")
+_RB_END = re.compile(r"^\s*end\b")
+_RB_CONDITION = re.compile(r"^\s*(?:if|unless)\s+(.+)$")
+_RB_BLOCK = re.compile(r"^\s*(\w+)\b.*\bdo\b(?:\s*\|[^|]*\|)?\s*$")
+_RB_OPENERS = re.compile(r"^\s*(?:case|begin|def|class|module|while|until)\b")
+_RB_URL = re.compile(r"""^\s*url\s+["']([^"']+)["']""")
+_RB_SHA256 = re.compile(r"""^\s*sha256\s+(?:["']([0-9a-f]{64})["']|:no_check)""")
+# a comment after the code ("#{…}" is an interpolation)
+_RB_COMMENT = re.compile(r"\s+#(?!\{).*$")
+_RB_SHA256_ARCH = re.compile(r'\b(arm|intel):\s*"([0-9a-f]{64})"')
+_RB_ARCH = re.compile(r'^\s*arch\s+(.+)$')
+_RB_ARCH_VALUE = re.compile(r'\b(arm|intel):\s*"([^"]*)"')
+_RB_BOTTLE_SHA = re.compile(r'\b(\w+):\s*"([0-9a-f]{64})"')
+_RB_DEPENDS = re.compile(r'^\s*depends_on\s+"([^"]+)"\s*(=>.*)?$')
+
+
+def is_tap_identifier(identifier):
+    parts = identifier.split("/")
+    return len(parts) == 3 and all(parts)
+
+
+def _tap_file(session, identifier, cask):
+    owner, tap, name = identifier.split("/")
+    base = f"https://raw.githubusercontent.com/{owner}/homebrew-{tap}/HEAD"
+    folder = "Casks" if cask else "Formula"
+    headers = {"Authorization": f"Bearer {settings.GITHUB_TOKEN}"} if settings.GITHUB_TOKEN else {}
+    for path in (f"{folder}/{name}.rb", f"{folder}/{name[0]}/{name}.rb", f"{name}.rb"):
+        with session.get(f"{base}/{path}", headers=headers, stream=True,
+                         timeout=settings.RELEASE_HTTP_TIMEOUT) as response:
+            if response.status_code == 404:
+                continue
+            response.raise_for_status()
+            data = b""
+            for chunk in response.iter_content(64 * 1024):
+                data += chunk
+                if len(data) > TAP_FILE_MAX_BYTES:
+                    raise ReleaseError(f"{identifier}: the file in the tap is bigger than {TAP_FILE_MAX_BYTES} bytes")
+            return data.decode("utf-8", "replace")
+    raise ReleaseError(f"{identifier}: not found in the tap {owner}/{tap}")
+
+
+def parse_tap_file(text):
+    """The parts of a formula or cask file: {"version", "revision", "downloads": [(url, sha256, context)],
+    "arch": {arm, intel}, "arch_sha256": {arm, intel}, "root_url", "rebuild", "bottles": {tag: sha256},
+    "dependencies"}.
+    context: the conditions around a download (on_linux, OS.mac? && Hardware::CPU.arm?, …), lower case."""
+    found = {"version": "", "revision": 0, "downloads": [], "arch": {}, "arch_sha256": {}, "root_url": "",
+             "rebuild": 0, "bottles": {}, "dependencies": []}
+    # the open blocks: (kind, condition); kind "root" (the class of the formula, the cask block), "if", "else",
+    # "skip", "bottle" or "" (any other block)
+    stack = []
+    pending = None
+    # a sha256 written before its url (some casks)
+    loose_sha = None
+    for line in text.splitlines():
+        if line.lstrip().startswith("#"):
+            continue
+        line = _RB_COMMENT.sub("", line)
+        if _RB_END.match(line):
+            if stack:
+                stack.pop()
+            continue
+        if re.match(r"^\s*(?:elsif)\b", line) and stack:
+            stack[-1] = ("if", line.strip()[5:].lower())
+            continue
+        if re.match(r"^\s*else\b", line) and stack:
+            # the other branch: the condition of the if doesn't hold, its words say nothing
+            stack[-1] = ("else", "")
+            continue
+        if condition := _RB_CONDITION.match(line):
+            stack.append(("if", condition[1].lower()))
+            continue
+        if block := _RB_BLOCK.match(line):
+            word = block[1]
+            if word == "cask" and not stack:
+                stack.append(("root", ""))
+            elif word == "bottle":
+                stack.append(("bottle", ""))
+            elif word in _TAP_SKIPPED_BLOCKS:
+                stack.append(("skip", ""))
+            else:
+                # on_arm, on_macos, on_linux, on_sonoma :or_newer, stable, …
+                stack.append(("", line.strip().lower()))
+            continue
+        if _RB_OPENERS.match(line):
+            stack.append(("root" if not stack and line.strip().startswith("class ") else "", ""))
+            continue
+        kinds = [kind for kind, _condition in stack]
+        if "skip" in kinds:
+            continue
+        context = " ".join(condition for _kind, condition in stack)
+        top_level = all(kind == "root" for kind in kinds)
+        if "bottle" in kinds:
+            if root := re.match(r'^\s*root_url\s+"([^"]+)"', line):
+                found["root_url"] = root[1].rstrip("/")
+            elif rebuild := re.match(r"^\s*rebuild\s+(\d+)", line):
+                found["rebuild"] = int(rebuild[1])
+            elif line.strip().startswith("sha256"):
+                found["bottles"].update({tag: sha for tag, sha in _RB_BOTTLE_SHA.findall(line) if tag != "cellar"})
+            continue
+        if top_level and (version := re.match(r"""^\s*version\s+["']([^"']+)["']""", line)) and not found["version"]:
+            found["version"] = version[1]
+        elif top_level and (revision := re.match(r"^\s*revision\s+(\d+)", line)):
+            found["revision"] = int(revision[1])
+        elif arch := _RB_ARCH.match(line):
+            found["arch"] = dict(_RB_ARCH_VALUE.findall(arch[1]))
+        elif url := _RB_URL.match(line):
+            pending = [url[1], loose_sha or "", context]
+            loose_sha = None
+            found["downloads"].append(pending)
+        elif sha := _RB_SHA256.match(line):
+            if pending is not None and not pending[1]:
+                pending[1] = sha[1] or ""
+            else:
+                loose_sha = sha[1] or ""
+        elif re.match(r"^\s*(?:sha256\s+)?(?:arm|intel):", line):
+            # sha256 arm: "…", intel: "…" (a cask with #{arch}), also over two lines
+            found["arch_sha256"].update(_RB_SHA256_ARCH.findall(line))
+        elif (depends := _RB_DEPENDS.match(line)) and not re.search(r":(?:build|test)\b", depends[2] or "") \
+                and "linux" not in context:
+            found["dependencies"].append(depends[1])
+    found["downloads"] = [tuple(download) for download in found["downloads"]]
+    return found
+
+
+def _tap_assets(found, version):
+    """The macOS downloads of a tap file, the variables filled in; the ones left with a variable are named"""
+    assets = []
+    unreadable = []
+    for url, sha256, context in found["downloads"]:
+        if "linux" in context or re.search(r"linux|windows|win64|\.exe\b|\.msi\b", url, re.I):
+            continue
+        variants = [(url, sha256)]
+        if "#{arch}" in url and found["arch"]:
+            variants = [(url.replace("#{arch}", value), sha256 or found["arch_sha256"].get(key, ""))
+                        for key, value in found["arch"].items()]
+        for variant, digest in variants:
+            variant = variant.replace("#{version}", version)
+            if "#{" in variant:
+                unreadable.append(variant)
+                continue
+            name = variant.split("?")[0].rsplit("/", 1)[-1] or "download"
+            assets.append(Asset(name=name, url=variant, sha256=digest, match=(variant,)))
+    return assets, unreadable
+
+
+def latest_homebrew_tap(session, source, identifier, cask):
+    found = parse_tap_file(_tap_file(session, identifier, cask))
+    name = identifier.rsplit("/", 1)[-1]
+    version = found["version"]
+    if not version:
+        first = next((url for url, _sha, _context in found["downloads"]), "")
+        guessed = re.search(r"(\d+(?:\.\d+)+)", first)
+        version = guessed[1] if guessed else ""
+    package_version = f"{version}_{found['revision']}" if found["revision"] else version
+    if not cask and found["bottles"] and found["root_url"]:
+        headers = None
+        if "ghcr.io/v2/" in found["root_url"]:
+            headers = {"Authorization": f"Bearer {HOMEBREW_BOTTLE_TOKEN}"}
+        rebuild = f".{found['rebuild']}" if found["rebuild"] else ""
+        bottles = {}
+        for tag, sha256 in found["bottles"].items():
+            if tag.endswith("_linux"):
+                continue
+            if headers:
+                url = f"{found['root_url']}/{_ghcr_repository(name)}/blobs/sha256:{sha256}"
+            else:
+                url = f"{found['root_url']}/{name}-{package_version}.{tag}.bottle{rebuild}.tar.gz"
+            bottles[tag] = (url, sha256, headers)
+        assets = _bottle_assets(source, name, package_version, bottles)
+    else:
+        assets, unreadable = _tap_assets(found, version)
+        patterns = _asset_regex(source)
+        assets = [asset for asset in assets if asset_matches(patterns, asset.match)]
+        if not assets and unreadable:
+            raise ReleaseError(f"{identifier}: no download the server can read, e.g. {unreadable[0]}")
+    return Release(version=package_version, assets=assets, dependencies=found["dependencies"])
 
 
 def latest_url(session, source, identifier):
@@ -435,12 +756,13 @@ def _vscode_releases(session, source, identifier, flags):
         if platform not in VSCODE_MAC_PLATFORMS:
             continue
         release = releases.setdefault(version["version"], Release(version=version["version"], assets=[]))
-        if regex and not regex.search(platform):
+        if not asset_matches(regex, (platform,)):
             continue
         url = next((f["source"] for f in version.get("files", [])
                     if f["assetType"] == "Microsoft.VisualStudio.Services.VSIXPackage"), None)
         if url:
-            release.assets.append(Asset(name=f"{identifier}-{version['version']}@{platform}.vsix", url=url))
+            release.assets.append(Asset(name=f"{identifier}-{version['version']}@{platform}.vsix", url=url,
+                                        match=(platform,)))
             release.published_at = max(filter(None, [release.published_at,
                                                      parse_datetime(version.get("lastUpdated") or "")]), default=None)
     return list(releases.values())
@@ -471,13 +793,14 @@ def jetbrains_releases(session, source, identifier, limit):
     for update in response.json():
         if not update.get("approve", True) or update.get("hidden"):
             continue
-        if regex and not any(regex.search(product) for product in update.get("compatibleVersions") or {}):
+        products = tuple(update.get("compatibleVersions") or {})
+        if not asset_matches(regex, products):
             continue
         published_at = None
         if update.get("cdate"):
             published_at = datetime.fromtimestamp(int(update["cdate"]) / 1000, tz=UTC)
         asset = Asset(name=update["file"].rsplit("/", 1)[-1],
-                      url=f"https://downloads.marketplace.jetbrains.com/files/{update['file']}")
+                      url=f"https://downloads.marketplace.jetbrains.com/files/{update['file']}", match=products)
         releases.append(Release(version=update["version"], assets=[asset], published_at=published_at))
     return releases
 
@@ -608,7 +931,8 @@ def collect_binaries(session, source, release, dependency=""):
         try:
             with download(session, asset) as fileobj:
                 for path, info in find_binaries(fileobj, asset.name, pattern):
-                    found.append(FoundBinary(asset=asset.name, path=path, info=info, dependency=dependency))
+                    found.append(FoundBinary(asset=asset.name, path=path, info=info, dependency=dependency,
+                                             asset_match=asset.match))
         except (ReleaseError, requests.RequestException) as e:
             errors.append(str(e))
     return found, errors
@@ -625,39 +949,47 @@ def rule_identifiers(rule_type, info):
     return [(RuleType.BINARY, info.sha256)]
 
 
+def release_file(asset, match, path, sha256):
+    """An entry of Rule.release_files"""
+    return {"asset": asset, "match": list(match), "path": path, "sha256": sha256}
+
+
 def create_release_rules(source, release_version, binaries, enabled=None):
     """enabled: None = as the source approves new versions"""
     if enabled is None:
         enabled = source.auto_approve and not release_version.auto_enable_pending
     rules = []
-    seen = set()
+    # one rule for the binaries sharing an identifier (a Team ID), it keeps all their files
+    binaries_of = {}
     for binary in binaries:
-        for rule_type, identifier in rule_identifiers(source.rule_type, binary.info):
-            if (rule_type, identifier) in seen:
-                continue
-            seen.add((rule_type, identifier))
-            rule = Rule(
-                rule_type=rule_type,
-                identifier=identifier,
-                policy=source.policy,
-                custom_msg=source.custom_msg,
-                custom_url=source.custom_url,
-                cel_expr=source.cel_expr,
-                description=f"{release_version} – {binary.asset}: {binary.path}"[:500],
-                is_global=source.is_global,
-                is_enabled=enabled,
-                release_source=source,
-                release_version=release_version,
-                release_dependency=binary.dependency[:300],
-            )
-            try:
-                rule.full_clean(exclude=["release_source", "release_version"])
-            except ValidationError as e:
-                raise ReleaseError(f"{binary.path}: {' '.join(e.messages)}")
-            rule.save()
-            rule.groups.set(source.groups.all())
-            rule.tags.set(source.tags.all())
-            rules.append(rule)
+        for key in rule_identifiers(source.rule_type, binary.info):
+            binaries_of.setdefault(key, []).append(binary)
+    for (rule_type, identifier), same in binaries_of.items():
+        binary = same[0]
+        rule = Rule(
+            rule_type=rule_type,
+            identifier=identifier,
+            policy=source.policy,
+            custom_msg=source.custom_msg,
+            custom_url=source.custom_url,
+            cel_expr=source.cel_expr,
+            description=f"{release_version} – {binary.asset}: {binary.path}"[:500],
+            is_global=source.is_global,
+            is_enabled=enabled,
+            release_source=source,
+            release_version=release_version,
+            release_dependency=binary.dependency[:300],
+            release_files=[release_file(item.asset, item.asset_match, item.path, item.info.sha256)
+                           for item in same],
+        )
+        try:
+            rule.full_clean(exclude=["release_source", "release_version"])
+        except ValidationError as e:
+            raise ReleaseError(f"{binary.path}: {' '.join(e.messages)}")
+        rule.save()
+        rule.groups.set(source.groups.all())
+        rule.tags.set(source.tags.all())
+        rules.append(rule)
     return rules
 
 
@@ -687,24 +1019,83 @@ def _version_date(version):
     return version.published_at or version.created_at
 
 
+RULE_OUTSIDE_ASSET_PATTERN = "asset"
+RULE_OUTSIDE_BINARY_PATTERN = "binary"
+
+
+def _asset_still_taken(source, patterns, file):
+    if not file.get("match") or source.kind not in ASSET_PATTERN_KINDS:
+        return True
+    if source.kind == ReleaseSource.Kind.HOMEBREW_FORMULA and file.get("asset", "").endswith(".bottle.tar.gz"):
+        # the bottles: also the minimum macOS and the nearest bottle
+        return bottle_taken(source, patterns, file["match"])
+    return asset_matches(patterns, file["match"])
+
+
+def _rule_outside_patterns(source, patterns, rule):
+    """Why the asset or binary pattern no longer covers any file of a rule of the package itself, None when one
+    file is covered or its files are not known (recorded before they were kept)"""
+    files = rule.release_files or []
+    if not files or rule.release_dependency:
+        return None
+    in_assets = [file for file in files if _asset_still_taken(source, patterns, file)]
+    if not in_assets:
+        return RULE_OUTSIDE_ASSET_PATTERN
+    if not any(not file.get("path") or binary_path_matches(file["path"], source.binary_pattern)
+               for file in in_assets):
+        return RULE_OUTSIDE_BINARY_PATTERN
+    return None
+
+
+def _pattern_stale(source):
+    """({version pk: [(rule, reason)]} of the rules the asset or binary pattern no longer covers, the pks of the
+    versions none of whose own rules is covered any more)"""
+    try:
+        patterns = _asset_regex(source)
+    except ReleaseError:
+        patterns = None
+    bottle_settings = source.kind == ReleaseSource.Kind.HOMEBREW_FORMULA and (
+        source.macos_minimum or not source.macos_nearest)
+    if patterns is None and not source.binary_pattern and not bottle_settings:
+        return {}, set()
+    own = {}
+    for rule in (source.rules.filter(release_dependency="").exclude(release_version=None)
+                 .select_related("release_version")
+                 .only("pk", "rule_type", "identifier", "release_dependency", "release_files",
+                       "release_version__identifier", "release_version__version")):
+        own.setdefault(rule.release_version_id, []).append(rule)
+    stale = {}
+    whole = set()
+    for version_pk, rules in own.items():
+        found = [(rule, reason) for rule in rules if (reason := _rule_outside_patterns(source, patterns, rule))]
+        if found:
+            stale[version_pk] = found
+            if len(found) == len(rules):
+                whole.add(version_pk)
+    return stale, whole
+
+
+def pattern_stale_versions(source):
+    """The pks of the versions none of whose own rules the asset or binary pattern covers any more"""
+    return _pattern_stale(source)[1]
+
+
 def stale_versions(source, now=None, check_filters=False):
     """The versions to delete: of identifiers removed from the source, and outside the range to keep.
 
-    check_filters: also the versions the version pattern no longer matches (the "clean up" of the console;
-    the sync leaves them, the pattern only decides about new versions there).
+    check_filters: also the versions the version pattern no longer matches, and those whose files the asset or
+    binary pattern no longer covers (the "clean up" of the console; the sync leaves them, the patterns only decide
+    about new versions there).
     """
     identifiers = set(source.identifiers)
-    pattern = None
-    if check_filters and source.version_pattern and source.kind != ReleaseSource.Kind.URL:
-        try:
-            pattern = re.compile(source.version_pattern)
-        except re.error:
-            pattern = None
+    check_versions = check_filters and source.kind != ReleaseSource.Kind.URL
+    outside_files = pattern_stale_versions(source) if check_filters else set()
     cutoff = source.keep_cutoff(now)
     stale = []
     by_identifier = {}
     for version in source.versions.all():
-        if version.identifier not in identifiers or (pattern and not pattern.search(version.version)):
+        if (version.identifier not in identifiers or (check_versions and not version_matches(source, version.version))
+                or version.pk in outside_files):
             stale.append(version)
         else:
             by_identifier.setdefault(version.identifier, []).append(version)
@@ -747,13 +1138,45 @@ def _left_dependency_rules(source, versions):
             if rule.release_version_id not in deleted]
 
 
+def stale_rules(source):
+    """The rules of the versions kept whose files the asset or binary pattern no longer covers: [(rule, reason)]
+    (the versions with no covered rule left are deleted as a whole, see stale_versions)"""
+    stale, _whole = _pattern_stale(source)
+    deleted = {version.pk for version in stale_versions(source, check_filters=True)}
+    return [item for version_pk, items in stale.items() if version_pk not in deleted for item in items]
+
+
+def _delete_stale_rules(items):
+    """Delete the rules outside the patterns; the binaries no other rule of their version allows leave its count"""
+    deleting = {rule.pk for rule, _reason in items}
+    by_version = {}
+    for rule, _reason in items:
+        by_version.setdefault(rule.release_version_id, []).append(rule)
+    versions = [version for chunk in chunked(list(by_version))
+                for version in ReleaseVersion.objects.filter(pk__in=chunk)]
+    for version in versions:
+        removed = {file.get("sha256") for rule in by_version[version.pk] for file in rule.release_files} - {"", None}
+        for rule in version.rules.only("pk", "rule_type", "identifier", "release_files"):
+            if rule.pk not in deleting:
+                removed -= {file.get("sha256") for file in rule.release_files}
+                removed.discard(rule.identifier if rule.rule_type == RuleType.BINARY else None)
+        if removed:
+            version.binary_count = max(0, version.binary_count - len(removed))
+            version.save(update_fields=["binary_count"])
+    count = 0
+    for chunk in chunked(list(deleting)):
+        count += Rule.objects.filter(pk__in=chunk).delete()[1].get("santa.Rule", 0)
+    return count
+
+
 def cleanup_release_source(source):
     """Delete the versions and rules the package rule no longer covers. Returns (versions, rules) deleted."""
     versions, rule_count, _count = cleanup_preview(source)
+    outside = stale_rules(source)
     with transaction.atomic():
-        dependency_count = 0
+        other_count = _delete_stale_rules(outside)
         for chunk in chunked(_left_dependency_rules(source, versions)):
-            dependency_count += Rule.objects.filter(pk__in=chunk).delete()[1].get("santa.Rule", 0)
+            other_count += Rule.objects.filter(pk__in=chunk).delete()[1].get("santa.Rule", 0)
         for version in versions:
             version.delete()
         if not uses_dependencies(source):
@@ -763,7 +1186,7 @@ def cleanup_release_source(source):
                 version.dependency_binary_count = 0
                 version.save(update_fields=["binary_count", "dependency_binary_count"])
             source.versions.update(dependencies=[], dependencies_resolved=False)
-    return len(versions), rule_count + dependency_count
+    return len(versions), rule_count + other_count
 
 
 def _record_release(session, source, identifier, release):
@@ -773,7 +1196,7 @@ def _record_release(session, source, identifier, release):
         raise ReleaseError(f"No matching asset in release {release.version or '-'}")
     if release.version and versions.filter(version=release.version).exists():
         return None, []
-    if release.version and source.version_pattern and not re.search(source.version_pattern, release.version):
+    if release.version and not version_matches(source, release.version):
         logger.info("Release source %s: %s version %s skipped by the version pattern",
                     source.name, identifier, release.version)
         return None, []
@@ -857,8 +1280,7 @@ def _add_dependencies(session, source, identifier, latest, errors):
 
 def kept_releases(source, releases, now=None):
     """The releases inside the range the source keeps, newest first"""
-    if source.version_pattern:
-        releases = [release for release in releases if re.search(source.version_pattern, release.version)]
+    releases = [release for release in releases if version_matches(source, release.version)]
     cutoff = source.keep_cutoff(now)
     if cutoff is None:
         return releases[:source.keep_versions]
@@ -904,18 +1326,87 @@ def _sync_identifier(session, source, identifier):
     return new_versions, errors
 
 
-def sync_release_source(source, session=None):
+PREVIEW_RELEASES = 5
+PREVIEW_FILES = 20
+
+
+def preview_release_source(source, session=None, progress=None):
+    """What the patterns of a package rule (saved or not) take, without downloading anything: per identifier
+    {"identifier", "error", "releases": [{"version", "published_at", "version_ok", "assets": [{"name", "ok",
+    "also"}]}], "files": [{"path", "ok"}]}. The files are those of the recorded versions, for the binary pattern."""
+    session = session or http_session()
+    progress = progress or Progress()
+    asset_regex = _asset_regex(source)
+    # the providers filter with the asset pattern and the bottle settings: without them they return every asset,
+    # marked here
+    unfiltered = copy.copy(source)
+    unfiltered.asset_pattern = ""
+    unfiltered.macos_minimum = ""
+    unfiltered.macos_nearest = True
+    files_of = _recorded_files(source) if source.pk else {}
+    results = []
+    progress.add_total(len(source.identifiers))
+    for identifier in source.identifiers:
+        progress.start(identifier)
+        result = {"identifier": identifier, "error": "", "releases": [],
+                  "files": files_of.get(identifier, [])[:PREVIEW_FILES]}
+        results.append(result)
+        try:
+            if source.kind in HISTORY:
+                releases = HISTORY[source.kind](session, unfiltered, identifier, PREVIEW_RELEASES)
+            else:
+                releases = [PROVIDERS[source.kind](session, unfiltered, identifier)]
+        except (ReleaseError, requests.RequestException, KeyError, ValueError) as e:
+            result["error"] = str(e)
+            continue
+        for release in releases[:PREVIEW_RELEASES]:
+            result["releases"].append({
+                "version": release.version, "published_at": release.published_at,
+                "version_ok": version_matches(source, release.version),
+                "assets": [_preview_asset(source, asset_regex, asset) for asset in release.assets],
+            })
+    return results
+
+
+def _preview_asset(source, patterns, asset):
+    if asset.name.endswith(".bottle.tar.gz") and asset.match:
+        served = bottle_served(source, asset.match)
+        # a bottle for an older macOS: the newer ones it serves
+        return {"name": asset.name, "ok": bottle_taken(source, patterns, asset.match),
+                "also": [tag for tag in served if tag != asset.match[0]]}
+    return {"name": asset.name, "also": [],
+            "ok": source.kind not in ASSET_PATTERN_KINDS or asset_matches(patterns, asset.match or (asset.name,))}
+
+
+def _recorded_files(source):
+    """{identifier: [{"path", "ok"}]}: the files of the recorded versions against the binary pattern"""
+    paths = {}
+    for rule in (source.rules.filter(release_dependency="").exclude(release_version=None)
+                 .select_related("release_version").only("release_files", "release_version__identifier")):
+        for file in rule.release_files:
+            if file.get("path"):
+                paths.setdefault(rule.release_version.identifier, set()).add(file["path"])
+    return {identifier: [{"path": path, "ok": binary_path_matches(path, source.binary_pattern)}
+                         for path in sorted(found, key=lambda path: (binary_path_matches(path, source.binary_pattern),
+                                                                     path))]
+            for identifier, found in paths.items()}
+
+
+def sync_release_source(source, session=None, progress=None):
     """Check every identifier of the source for a new release. Return the new ReleaseVersions.
 
     A failing identifier does not stop the others. ReleaseError is raised at the end if one failed,
     the new versions of the other identifiers are kept and in its new_versions.
     """
     session = session or http_session()
+    progress = progress or Progress()
     several = source.has_several_identifiers
     new_versions = []
     errors = []
     failed = []
+    progress.add_total(len(source.identifiers))
     for identifier in source.identifiers:
+        progress.start(identifier)
         prefix = f"{identifier}: " if several else ""
         try:
             found, warnings = _sync_identifier(session, source, identifier)

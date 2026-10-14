@@ -21,6 +21,7 @@
     {% if event.resolved_at %}<dt>{% translate "Resolved" %}</dt><dd>{% blocktranslate with date=event.resolved_at|date:"d.m.Y H:i" by=event.resolved_by|default:"–" %}{{ date }} by {{ by }}{% endblocktranslate %}{% if event.resolution_rule %} · {% url 'console:rule' event.resolution_rule.pk as rule_url %}<a href="{{ rule_url }}" hx-get="{{ rule_url }}" hx-target="#drawer">{% translate "rule" %}</a>{% endif %}</dd>{% endif %}
   </dl>
   {% if requests %}<h3>{% translate "Requests" %}</h3><ul class="plain">{% for r in requests %}<li>{% url 'console:request' r.pk as request_url %}<a href="{{ request_url }}" hx-get="{{ request_url }}" hx-target="#drawer">{{ r.requester }}</a> · <span class="badge">{{ r.get_status_display }}</span></li>{% endfor %}</ul>{% endif %}
+  {% if package %}{% include "console/events/_package_hint.html" %}{% endif %}
   {% if perms.santa.add_rule %}
   <h3>{% translate "Create rule" %}</h3>
   {% include "console/rules/_existing.html" %}

@@ -1,0 +1,20 @@
+{% extends "console/base.html" %}{% load i18n %}
+{% block title %}{% translate "Notifications" %}{% endblock %}
+{% block main_class %}narrow{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{% translate "Notifications" %}</h1>
+  {% if total %}<div class="actions"><form method="post" action="{% url 'notifications_clear' %}" data-confirm="{% translate 'Remove all notifications?' %}">{% csrf_token %}<input type="hidden" name="next" value="{% url 'notifications' %}"><button class="button">{% translate "Remove all" %}</button></form></div>{% endif %}
+</div>
+<nav class="segmented notifications-filter" aria-label="{% translate 'Level' %}">
+  <a href="{% url 'notifications' %}"{% if not level %} aria-current="true"{% endif %}>{% translate "All" %} <span class="muted">{{ total }}</span></a>
+  {% for value, label, count in levels %}<a href="?level={{ value }}"{% if level == value %} aria-current="true"{% endif %}>{{ label }} <span class="muted">{{ count }}</span></a>{% endfor %}
+</nav>
+<section class="card">
+  {% if page.object_list %}
+  <ul class="notifications-list">{% for item in page %}{% include "console/notifications/_item.html" %}{% endfor %}</ul>
+  {% else %}<p class="muted">{% translate "No notifications." %}</p>{% endif %}
+</section>
+{% include "console/_pagination.html" %}
+<p class="help small">{% translate "The messages of your actions in the console, kept for 30 days." %}</p>
+{% endblock %}

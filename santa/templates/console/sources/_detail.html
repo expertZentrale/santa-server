@@ -1,19 +1,23 @@
 {% load console i18n %}<div class="actions detail-actions">
   {% if perms.santa.change_releasesource %}
-  <form method="post" action="{% url 'console:source_check' source.pk %}" class="inline"{% if in_drawer %} hx-post="{% url 'console:source_check' source.pk %}" hx-target="#drawer"{% endif %}>{% csrf_token %}<input type="hidden" name="next" value="{% url 'console:source' source.pk %}"><button class="button">{% translate "Check now" %}</button></form>
+  <form method="post" action="{% url 'console:source_check' source.pk %}" class="inline" data-progress{% if in_drawer %} hx-post="{% url 'console:source_check' source.pk %}" hx-target="#drawer"{% endif %}>{% csrf_token %}<input type="hidden" name="next" value="{% url 'console:source' source.pk %}"><button class="button">{% translate "Check now" %}</button></form>
   {% url 'console:source_edit' source.pk as edit_url %}<a class="button primary" href="{{ edit_url }}"{% if in_drawer %} hx-get="{{ edit_url }}" hx-target="#drawer"{% endif %}>{% translate "Edit" %}</a>{% endif %}
-  {% if perms.santa.change_releasesource and perms.santa.delete_rule %}{% url 'console:source_cleanup' source.pk as cleanup_url %}<a class="button" href="{{ cleanup_url }}" hx-get="{{ cleanup_url }}" hx-target="#drawer">{% translate "Clean up" %}{% if stale %} <span class="badge warn">{{ stale|length }}</span>{% endif %}</a>{% endif %}
+  {% if perms.santa.change_releasesource and perms.santa.delete_rule %}{% url 'console:source_cleanup' source.pk as cleanup_url %}<a class="button" href="{{ cleanup_url }}" hx-get="{{ cleanup_url }}" hx-target="#drawer">{% translate "Clean up" %}{% if stale_count %} <span class="badge warn">{{ stale_count }}</span>{% endif %}</a>{% endif %}
   {% url 'console:history' 'releasesource' source.pk as history_url %}<a class="button right" href="{{ history_url }}" hx-get="{{ history_url }}" hx-target="#drawer">{% translate "History" %}</a>
 </div>
 {% if source.last_error %}<pre class="error-box">{{ source.last_error }}</pre>{% endif %}
 <section class="card summary">
   <dl class="facts inline">
+    {% if source.description %}<dt>{% translate "Comment" %}</dt><dd>{{ source.description|linebreaksbr }}</dd>{% endif %}
     <dt>{% translate "Catalog" %}</dt><dd>{{ source.get_kind_display }}</dd>
     <dt>{% translate "Rules" %}</dt><dd>{{ source.get_rule_type_display }} · <span class="badge {{ source.policy|policy_class }}">{{ source.get_policy_display }}</span></dd>
     <dt>{% translate "Scope" %}</dt><dd>{% if source.is_global %}{% translate "All Macs" %}{% else %}{% for group in source.groups.all %}{% url 'console:group' group.pk as group_url %}<a href="{{ group_url }}" hx-get="{{ group_url }}" hx-target="#drawer">{{ group.name }}</a>{% if not forloop.last %}, {% endif %}{% empty %}{% translate "none" %}{% endfor %}{% endif %}</dd>
     <dt>{% translate "Approval" %}</dt><dd>{% if source.auto_approve %}{% if source.auto_approve_delay_days %}{% blocktranslate count days=source.auto_approve_delay_days %}automatic after {{ days }} day{% plural %}automatic after {{ days }} days{% endblocktranslate %}{% else %}{% translate "automatic" %}{% endif %}{% else %}{% translate "manual" %}{% endif %}
       · {% if not source.keep_versions %}{% translate "keep all versions" %}{% elif source.keep_unit == "WEEKS" %}{% blocktranslate count count=source.keep_versions %}keep the versions of the last week{% plural %}keep the versions of the last {{ count }} weeks{% endblocktranslate %}{% elif source.keep_unit == "MONTHS" %}{% blocktranslate count count=source.keep_versions %}keep the versions of the last month{% plural %}keep the versions of the last {{ count }} months{% endblocktranslate %}{% else %}{% blocktranslate count count=source.keep_versions %}keep {{ count }} version{% plural %}keep {{ count }} versions{% endblocktranslate %}{% endif %}{% if source.approve_kept_versions %} · {% translate "also the older ones" %}{% endif %}{% if source.include_dependencies %} · {% translate "with dependencies" %}{% endif %}</dd>
-    {% if source.version_pattern %}<dt>{% translate "Versions" %}</dt><dd class="mono">{{ source.version_pattern }}</dd>{% endif %}
+    {% if source.version_pattern %}<dt>{% translate "Versions" %}</dt><dd class="mono">{{ source.version_pattern|linebreaksbr }}</dd>{% endif %}
+    {% if source.asset_pattern %}<dt>{% translate "Assets" %}</dt><dd class="mono">{{ source.asset_pattern|linebreaksbr }}</dd>{% endif %}
+    {% if source.binary_pattern %}<dt>{% translate "Binaries" %}</dt><dd class="mono">{{ source.binary_pattern|linebreaksbr }}</dd>{% endif %}
+    {% if source.kind == "HOMEBREW_FORMULA" %}<dt>{% translate "macOS" %}</dt><dd>{% if source.macos_minimum %}{% blocktranslate with release=source.get_macos_minimum_display %}{{ release }} or newer{% endblocktranslate %}{% else %}{% translate "every macOS" %}{% endif %}{% if source.macos_nearest %} · {% translate "nearest bottle" %}{% endif %}</dd>{% endif %}
     <dt>{% translate "Last check" %}</dt><dd>{{ source.last_checked_at|date:"d.m.Y H:i"|default:_("never") }}</dd>
   </dl>
 </section>

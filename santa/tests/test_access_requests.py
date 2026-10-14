@@ -1,6 +1,6 @@
 import json
 from datetime import timedelta
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 from django.contrib.admin.models import LogEntry
 from django.contrib.auth.models import Permission, User
@@ -275,6 +275,69 @@ class AdminRequestTestCase(ConsoleBase):
             "rule_type": RuleType.BINARY, "policy": Policy.ALLOWLIST, "scope": "groups", "groups": [self.dev.pk]})
         self.assertEqual(Rule.objects.get().identifier, SHA_A)
 
+    def test_detail_offers_the_rule_that_allows_the_binary_already(self):
+        rule = Rule.objects.create(rule_type=RuleType.TEAMID, identifier="ABCDE12345")
+        rule.groups.add(self.dev)
+        Rule.objects.create(rule_type=RuleType.BINARY, identifier=SHA_A, policy=Policy.BLOCKLIST, is_global=True)
+        access_request = self.event_request()
+        response = self.client.get(reverse("console:request", args=(access_request.pk,)))
+        self.assertContains(response, "There are rules for this binary already")
+        form = response.context["approve_form"]
+        self.assertEqual((form["result"].value(), form["existing_rule"].value()), ("existing", rule.pk))
+        # a block rule is no approval
+        self.assertEqual([match["rule"] for match in form.allowing], [rule])
+
+    def test_detail_without_allowing_rules_offers_a_new_rule_only(self):
+        access_request = self.event_request()
+        form = self.client.get(reverse("console:request", args=(access_request.pk,))).context["approve_form"]
+        self.assertEqual(form["result"].value(), "rule")
+        self.assertEqual([value for value, label in form.fields["result"].choices], ["rule", "none"])
+
+    def test_approve_event_with_the_existing_rule(self):
+        rule = Rule.objects.create(rule_type=RuleType.TEAMID, identifier="ABCDE12345", is_global=True)
+        access_request = self.event_request()
+        response = self.client.post(reverse("console:request_approve", args=(access_request.pk,)), {
+            "result": "existing", "existing_rule": rule.pk, "note": "Allowed already"})
+        self.assertRedirects(response, reverse("console:requests"))
+        access_request.refresh_from_db()
+        self.assertEqual((access_request.status, access_request.result_rule),
+                         (AccessRequest.Status.APPROVED, rule))
+        self.assertEqual(Rule.objects.count(), 1)
+        self.assertEqual(Event.objects.get().resolution_rule, rule)
+
+    def test_approve_event_with_the_existing_rule_widened(self):
+        rule = Rule.objects.create(rule_type=RuleType.TEAMID, identifier="ABCDE12345", is_enabled=False)
+        rule.groups.add(self.sales)
+        access_request = self.event_request()
+        self.client.post(reverse("console:request_approve", args=(access_request.pk,)), {
+            "result": "extend", "existing_rule": rule.pk, "scope": "groups", "groups": [self.dev.pk]})
+        access_request.refresh_from_db()
+        rule.refresh_from_db()
+        self.assertEqual(access_request.result_rule, rule)
+        self.assertTrue(rule.is_enabled)
+        self.assertEqual(set(rule.groups.all()), {self.dev, self.sales})
+        self.assertEqual(Event.objects.get().resolution_rule, rule)
+        self.assertTrue(LogEntry.objects.filter(object_id=str(rule.pk)).exists())
+
+    def test_approve_event_with_another_rule_than_the_matching_ones(self):
+        rule = Rule.objects.create(rule_type=RuleType.TEAMID, identifier="ABCDE12345", is_global=True)
+        unrelated = Rule.objects.create(rule_type=RuleType.TEAMID, identifier="ZZZZZ99999", is_global=True)
+        access_request = self.event_request()
+        response = self.client.post(reverse("console:request_approve", args=(access_request.pk,)), {
+            "result": "existing", "existing_rule": unrelated.pk})
+        self.assertEqual(response.status_code, 200)
+        access_request.refresh_from_db()
+        self.assertTrue(access_request.is_pending)
+        self.assertNotEqual(access_request.result_rule, rule)
+
+    def test_approve_event_without_a_rule(self):
+        access_request = self.event_request()
+        self.client.post(reverse("console:request_approve", args=(access_request.pk,)), {"result": "none"})
+        access_request.refresh_from_db()
+        self.assertEqual((access_request.status, access_request.result_rule), (AccessRequest.Status.APPROVED, None))
+        self.assertFalse(Rule.objects.exists())
+        self.assertIsNotNone(Event.objects.get().resolved_at)
+
     def package_request(self, *packages):
         access_request = AccessRequest.objects.create(requester=self.user, kind="PACKAGE", title="packages",
                                                       justification="x")
@@ -327,7 +390,7 @@ class AdminRequestTestCase(ConsoleBase):
         self.assertRedirects(response, reverse("console:requests"))
         source.refresh_from_db()
         self.assertEqual(source.identifiers, ["esbuild", "vite"])
-        sync.assert_called_once_with(source)
+        sync.assert_called_once_with(source, progress=ANY)
         self.assertEqual(ReleaseSource.objects.count(), 1)
 
     def test_approve_needs_a_package_and_a_scope(self):
@@ -388,7 +451,7 @@ class AdminRequestTestCase(ConsoleBase):
         source = ReleaseSource.objects.get(name="Colima")
         self.assertEqual((source.identifiers, list(source.groups.all()), source.auto_approve),
                          (["abiosoft/colima"], [self.dev], False))
-        sync.assert_called_once_with(source)
+        sync.assert_called_once_with(source, progress=ANY)
         access_request.refresh_from_db()
         self.assertEqual(access_request.result_source, source)
 
