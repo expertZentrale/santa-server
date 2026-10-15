@@ -243,6 +243,7 @@ body:has(.drawer.open) .bulkbar.visible { opacity: 0; visibility: hidden; pointe
   .table:not(.keep) td[data-label=""]::before { content: none; }
   .table:not(.keep) td.num { text-align: left; }
   .table:not(.keep) tr.empty td { display: block; }
+  .table:not(.keep) tr.empty td::before { content: none; }
   .table.fixed { table-layout: auto; width: auto !important; }
   .table:not(.keep) th { width: auto !important; }
   .col-resize, .table-tools { display: none; }
@@ -270,6 +271,7 @@ body:has(.drawer.open) .bulkbar.visible { opacity: 0; visibility: hidden; pointe
 .table tr.skeleton:hover { background: none; }
 .skeleton-bar { display: block; width: 70%; max-width: 14rem; height: .75rem; border-radius: var(--radius-sm); background: var(--surface-2); animation: skeleton 1.6s ease-in-out infinite; }
 .skeleton-bar.short { width: 45%; height: .6rem; margin-top: .4rem; }
+.skeleton-card { display: grid; gap: .5rem; }
 .table tr.skeleton td:nth-child(3n) .skeleton-bar:not(.short) { width: 50%; }
 .table tr.skeleton td:nth-child(4n) .skeleton-bar:not(.short) { width: 35%; }
 /* the checkbox column: a box, not a bar (on phones in the corner of the card, like the checkbox) */

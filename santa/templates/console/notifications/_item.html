@@ -5,7 +5,7 @@
     <small class="muted"><span class="sr-only">{{ item.get_level_display }} · </span><time datetime="{{ item.created_at|date:'c' }}" title="{{ item.created_at|date:'d.m.Y H:i' }}">{% blocktranslate with since=item.created_at|timesince %}{{ since }} ago{% endblocktranslate %}</time></small>
   </div>
   <form method="post" action="{% url 'notification_dismiss' item.pk %}" hx-post="{% url 'notification_dismiss' item.pk %}" hx-target="#notification-{{ item.pk }}" hx-swap="outerHTML">
-    {% csrf_token %}<input type="hidden" name="next" value="{{ next_url|default:request.get_full_path }}">{% if in_panel %}<input type="hidden" name="in_panel" value="1">{% endif %}
+    {% csrf_token %}<input type="hidden" name="next" value="{{ next_url|default:request.get_full_path }}">{% if in_panel %}<input type="hidden" name="in_panel" value="1">{% elif level %}<input type="hidden" name="level" value="{{ level }}">{% endif %}
     <button class="icon-button small" title="{% translate 'Remove' %}" aria-label="{% translate 'Remove' %}">{% include "console/icons/x.svg" %}</button>
   </form>
 </li>

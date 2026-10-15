@@ -1,0 +1,35 @@
+{% load console i18n %}{# The versions per package of a package rule (sources/_detail.html; in the drawer its own request) #}
+{% for identifier, item, versions in per_identifier %}
+<section class="card">
+  <h2 class="with-icon">{% if item.icon_url %}<img src="{{ item.icon_url }}" alt="" referrerpolicy="no-referrer">{% endif %}
+    {{ item.name|default:identifier }} <code>{{ identifier }}</code>
+    {% if identifier not in source.identifiers %}<span class="badge bad">{% translate "removed, deleted at the next check" %}</span>{% endif %}</h2>
+  <table class="table compact">
+    <thead><tr><th>{% translate "Version" %}</th><th>{% translate "Published" %}</th><th>{% translate "Binaries" %}</th><th>{% translate "Approval" %}</th><th></th></tr></thead>
+    <tbody>
+    {% for version in versions %}
+      <tr>
+        <td class="strong">{{ version.version }}{% if version.pk in stale and identifier in source.identifiers %} <span class="badge warn">{% translate "not covered" %}</span>{% endif %}
+          {% if version.dependency_rows %}<details class="dependencies"><summary>{% blocktranslate count count=version.dependency_rows|length %}{{ count }} dependency{% plural %}{{ count }} dependencies{% endblocktranslate %}</summary>
+            <ul class="plain">{% for label, has_rules in version.dependency_rows %}<li><code>{{ label }}</code>{% if has_rules %} <span class="badge ok">{% translate "executables allowed" %}</span>{% endif %}</li>{% endfor %}</ul>
+            <small class="muted">{% translate "Dependencies without a mark have no executable (scripts, libraries): nothing for Santa to allow." %}</small></details>
+          {% elif source.include_dependencies and not version.dependencies_resolved %}<small class="muted">{% translate "dependencies at the next check" %}</small>{% endif %}</td>
+        <td>{{ version.published_at|default:version.created_at|date:"d.m.Y" }}</td>
+        <td><a href="{% url 'console:rules' %}?version={{ version.pk }}">{{ version.binary_count }}</a></td>
+        <td>{% if not version.binary_count %}<span class="muted">{% translate "no executable, nothing to allow" %}</span>
+          {% elif version.auto_enable_pending %}<span class="badge info">{% blocktranslate with date=version.auto_enable_at|date:"d.m.Y H:i" %}automatic on {{ date }}{% endblocktranslate %}</span>
+          {% else %}{% for rule in version.rules.all|slice:":1" %}{% if rule.is_enabled %}<span class="badge ok">{% translate "enabled" %}</span>{% else %}<span class="badge">{% translate "waiting / disabled" %}</span>{% endif %}{% endfor %}{% endif %}</td>
+        {# only the action that changes something: approve a waiting version, disable an enabled one #}
+        <td class="nowrap">{% if perms.santa.change_rule and version.binary_count %}{% with rule=version.rules.all.0 %}
+          {% if rule.is_enabled %}<form method="post" action="{% url 'console:version_disable' version.pk %}" class="inline"{% if in_drawer %} hx-post="{% url 'console:version_disable' version.pk %}" hx-target="#drawer"{% endif %}>{% csrf_token %}<button class="button small">{% translate "Disable" %}</button></form>
+          {% else %}<form method="post" action="{% url 'console:version_approve' version.pk %}" class="inline"{% if in_drawer %} hx-post="{% url 'console:version_approve' version.pk %}" hx-target="#drawer"{% endif %}>{% csrf_token %}<button class="button small">{% if version.auto_enable_pending %}{% translate "Approve now" %}{% else %}{% translate "Approve" %}{% endif %}</button></form>{% endif %}
+        {% endwith %}{% endif %}</td>
+      </tr>
+    {% empty %}
+      <tr class="empty"><td colspan="5">{% translate "No version yet. Use “Check now”." %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endfor %}
+{% if oob and perms.santa.change_releasesource and perms.santa.delete_rule %}<span id="cleanup-count-{{ source.pk }}" hx-swap-oob="true">{% if stale_count %} <span class="badge warn">{{ stale_count }}</span>{% endif %}</span>{% endif %}

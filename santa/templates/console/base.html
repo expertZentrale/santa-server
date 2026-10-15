@@ -15,6 +15,7 @@
   <script src="{% static 'santa/console/core.js' %}" defer></script>
   <script src="{% static 'santa/console/filterbar.js' %}" defer></script>
   <script src="{% static 'santa/console/drawer.js' %}" defer></script>
+  <script src="{% static 'santa/console/checks.js' %}" defer></script>
   <script src="{% static 'santa/console/table.js' %}" defer></script>
   <script src="{% static 'santa/console/live.js' %}" defer></script>
   <script src="{% static 'santa/console/forms.js' %}" defer></script>
@@ -28,7 +29,7 @@
 </head>
 {# every link and form loads in place (hx-boost, core.js); the drawer links and forms have their own target #}
 <body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}' hx-boost="true">
-<header class="topbar" data-topbar>
+<header class="topbar" data-topbar data-keeps-drawer>
   {% if user.is_authenticated %}
   <button type="button" class="burger" data-burger aria-expanded="false" aria-controls="main-nav" aria-label="{% translate 'Menu' %}">{% include "console/icons/menu.svg" %}</button>
   {% endif %}
@@ -113,18 +114,19 @@
 </header>
 {# an action is running: a request, an upload, a download (core.js) #}
 {# the connection to the server: lost, back again (core.js) #}
-<div id="connection" class="connection" role="status" aria-live="polite" hidden
+<div id="connection" class="connection" role="status" aria-live="polite" data-keeps-drawer hidden
      data-lost="{% translate 'Connection to the server lost. Retrying…' %}" data-back="{% translate 'Connected again.' %}"
      data-not-saved="{% translate 'The server was unreachable: the last change may not have been saved. Check it before you try again.' %}"><span></span></div>
 <div id="progress" class="progress" role="progressbar" aria-label="{% translate 'Working…' %}" data-download-error="{% translate 'The download failed. Try again, or reload the page.' %}" hidden><span></span></div>
 {# the steps of a long request: "3 / 12 · podman" (core.js, form[data-progress]) #}
-<div id="progress-status" class="progress-status" role="status" aria-live="polite" hidden
+<div id="progress-status" class="progress-status" role="status" aria-live="polite" data-keeps-drawer hidden
      data-url="{% url 'console:progress' '00000000-0000-0000-0000-000000000000' %}"
      data-of="{% blocktranslate with current='%(current)s' total='%(total)s' %}{{ current }} of {{ total }}{% endblocktranslate %}"
      data-found="{% blocktranslate with count='%(count)s' %}{{ count }} found{% endblocktranslate %}"
      data-dead="{% translate 'No answer from the server: the action was stopped. Check the result before you try again.' %}"></div>
 {# the messages of a request, for a moment (core.js); the bell keeps them #}
-<div id="toasts" class="toasts" role="status" aria-live="polite" data-close-label="{% translate 'Close' %}"></div>
+<div id="toasts" class="toasts" role="status" aria-live="polite" data-keeps-drawer data-close-label="{% translate 'Close' %}"
+     data-more-one="{% translate '1 more message' %}" data-more="{% blocktranslate with count='%(count)s' %}{{ count }} more messages{% endblocktranslate %}" data-more-url="{% url 'notifications' %}"></div>
 <main class="{% block main_class %}{% endblock %}">
   {% if messages %}
   {# shown for a moment in #toasts (core.js), kept under the bell; without JavaScript they stay here #}

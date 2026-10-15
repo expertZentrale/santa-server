@@ -19,7 +19,7 @@ from ..package_detection import (
 )
 from ..progress import progress_for
 from ..releases import ReleaseError, sync_release_source
-from ..services import add_packages_to_sources, chunked, existing_rules, is_allowed
+from ..services import add_packages_to_sources, chunked, existing_rules, is_allowed, packages_to_check
 from .forms import EventPackagesForm
 from .utils import log_addition, log_change, render_drawer, require_perms, staff_required
 from .views_events import events_by_ids, selected_events
@@ -65,6 +65,12 @@ def _verify(events):
 @staff_required
 def events_packages(request):
     require_perms(request, "view_event", "add_releasesource", "change_releasesource", "add_rule")
+    # from the start: the catalogs are asked before the first step, the page must see the request alive
+    with progress_for(request) as progress:
+        return _events_packages(request, progress)
+
+
+def _events_packages(request, progress):
     events = _selection(request)
     applying = request.method == "POST" and "apply" in request.POST
     suggestions, unmatched = suggest_packages(events)
@@ -82,12 +88,12 @@ def events_packages(request):
                 log_addition(request.user, source, "Created from blocked events")
             for target, identifier in appended:
                 log_change(request.user, target, f"Identifier {identifier} added from blocked events")
-        with progress_for(request) as progress:
-            for source in {source.pk: source for source in sources_of.values()}.values():
-                try:
-                    sync_release_source(source, progress=progress)
-                except ReleaseError as e:
-                    messages.warning(request, f"{source}: {e}")
+        # only what was added: a package appended to a big package rule doesn't check the whole list
+        for source, only in packages_to_check(new_sources, appended, sources_of).values():
+            try:
+                sync_release_source(source, progress=progress, only=only)
+            except ReleaseError as e:
+                messages.warning(request, f"{source}: {e}")
         # only the binaries of the packages chosen: the others were left out on purpose
         chosen = list({event.pk: event for package, _target in approved
                        for event in (package.suggestion.events if package.suggestion else [])}.values())

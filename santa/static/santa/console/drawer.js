@@ -173,6 +173,29 @@
   // what the next swap into the drawer does to the history: a new entry, or none
   let pending = null;
 
+  // a request sent from a view of the drawer: it answers into that view only while it is shown
+  document.addEventListener("htmx:beforeRequest", (event) => {
+    const config = event.detail.requestConfig;
+    const elt = event.detail.elt;
+    if (config && elt && elt !== getDrawer() && getDrawer()?.contains(elt)) config.fromDrawer = true;
+  });
+
+  // The view that sent it was left meanwhile (the drawer closed, another view opened: a check of a package rule goes
+  // on): its answer doesn't open the drawer again over what is done now. Its messages show as toasts; the view kept
+  // for Back is dropped, it comes again from the server.
+  document.addEventListener("htmx:beforeSwap", (event) => {
+    const drawer = getDrawer();
+    const config = event.detail.requestConfig || {};
+    if (event.detail.target !== drawer || !config.fromDrawer || !event.detail.shouldSwap) return;
+    const elt = config.elt;
+    if (elt && isOpen() && drawer.contains(elt)) return;
+    event.detail.shouldSwap = false;
+    SantaConsole.showToastsOf?.(event.detail.serverResponse || "");
+    [...kept].forEach(([index, entry]) => {
+      if (elt && entry.view.contains(elt)) kept.delete(index);
+    });
+  });
+
   document.addEventListener("htmx:beforeSwap", (event) => {
     const drawer = getDrawer();
     if (event.detail.target !== drawer || !event.detail.shouldSwap) return;
@@ -254,14 +277,15 @@
     if (close && shown > chain && !close.closest(".drawer-tools")) history.back();
     else if (close) closeDrawer();
     if (event.target.closest("[data-drawer-back]")) history.back();
-    // a click next to the open drawer closes it, except on what opens another one
+    // a click next to the open drawer closes it, except on what opens another one, and the top bar (its menus, a press
+    // that missed a link), the toasts and the banners (data-keeps-drawer); a link of the top bar loads another page
     const drawer = getDrawer();
     // "create rules" follows the selection: selecting rows of the list keeps it open
     const selecting = drawer?.querySelector("[data-create-rules]")
                       && event.target.closest("[data-select-form] tbody, [data-select-all]");
     if (isOpen() && event.target.isConnected && !event.target.closest("#drawer")
-        && !event.target.closest('[hx-target="#drawer"]') && !selecting
-        && !wasInside) {
+        && !event.target.closest('[hx-target="#drawer"]') && !event.target.closest("[data-keeps-drawer]")
+        && !selecting && !wasInside) {
       closeDrawer();
     }
   });
@@ -287,5 +311,12 @@
     }
   });
 
-  SantaConsole.drawer = { isOpen, close: closeDrawer };
+  // the view shown again from the server (HX-Trigger drawerReload, checks.js when a check ended)
+  function reload() {
+    const drawer = getDrawer();
+    if (isOpen()) reloadDrawerView(drawer);
+  }
+  document.addEventListener("drawerReload", reload);
+
+  SantaConsole.drawer = { isOpen, close: closeDrawer, reload };
 })();

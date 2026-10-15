@@ -319,6 +319,23 @@ class AdminRequestTestCase(ConsoleBase):
         self.assertEqual(Event.objects.get().resolution_rule, rule)
         self.assertTrue(LogEntry.objects.filter(object_id=str(rule.pk)).exists())
 
+    def test_approve_event_as_it_is_only_with_a_rule_that_allows_it(self):
+        disabled = Rule.objects.create(rule_type=RuleType.TEAMID, identifier="ABCDE12345", is_global=True,
+                                       is_enabled=False)
+        elsewhere = Rule.objects.create(rule_type=RuleType.SIGNINGID, identifier="ABCDE12345:com.example.tool")
+        elsewhere.groups.add(self.sales)
+        cel = Rule.objects.create(rule_type=RuleType.BINARY, identifier=SHA_A, policy=Policy.CEL, is_global=True,
+                                  cel_expr="target.signing_time >= timestamp('2025-01-01T00:00:00Z')")
+        access_request = self.event_request()
+        for rule in (disabled, elsewhere, cel):
+            response = self.client.post(reverse("console:request_approve", args=(access_request.pk,)), {
+                "result": "existing", "existing_rule": rule.pk})
+            self.assertEqual(response.status_code, 200, rule)
+            self.assertIn("existing_rule", response.context["approve_form"].errors)
+            access_request.refresh_from_db()
+            self.assertTrue(access_request.is_pending)
+        self.assertIsNone(Event.objects.get().resolution_rule)
+
     def test_approve_event_with_another_rule_than_the_matching_ones(self):
         rule = Rule.objects.create(rule_type=RuleType.TEAMID, identifier="ABCDE12345", is_global=True)
         unrelated = Rule.objects.create(rule_type=RuleType.TEAMID, identifier="ZZZZZ99999", is_global=True)
@@ -390,7 +407,8 @@ class AdminRequestTestCase(ConsoleBase):
         self.assertRedirects(response, reverse("console:requests"))
         source.refresh_from_db()
         self.assertEqual(source.identifiers, ["esbuild", "vite"])
-        sync.assert_called_once_with(source, progress=ANY)
+        # only what the request brought: vite appended, esbuild there but never checked
+        sync.assert_called_once_with(source, progress=ANY, only=["vite", "esbuild"])
         self.assertEqual(ReleaseSource.objects.count(), 1)
 
     def test_approve_needs_a_package_and_a_scope(self):
@@ -451,7 +469,7 @@ class AdminRequestTestCase(ConsoleBase):
         source = ReleaseSource.objects.get(name="Colima")
         self.assertEqual((source.identifiers, list(source.groups.all()), source.auto_approve),
                          (["abiosoft/colima"], [self.dev], False))
-        sync.assert_called_once_with(source, progress=ANY)
+        sync.assert_called_once_with(source, progress=ANY, only=None)
         access_request.refresh_from_db()
         self.assertEqual(access_request.result_source, source)
 

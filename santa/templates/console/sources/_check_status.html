@@ -1,0 +1,8 @@
+{% load i18n %}{# A check of the package rule is running (progress.run_source_check): seen by everyone who opens it, it asks for its steps (checks.js) and loads the view again when it ends #}
+<section class="card check-status" data-source-check="{% url 'console:source_check_status' source.pk %}" data-view-url="{% url 'console:source' source.pk %}"{% if check %} data-percent="{{ check.percent }}"{% else %} hidden{% endif %}
+         data-starting="{% translate 'Starting the check…' %}" role="status" aria-live="polite">
+  <div class="check-head"><strong>{% translate "Check running" %}</strong> <span class="muted" data-check-by>{{ check.by }}</span></div>
+  <div class="check-bar{% if check.percent %} determinate{% endif %}" aria-hidden="true"><span></span></div>
+  <small data-check-step>{{ check.step }}</small>
+  <small class="check-cancelling" data-check-cancelling{% if not check.cancelling %} hidden{% endif %}>{{ check.cancelling }}</small>
+</section>

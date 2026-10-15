@@ -57,8 +57,11 @@ def dismiss(request, pk):
         response["HX-Retarget"] = "[data-notifications-panel]"
         response["HX-Reswap"] = "innerHTML"
         return response
-    if not request.user.console_notifications.exists():
-        # the full view: its empty state and counts
+    items = request.user.console_notifications.all()
+    if (level := request.POST.get("level", "")) in UserNotification.Level.values:
+        items = items.filter(level=level)
+    if not items.exists():
+        # the full view (of a level): its empty state and counts
         return HttpResponse(headers={"HX-Refresh": "true"})
     return HttpResponse("")
 

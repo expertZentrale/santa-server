@@ -343,6 +343,24 @@ def latest_binary_requests(sha256s, exclude_user=None):
     return latest
 
 
+def packages_to_check(new_sources, appended, sources_of):
+    """{source pk: (source, identifiers, or None for all)} to check after add_packages_to_sources(): the new package
+    rules, the packages appended, and the ones a package rule had already but never checked"""
+    from .releases import unchecked_identifiers
+
+    to_check = {source.pk: (source, None) for source in new_sources.values()}
+    for target, identifier in appended:
+        to_check.setdefault(target.pk, (target, []))[1].append(identifier)
+    for package, source in sources_of.items():
+        if source.pk in to_check and to_check[source.pk][1] is None:
+            continue
+        if package.identifier in unchecked_identifiers(source):
+            identifiers = to_check.setdefault(source.pk, (source, []))[1]
+            if package.identifier not in identifiers:
+                identifiers.append(package.identifier)
+    return to_check
+
+
 def add_packages_to_sources(approved, new_names, data, options_for):
     """Put packages into package rules: one new ReleaseSource per catalog (new_names {kind: name}) for the packages
     without a target, the others appended to their target unless it has them already.

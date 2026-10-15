@@ -13,7 +13,7 @@ from django.views.decorators.http import require_POST
 from .. import catalog, notifications
 from ..models import AccessRequest, AccessRequestPackage, Event, ReleaseSource, RuleType
 from ..progress import progress_for
-from ..releases import ReleaseError, find_binaries, sync_release_source
+from ..releases import ReleaseError, find_binaries, sync_release_source, unchecked_identifiers
 from ..seasonal import christmas_active
 from ..services import (
     add_packages_to_sources,
@@ -25,6 +25,7 @@ from ..services import (
     latest_binary_requests,
     latest_package_requests,
     machines_for_user,
+    packages_to_check,
     request_kinds_for,
     resolve_binary_events,
     widen_rule,
@@ -369,6 +370,13 @@ def admin_request_approve(request, pk):
     require_perms(request, "change_accessrequest")
     access_request = get_object_or_404(AccessRequest.objects.select_related("requester", "machine", "event"),
                                        pk=pk, status=AccessRequest.Status.PENDING)
+    # from the start: checking the form can unpack an uploaded disk image, the page must see the request alive
+    with progress_for(request) as progress:
+        return _approve(request, access_request, progress)
+
+
+def _approve(request, access_request, progress):
+    pk = access_request.pk
     form = _approve_forms(access_request, request.POST, request.FILES)
     if not form.is_valid():
         return admin_request_detail(request, pk, approve_form=form)
@@ -386,15 +394,12 @@ def admin_request_approve(request, pk):
     except ValidationError as e:
         form.add_error(None, e)
         return admin_request_detail(request, pk, approve_form=form)
-    source_ids = {p.result_source_id for p in access_request.packages.all() if p.result_source_id}
-    if access_request.result_source_id:
-        source_ids.add(access_request.result_source_id)
-    with progress_for(request) as progress:
-        for source in ReleaseSource.objects.filter(pk__in=source_ids):
-            try:
-                sync_release_source(source, progress=progress)
-            except ReleaseError as e:
-                messages.warning(request, f"{source}: {e}")
+    # only what the request added: one package appended to a big package rule doesn't check the whole list
+    for source, only in getattr(access_request, "to_check", {}).values():
+        try:
+            sync_release_source(source, progress=progress, only=only)
+        except ReleaseError as e:
+            messages.warning(request, f"{source}: {e}")
     messages.success(request, gettext("Request “%(title)s” approved.") % {"title": access_request.title})
     return drawer_done(request, "console:requests")
 
@@ -500,8 +505,14 @@ def _package_rule_for_request(request, access_request, form):
             source.groups.set([] if source.is_global else data["package_groups"])
             source.tags.add(*form.all_tags())
             log_addition(request.user, source, f"Created for access request {access_request.pk}")
+            access_request.to_check = {source.pk: (source, None)}
         else:
             added = [identifier for identifier in data["package_identifiers"] if identifier not in source.identifiers]
+            # the added ones, and the requested ones the package rule had but never checked
+            only = added + [identifier for identifier in unchecked_identifiers(source)
+                            if identifier in data["package_identifiers"]]
+            if only:
+                access_request.to_check = {source.pk: (source, only)}
             if added:
                 source.identifier = "\n".join(source.identifiers + added)
                 source.full_clean()
@@ -523,6 +534,7 @@ def _approve_packages(request, access_request, form):
         log_addition(request.user, source, f"Created for access request {access_request.pk}")
     for target, identifier in appended:
         log_change(request.user, target, f"Identifier {identifier} added for access request {access_request.pk}")
+    access_request.to_check = packages_to_check(new_sources, appended, sources_of)
     for package, _target in approved:
         package.status = AccessRequestPackage.Status.APPROVED
         package.result_source = sources_of[package]

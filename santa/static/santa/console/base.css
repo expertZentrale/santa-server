@@ -101,10 +101,11 @@ small.muted, small.help { display: block; }
   border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
-  z-index: 10;
+  /* above the drawer (15): the bell and the user menu open over it */
+  z-index: 18;
 }
 /* the progress of a running action, under the top bar: a moving stripe, or the share of an upload */
-/* above the drawer (15), which reaches over the bottom line of the top bar */
+/* above the drawer (15), which starts at the bottom line of the top bar */
 .progress { position: fixed; top: var(--topbar-h); left: 0; right: 0; height: 3px; z-index: 16; overflow: hidden; pointer-events: none; }
 .progress > span { position: absolute; top: 0; bottom: 0; left: 0; width: 35%; background: var(--accent); border-radius: 0 2px 2px 0; animation: progress 1.1s ease-in-out infinite; }
 .progress.determinate > span { width: var(--progress, 0%); animation: none; transition: width .2s; }
@@ -249,6 +250,9 @@ small.muted, small.help { display: block; }
 .toast.error { border-left-color: var(--bad); }
 .toast-text { flex: 1; min-width: 0; overflow-wrap: anywhere; white-space: pre-line; }
 .toast.leaving { opacity: 0; transform: translateY(.5rem); transition: opacity .2s, transform .2s; }
+/* "3 more messages": the rest of many at once, leads to the bell's full view */
+.toast-more { padding-right: .9rem; }
+.toast-more a { color: inherit; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(.5rem); } }
 @media (prefers-reduced-motion: reduce) {
   .toast { animation: none; }
@@ -395,6 +399,20 @@ main.narrow { max-width: 51.25rem; }
 .button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 .button.primary:hover { filter: brightness(1.08); }
 .button.danger { color: var(--bad); border-color: var(--bad); }
+.menu-item.danger { color: var(--bad); }
+/* a check of a package rule running (sources/_check_status.html, checks.js) */
+.check-status { display: grid; gap: .4rem; border-color: var(--info); }
+.check-status[hidden] { display: none; }
+.check-head { display: flex; flex-wrap: wrap; gap: .25rem .5rem; align-items: baseline; }
+.check-bar { position: relative; height: .25rem; border-radius: 1rem; background: var(--surface-2); overflow: hidden; }
+.check-bar > span { position: absolute; top: 0; bottom: 0; left: 0; width: 35%; border-radius: 1rem; background: var(--accent); animation: progress 1.1s ease-in-out infinite; }
+.check-bar.determinate > span { width: var(--progress, 0%); animation: none; transition: width .2s; }
+.check-status small { overflow-wrap: anywhere; }
+.check-cancelling { color: var(--warn); font-weight: 500; }
+.draft-note .button { margin-left: .5rem; }
+@media (prefers-reduced-motion: reduce) {
+  .check-bar > span { width: 100%; opacity: .6; animation: none; }
+}
 .button.small { min-height: var(--control-h-sm); padding: .15rem .6rem; font-size: .85em; }
 .button:disabled, .button[aria-disabled="true"] { opacity: .5; cursor: default; pointer-events: none; }
 .button.wide { width: 100%; justify-content: center; }
@@ -541,6 +559,14 @@ form.inline { display: inline; margin: 0; }
 .drawer-head .back { margin-bottom: .25rem; }
 
 .error-box { background: var(--bad-bg); color: var(--bad); padding: .75rem 1rem; border-radius: var(--radius); white-space: pre-wrap; overflow-wrap: anywhere; }
+/* the problems of the last check of a package rule, per package (sources/_errors.html) */
+.check-errors { border-color: var(--bad); display: grid; gap: .5rem; }
+.check-errors h2 { color: var(--bad); }
+.check-errors summary { cursor: pointer; overflow-wrap: anywhere; }
+.check-errors details > ul { margin: .4rem 0 .2rem 1rem; }
+.check-errors .error-text { overflow-wrap: anywhere; }
+.check-errors-head { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: center; justify-content: space-between; }
+.check-errors-fix { margin: .2rem 0 .4rem 1rem; }
 ul.plain { list-style: none; padding: 0; margin: 0; display: grid; gap: .3rem; }
 .card-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .75rem; }
 .card-head h2 { margin: 0; }

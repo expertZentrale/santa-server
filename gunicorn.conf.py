@@ -65,3 +65,23 @@ class SyncTokenRedactingLogger(Logger):
 
 
 logger_class = SyncTokenRedactingLogger
+
+
+def post_worker_init(worker):
+    """SIGTERM (a new version is rolled out, the server scaled down): the package checks running in this worker stop
+    after their current package and end within the graceful timeout, with their versions, notifications and
+    messages, instead of being killed in the middle (santa.progress.SHUTTING_DOWN). Then gunicorn's own handler."""
+    import signal
+
+    from santa.progress import SHUTTING_DOWN
+
+    handler = signal.getsignal(signal.SIGTERM)
+
+    def stop(signum, frame):
+        SHUTTING_DOWN.set()
+        if callable(handler):
+            handler(signum, frame)
+
+    signal.signal(signal.SIGTERM, stop)
+    # as gunicorn sets it: the signal doesn't interrupt the system calls of running requests
+    signal.siginterrupt(signal.SIGTERM, False)

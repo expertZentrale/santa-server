@@ -12,6 +12,7 @@ import re
 import tarfile
 import tempfile
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -22,6 +23,8 @@ from django.db import transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.utils.http import urlencode
+from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
 
 from . import archives, macho, notifications, semver
 from .models import (
@@ -34,7 +37,7 @@ from .models import (
     RuleType,
     pattern_lines,
 )
-from .progress import Progress
+from .progress import Cancelled, Progress
 from .services import chunked
 
 logger = logging.getLogger(__name__)
@@ -94,6 +97,15 @@ class FoundBinary:
 def http_session():
     session = requests.Session()
     session.headers["User-Agent"] = "santa-server"
+    # a dropped connection or a busy registry (ghcr.io under many requests) is asked again, a moment later
+    retry = Retry(total=3, backoff_factor=0.5, status_forcelist=(429, 500, 502, 503, 504),
+                  allowed_methods=frozenset({"GET", "HEAD", "POST"}),
+                  # a rate limit can name an hour: not waited for in a request
+                  respect_retry_after_header=False)
+    # one connection per download of the pool (DOWNLOAD_WORKERS) and host
+    adapter = HTTPAdapter(max_retries=retry, pool_maxsize=DOWNLOAD_WORKERS * 2)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
     return session
 
 
@@ -137,9 +149,12 @@ class _UnpackBudget:
             raise ReleaseError(f"{self.name}: unpacks to more than {settings.RELEASE_MAX_UNPACKED_BYTES} bytes")
 
 
-def _spool(member_fileobj, budget):
+def _spool(member_fileobj, budget, start=b""):
+    """The member in a temporary file, counted against the budget; start: its first bytes, read before"""
     spooled = tempfile.SpooledTemporaryFile(max_size=16 * 1024 * 1024)
     try:
+        budget.consume(len(start))
+        spooled.write(start)
         while chunk := member_fileobj.read(macho.CHUNK_SIZE):
             budget.consume(len(chunk))
             spooled.write(chunk)
@@ -230,8 +245,16 @@ def _find_binaries(fileobj, name, pattern, budget, nested):
     for path, size, executable, open_member in members:
         if not wanted(path, size, executable):
             continue
-        with open_member() as member_fileobj, _spool(member_fileobj, budget) as spooled:
-            if not nested and _is_nested(path, size):
+        with open_member() as member_fileobj:
+            archive = not nested and _is_nested(path, size)
+            # only executables are unpacked: the libraries, headers and data of a package (the gigabytes of a
+            # compiler) neither use up the budget nor the time
+            start = member_fileobj.read(16)
+            if not archive and not macho.may_be_executable(start):
+                continue
+            spooled_member = _spool(member_fileobj, budget, start)
+        with spooled_member as spooled:
+            if archive:
                 for inner_path, info in _find_binaries(spooled, path, pattern, budget, nested=True):
                     yield f"{path}/{inner_path}", info
                 continue
@@ -378,6 +401,18 @@ def github_releases(session, source, identifier, limit):
             if not data.get("draft") and (source.include_prereleases or not data.get("prerelease"))]
 
 
+def _published(value):
+    """A publication date of a catalog, always aware: the older Homebrew bottles only give the day ("2021-04-06"),
+    which compared with the cutoff of the range to keep failed"""
+    try:
+        published = parse_datetime(value or "")
+    except ValueError:
+        return None
+    if published and timezone.is_naive(published):
+        published = timezone.make_aware(published, UTC)
+    return published
+
+
 def _github_release(source, data):
     regex = _asset_regex(source)
     assets = []
@@ -391,8 +426,20 @@ def _github_release(source, data):
         assets.append(Asset(name=name, url=asset["browser_download_url"],
                             sha256=digest.removeprefix("sha256:") if digest.startswith("sha256:") else "",
                             match=(name,)))
-    published_at = parse_datetime(data.get("published_at") or "")
+    published_at = _published(data.get("published_at"))
     return Release(version=data["tag_name"], assets=assets, published_at=published_at)
+
+
+# the console offers to remove such a package from the package rule (views_sources.removable_packages)
+LINUX_ONLY_ERROR = ("Only for Linux, there is no bottle for macOS: nothing for Santa to allow. Remove it from the "
+                    "package rule.")
+
+
+def homebrew_linux_only(data):
+    """A formula only for Linux (acl, afuse): it says so, or it only has Linux bottles. Nothing for Santa."""
+    files = ((data.get("bottle") or {}).get("stable") or {}).get("files") or {}
+    return ("linux" in [requirement.get("name") for requirement in data.get("requirements") or []]
+            or (bool(files) and all("linux" in tag for tag in files)))
 
 
 def latest_homebrew_formula(session, source, identifier):
@@ -402,6 +449,8 @@ def latest_homebrew_formula(session, source, identifier):
                            timeout=settings.RELEASE_HTTP_TIMEOUT)
     response.raise_for_status()
     data = response.json()
+    if homebrew_linux_only(data):
+        raise ReleaseError(LINUX_ONLY_ERROR)
     version = data["versions"]["stable"]
     if data.get("revision"):
         version = f"{version}_{data['revision']}"
@@ -418,11 +467,13 @@ def _ghcr_repository(name):
     return name.replace("@", "/").replace("+", "x")
 
 
-def homebrew_formula_releases(session, source, identifier, limit):
+def homebrew_formula_releases(session, source, identifier, limit, known=None):
     """The bottles of the older versions of a formula, newest first, from the Homebrew registry (ghcr.io).
 
     formulae.brew.sh only knows the current version. Every tag of the registry is a version (a rebuild of the same
     bottle gets "-1", "-2"…); its index lists the bottles per macOS with their SHA-256 and the publication date.
+    known: {version: published_at} recorded already: their index is not asked (a request each), they come without
+    assets, with the date recorded.
     """
     if is_tap_identifier(identifier):
         # a tap has only its current version
@@ -437,13 +488,21 @@ def homebrew_formula_releases(session, source, identifier, limit):
     for tag in reversed(response.json().get("tags") or []):
         if len(releases) >= limit:
             break
+        # a rebuild of a version: "-1"; a version can end like that itself (ca-certificates 2026-09-25)
+        version = tag if not known or tag in known else re.sub(r"-\d+$", "", tag)
+        if known and version in known:
+            published_at = known[version]
+            if cutoff and published_at and published_at < cutoff:
+                break
+            releases.setdefault(version, Release(version=version, assets=[], published_at=published_at))
+            continue
         response = session.get(f"{base}/manifests/{tag}", timeout=settings.RELEASE_HTTP_TIMEOUT,
                                headers={**headers, "Accept": "application/vnd.oci.image.index.v1+json"})
         response.raise_for_status()
         index = response.json()
         annotations = index.get("annotations") or {}
         version = annotations.get("org.opencontainers.image.version") or tag
-        published_at = parse_datetime(annotations.get("org.opencontainers.image.created") or "")
+        published_at = _published(annotations.get("org.opencontainers.image.created"))
         if cutoff and published_at and published_at < cutoff:
             break
         if version in releases:
@@ -710,7 +769,7 @@ def npm_releases(session, source, identifier, limit):
     for version, manifest in (data.get("versions") or {}).items():
         if semver.is_prerelease(version) and not source.include_prereleases:
             continue
-        releases.append(_npm_release(identifier, manifest, parse_datetime(times.get(version) or "")))
+        releases.append(_npm_release(identifier, manifest, _published(times.get(version))))
     releases.sort(key=lambda release: release.published_at or datetime.min.replace(tzinfo=UTC), reverse=True)
     return releases
 
@@ -764,7 +823,7 @@ def _vscode_releases(session, source, identifier, flags):
             release.assets.append(Asset(name=f"{identifier}-{version['version']}@{platform}.vsix", url=url,
                                         match=(platform,)))
             release.published_at = max(filter(None, [release.published_at,
-                                                     parse_datetime(version.get("lastUpdated") or "")]), default=None)
+                                                     _published(version.get("lastUpdated"))]), default=None)
     return list(releases.values())
 
 
@@ -805,10 +864,11 @@ def jetbrains_releases(session, source, identifier, limit):
     return releases
 
 
-# Most packages of these catalogs are scripts (JavaScript, Python, Java): Santa has nothing to allow in them.
-# A release without executables is recorded with 0 binaries instead of being an error.
+# Most packages of these catalogs are scripts (JavaScript, Python, Java), and many formulae only libraries, headers
+# or data (ca-certificates, libyaml, the dependencies of others): Santa has nothing to allow in them. A release
+# without executables is recorded with 0 binaries instead of being an error.
 KINDS_OFTEN_WITHOUT_EXECUTABLES = (ReleaseSource.Kind.NPM_PACKAGE, ReleaseSource.Kind.VSCODE_EXTENSION,
-                                   ReleaseSource.Kind.JETBRAINS_PLUGIN)
+                                   ReleaseSource.Kind.JETBRAINS_PLUGIN, ReleaseSource.Kind.HOMEBREW_FORMULA)
 NO_EXECUTABLES_NOTE = "No Mach-O executable in this release: Santa does not check scripts or libraries, " \
                       "nothing to allow."
 
@@ -852,23 +912,20 @@ def _npm_platform_ok(manifest):
 def npm_dependencies(session, release, errors):
     """The releases of the dependencies of an npm release, also the indirect ones"""
     found = {}
-    queue = list((release.dependencies or {}).items())
+    queue = [_npm_alias(name, spec) for name, spec in (release.dependencies or {}).items()]
     documents = {}
     while queue:
         name, spec = queue.pop(0)
-        if spec.startswith("npm:"):
-            # an alias: npm:real-name@range
-            name, _, spec = spec.removeprefix("npm:").rpartition("@")
         if not name:
             continue
         if name not in documents:
             if len(documents) >= settings.RELEASE_MAX_DEPENDENCIES:
                 errors.append(f"More than {settings.RELEASE_MAX_DEPENDENCIES} dependencies, the others are skipped")
                 break
-            response = session.get(_npm_url(name), timeout=settings.RELEASE_HTTP_TIMEOUT,
-                                   headers={"Accept": "application/vnd.npm.install-v1+json"})
-            response.raise_for_status()
-            documents[name] = response.json()
+            # the documents of the names waiting, at once (a level of the tree), within the limit
+            names = list(dict.fromkeys(other for other, _spec in [(name, spec), *queue]
+                                       if other and other not in documents))
+            documents.update(_npm_documents(session, names[:settings.RELEASE_MAX_DEPENDENCIES - len(documents)]))
         versions = documents[name].get("versions") or {}
         version = semver.max_satisfying(versions, spec)
         if version is None:
@@ -885,8 +942,30 @@ def npm_dependencies(session, release, errors):
             break
         dependency = _npm_release(name, versions[version])
         found[f"{name}@{version}"] = dependency
-        queue += list((dependency.dependencies or {}).items())
+        queue += [_npm_alias(other, other_spec) for other, other_spec in (dependency.dependencies or {}).items()]
     return found
+
+
+def _npm_alias(name, spec):
+    """(name, range) of a dependency; an alias npm:real-name@range is the real name"""
+    if spec.startswith("npm:"):
+        name, _, spec = spec.removeprefix("npm:").rpartition("@")
+    return name, spec
+
+
+def _npm_document(session, name):
+    response = session.get(_npm_url(name), timeout=settings.RELEASE_HTTP_TIMEOUT,
+                           headers={"Accept": "application/vnd.npm.install-v1+json"})
+    response.raise_for_status()
+    return response.json()
+
+
+def _npm_documents(session, names):
+    """{name: abbreviated registry document}, asked at once; the first failure is raised, as one after the other"""
+    with ThreadPoolExecutor(max_workers=max(1, min(DOWNLOAD_WORKERS, len(names))),
+                            thread_name_prefix="santa-npm") as pool:
+        futures = [(name, pool.submit(_npm_document, session, name)) for name in names]
+    return {name: future.result() for name, future in futures}
 
 
 def homebrew_dependencies(session, source, release, errors):
@@ -922,20 +1001,75 @@ def dependency_releases(session, source, release, errors):
 # Sync
 
 
-def collect_binaries(session, source, release, dependency=""):
-    found = []
-    errors = []
-    # the binary pattern is for the package itself, the dependencies have their own paths
-    pattern = "" if dependency else source.binary_pattern
-    for asset in release.assets:
+# Downloads at once: a check waits on the network (the bottles of every macOS, the kept versions, the dependencies),
+# not on the server. Every download keeps its own limits; at most this many temporary files at a time.
+DOWNLOAD_WORKERS = 4
+
+
+def _inspect(session, asset, pattern):
+    # in a thread of the pool: only the network, hashing and unpacking, never the database
+    with download(session, asset) as fileobj:
+        return list(find_binaries(fileobj, asset.name, pattern))
+
+
+def collect_many(session, source, releases):
+    """[(binaries, errors)] for the releases [(release, dependency label)], their assets downloaded and inspected at
+    once (DOWNLOAD_WORKERS). The same file (its hash, or else its URL) is downloaded once."""
+    jobs = []
+    for index, (release, dependency) in enumerate(releases):
+        # the binary pattern is for the package itself, the dependencies have their own paths
+        pattern = "" if dependency else source.binary_pattern
+        jobs += [(index, asset, pattern, dependency) for asset in release.assets]
+    files = {}
+    for _index, asset, pattern, _dependency in jobs:
+        files.setdefault((asset.sha256 or asset.sha512 or asset.url, pattern), asset)
+    futures = {}
+    if files:
+        with ThreadPoolExecutor(max_workers=min(DOWNLOAD_WORKERS, len(files)), thread_name_prefix="santa-download") \
+                as pool:
+            futures = {key: pool.submit(_inspect, session, asset, key[1]) for key, asset in files.items()}
+    results = [([], []) for _release in releases]
+    for index, asset, pattern, dependency in jobs:
         try:
-            with download(session, asset) as fileobj:
-                for path, info in find_binaries(fileobj, asset.name, pattern):
-                    found.append(FoundBinary(asset=asset.name, path=path, info=info, dependency=dependency,
-                                             asset_match=asset.match))
+            found = futures[(asset.sha256 or asset.sha512 or asset.url, pattern)].result()
         except (ReleaseError, requests.RequestException) as e:
-            errors.append(str(e))
-    return found, errors
+            results[index][1].append(str(e))
+            continue
+        results[index][0].extend(FoundBinary(asset=asset.name, path=path, info=info, dependency=dependency,
+                                             asset_match=asset.match) for path, info in found)
+    return results
+
+
+def collect_binaries(session, source, release, dependency=""):
+    return collect_many(session, source, [(release, dependency)])[0]
+
+
+def _collect_releases(session, source, releases):
+    """{id(release): (binaries, errors, the dependency labels)} for the releases, with the binaries of their
+    dependencies: every file of all of them downloaded at once"""
+    batch, owners, resolve_errors = [], [], {}
+    for release in releases:
+        errors = []
+        dependencies = dependency_releases(session, source, release, errors)
+        resolve_errors[id(release)] = errors
+        batch.append((release, ""))
+        owners.append((release, ""))
+        for label, dependency in dependencies.items():
+            batch.append((dependency, label))
+            owners.append((release, label))
+    collected = {id(release): ([], [], []) for release in releases}
+    own_errors = {}
+    for (release, label), (found, errors) in zip(owners, collect_many(session, source, batch), strict=True):
+        binaries, _errors, included = collected[id(release)]
+        binaries += found
+        if label:
+            included.append(label)
+            collected[id(release)][1].extend(f"{label}: {error}" for error in errors)
+        else:
+            own_errors[id(release)] = errors
+    # as before: the errors of the release, of finding its dependencies, then of the dependencies
+    return {key: (binaries, own_errors.get(key, []) + resolve_errors[key] + errors, included)
+            for key, (binaries, errors, included) in collected.items()}
 
 
 def rule_identifiers(rule_type, info):
@@ -1061,7 +1195,8 @@ def _pattern_stale(source):
     own = {}
     for rule in (source.rules.filter(release_dependency="").exclude(release_version=None)
                  .select_related("release_version")
-                 .only("pk", "rule_type", "identifier", "release_dependency", "release_files",
+                 # release_source too: the rule reads it (deferred, it would be one query per rule)
+                 .only("pk", "rule_type", "identifier", "release_dependency", "release_files", "release_source",
                        "release_version__identifier", "release_version__version")):
         own.setdefault(rule.release_version_id, []).append(rule)
     stale = {}
@@ -1134,7 +1269,8 @@ def _left_dependency_rules(source, versions):
     if uses_dependencies(source):
         return []
     deleted = {version.pk for version in versions}
-    return [rule.pk for rule in source.rules.exclude(release_dependency="").only("pk", "release_version")
+    return [rule.pk for rule in source.rules.exclude(release_dependency="")
+            .only("pk", "release_version", "release_source")
             if rule.release_version_id not in deleted]
 
 
@@ -1156,7 +1292,7 @@ def _delete_stale_rules(items):
                 for version in ReleaseVersion.objects.filter(pk__in=chunk)]
     for version in versions:
         removed = {file.get("sha256") for rule in by_version[version.pk] for file in rule.release_files} - {"", None}
-        for rule in version.rules.only("pk", "rule_type", "identifier", "release_files"):
+        for rule in version.rules.only("pk", "rule_type", "identifier", "release_files", "release_version"):
             if rule.pk not in deleting:
                 removed -= {file.get("sha256") for file in rule.release_files}
                 removed.discard(rule.identifier if rule.rule_type == RuleType.BINARY else None)
@@ -1189,8 +1325,11 @@ def cleanup_release_source(source):
     return len(versions), rule_count + other_count
 
 
-def _record_release(session, source, identifier, release):
-    """Download a release and create its version and rules. Return (the new ReleaseVersion or None, errors)."""
+def _record_release(session, source, identifier, release, collected=None):
+    """Download a release and create its version and rules. Return (the new ReleaseVersion or None, errors).
+
+    collected: its (binaries, errors, dependency labels) of _collect_releases(), downloaded with others before.
+    """
     versions = source.versions.filter(identifier=identifier)
     if not release.assets:
         raise ReleaseError(f"No matching asset in release {release.version or '-'}")
@@ -1200,13 +1339,7 @@ def _record_release(session, source, identifier, release):
         logger.info("Release source %s: %s version %s skipped by the version pattern",
                     source.name, identifier, release.version)
         return None, []
-    binaries, errors = collect_binaries(session, source, release)
-    included = []
-    for label, dependency in dependency_releases(session, source, release, errors).items():
-        found, dependency_errors = collect_binaries(session, source, dependency, dependency=label)
-        binaries += found
-        errors += [f"{label}: {error}" for error in dependency_errors]
-        included.append(label)
+    binaries, errors, included = collected or _collect_releases(session, source, [release])[id(release)]
     if not binaries and (errors or source.kind not in KINDS_OFTEN_WITHOUT_EXECUTABLES) and not included:
         raise ReleaseError("No Mach-O executable found. " + " ".join(errors))
     version = release.version or binaries[0].info.sha256[:12]
@@ -1251,12 +1384,14 @@ def _add_dependencies(session, source, identifier, latest, errors):
             "-created_at")[:MAX_KEPT_VERSIONS_PER_SYNC]:
         release = _release_of_version(session, source, identifier, version, latest)
         warnings = []
-        binaries, included = [], []
-        for label, dependency in dependency_releases(session, source, release, warnings).items():
-            found, dependency_errors = collect_binaries(session, source, dependency, dependency=label)
+        dependencies = dependency_releases(session, source, release, warnings)
+        binaries, included = [], list(dependencies)
+        for label, (found, dependency_errors) in zip(
+                included, collect_many(session, source, [(dependency, label)
+                                                         for label, dependency in dependencies.items()]),
+                strict=True):
             binaries += found
             warnings += [f"{label}: {error}" for error in dependency_errors]
-            included.append(label)
         own_rules = version.rules.filter(release_dependency="")
         with transaction.atomic():
             # the dependencies follow the approval of the version: enabled when its own rules are (or it had none)
@@ -1290,12 +1425,18 @@ def kept_releases(source, releases, now=None):
 def _sync_kept_versions(session, source, identifier, errors):
     """The older versions in the range to keep that have no rules yet"""
     limit = source.keep_versions if source.keep_unit == ReleaseSource.KeepUnit.VERSIONS else HISTORY_LIMIT
-    releases = kept_releases(source, HISTORY[source.kind](session, source, identifier, limit))
-    known = set(source.versions.filter(identifier=identifier).values_list("version", flat=True))
+    known = dict(source.versions.filter(identifier=identifier).values_list("version", "published_at"))
+    # the registry of Homebrew needs a request per version: not for the ones recorded already
+    options = {"known": known} if source.kind == ReleaseSource.Kind.HOMEBREW_FORMULA else {}
+    releases = kept_releases(source, HISTORY[source.kind](session, source, identifier, limit, **options))
     new_versions = []
-    for release in [release for release in releases if release.version not in known][:MAX_KEPT_VERSIONS_PER_SYNC]:
+    missing = [release for release in releases if release.version not in known][:MAX_KEPT_VERSIONS_PER_SYNC]
+    # all their files at once, recorded one after the other
+    collected = _collect_releases(session, source, [release for release in missing if release.assets])
+    for release in missing:
         try:
-            release_version, warnings = _record_release(session, source, identifier, release)
+            release_version, warnings = _record_release(session, source, identifier, release,
+                                                        collected=collected.get(id(release)))
         except ReleaseError as e:
             # an old release without a matching file: recorded with its reason, not tried again at every sync
             release_version = ReleaseVersion.objects.create(
@@ -1343,11 +1484,17 @@ def preview_release_source(source, session=None, progress=None):
     unfiltered.asset_pattern = ""
     unfiltered.macos_minimum = ""
     unfiltered.macos_nearest = True
+    # the latest releases, also older than the range to keep (the registry of Homebrew stops at its start)
+    unfiltered.keep_versions = 0
     files_of = _recorded_files(source) if source.pk else {}
     results = []
     progress.add_total(len(source.identifiers))
     for identifier in source.identifiers:
-        progress.start(identifier)
+        try:
+            progress.start(identifier)
+        except Cancelled:
+            # what it has so far (progress.cancelled tells)
+            break
         result = {"identifier": identifier, "error": "", "releases": [],
                   "files": files_of.get(identifier, [])[:PREVIEW_FILES]}
         results.append(result)
@@ -1382,7 +1529,8 @@ def _recorded_files(source):
     """{identifier: [{"path", "ok"}]}: the files of the recorded versions against the binary pattern"""
     paths = {}
     for rule in (source.rules.filter(release_dependency="").exclude(release_version=None)
-                 .select_related("release_version").only("release_files", "release_version__identifier")):
+                 .select_related("release_version")
+                 .only("release_files", "release_source", "release_version__identifier")):
         for file in rule.release_files:
             if file.get("path"):
                 paths.setdefault(rule.release_version.identifier, set()).add(file["path"])
@@ -1392,22 +1540,50 @@ def _recorded_files(source):
             for identifier, found in paths.items()}
 
 
-def sync_release_source(source, session=None, progress=None):
+def _error_owner(source, line):
+    """The package of a line of last_error ("<identifier>: …", a source with several packages), or None"""
+    return next((identifier for identifier in sorted(source.identifiers, key=len, reverse=True)
+                 if line.startswith(f"{identifier}: ")), None)
+
+
+def unchecked_identifiers(source):
+    """The packages of the source never checked: no version recorded and no error of a check (just added)"""
+    recorded = set(source.versions.values_list("identifier", flat=True).distinct()) if source.pk else set()
+    with_errors = {_error_owner(source, line) for line in source.last_error.splitlines()} \
+        if source.has_several_identifiers else ({source.identifiers[0]} if source.last_error and source.identifiers
+                                                 else set())
+    return [identifier for identifier in source.identifiers if identifier not in recorded | with_errors]
+
+
+def sync_release_source(source, session=None, progress=None, only=None):
     """Check every identifier of the source for a new release. Return the new ReleaseVersions.
 
     A failing identifier does not stop the others. ReleaseError is raised at the end if one failed,
     the new versions of the other identifiers are kept and in its new_versions.
+    The packages without a version yet come first (just added: they are what the check is started for).
+    only: check these identifiers of the source, not all of them (the new ones, a package of an approved request).
     """
     session = session or http_session()
     progress = progress or Progress()
     several = source.has_several_identifiers
+    started = timezone.now()
+    checked_before = source.last_checked_at
+    recorded = set(source.versions.values_list("identifier", flat=True).distinct()) if source.pk else set()
     new_versions = []
     errors = []
     failed = []
-    progress.add_total(len(source.identifiers))
-    for identifier in source.identifiers:
-        progress.start(identifier)
+    identifiers = [identifier for identifier in source.identifiers if only is None or identifier in only]
+    checked = set()
+    progress.add_total(len(identifiers))
+    for identifier in sorted(identifiers, key=lambda identifier: identifier in recorded):
+        try:
+            progress.start(identifier)
+        except Cancelled:
+            # stopped in the console: the packages checked so far are kept and recorded as a check
+            logger.info("Release source %s: check cancelled by %s", source.name, progress.cancelled_by)
+            break
         prefix = f"{identifier}: " if several else ""
+        checked.add(identifier)
         try:
             found, warnings = _sync_identifier(session, source, identifier)
         except (ReleaseError, requests.RequestException, KeyError, ValueError) as e:
@@ -1417,9 +1593,17 @@ def sync_release_source(source, session=None, progress=None):
         errors += [f"{prefix}{warning}" for warning in warnings]
         new_versions += found
     prune_old_versions(source)
+    # recorded by a check that never ended (its server killed): announced now, they were not yet
+    interrupted = source.versions.filter(created_at__lt=started, binary_count__gt=0)
+    if checked_before:
+        interrupted = interrupted.filter(created_at__gt=checked_before)
+    new_versions = list(interrupted.order_by("created_at")) + new_versions
     worked_before = not source.last_error
     source.last_checked_at = timezone.now()
-    source.last_error = "\n".join(failed + errors)[:5000]
+    # the errors of the packages not checked this time (a partial or stopped check) stay
+    kept = [line for line in source.last_error.splitlines()
+            if several and (owner := _error_owner(source, line)) and owner not in checked] if source.last_error else []
+    source.last_error = "\n".join(kept + failed + errors)[:5000]
     source.save(update_fields=["last_checked_at", "last_error"])
     if worked_before and source.last_error:
         # once, when it starts failing: not at every hourly check

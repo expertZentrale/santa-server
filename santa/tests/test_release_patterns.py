@@ -397,10 +397,10 @@ class ProgressTestCase(ConsoleBase):
         request.user = self.admin
         with patch("santa.progress.HEARTBEAT", 0.01), progress_for(request) as progress:
             progress.note("long")
-            first = cache.get(progress.key)["beat"]
+            first = cache.get(progress.keys[0])["beat"]
             time.sleep(0.1)
             # the request is alive: the heartbeat refreshes the entry while it works
-            self.assertGreater(cache.get(progress.key)["beat"], first)
+            self.assertGreater(cache.get(progress.keys[0])["beat"], first)
             self.assertFalse(read_progress(self.admin, progress_id)["done"])
         self.assertTrue(read_progress(self.admin, progress_id)["done"])
         self.assertFalse(progress._thread.is_alive())
@@ -409,7 +409,7 @@ class ProgressTestCase(ConsoleBase):
         request = RequestFactory().post("/", {"progress_id": "../../x"})
         request.user = self.admin
         progress = progress_for(request)
-        self.assertIsNone(progress.key)
+        self.assertEqual(progress.keys, [])
         progress.start("x")
         self.assertIsNone(read_progress(self.admin, "../../x"))
         self.assertEqual(Progress().current, 0)
@@ -420,6 +420,11 @@ class RedactionTestCase(SimpleTestCase):
         self.assertEqual(redact_sync_path("POST /sync/SeCrEt-123_x/preflight/ABC HTTP/1.1"),
                          "POST /sync/***/preflight/ABC HTTP/1.1")
         self.assertEqual(redact_sync_path("GET /console/rules/ HTTP/1.1"), "GET /console/rules/ HTTP/1.1")
+        # malformed and truncated requests too
+        self.assertEqual(redact_sync_path("GET /sync/SeCrEt HTTP/1.1"), "GET /sync/*** HTTP/1.1")
+        self.assertEqual(redact_sync_path("GET /sync/SeCrEt?x=1 HTTP/1.1"), "GET /sync/***?x=1 HTTP/1.1")
+        self.assertEqual(redact_sync_path("Not Found: /sync/SeCrEt"), "Not Found: /sync/***")
+        self.assertEqual(redact_sync_path('"GET /sync/SeCrEt"'), '"GET /sync/***"')
 
     def test_the_django_filter(self):
         record = logging.LogRecord("django.request", logging.WARNING, __file__, 1, "Not Found: %s",

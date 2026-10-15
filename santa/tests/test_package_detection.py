@@ -15,6 +15,7 @@ from santa.package_detection import (
     SOURCE_PATH,
     SOURCE_RELEASE,
     package_from_path,
+    same_version,
     suggest_packages,
 )
 
@@ -114,6 +115,24 @@ class SuggestTestCase(DetectionBase):
         self.assertEqual(found["redis"].latest_version, "8.10.1")
         self.assertFalse(found["pw-unknown"].confirmed)
 
+    def test_a_version_that_only_starts_like_the_current_one(self):
+        events = [self.event(SHA_REDIS, "/opt/homebrew/Cellar/redis/8.10.10/bin", "redis-server")]
+        [redis], _unmatched = suggest_packages(events, cached_only=True)
+        self.assertEqual(redis.latest_version, "8.10.1")
+        self.assertTrue(same_version("8.10.1_1", "8.10.1"))
+        self.assertTrue(same_version("8.10.1", "8.10.1_2"))
+        self.assertFalse(same_version("8.10.10", "8.10.1"))
+
+    def test_a_page_reads_only_the_lookup_tables(self):
+        events = [self.event(SHA_BRAVE, "/Applications/Brave Browser.app/Contents/MacOS", "Brave Browser",
+                             bundle_id="com.brave.Browser", bundle_name="Brave Browser")]
+        suggest_packages(events, cached_only=True)
+        index_key = f"santa:catalog:v{catalog.CACHE_VERSION}:homebrew-index:{Kind.HOMEBREW_CASK}"
+        with patch("santa.catalog.cache.get", wraps=cache.get) as get:
+            [brave], _unmatched = suggest_packages(events, cached_only=True)
+        self.assertEqual(brave.identifier, "brave-browser")
+        self.assertNotIn(index_key, [call.args[0] for call in get.call_args_list])
+
 
 class EventPackagesViewTestCase(DetectionBase):
     def setUp(self):
@@ -130,7 +149,7 @@ class EventPackagesViewTestCase(DetectionBase):
 
     def fake_sync(self, allowed_shas=()):
         """The check of the package rule: rules for these binaries"""
-        def sync(source, progress=None):
+        def sync(source, progress=None, only=None):
             version = ReleaseVersion.objects.create(source=source, identifier=source.identifiers[0], version="8.10.1")
             for sha in allowed_shas:
                 rule = Rule.objects.create(rule_type=RuleType.BINARY, identifier=sha, release_source=source,
@@ -152,7 +171,7 @@ class EventPackagesViewTestCase(DetectionBase):
             response = self.client.post(reverse("console:events_packages"), self.form_data())
         source = ReleaseSource.objects.get(name="Datenbanken")
         self.assertEqual((source.kind, source.identifiers), (Kind.HOMEBREW_FORMULA, ["redis"]))
-        sync.assert_called_once_with(source, progress=ANY)
+        sync.assert_called_once_with(source, progress=ANY, only=None)
         self.assertContains(response, "✓")
         self.assertContains(response, "✗")
         # only the event whose binary is allowed now is resolved

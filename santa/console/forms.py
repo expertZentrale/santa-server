@@ -41,6 +41,7 @@ from ..models import (
     validate_logo_url,
 )
 from ..package_detection import SHORT_KIND_LABELS
+from ..services import is_allowed
 from ..users import profile_for, time_zone_names
 from ..validators import validate_identifier
 
@@ -675,8 +676,14 @@ class ApproveEventForm(CelPolicyMixin, TagsMixin):
     def clean(self):
         cleaned_data = super().clean()
         result = cleaned_data.get("result")
-        if result in (self.EXISTING, self.EXTEND) and not cleaned_data.get("existing_rule"):
+        rule = cleaned_data.get("existing_rule")
+        if result in (self.EXISTING, self.EXTEND) and not rule:
             self.add_error("existing_rule", gettext("Choose a rule."))
+        elif result == self.EXISTING and not is_allowed([m for m in self.allowing if m["rule"].pk == rule.pk]):
+            # approved as it is, the rule has to allow the binary on these Macs already (disabled, another scope or
+            # a CEL rule that may block it: "with the scope below added")
+            self.add_error("existing_rule", gettext("This rule doesn't allow the binary on these Macs yet: choose "
+                                                    "“with the scope below added” or another rule."))
         if result == self.RULE:
             for name in ("rule_type", "policy"):
                 if not cleaned_data.get(name):

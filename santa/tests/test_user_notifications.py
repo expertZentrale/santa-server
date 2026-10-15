@@ -90,6 +90,12 @@ class UserNotificationTestCase(ConsoleBase):
         self.assertContains(response, "it failed")
         self.assertNotContains(response, "it worked")
         self.assertFalse(UserNotification.objects.filter(read_at=None).exists())
+        self.assertContains(response, '<input type="hidden" name="level" value="error">', html=True)
+        # the last one of the level removed: the empty state of the level, also with others left
+        failed = UserNotification.objects.get(level="error")
+        response = self.client.post(reverse("notification_dismiss", args=(failed.pk,)), {"level": "error"},
+                                    HTTP_HX_REQUEST="true")
+        self.assertEqual(response["HX-Refresh"], "true")
 
     def test_requesters_have_the_bell_too(self):
         self.client.force_login(self.user)

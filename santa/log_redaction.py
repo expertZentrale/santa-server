@@ -5,11 +5,12 @@ No Django imports: gunicorn.conf.py uses it before Django is set up.
 import logging
 import re
 
-SYNC_TOKEN = re.compile(r"/sync/[^/?#\s]+/")
+# up to the end of the token, also without the rest of the path (a malformed or truncated request)
+SYNC_TOKEN = re.compile(r"/sync/[^/?#\s\"']+")
 
 
 def redact_sync_path(text):
-    return SYNC_TOKEN.sub("/sync/***/", text) if isinstance(text, str) and "/sync/" in text else text
+    return SYNC_TOKEN.sub("/sync/***", text) if isinstance(text, str) and "/sync/" in text else text
 
 
 class RedactSyncTokens(logging.Filter):

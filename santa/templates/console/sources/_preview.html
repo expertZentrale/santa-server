@@ -1,8 +1,12 @@
 {% load i18n %}{# What the patterns of the form take (source_preview): nothing is saved or downloaded #}
-{% if invalid %}
+{% if gone %}
+<p class="muted">{% translate "This preview is no longer available. Preview again." %}</p>
+{% elif invalid %}
 <p class="error">{% translate "Correct these fields first, then preview again:" %}</p>
 <ul class="errorlist">{% for field in form %}{% for error in field.errors %}<li>{{ field.label }}: {{ error }}</li>{% endfor %}{% endfor %}{% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}</ul>
 {% else %}
+{% if restart %}<ul class="messages"><li class="warning">{% translate "The server is restarting: only the packages before are shown. Preview again in a moment." %}</li></ul>
+{% elif cancelled_by %}<ul class="messages"><li class="warning">{% blocktranslate with user=cancelled_by %}Preview stopped by {{ user }}: only the packages before are shown.{% endblocktranslate %}</li></ul>{% endif %}
 {% if stale_versions or stale_rules %}<ul class="messages"><li class="warning">{% if stale_versions %}{% blocktranslate count count=stale_versions %}With these patterns, “Clean up” deletes {{ count }} version{% plural %}With these patterns, “Clean up” deletes {{ count }} versions{% endblocktranslate %}{% if stale_rules %} {% blocktranslate count count=stale_rules %}and {{ count }} more rule.{% plural %}and {{ count }} more rules.{% endblocktranslate %}{% else %}.{% endif %}{% else %}{% blocktranslate count count=stale_rules %}With these patterns, “Clean up” deletes {{ count }} rule.{% plural %}With these patterns, “Clean up” deletes {{ count }} rules.{% endblocktranslate %}{% endif %}</li></ul>{% endif %}
 {% for result in results %}
 <section class="preview-package">

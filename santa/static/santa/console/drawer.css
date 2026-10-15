@@ -8,8 +8,8 @@
 
 .drawer {
   position: fixed;
-  /* over the bottom border of the top bar, with the same line: no hairline gap while it slides in (rounding), through
-     which the string of lights behind it would show */
+  /* under the bottom border of the top bar, which lies above it: no hairline gap while it slides in (rounding),
+     through which the string of lights behind it would show */
   top: calc(var(--topbar-h) - 1px);
   right: 0;
   bottom: 0;

@@ -120,18 +120,6 @@ def _app_name(event):
     return name or (f"{event.bundle_name}.app" if event.bundle_name else "")
 
 
-def _cask_index(entries):
-    """{bundle ID: [cask]}, {app name (lower case): [cask]} of the loaded cask list"""
-    by_id, by_app = {}, {}
-    for entry in entries:
-        details = entry[5] if len(entry) > 5 else {}
-        for bundle_id in details.get("bundle_ids", []):
-            by_id.setdefault(bundle_id, []).append(entry[0])
-        for app in details.get("apps", []):
-            by_app.setdefault(app.lower(), []).append(entry[0])
-    return by_id, by_app
-
-
 def _suggestion_for(event, released, casks):
     if hit := released.get(event.file_sha256):
         source, version = hit
@@ -149,14 +137,19 @@ def _suggestion_for(event, released, casks):
     return None
 
 
+def same_version(installed, latest):
+    """The Cellar names a formula with its revision (8.10.1_1), the catalog may give the version without it; 8.10.10 is
+    another version than 8.10.1"""
+    return installed == latest or re.sub(r"_\d+$", "", installed) == re.sub(r"_\d+$", "", latest)
+
+
 def _confirm(suggestion, formulae, cached_only):
     """A suggestion from a path: is it in the catalog? Name and icon for the form."""
     if suggestion.kind == Kind.HOMEBREW_FORMULA:
-        entry = formulae.get(suggestion.identifier)
-        if entry:
+        if suggestion.identifier in formulae:
             suggestion.confirmed = True
-            latest = (entry[5] if len(entry) > 5 else {}).get("version", "")
-            if latest and suggestion.version and not suggestion.version.startswith(latest):
+            latest = formulae[suggestion.identifier]
+            if latest and suggestion.version and not same_version(suggestion.version, latest):
                 suggestion.latest_version = latest
         return
     if cached_only:
@@ -174,8 +167,10 @@ def suggest_packages(events, cached_only=False):
     released = _released_files({event.file_sha256 for event in events}, all_rule_types=not cached_only)
     needs_casks = any(event.bundle_id or event.bundle_name or (event.raw or {}).get("file_bundle_path")
                       for event in events)
-    casks = _cask_index(catalog.homebrew_entries(Kind.HOMEBREW_CASK, cached_only=cached_only)) if needs_casks \
-        else ({}, {})
+    casks = ({}, {})
+    if needs_casks:
+        tables = catalog.homebrew_lookup(Kind.HOMEBREW_CASK, cached_only=cached_only)
+        casks = (tables.get("by_id", {}), tables.get("by_app", {}))
     by_key = {}
     unmatched = []
     for event in events:
@@ -190,8 +185,7 @@ def suggest_packages(events, cached_only=False):
     suggestions = list(by_key.values())
     formulae = {}
     if any(s.kind == Kind.HOMEBREW_FORMULA and s.source == SOURCE_PATH for s in suggestions):
-        formulae = {entry[0]: entry for entry in catalog.homebrew_entries(Kind.HOMEBREW_FORMULA,
-                                                                          cached_only=cached_only)}
+        formulae = catalog.homebrew_lookup(Kind.HOMEBREW_FORMULA, cached_only=cached_only).get("versions", {})
     sources = list(ReleaseSource.objects.filter(kind__in={s.kind for s in suggestions}).order_by("name"))
     for suggestion in suggestions:
         if suggestion.source == SOURCE_PATH or not cached_only:

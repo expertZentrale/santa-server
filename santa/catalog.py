@@ -15,13 +15,13 @@ from django.core.cache import cache
 from django.utils.translation import gettext
 
 from .models import ReleaseSource
-from .releases import VSCODE_GALLERY_URL, http_session
+from .releases import VSCODE_GALLERY_URL, homebrew_linux_only, http_session
 
 logger = logging.getLogger(__name__)
 
 CACHE_TIMEOUT = 3600
 # part of the cache keys: bump it when the queries or the results change
-CACHE_VERSION = 5
+CACHE_VERSION = 6
 MAX_RESULTS = 10
 SEARCH_TIMEOUT = 10
 # Homebrew has no search API: the whole list of formulae (~30 MB) or casks (~20 MB) is loaded once a day
@@ -49,6 +49,8 @@ class Suggestion:
     description: str = ""
     icon_url: str = ""
     verified: bool = False
+    # a Homebrew formula only for Linux: offered, but not to choose
+    linux_only: bool = False
 
 
 def _github_headers():
@@ -157,7 +159,7 @@ def _homebrew_entry(kind, data):
                 data.get("desc") or "", data.get("homepage") or "", _cask_details(data)]
     return [data["name"], data["name"], [*(data.get("aliases") or []), *(data.get("oldnames") or [])],
             data.get("desc") or "", data.get("homepage") or "",
-            {"version": ((data.get("versions") or {}).get("stable") or "")}]
+            {"version": ((data.get("versions") or {}).get("stable") or ""), "linux_only": homebrew_linux_only(data)}]
 
 
 # a bundle ID in the uninstall and zap entries of a cask (com.brave.Browser, also in a path or a file name)
@@ -196,8 +198,9 @@ def _cask_details(data):
 
 
 def _homebrew_suggestion(entry):
-    identifier, name, _others, description, homepage, *_details = entry
-    return Suggestion(identifier=identifier, name=name, description=description, icon_url=_github_avatar(homepage))
+    identifier, name, _others, description, homepage, *details = entry
+    return Suggestion(identifier=identifier, name=name, description=description, icon_url=_github_avatar(homepage),
+                      linux_only=bool(details and details[0].get("linux_only")))
 
 
 def _load_homebrew_index(session, kind):
@@ -249,7 +252,42 @@ def _homebrew_index(session, kind):
     finally:
         cache.delete(lock_key)
     cache.set(key, {"loaded_at": time.time(), "entries": entries}, HOMEBREW_INDEX_KEEP)
+    cache.set(f"{key}:lookup", _lookup_tables(kind, entries), HOMEBREW_INDEX_KEEP)
     return entries
+
+
+def _lookup_tables(kind, entries):
+    """What package_detection.py looks up in the list, small enough to read for every page: the casks by bundle ID
+    and by app name (lower case), the formulae with their current version"""
+    if kind == Kind.HOMEBREW_CASK:
+        by_id, by_app = {}, {}
+        for entry in entries:
+            details = entry[5] if len(entry) > 5 else {}
+            for bundle_id in details.get("bundle_ids", []):
+                by_id.setdefault(bundle_id, []).append(entry[0])
+            for app in details.get("apps", []):
+                by_app.setdefault(app.lower(), []).append(entry[0])
+        return {"by_id": by_id, "by_app": by_app}
+    return {"versions": {entry[0]: (entry[5] if len(entry) > 5 else {}).get("version", "") for entry in entries}}
+
+
+def homebrew_lookup(kind, session=None, cached_only=False):
+    """The lookup tables of the formulae or casks (_lookup_tables), {} without a list. cached_only: only when the list
+    is loaded already, without reading the whole list (~20 MB) from the cache"""
+    key = f"{_homebrew_index_key(kind)}:lookup"
+    if not cached_only:
+        entries = homebrew_entries(kind, session)
+        tables = cache.get(key)
+        if tables is None and entries:
+            tables = _lookup_tables(kind, entries)
+            cache.set(key, tables, HOMEBREW_INDEX_KEEP)
+        return tables or {}
+    tables = cache.get(key)
+    if tables is None and (stored := cache.get(_homebrew_index_key(kind))):
+        # a list loaded before the tables existed: once
+        tables = _lookup_tables(kind, stored["entries"])
+        cache.set(key, tables, HOMEBREW_INDEX_KEEP)
+    return tables or {}
 
 
 def _homebrew_rank(entry, query):

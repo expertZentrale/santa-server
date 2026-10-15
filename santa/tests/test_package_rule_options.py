@@ -1,22 +1,43 @@
 import base64
 import hashlib
+import importlib.util
+import io
+import signal
+import time
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.contrib.admin.models import LogEntry
 from django.contrib.auth.models import Permission, User
+from django.core.cache import cache
 from django.core.exceptions import ValidationError
+from django.core.management import call_command
+from django.db import connection
 from django.test import SimpleTestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
-from santa import semver
+from santa import catalog, semver
+from santa.console.views_sources import error_groups, removable_packages
 from santa.models import ReleaseSource, ReleaseVersion, Rule, RuleType
+from santa.progress import SHUTDOWN, SHUTTING_DOWN, Cancelled, Progress
 from santa.releases import (
+    LINUX_ONLY_ERROR,
+    Asset,
+    Release,
+    ReleaseError,
     _npm_platform_ok,
     cleanup_preview,
     cleanup_release_source,
+    collect_binaries,
+    find_binaries,
+    http_session,
+    preview_release_source,
     prune_old_versions,
+    stale_rules,
     sync_release_source,
+    unchecked_identifiers,
 )
 
 from .test_console import ConsoleBase
@@ -148,6 +169,70 @@ class KeepVersionsTestCase(ReleaseSourceBase):
                          [("0.10.3", 1), ("0.10.2", 1)])
         self.assertTrue(Rule.objects.filter(identifier=hashlib.sha256(unsigned("colima-0.10.2-1")).hexdigest())
                         .exists())
+
+    def test_older_bottles_with_only_a_day_as_their_date(self):
+        # the registry gives the older bottles a day ("2021-04-06"), the newer ones a time in UTC
+        base = "https://ghcr.io/v2/homebrew/core/colima"
+        current = tar_gz({"colima/0.10.3/bin/colima": unsigned("colima-0.10.3")})
+        older = tar_gz({"colima/0.10.2/bin/colima": unsigned("colima-0.10.2")})
+        now = timezone.now()
+
+        def index(version, created, bottle):
+            return FakeResponse({
+                "annotations": {"org.opencontainers.image.version": version,
+                                "org.opencontainers.image.created": created},
+                "manifests": [{"platform": {"os": "darwin"}, "annotations": {
+                    "org.opencontainers.image.ref.name": f"{version}.arm64_sequoia",
+                    "sh.brew.bottle.digest": hashlib.sha256(bottle).hexdigest()}}]})
+        routes = {
+            "https://formulae.brew.sh/api/formula/colima.json": FakeResponse({
+                "versions": {"stable": "0.10.3"}, "revision": 0, "bottle": {"stable": {"files": {
+                    "arm64_sequoia": {"url": "https://ghcr.example/colima",
+                                      "sha256": hashlib.sha256(current).hexdigest()},
+                }}}}),
+            "https://ghcr.example/colima": FakeResponse(content=current),
+            f"{base}/tags/list": FakeResponse({"tags": ["0.9.0", "0.10.2", "0.10.3"]}),
+            f"{base}/manifests/0.10.3": index("0.10.3", f"{now - timedelta(days=1):%Y-%m-%dT%H:%M:%SZ}", current),
+            f"{base}/manifests/0.10.2": index("0.10.2", f"{now - timedelta(days=5):%Y-%m-%d}", older),
+            f"{base}/manifests/0.9.0": index("0.9.0", "2021-04-06", older),
+            f"{base}/blobs/sha256:{hashlib.sha256(older).hexdigest()}": FakeResponse(content=older),
+        }
+        source = ReleaseSource.objects.create(name="colima", kind=ReleaseSource.Kind.HOMEBREW_FORMULA,
+                                              identifier="colima", is_global=True, keep_versions=2,
+                                              keep_unit=ReleaseSource.KeepUnit.WEEKS, approve_kept_versions=True)
+        new_versions = sync_release_source(source, fake_session(routes))
+        self.assertEqual([version.version for version in new_versions], ["0.10.3", "0.10.2"])
+        self.assertIsNotNone(ReleaseVersion.objects.get(version="0.10.2").published_at.tzinfo)
+
+    def test_the_preview_shows_releases_older_than_the_range(self):
+        base = "https://ghcr.io/v2/homebrew/core/jq"
+        routes = {
+            f"{base}/tags/list": FakeResponse({"tags": ["1.8.2"]}),
+            f"{base}/manifests/1.8.2": FakeResponse({"annotations": {
+                "org.opencontainers.image.version": "1.8.2", "org.opencontainers.image.created": "2021-04-06"},
+                "manifests": []}),
+        }
+        source = ReleaseSource(name="jq", kind=ReleaseSource.Kind.HOMEBREW_FORMULA, identifier="jq",
+                               keep_versions=3, keep_unit=ReleaseSource.KeepUnit.WEEKS)
+        [result] = preview_release_source(source, fake_session(routes))
+        self.assertEqual([release["version"] for release in result["releases"]], ["1.8.2"])
+
+    def test_formula_without_executables(self):
+        # a library or data only (ca-certificates): recorded with 0 binaries, not an error
+        bottle = tar_gz({"ca-certificates/2026-01-01/share/ca-certificates/cacert.pem": b"x" * 5000})
+        routes = {
+            "https://formulae.brew.sh/api/formula/ca-certificates.json": FakeResponse({
+                "versions": {"stable": "2026-01-01"}, "revision": 0, "bottle": {"stable": {"files": {
+                    "all": {"url": "https://ghcr.example/ca", "sha256": hashlib.sha256(bottle).hexdigest()},
+                }}}}),
+            "https://ghcr.example/ca": FakeResponse(content=bottle),
+        }
+        source = ReleaseSource.objects.create(name="ca", kind=ReleaseSource.Kind.HOMEBREW_FORMULA,
+                                              identifier="ca-certificates", is_global=True)
+        [version] = sync_release_source(source, fake_session(routes))
+        self.assertEqual(version.binary_count, 0)
+        source.refresh_from_db()
+        self.assertEqual(source.last_error, "")
 
     def test_older_vscode_versions(self):
         source = ReleaseSource.objects.create(name="tool", kind=ReleaseSource.Kind.VSCODE_EXTENSION,
@@ -434,3 +519,351 @@ class CleanupTestCase(ConsoleBase):
         self.assertContains(response, "1 version is no longer covered by the package rule")
         # nothing deleted without the clean up
         self.assertEqual(self.source.versions.count(), 4)
+
+
+class FasterChecksTestCase(ReleaseSourceBase):
+    def test_new_packages_first(self):
+        source = ReleaseSource.objects.create(name="tools", kind=ReleaseSource.Kind.GITHUB_RELEASE,
+                                              identifier="o/a\no/b\no/c", is_global=True,
+                                              last_checked_at=timezone.now())
+        ReleaseVersion.objects.create(source=source, identifier="o/b", version="1")
+        calls = []
+        with patch("santa.releases._sync_identifier",
+                   side_effect=lambda session, source, identifier: calls.append(identifier) or ([], [])):
+            sync_release_source(source, fake_session({}))
+        self.assertEqual(calls, ["o/a", "o/c", "o/b"])
+
+    def test_no_index_for_the_versions_recorded_already(self):
+        base = "https://ghcr.io/v2/homebrew/core/colima"
+        older = tar_gz({"colima/0.10.1/bin/colima": unsigned("colima-0.10.1")})
+        digest = hashlib.sha256(older).hexdigest()
+        current = tar_gz({"colima/0.10.3/bin/colima": unsigned("colima-0.10.3")})
+        routes = {
+            "https://formulae.brew.sh/api/formula/colima.json": FakeResponse({
+                "versions": {"stable": "0.10.3"}, "revision": 0, "bottle": {"stable": {"files": {
+                    "arm64_sequoia": {"url": "https://ghcr.example/colima",
+                                      "sha256": hashlib.sha256(current).hexdigest()}}}}}),
+            f"{base}/tags/list": FakeResponse({"tags": ["0.10.1", "0.10.2", "0.10.2-1", "0.10.3"]}),
+            # only the version not recorded yet: 0.10.3, 0.10.2 and its rebuild are known
+            f"{base}/manifests/0.10.1": FakeResponse({
+                "annotations": {"org.opencontainers.image.version": "0.10.1",
+                                "org.opencontainers.image.created": "2026-09-01T10:00:00Z"},
+                "manifests": [{"platform": {"os": "darwin"}, "annotations": {
+                    "org.opencontainers.image.ref.name": "0.10.1.arm64_sequoia", "sh.brew.bottle.digest": digest}}]}),
+            f"{base}/blobs/sha256:{digest}": FakeResponse(content=older),
+        }
+        source = ReleaseSource.objects.create(name="colima", kind=ReleaseSource.Kind.HOMEBREW_FORMULA,
+                                              identifier="colima", is_global=True, keep_versions=3,
+                                              approve_kept_versions=True)
+        for version in ("0.10.3", "0.10.2"):
+            ReleaseVersion.objects.create(source=source, identifier="colima", version=version, binary_count=1)
+        # recorded by a check that ended
+        source.last_checked_at = timezone.now()
+        source.save()
+        session = fake_session(routes)
+        new_versions = sync_release_source(source, session)
+        self.assertEqual([version.version for version in new_versions], ["0.10.1"])
+        asked = [call.args[0] for call in session.get.call_args_list]
+        self.assertNotIn(f"{base}/manifests/0.10.2", asked)
+        self.assertNotIn(f"{base}/manifests/0.10.2-1", asked)
+
+    def test_the_files_of_a_release_at_once(self):
+        source = ReleaseSource(name="tool", kind=ReleaseSource.Kind.GITHUB_RELEASE, identifier="o/tool")
+        same = unsigned("tool-a")
+        assets = [Asset(name="a.zip", url="https://x/a", sha256=hashlib.sha256(zip_file({"bin/a": same})).hexdigest()),
+                  Asset(name="broken.zip", url="https://x/broken"),
+                  Asset(name="b.zip", url="https://x/b")]
+        routes = {"https://x/a": FakeResponse(content=zip_file({"bin/a": same})),
+                  "https://x/broken": FakeResponse(content=b"x" * 5000),
+                  "https://x/b": FakeResponse(content=zip_file({"bin/b": unsigned("tool-b")}))}
+        # the same file twice: downloaded once
+        assets.append(Asset(name="a-again.zip", url="https://x/a-again", sha256=assets[0].sha256))
+        session = fake_session(routes)
+        found, errors = collect_binaries(session, source, Release(version="1", assets=assets))
+        self.assertEqual([(binary.asset, binary.path) for binary in found],
+                         [("a.zip", "bin/a"), ("b.zip", "bin/b"), ("a-again.zip", "bin/a")])
+        self.assertEqual(len(errors), 1)
+        self.assertIn("broken.zip", errors[0])
+        self.assertEqual(sorted(call.args[0] for call in session.get.call_args_list),
+                         ["https://x/a", "https://x/b", "https://x/broken"])
+
+    def test_versions_of_a_check_that_never_ended_are_announced(self):
+        source = ReleaseSource.objects.create(name="tools", kind=ReleaseSource.Kind.GITHUB_RELEASE,
+                                              identifier="o/a", is_global=True,
+                                              last_checked_at=timezone.now() - timedelta(hours=2))
+        # recorded by a check whose server was killed: never announced
+        orphan = ReleaseVersion.objects.create(source=source, identifier="o/a", version="1", binary_count=1)
+        with patch("santa.releases._sync_identifier", return_value=([], [])), \
+                patch("santa.releases.notifications.versions_found") as found:
+            self.assertEqual(sync_release_source(source, fake_session({})), [orphan])
+            found.assert_called_once_with(source, [orphan])
+            # announced once: the check after it has nothing
+            sync_release_source(source, fake_session({}))
+            self.assertEqual(found.call_args.args[1], [])
+
+    def test_a_shutdown_ends_the_check_after_the_current_package(self):
+        source = ReleaseSource.objects.create(name="tools", kind=ReleaseSource.Kind.GITHUB_RELEASE,
+                                              identifier="o/a\no/b", is_global=True)
+        self.addCleanup(SHUTTING_DOWN.clear)
+
+        def sync_identifier(session, source, identifier):
+            SHUTTING_DOWN.set()
+            return [], []
+
+        progress = Progress()
+        with patch("santa.releases._sync_identifier", side_effect=sync_identifier) as sync:
+            sync_release_source(source, fake_session({}), progress=progress)
+        self.assertEqual(sync.call_count, 1)
+        self.assertEqual(progress.cancelled_by, SHUTDOWN)
+        source.refresh_from_db()
+        self.assertIsNotNone(source.last_checked_at)
+
+    def test_the_console_says_the_server_restarts(self):
+        source = ReleaseSource.objects.create(name="tools", kind=ReleaseSource.Kind.GITHUB_RELEASE,
+                                              identifier="o/a\no/b", is_global=True)
+        self.addCleanup(SHUTTING_DOWN.clear)
+        self.addCleanup(cache.delete_many, [f"santa:source-check:{source.pk}",
+                                            f"santa:source-check:{source.pk}:cancel"])
+        admin = User.objects.create_superuser("admin", "admin@example.com", "pw")
+        self.client.force_login(admin)
+
+        def sync(source, progress, only=None):
+            progress.add_total(2)
+            progress.start("o/a")
+            SHUTTING_DOWN.set()
+            try:
+                progress.start("o/b")
+            except Cancelled:
+                return []
+
+        with patch("santa.console.views_sources.sync_release_source", side_effect=sync):
+            response = self.client.post(reverse("console:source_check", args=(source.pk,)), follow=True)
+        self.assertContains(response, "the server is restarting, the check stopped after 1 of 2 packages")
+
+    def test_the_gunicorn_worker_stops_the_checks_on_sigterm(self):
+        spec = importlib.util.spec_from_file_location("gunicorn_conf", "gunicorn.conf.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        received = []
+        previous = signal.signal(signal.SIGTERM, lambda signum, frame: received.append(signum))
+        self.addCleanup(signal.signal, signal.SIGTERM, previous)
+        self.addCleanup(SHUTTING_DOWN.clear)
+        module.post_worker_init(None)
+        signal.getsignal(signal.SIGTERM)(signal.SIGTERM, None)
+        self.assertTrue(SHUTTING_DOWN.is_set())
+        self.assertEqual(received, [signal.SIGTERM])
+
+    def test_the_lock_of_the_job_is_held_while_it_runs(self):
+        from santa.management.commands import sync_release_sources as command
+        ReleaseSource.objects.create(name="tools", kind=ReleaseSource.Kind.GITHUB_RELEASE, identifier="o/a",
+                                     is_global=True)
+        seen = []
+
+        def slow(source, session, progress):
+            time.sleep(1.6)
+            seen.append(cache.get(command.LOCK_KEY))
+            return []
+
+        # the cache counts whole seconds
+        with patch.object(command, "LOCK_TIMEOUT", 1), patch.object(command, "LOCK_HEARTBEAT", 0.2), \
+                patch.object(command, "sync_release_source", side_effect=slow):
+            call_command("sync_release_sources", stdout=io.StringIO())
+        # beyond its timeout, refreshed by the heartbeat; deleted at the end
+        self.assertEqual(seen, ["1"])
+        self.assertIsNone(cache.get(command.LOCK_KEY))
+
+
+class PackageProblemsTestCase(ReleaseSourceBase):
+    @override_settings(RELEASE_MAX_UNPACKED_BYTES=20000)
+    def test_only_executables_are_unpacked(self):
+        # the libraries and data of a compiler: gigabytes, never unpacked, never counted
+        bottle = tar_gz({"ghc/9/lib/libHSbase.a": b"!<arch>\n" + b"x" * 50000,
+                         "ghc/9/lib/libffi.dylib": build_macho(filetype=6) + b"x" * 50000,
+                         "ghc/9/share/doc.html": b"<html>" + b"x" * 50000,
+                         "ghc/9/bin/ghc": unsigned("ghc")})
+        found = list(find_binaries(io.BytesIO(bottle), "ghc.bottle.tar.gz"))
+        self.assertEqual([path for path, _info in found], ["ghc/9/bin/ghc"])
+
+    def test_a_formula_only_for_linux(self):
+        routes = {"https://formulae.brew.sh/api/formula/acl.json": FakeResponse({
+            "versions": {"stable": "2.4.0"}, "revision": 0, "requirements": [{"name": "linux"}],
+            "bottle": {"stable": {"files": {"x86_64_linux": {"url": "https://x/acl", "sha256": "0" * 64}}}}})}
+        source = ReleaseSource.objects.create(name="acl", kind=ReleaseSource.Kind.HOMEBREW_FORMULA,
+                                              identifier="acl", is_global=True)
+        with self.assertRaises(ReleaseError) as cm:
+            sync_release_source(source, fake_session(routes))
+        self.assertIn("Only for Linux", str(cm.exception))
+        entry = catalog._homebrew_entry(ReleaseSource.Kind.HOMEBREW_FORMULA, {
+            "name": "acl", "versions": {"stable": "2.4.0"}, "requirements": [{"name": "linux"}]})
+        self.assertTrue(catalog._homebrew_suggestion(entry).linux_only)
+
+    def test_a_dropped_connection_is_asked_again(self):
+        adapter = http_session().get_adapter("https://ghcr.io/")
+        self.assertEqual(adapter.max_retries.total, 3)
+        self.assertIn(503, adapter.max_retries.status_forcelist)
+
+    def test_the_errors_per_package_once(self):
+        source = ReleaseSource.objects.create(name="tools", kind=ReleaseSource.Kind.HOMEBREW_FORMULA,
+                                              identifier="acl\nagda", is_global=True)
+        for version in ("2.8.0-r3", "2.8.0.1"):
+            ReleaseVersion.objects.create(source=source, identifier="agda", version=version)
+        source.last_error = "\n".join([
+            "acl: Only for Linux",
+            "agda: 2.8.0-r3: ghc@9.14.1: ghc.tar.gz: unpacks to more than 2147483648 bytes",
+            "agda: 2.8.0.1: ghc@9.14.1: ghc.tar.gz: unpacks to more than 2147483648 bytes",
+            "agda: agda.tar.gz: bigger than 524288000 bytes"])
+        source.save()
+        self.assertEqual(error_groups(source), [
+            ("acl", [("Only for Linux", [])]),
+            ("agda", [("ghc@9.14.1: ghc.tar.gz: unpacks to more than 2147483648 bytes", ["2.8.0-r3", "2.8.0.1"]),
+                      ("agda.tar.gz: bigger than 524288000 bytes", [])])])
+        admin = User.objects.create_superuser("admin", "admin@example.com", "pw")
+        self.client.force_login(admin)
+        response = self.client.get(reverse("console:source", args=(source.pk,)))
+        self.assertContains(response, "Problems at the last check: 2 packages")
+        self.assertContains(response, "2 versions: 2.8.0-r3, 2.8.0.1")
+
+
+class RemoveLinuxPackagesTestCase(ReleaseSourceBase):
+    def setUp(self):
+        super().setUp()
+        self.admin = User.objects.create_superuser("admin", "admin@example.com", "pw")
+        self.client.force_login(self.admin)
+        self.source = ReleaseSource.objects.create(
+            name="tools", kind=ReleaseSource.Kind.HOMEBREW_FORMULA, identifier="acl\nafuse\njq\nagda", is_global=True,
+            last_error="\n".join([f"acl: {LINUX_ONLY_ERROR}", f"afuse: {LINUX_ONLY_ERROR}",
+                                  "agda: agda.tar.gz: bigger than 524288000 bytes"]))
+
+    def test_only_the_packages_that_cannot_work_are_offered(self):
+        self.assertEqual(removable_packages(self.source), ["acl", "afuse"])
+        alone = ReleaseSource.objects.create(name="acl", kind=ReleaseSource.Kind.HOMEBREW_FORMULA, identifier="acl",
+                                             last_error=LINUX_ONLY_ERROR)
+        # a package rule keeps one package
+        self.assertEqual(removable_packages(alone), [])
+        response = self.client.get(reverse("console:source", args=(self.source.pk,)))
+        self.assertContains(response, "Remove the 2 Linux-only packages")
+        self.assertContains(response, "Remove acl from the package rule")
+
+    def test_remove_them(self):
+        response = self.client.post(reverse("console:source_remove_identifiers", args=(self.source.pk,)),
+                                    {"identifier": ["acl", "afuse", "not-in-it"]}, HTTP_HX_REQUEST="true")
+        self.source.refresh_from_db()
+        self.assertEqual(self.source.identifiers, ["jq", "agda"])
+        self.assertEqual(self.source.last_error, "agda: agda.tar.gz: bigger than 524288000 bytes")
+        self.assertContains(response, "2 packages removed from tools: acl, afuse.")
+        self.assertNotContains(response, "Linux-only")
+        self.assertTrue(LogEntry.objects.filter(object_id=str(self.source.pk),
+                                                change_message="Removed from the packages: acl, afuse").exists())
+
+    def test_never_all_of_them(self):
+        self.client.post(reverse("console:source_remove_identifiers", args=(self.source.pk,)),
+                         {"identifier": ["acl", "afuse", "jq", "agda"]})
+        self.source.refresh_from_db()
+        self.assertEqual(len(self.source.identifiers), 4)
+
+    def test_only_who_may_change_package_rules(self):
+        viewer = User.objects.create_user("viewer", is_staff=True)
+        viewer.user_permissions.set(Permission.objects.filter(codename="view_releasesource"))
+        self.client.force_login(viewer)
+        response = self.client.get(reverse("console:source", args=(self.source.pk,)))
+        self.assertNotContains(response, "Remove acl from")
+        self.assertNotContains(response, "Linux-only packages")
+        response = self.client.post(reverse("console:source_remove_identifiers", args=(self.source.pk,)),
+                                    {"identifier": ["acl"]})
+        self.assertEqual(response.status_code, 403)
+
+    def test_the_drawer_first_the_versions_after_it(self):
+        version = ReleaseVersion.objects.create(source=self.source, identifier="jq", version="1.8.2", binary_count=1)
+        url = reverse("console:source", args=(self.source.pk,))
+        response = self.client.get(url, HTTP_HX_REQUEST="true")
+        self.assertContains(response, 'hx-headers=\'{"X-Santa-Rows": "1"}\'')
+        self.assertNotContains(response, version.version)
+        response = self.client.get(url, HTTP_HX_REQUEST="true", HTTP_X_SANTA_ROWS="1")
+        self.assertContains(response, version.version)
+        self.assertContains(response, f'id="cleanup-count-{self.source.pk}" hx-swap-oob="true"')
+        self.assertNotContains(response, "Problems at the last check")
+        # the page at once
+        self.assertContains(self.client.get(url), version.version)
+
+    def test_the_first_answer_does_not_grow_with_the_versions(self):
+        url = reverse("console:source", args=(self.source.pk,))
+        self.client.get(url, HTTP_HX_REQUEST="true")
+        with CaptureQueriesContext(connection) as few:
+            self.client.get(url, HTTP_HX_REQUEST="true")
+        for n in range(30):
+            ReleaseVersion.objects.create(source=self.source, identifier="jq", version=f"1.{n}", binary_count=1)
+        with CaptureQueriesContext(connection) as many:
+            self.client.get(url, HTTP_HX_REQUEST="true")
+        self.assertEqual(len(few), len(many))
+
+    def test_the_clean_up_count_does_not_grow_with_the_rules(self):
+        self.source.binary_pattern = "bin/*"
+        self.source.save()
+        version = ReleaseVersion.objects.create(source=self.source, identifier="jq", version="1.8.2", binary_count=1)
+
+        def add(count):
+            for n in range(count):
+                Rule.objects.create(rule_type=RuleType.BINARY, identifier=f"{n:064x}", release_source=self.source,
+                                    release_version=version, release_files=[{"path": f"bin/tool{n}", "sha256": ""}])
+
+        add(2)
+        with CaptureQueriesContext(connection) as few:
+            stale_rules(self.source)
+        add(20)
+        with CaptureQueriesContext(connection) as many:
+            stale_rules(self.source)
+        self.assertEqual(len(few), len(many))
+
+
+class CheckNewPackagesTestCase(ReleaseSourceBase):
+    def setUp(self):
+        super().setUp()
+        # saving the form looks up the icons in the catalogs: never the network in a test
+        patcher = patch("santa.catalog.lookup", return_value=None)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.admin = User.objects.create_superuser("admin", "admin@example.com", "pw")
+        self.client.force_login(self.admin)
+        self.source = ReleaseSource.objects.create(name="tools", kind=ReleaseSource.Kind.GITHUB_RELEASE,
+                                                   identifier="o/a\no/b\no/c", is_global=True,
+                                                   last_checked_at=timezone.now(), last_error="o/a: down")
+        ReleaseVersion.objects.create(source=self.source, identifier="o/b", version="1", binary_count=1)
+        self.addCleanup(cache.delete_many, [f"santa:source-check:{self.source.pk}",
+                                            f"santa:source-check:{self.source.pk}:cancel"])
+
+    def test_only_some_packages(self):
+        calls = []
+
+        def sync_identifier(session, source, identifier):
+            calls.append(identifier)
+            raise ReleaseError("not found")
+
+        with patch("santa.releases._sync_identifier", side_effect=sync_identifier), \
+                self.assertRaises(ReleaseError):
+            sync_release_source(self.source, fake_session({}), only=["o/b"])
+        self.assertEqual(calls, ["o/b"])
+        self.source.refresh_from_db()
+        # the error of the package not checked stays
+        self.assertEqual(self.source.last_error, "o/a: down\no/b: not found")
+
+    def test_the_new_ones(self):
+        # o/a was checked (its error), o/b has a version: o/c is new
+        self.assertEqual(unchecked_identifiers(self.source), ["o/c"])
+        response = self.client.get(reverse("console:source", args=(self.source.pk,)))
+        self.assertContains(response, "Check the new package")
+        with patch("santa.console.views_sources.sync_release_source", return_value=[]) as sync:
+            self.client.post(reverse("console:source_check", args=(self.source.pk,)), {"only": "new"})
+        self.assertEqual(sync.call_args.kwargs["only"], ["o/c"])
+
+    def test_no_button_when_all_are_new(self):
+        fresh = ReleaseSource.objects.create(name="fresh", kind=ReleaseSource.Kind.GITHUB_RELEASE,
+                                             identifier="o/x\no/y", is_global=True)
+        self.assertEqual(unchecked_identifiers(fresh), ["o/x", "o/y"])
+        self.assertNotContains(self.client.get(reverse("console:source", args=(fresh.pk,))), "new package")
+
+    def test_saving_with_added_packages_names_the_button(self):
+        data = {"name": "tools", "kind": ReleaseSource.Kind.GITHUB_RELEASE, "identifier": "o/a\no/b\no/c\no/d",
+                "is_enabled": "on", "rule_type": "BINARY", "policy": "ALLOWLIST", "is_global": "on",
+                "keep_versions": "1", "keep_unit": "VERSIONS", "auto_approve_delay_days": "0"}
+        response = self.client.post(reverse("console:source_edit", args=(self.source.pk,)), data, follow=True)
+        self.assertContains(response, "1 package added: “Check the new packages” gets its releases.")

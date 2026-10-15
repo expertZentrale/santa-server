@@ -215,15 +215,28 @@
     return document.getElementById("progress");
   }
 
+  // the share the bar shows (a number), or null for the moving stripe: kept here, so that the bar of a page swapped in
+  // (another tab while a check runs) goes on where it was
+  let barShare = null;
+  // the steps of a watched request are shown (with their total): an upload of another request doesn't change the bar
+  let stepsShown = false;
+
+  function setShare(share) {
+    barShare = share;
+    const bar = progressBar();
+    if (!bar) return;
+    bar.classList.toggle("determinate", share !== null);
+    if (share === null) bar.style.removeProperty("--progress");
+    else bar.style.setProperty("--progress", `${share}%`);
+  }
+
   // also on the bar of a page swapped in, which comes hidden
   function applyProgress() {
     const bar = progressBar();
     if (!bar) return;
     bar.hidden = !visible;
-    if (!visible) {
-      bar.classList.remove("determinate");
-      bar.style.removeProperty("--progress");
-    }
+    if (!visible) barShare = null;
+    setShare(barShare);
   }
 
   function startProgress() {
@@ -293,24 +306,16 @@
     if (data.label) parts.push(data.label);
     status.textContent = parts.join(" · ");
     status.hidden = false;
-    if (data.total) {
-      bar.classList.add("determinate");
-      bar.style.setProperty("--progress", `${Math.max(2, Math.round((data.current - 1) / data.total * 100))}%`);
-    } else {
-      // the upload is sent, the server works on it: the moving stripe again
-      bar.classList.remove("determinate");
-      bar.style.removeProperty("--progress");
-    }
+    // without a total (the upload is sent, the server works on it): the moving stripe again
+    stepsShown = Boolean(data.total);
+    setShare(data.total ? Math.max(2, Math.round((data.current - 1) / data.total * 100)) : null);
   }
 
   // Is the request still alive? The server refreshes its entry every 10 s while it works (santa/progress.py).
   // No heartbeat for this long while the server answers: it crashed, or a worker was killed or restarted.
   const PROGRESS_DEAD_AFTER = 35;
-  // no entry at all this long after the form was sent completely: the request never started
-  const PROGRESS_NEVER_AFTER = 30000;
-  // the htmx request of a progress ID (htmx:beforeSend), to abort it when it died, and when its form was sent
+  // the htmx request of a progress ID (htmx:beforeSend), to abort it when it died
   const progressRequests = new Map();
-  const progressSentAt = new Map();
 
   function watchProgress(id) {
     stopWatching();
@@ -345,12 +350,11 @@
     watchTimer = setTimeout(poll, 400);
   }
 
+  // No entry yet is no sign of death: a request can work a while before its progress starts (the catalogs, an upload
+  // unpacked); a connection that is gone shows in the banner of the connection
   function progressDied(current, data) {
     if (data.done) return false;
-    if (data.beat_age != null) return data.beat_age > PROGRESS_DEAD_AFTER;
-    // no entry yet: only once the form is sent (an upload can take long), and only for an htmx request
-    const sentAt = progressSentAt.get(current.id);
-    return Boolean(sentAt) && Date.now() - sentAt > PROGRESS_NEVER_AFTER;
+    return data.beat_age != null && data.beat_age > PROGRESS_DEAD_AFTER;
   }
 
   function died(current) {
@@ -378,17 +382,14 @@
     const xhr = event.detail.xhr;
     if (!id || !xhr) return;
     progressRequests.set(id, xhr);
-    // the form is on the server (an upload can take long): from here its entry has to appear
-    xhr.upload?.addEventListener("loadend", () => progressSentAt.set(id, Date.now()), { once: true });
-    xhr.addEventListener("loadend", () => {
-      progressRequests.delete(id);
-      progressSentAt.delete(id);
-    }, { once: true });
+    xhr.addEventListener("loadend", () => progressRequests.delete(id), { once: true });
   });
 
   function stopWatching() {
     watching = null;
     clearTimeout(watchTimer);
+    stepsShown = false;
+    setShare(null);
     const status = progressStatus();
     if (status) {
       status.hidden = true;
@@ -446,18 +447,17 @@
     const button = event.detail.requestConfig?.busyButton;
     startProgress();
     setBusy(button, true);
+    // an upload: the share sent so far. Only the upload (htmx reports the download of every answer too, the HTML of
+    // another tab filled the bar), and not over the steps of a long request
+    xhr.upload?.addEventListener("progress", (progress) => {
+      if (!progress.lengthComputable || !progress.total || progress.loaded >= progress.total) return;
+      if (stepsShown) return;
+      setShare(Math.round(progress.loaded / progress.total * 100));
+    });
     xhr.addEventListener("loadend", () => {
       stopProgress();
       setBusy(button, false);
     }, { once: true });
-  });
-  // an upload: the share sent so far
-  document.addEventListener("htmx:xhr:progress", (event) => {
-    const { loaded, total } = event.detail;
-    const bar = progressBar();
-    if (!bar || !total || loaded >= total) return;
-    bar.classList.add("determinate");
-    bar.style.setProperty("--progress", `${Math.round(loaded / total * 100)}%`);
   });
   // Back to a page kept by the browser: nothing runs on it
   window.addEventListener("pageshow", (event) => {
@@ -492,7 +492,6 @@
 
   async function download(link) {
     const url = new URL(link.href, window.location.href);
-    const bar = progressBar();
     startProgress();
     setBusy(link, true);
     try {
@@ -507,10 +506,7 @@
         if (done) break;
         chunks.push(value);
         loaded += value.length;
-        if (total && bar) {
-          bar.classList.add("determinate");
-          bar.style.setProperty("--progress", `${Math.round(loaded / total * 100)}%`);
-        }
+        if (total) setShare(Math.round(loaded / total * 100));
       }
       const blob = new Blob(chunks, { type: response.headers.get("Content-Type") || "application/octet-stream" });
       const save = document.createElement("a");
@@ -545,10 +541,45 @@
     setTimeout(() => toast.remove(), window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 200);
   }
 
+  // At most this many at a time: many messages at once (a check that found many versions) are one more toast that
+  // leads to the bell. An error takes the place of the oldest other one.
+  const MAX_TOASTS = 3;
+  let moreToast = null;
+  let moreCount = 0;
+
+  function showMore(box) {
+    moreCount += 1;
+    if (!moreToast?.isConnected) {
+      moreToast = document.createElement("div");
+      moreToast.className = "toast info toast-more";
+      const link = document.createElement("a");
+      link.className = "toast-text";
+      link.href = box.dataset.moreUrl || "/notifications/";
+      moreToast.append(link);
+      box.append(moreToast);
+      setTimeout(() => {
+        closeToast(moreToast);
+        moreCount = 0;
+      }, 8000);
+    }
+    moreToast.querySelector("a").textContent = moreCount === 1 ? box.dataset.moreOne || "1 more message"
+      : (box.dataset.more || "%(count)s more messages").replace("%(count)s", moreCount);
+  }
+
   // level: success, info, warning, error
   function addToast(level, message) {
     const box = document.getElementById("toasts");
     if (!box) return;
+    const shown = [...box.querySelectorAll(".toast:not(.leaving):not(.toast-more)")];
+    if (shown.length >= MAX_TOASTS) {
+      const other = level === "error" && shown.find((toast) => !toast.classList.contains("error"));
+      if (!other) {
+        showMore(box);
+        return;
+      }
+      other.remove();
+      showMore(box);
+    }
     const toast = document.createElement("div");
     toast.className = `toast ${level}`;
     const text = document.createElement("span");
@@ -561,7 +592,8 @@
     close.textContent = "×";
     close.addEventListener("click", () => closeToast(toast));
     toast.append(text, close);
-    box.append(toast);
+    // the "more" one stays the last
+    box.insertBefore(toast, moreToast?.isConnected ? moreToast : null);
     let timer = null;
     const start = () => {
       timer = setTimeout(() => closeToast(toast), level === "error" ? 12000 : 6000);
@@ -585,6 +617,11 @@
   }
   SantaConsole.onInit(showToasts);
   SantaConsole.onSwap(showToasts);
+  // the messages of an answer that is not shown (drawer.js: its view was left meanwhile)
+  SantaConsole.showToastsOf = (html) => {
+    if (html.includes("data-toasts")) showToasts(new DOMParser().parseFromString(html, "text/html"));
+  };
+  SantaConsole.addToast = addToast;
 
   // The bell: the count of the unread messages, again after every request that added one (HX-Trigger
   // notificationsChanged); the open menu loads its list again
@@ -904,6 +941,8 @@
       if (menu?.open) {
         menu.open = false;
         menu.querySelector("summary").focus();
+        // only the menu: the drawer behind it stays (drawer.js)
+        event.stopImmediatePropagation();
       }
     }
     document.querySelector("[data-topbar]")?.classList.remove("nav-open");

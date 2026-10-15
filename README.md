@@ -61,6 +61,9 @@ Das Image (`santa_server/settings.py`) wird über Umgebungsvariablen konfigurier
 | `TIME_ZONE` | | Standard `UTC`; die Konsole zeigt die Zeiten in der Zeitzone des Browsers oder des Benutzerprofils |
 | `GITHUB_TOKEN` | empfohlen | für Paketregeln und die Katalogsuche; ohne erlaubt GitHub 60 Anfragen pro Stunde |
 | `RELEASE_MAX_DEPENDENCIES` | | Standard `200`: so viele Abhängigkeiten (direkte und indirekte) löst eine Paketregel mit *Abhängigkeiten erlauben* je Version höchstens auf |
+| `RELEASE_MAX_DOWNLOAD_BYTES` | | Standard `524288000` (500 MB): größere Dateien eines Releases werden nicht heruntergeladen (z. B. die Bottles von `agda`); vier Downloads laufen parallel, belegen also bis zum Vierfachen davon an temporärem Speicher |
+| `RELEASE_MAX_FILE_BYTES` | | Standard `536870912` (512 MB): größere ausführbare Dateien in einem Archiv werden übersprungen |
+| `RELEASE_MAX_UNPACKED_BYTES` | | Standard `2147483648` (2 GB): so viel darf ein Archiv insgesamt entpacken; es zählen nur die ausführbaren Dateien, Bibliotheken und Daten werden nicht entpackt |
 | `RELEASE_UNPACK_TIMEOUT` | | Standard `120`: so viele Sekunden darf 7-Zip zum Auflisten oder Entpacken eines Disk-Images (`.dmg`) brauchen |
 | `SANTA_SERVER_NAME` | | Name in Fenstertitel, Kopfzeile und Django-Admin, Standard `Santa Server` |
 | `SANTA_FAVICON_URL` | | eigenes Favicon: absolute URL oder Pfad ab `/` (SVG, PNG oder ICO); leer = die mitgelieferte Weihnachtsmütze |
@@ -455,7 +458,15 @@ Hinweise:
   das GitHub-Release.
 - npm-Tarballs werden gegen den veröffentlichten SHA-512 geprüft, Homebrew-Bottles gegen ihren SHA-256.
 - Releases ohne ausführbare Dateien (die meisten npm-Pakete, VS-Code-Erweiterungen und JetBrains-Plugins sind
-  Skripte) werden mit 0 Binaries erfasst: Santa hat darin nichts zu erlauben.
+  Skripte, viele Homebrew-Formeln nur Bibliotheken) werden mit 0 Binaries erfasst: Santa hat darin nichts zu
+  erlauben. Formeln nur für Linux (z. B. `acl`) melden das bei der Prüfung; die Katalogsuche zeigt sie als *Nur Linux*.
+- Aus Archiven werden nur die ausführbaren Mach-O-Dateien entpackt, Bibliotheken und Daten nicht. Bis zu vier
+  Dateien werden gleichzeitig geladen, und bereits erfasste Versionen einer Homebrew-Formel werden nicht erneut
+  abgefragt.
+- Neustart während einer Prüfung: Bei SIGTERM (z. B. einem Rollout) endet eine laufende Prüfung nach ihrem
+  aktuellen Paket, innerhalb des gunicorn-Graceful-Timeouts (25 s), und speichert, was sie gefunden hat. Wird der
+  Prozess hart beendet, bleiben die bis dahin erfassten Versionen; die nächste Prüfung meldet sie nach. Ein
+  abgebrochenes Entpacken eines Disk-Images kann Dateien in `/tmp` des Containers zurücklassen, bis er neu startet.
 - `.pkg`-Dateien liest der Server selbst (Payload und Scripts, gzip, bzip2 oder pbzx). `.dmg`-Dateien entpackt
   7-Zip (`7zz`, im Image enthalten), nur die ausführbaren Dateien und die Pakete und Archive darin; eine Ebene tief,
   in den Grenzen von `RELEASE_MAX_UNPACKED_BYTES` und `RELEASE_UNPACK_TIMEOUT`. So funktionieren auch
@@ -669,6 +680,9 @@ The image (`santa_server/settings.py`) is configured with environment variables:
 | `TIME_ZONE` | | default `UTC`; the console shows the times in the time zone of the browser, or of the user profile |
 | `GITHUB_TOKEN` | recommended | for package rules and the catalog search; without it GitHub allows 60 requests per hour |
 | `RELEASE_MAX_DEPENDENCIES` | | default `200`: at most this many dependencies (direct and indirect) a package rule with *Allow the dependencies* resolves per version |
+| `RELEASE_MAX_DOWNLOAD_BYTES` | | default `524288000` (500 MB): bigger files of a release are not downloaded (e.g. the bottles of `agda`); four downloads run in parallel, so up to four times that much temporary disk |
+| `RELEASE_MAX_FILE_BYTES` | | default `536870912` (512 MB): bigger executables inside an archive are skipped |
+| `RELEASE_MAX_UNPACKED_BYTES` | | default `2147483648` (2 GB): at most this much an archive unpacks in total; only the executables count, libraries and data are not unpacked |
 | `RELEASE_UNPACK_TIMEOUT` | | default `120`: the seconds 7-Zip may take to list or unpack a disk image (`.dmg`) |
 | `SANTA_SERVER_NAME` | | name in the window title, the header and the Django admin, default `Santa Server` |
 | `SANTA_FAVICON_URL` | | your own favicon: an absolute URL or a path from `/` (SVG, PNG or ICO); empty = the Santa hat that comes with it |
@@ -1037,8 +1051,15 @@ Notes:
 - Homebrew bottles are hashed per macOS version. Homebrew can rewrite a binary when it installs it (relocation); if
   the Macs still block it, compare with the blocked event and prefer the GitHub release.
 - npm tarballs are checked against the published SHA-512, Homebrew bottles against their SHA-256.
-- Releases without executables (most npm packages, VS Code extensions and JetBrains plugins are scripts) are recorded
-  with 0 binaries: Santa has nothing to allow in them.
+- Releases without executables (most npm packages, VS Code extensions and JetBrains plugins are scripts, many
+  Homebrew formulae only libraries) are recorded with 0 binaries: Santa has nothing to allow in them. Formulae only
+  for Linux (e.g. `acl`) say so at the check; the catalog search shows them as *Linux only*.
+- From archives only the Mach-O executables are unpacked, not the libraries and data. Up to four files are
+  downloaded at the same time, and the versions of a Homebrew formula recorded already are not asked again.
+- A restart during a check: on SIGTERM (e.g. a rollout) a running check ends after its current package, within the
+  graceful timeout of gunicorn (25 s), and keeps what it found. If the process is killed hard, the versions recorded
+  until then stay; the next check announces them. An interrupted unpacking of a disk image can leave files in the
+  container's `/tmp` until it restarts.
 - The server reads `.pkg` files itself (Payload and Scripts, gzip, bzip2 or pbzx). `.dmg` files are unpacked by
   7-Zip (`7zz`, part of the image), only the executables and the packages and archives inside; one level deep, within
   `RELEASE_MAX_UNPACKED_BYTES` and `RELEASE_UNPACK_TIMEOUT`. That way Homebrew casks whose download is a disk image or
