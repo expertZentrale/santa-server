@@ -173,7 +173,8 @@ class AlreadyRunning(Exception):
 def run_source_check(source, user=None, progress=None):
     """The check of a package rule, the only one at a time (AlreadyRunning). user None: the scheduled job.
 
-    progress: the Progress of the request (progress_for()), its entry gets the same steps.
+    progress: the Progress of the request (progress_for()), its entry gets the same steps. One that runs already
+    (the request entered it at its start) goes on with its heartbeat, the entry of the check is added to it.
     """
     progress = progress or Progress()
     key = _source_key(source.pk)
@@ -185,10 +186,16 @@ def run_source_check(source, user=None, progress=None):
         if running is not None or not cache.add(key, claim, TIMEOUT):
             raise AlreadyRunning(running or read_source_check(source.pk))
     cache.delete(_cancel_key(key))
-    progress.keys.append(key)
+    running = progress._thread is not None and progress._thread.is_alive()
+    with progress._lock:
+        progress.keys.append(key)
     try:
-        with progress:
+        if running:
+            progress._save()
             yield progress
+        else:
+            with progress:
+                yield progress
     finally:
         with progress._lock:
             progress.keys.remove(key)

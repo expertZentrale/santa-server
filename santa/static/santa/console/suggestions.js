@@ -141,7 +141,8 @@
     });
     box.addEventListener("click", (event) => {
       const option = event.target.closest(".suggestion");
-      if (!option) return;
+      // a package that can't be chosen (a formula only for Linux)
+      if (!option || option.getAttribute("aria-disabled") === "true") return;
       addChip(option.dataset.identifier, option.dataset.name, option.dataset.icon);
       search.value = "";
       box.classList.remove("open");

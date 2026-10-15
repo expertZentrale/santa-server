@@ -1,3 +1,4 @@
+import time
 from datetime import UTC, datetime
 
 from django.contrib import messages
@@ -206,11 +207,11 @@ def check_texts(check):
     if check is None:
         return None
     started = timezone.localtime(datetime.fromtimestamp(check["started"], tz=UTC)) if check.get("started") else None
-    time = f"{started:%H:%M}" if started else ""
+    at = f"{started:%H:%M}" if started else ""
     if check.get("job"):
-        by = gettext("started by the scheduled job at %(time)s") % {"time": time}
+        by = gettext("started by the scheduled job at %(time)s") % {"time": at}
     else:
-        by = gettext("started by %(user)s at %(time)s") % {"user": check.get("user") or "?", "time": time}
+        by = gettext("started by %(user)s at %(time)s") % {"user": check.get("user") or "?", "time": at}
     steps = []
     if check.get("current") and check.get("total"):
         steps.append(gettext("%(current)s / %(total)s") % {"current": check["current"], "total": check["total"]})
@@ -302,7 +303,10 @@ def _draft_context(request, draft):
                "running": draft["state"] == "running"}
     if context["running"]:
         progress = read_progress(request.user, draft["progress_id"])
-        if progress is not None and progress["beat_age"] is not None and progress["beat_age"] > 35:
+        # without a heartbeat, or without an entry at all a while after it started (it expired with its request)
+        dead = progress["beat_age"] is not None and progress["beat_age"] > 35 if progress is not None \
+            else time.time() - draft["started"] > 30
+        if dead:
             # the request died: its form stays, without a preview
             context["running"] = False
             context["died"] = True
@@ -458,6 +462,20 @@ def source_check(request, pk):
         # the drawer of the package rule again, with the messages
         return source_detail(request, source.pk)
     return redirect(safe_next(request, "console:sources"))
+
+
+def check_added_packages(request, source, progress, only, sync):
+    """The check after packages were added to a package rule (an approved request, event packages): only them, under
+    the guard of the package rule (run_source_check), in the progress of the request. One running already gets a
+    message; the packages are saved, its next check takes them. sync: sync_release_source of the caller."""
+    try:
+        with run_source_check(source, request.user, progress) as running:
+            sync(source, progress=running, only=only)
+    except AlreadyRunning:
+        messages.warning(request, gettext("%(source)s is being checked right now: check the new packages when it has "
+                                          "ended.") % {"source": source})
+    except ReleaseError as e:
+        messages.warning(request, f"{source}: {e}")
 
 
 SUMMARY_VERSIONS = 3

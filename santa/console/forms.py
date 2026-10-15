@@ -648,8 +648,10 @@ class ApproveEventForm(CelPolicyMixin, TagsMixin):
     note = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 2}), label=_("Note"),
                            help_text=_("Shown to the user"))
 
-    def __init__(self, *args, available_types=None, matches=(), **kwargs):
+    def __init__(self, *args, available_types=None, matches=(), allowed=None, **kwargs):
+        """allowed: () -> is the binary allowed on the Macs of the requester (services.decisions_for_machines)"""
         super().__init__(*args, **kwargs)
+        self.allowed = allowed
         self.fields["rule_type"].choices = rule_type_choices(available_types)
         add_cel_suggestions(self)
         # a rule that blocks the binary is no approval
@@ -679,11 +681,18 @@ class ApproveEventForm(CelPolicyMixin, TagsMixin):
         rule = cleaned_data.get("existing_rule")
         if result in (self.EXISTING, self.EXTEND) and not rule:
             self.add_error("existing_rule", gettext("Choose a rule."))
-        elif result == self.EXISTING and not is_allowed([m for m in self.allowing if m["rule"].pk == rule.pk]):
+        elif result == self.EXISTING and not (is_allowed([m for m in self.allowing if m["rule"].pk == rule.pk])
+                                              # and Santa lets it run there: no block of their group wins
+                                              and (self.allowed is None or self.allowed())):
             # approved as it is, the rule has to allow the binary on these Macs already (disabled, another scope or
             # a CEL rule that may block it: "with the scope below added")
             self.add_error("existing_rule", gettext("This rule doesn't allow the binary on these Macs yet: choose "
                                                     "“with the scope below added” or another rule."))
+        if result == self.EXTEND and rule and rule.release_source_id:
+            # its package rule decides its scope, the next versions would leave out the Macs added here
+            self.add_error("existing_rule", gettext(
+                "This rule comes from the package rule %(source)s: change its scope there, or approve with a new "
+                "rule.") % {"source": rule.release_source})
         if result == self.RULE:
             for name in ("rule_type", "policy"):
                 if not cleaned_data.get(name):

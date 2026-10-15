@@ -21,6 +21,7 @@ from ..services import (
     allowed_packages,
     binary_identifiers,
     chunked,
+    decisions_for_machines,
     existing_rules,
     latest_binary_requests,
     latest_package_requests,
@@ -57,7 +58,7 @@ from .utils import (
     staff_required,
 )
 from .views_events import available_rule_types, default_rule_type, show_rule_preview
-from .views_sources import catalog_context
+from .views_sources import catalog_context, check_added_packages
 
 MAX_PENDING_PER_USER = 20
 REQUEST_EVENT_DAYS = 30
@@ -298,17 +299,29 @@ def admin_requests(request):
 
 
 def _event_of(access_request):
-    """The event of the request, or the latest one of the same binary if cleanup_events deleted it"""
+    """The event of the request, or the latest one of the same binary if cleanup_events deleted it: of the Macs of
+    the requester if there is one; of another Mac it only tells the identifiers of the binary (_matches_of decides
+    for the requester's Macs)"""
     if access_request.event:
         return access_request.event
     if access_request.file_sha256:
-        return (Event.objects.select_related("machine", "group").filter(file_sha256=access_request.file_sha256)
-                             .order_by("-execution_time").first())
+        events = (Event.objects.select_related("machine", "group").filter(file_sha256=access_request.file_sha256)
+                               .order_by("-execution_time"))
+        machines = [machine.pk for machine in _requester_machines(access_request)][:500]
+        return (machines and events.filter(machine__in=machines).first()) or events.first()
     return None
 
 
-def _matches_of(event):
-    return existing_rules([event]).get(event.file_sha256, []) if event else []
+def _matches_of(access_request, event):
+    """The rules of the binary, applying to the Macs of the requester"""
+    if not event:
+        return []
+    return existing_rules([event], machines=_requester_machines(access_request)).get(event.file_sha256, [])
+
+
+def _allowed_for_requester(access_request, event):
+    """Is the binary allowed on every Mac of the requester, as Santa decides there (scope, policy, rule type)"""
+    return lambda: bool(event) and all(decisions_for_machines(event, _requester_machines(access_request)).values())
 
 
 def _approve_forms(access_request, data=None, files=None, matches=None):
@@ -318,7 +331,8 @@ def _approve_forms(access_request, data=None, files=None, matches=None):
         initial = {"rule_type": default_rule_type(event) if event else RuleType.BINARY,
                    "groups": [event.group_id] if event else []}
         form = ApproveEventForm(data, initial=initial, available_types=available,
-                                matches=_matches_of(event) if matches is None else matches)
+                                matches=_matches_of(access_request, event) if matches is None else matches,
+                                allowed=_allowed_for_requester(access_request, event))
         if event:
             show_rule_preview(form.fields["rule_type"], event)
         return form
@@ -343,7 +357,7 @@ def admin_request_detail(request, pk, approve_form=None, deny_form=None):
     elif access_request.kind == AccessRequest.Kind.PACKAGE:
         identifiers = list(access_request.packages.values_list("identifier", flat=True))
         others = AccessRequest.objects.filter(packages__identifier__in=identifiers).exclude(pk=pk).distinct()
-    matches = _matches_of(event)
+    matches = _matches_of(access_request, event)
     return render_drawer(request, "console/requests/detail.html", "console/requests/drawer_detail.html", {
         "access_request": access_request, "event": event, "others": others.select_related("requester")[:20],
         "matches": matches,
@@ -396,10 +410,7 @@ def _approve(request, access_request, progress):
         return admin_request_detail(request, pk, approve_form=form)
     # only what the request added: one package appended to a big package rule doesn't check the whole list
     for source, only in getattr(access_request, "to_check", {}).values():
-        try:
-            sync_release_source(source, progress=progress, only=only)
-        except ReleaseError as e:
-            messages.warning(request, f"{source}: {e}")
+        check_added_packages(request, source, progress, only, sync_release_source)
     messages.success(request, gettext("Request “%(title)s” approved.") % {"title": access_request.title})
     return drawer_done(request, "console:requests")
 

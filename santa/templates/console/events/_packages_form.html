@@ -2,12 +2,12 @@
 {% url 'console:events_packages' as action %}
 {% if results %}
 <p>{% translate "The package rules were checked. Each binary of the events:" %}</p>
-<ul class="plain package-results">{% for event, allowed, matches in results %}
+<ul class="plain package-results">{% for event, allowed, matches, partly in results %}
   <li class="{% if allowed %}ok{% else %}bad{% endif %}">
     <span class="badge {% if allowed %}ok{% else %}bad{% endif %}">{% if allowed %}✓ {% translate "allowed" %}{% else %}✗ {% translate "not allowed" %}{% endif %}</span>
     <strong>{{ event.file_name|default:_("(no name)") }}</strong>
     <small class="muted mono binary-path">{{ event.file_path }}</small>
-    {% if allowed %}{% include "console/rules/_existing.html" with matches=matches compact=True %}{% else %}<small class="help">{% translate "No rule of the package rules covers this file: another version, another bottle, or Homebrew changed it when installing (relocation). Create a rule for it from the events." %}</small>{% endif %}
+    {% if allowed %}{% include "console/rules/_existing.html" with matches=matches compact=True %}{% elif partly %}<small class="help">{% translate "Allowed on some of the Macs only: on the others a more specific rule wins (a block of their group or of the Mac). Check the rules of the binary." %}</small>{% include "console/rules/_existing.html" with matches=matches compact=True %}{% else %}<small class="help">{% translate "No rule of the package rules covers this file: another version, another bottle, or Homebrew changed it when installing (relocation). Create a rule for it from the events." %}</small>{% endif %}
   </li>{% endfor %}</ul>
 {% if resolved_count %}<p class="muted">{% blocktranslate count count=resolved_count %}{{ count }} event marked as resolved.{% plural %}{{ count }} events marked as resolved.{% endblocktranslate %}</p>{% endif %}
 <div class="actions">{% for source in saved_sources %}{% url 'console:source' source.pk as source_url %}<a class="button" href="{{ source_url }}"{% if in_drawer %} hx-get="{{ source_url }}" hx-target="#drawer"{% endif %}>{{ source.name }}</a>{% endfor %}

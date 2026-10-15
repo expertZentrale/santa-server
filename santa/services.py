@@ -4,9 +4,11 @@ from django.db.models import Q
 from django.utils import timezone
 
 from .models import (
+    POLICY_PRECEDENCE,
     AccessRequest,
     AccessRequestPackage,
     Event,
+    Group,
     Machine,
     Policy,
     ReleaseSource,
@@ -16,6 +18,7 @@ from .models import (
     with_parent_groups,
 )
 from .progress import Progress
+from .rules import GLOBAL, GROUP, MACHINE, PARENT
 
 EVENT_IDENTIFIER_FIELDS = {
     RuleType.BINARY: "file_sha256",
@@ -70,8 +73,11 @@ def resolve_events(rule, user):
 
 def resolve_binary_events(file_sha256, machines, user, rule=None):
     """Resolve the open events of a binary on these Macs (an approval with an existing rule, or without one)"""
-    return (Event.objects.filter(resolved_at__isnull=True, file_sha256=file_sha256, machine__in=machines)
-                         .update(resolved_at=timezone.now(), resolved_by=user, resolution_rule=rule))
+    now = timezone.now()
+    # all the Macs of a requester: SQL Server takes at most 2100 parameters
+    return sum(Event.objects.filter(resolved_at__isnull=True, file_sha256=file_sha256, machine__in=chunk)
+                            .update(resolved_at=now, resolved_by=user, resolution_rule=rule)
+               for chunk in chunked([getattr(machine, "pk", machine) for machine in machines]))
 
 
 # the most specific rule type wins on the Mac
@@ -97,11 +103,12 @@ def _matching_rules(identifiers_of):
             for key, rules in found.items()}
 
 
-def existing_rules(events):
+def existing_rules(events, machines=None):
     """The rules that already match the binaries of the events, by SHA-256: [{"rule", "applies"}]
 
     applies: the rule is enabled and reaches at least one Mac of the events (global, its group, the parent group
-    it is based on, or the Mac).
+    it is based on, or the Mac). machines: these Macs instead of the ones of the events (the Macs of a requester,
+    when the event is of another Mac).
     """
     events_of = {}
     for event in events:
@@ -113,14 +120,18 @@ def existing_rules(events):
     result = {}
     rule_groups = {}
     for sha, rules in found.items():
-        machines = {event.machine_id for event in events_of[sha]}
-        group_ids = frozenset(event.machine.group_id for event in events_of[sha])
+        if machines is None:
+            machine_ids = {event.machine_id for event in events_of[sha]}
+            group_ids = frozenset(event.machine.group_id for event in events_of[sha])
+        else:
+            machine_ids = {machine.pk for machine in machines}
+            group_ids = frozenset(machine.group_id for machine in machines)
         if group_ids not in rule_groups:
             rule_groups[group_ids] = with_parent_groups(group_ids, "inherit_rules")
         groups = rule_groups[group_ids]
         result[sha] = [{"rule": rule, "applies": rule.is_enabled and (
             rule.is_global or any(group.pk in groups for group in rule.groups.all())
-            or any(machine.pk in machines for machine in rule.machines.all()))}
+            or any(machine.pk in machine_ids for machine in rule.machines.all()))}
             for rule in rules]
     return result
 
@@ -134,6 +145,56 @@ def existing_rules_for_binaries(binaries):
                                              for rule_type in EVENT_IDENTIFIER_FIELDS}
                              for binary in binaries})
     return {sha: [{"rule": rule, "applies": rule.is_enabled} for rule in rules] for sha, rules in found.items()}
+
+
+def _event_identifiers(event):
+    return {rule_type: {value} for rule_type, field in EVENT_IDENTIFIER_FIELDS.items()
+            if (value := getattr(event, field))}
+
+
+def _allowed_on(machine, group, rules):
+    """What Santa does with the binary on the Mac, by the rules matching its identifiers: as the sync sends them
+    (rules.effective_rule_objects: the most specific scope, then the strictest policy, per identifier), then the
+    most specific rule type decides. Allowed only by an allow rule; a CEL expression is not known to allow."""
+    chosen = {}
+    for rule in rules:
+        if not rule.is_enabled:
+            continue
+        rule_groups = {rule_group.pk for rule_group in rule.groups.all()}
+        levels = [level for level, applies in (
+            (GLOBAL, rule.is_global),
+            (PARENT, bool(group and group.parent_id and group.inherit_rules and group.parent_id in rule_groups)),
+            (GROUP, bool(group and group.pk in rule_groups)),
+            (MACHINE, any(rule_machine.pk == machine.pk for rule_machine in rule.machines.all()))) if applies]
+        if not levels:
+            continue
+        rank = (max(levels), POLICY_PRECEDENCE[rule.policy], rule.pk)
+        if rule.santa_key not in chosen or rank > chosen[rule.santa_key][0]:
+            chosen[rule.santa_key] = (rank, rule)
+    for rule_type in RULE_TYPE_PRECEDENCE:
+        decisive = [rule for _rank, rule in chosen.values() if rule.rule_type == rule_type]
+        if decisive:
+            # several identifiers of one type (the CDHashes of the slices): the strictest
+            strictest = max(decisive, key=lambda rule: POLICY_PRECEDENCE[rule.policy])
+            return strictest.policy in ALLOW_POLICIES
+    return False
+
+
+def decisions_on(events):
+    """{event pk: allowed} of the binaries of the events on their own Macs (allowed_on); events with machine"""
+    events = list(events)
+    found = _matching_rules({event.pk: _event_identifiers(event) for event in events})
+    groups = Group.objects.in_bulk({event.machine.group_id for event in events})
+    return {event.pk: _allowed_on(event.machine, groups.get(event.machine.group_id), found[event.pk])
+            for event in events}
+
+
+def decisions_for_machines(event, machines):
+    """{machine pk: allowed} of the binary of the event on these Macs (the Macs of a requester)"""
+    machines = list(machines)
+    rules = _matching_rules({0: _event_identifiers(event)})[0]
+    groups = Group.objects.in_bulk({machine.group_id for machine in machines})
+    return {machine.pk: _allowed_on(machine, groups.get(machine.group_id), rules) for machine in machines}
 
 
 def is_allowed(matches):

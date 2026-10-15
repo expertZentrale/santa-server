@@ -8,7 +8,8 @@
   // a view that was left (kept for Back, or gone) stops asking after this long
   const GIVE_UP = 30 * 60 * 1000;
 
-  // fn(): false to stop. Only while the element is in the page; asked again when it comes back (Back).
+  // fn(): false to stop. Only while the element is in the page; asked again when it comes back (Back). fn checks
+  // element.isConnected again after its own awaits: the view can be left while the answer travels.
   function poll(element, fn) {
     if (element.dataset.polling) return;
     element.dataset.polling = "1";
@@ -44,6 +45,8 @@
 
   // the view of the package rule again: in the drawer (from its URL, also when it came from a POST), or the page
   function reloadView(element) {
+    // left meanwhile (another view, the drawer closed): what is shown now stays
+    if (!element.isConnected) return;
     if (element.closest("#drawer") && element.dataset.viewUrl && window.htmx) {
       htmx.ajax("GET", element.dataset.viewUrl, { target: "#drawer", headers: { "X-Drawer-Replace": "1" } });
     } else if (element.closest("#drawer")) {
@@ -92,6 +95,7 @@
   function watchCheck(status) {
     poll(status, async () => {
       const data = await getJson(status.dataset.sourceCheck);
+      if (!status.isConnected) return true;
       if (data.running) {
         showRunning(status, true);
         showCheck(status, data);
@@ -168,16 +172,22 @@
   });
 
   // a form opened again while its preview runs: the result once it is there
+  // no entry at all this long: the request is gone (its entry expired), the box stops waiting
+  const PREVIEW_MISSING_AFTER = 15000;
+
   function setUpPreviews(root) {
     root.querySelectorAll?.("[data-preview-pending]").forEach((box) => {
+      const since = Date.now();
       poll(box, async () => {
         const data = await getJson(box.dataset.previewPending);
+        if (!box.isConnected) return true;
+        const missing = !("done" in data) && Date.now() - since > PREVIEW_MISSING_AFTER;
         const step = box.querySelector("[data-preview-step]");
         if (step && (data.current || data.label)) {
           step.textContent = [data.current && data.total ? `${data.current} / ${data.total}` : "", data.label || ""]
             .filter(Boolean).join(" · ");
         }
-        if (!data.done && !(data.beat_age > 35)) return true;
+        if (!data.done && !(data.beat_age > 35) && !missing) return true;
         delete box.dataset.previewPending;
         previewRunning(box, null);
         htmx.ajax("GET", box.dataset.resultUrl, { source: box, target: box, swap: "innerHTML" });
