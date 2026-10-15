@@ -340,6 +340,14 @@
     }
   }
 
+  // the page scrolled: the lights hang over what slides under the top bar (the sticky header of a table); they show
+  // again at the top, where the page keeps room for them
+  function markScrolled() {
+    document.documentElement.toggleAttribute("data-scrolled", window.scrollY > 4);
+  }
+  window.addEventListener("scroll", markScrolled, { passive: true });
+  markScrolled();
+
   function mount() {
     const topbar = document.querySelector("[data-topbar]");
     if (!topbar || document.documentElement.dataset.season !== "christmas") return;

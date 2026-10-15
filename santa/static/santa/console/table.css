@@ -30,6 +30,16 @@
 /* the header stays under the top bar; only when the table fits the page (a scrolling box would hold it) */
 main .table-scroll.fits { overflow: visible; }
 main .table-scroll.fits > .table:not(.compact) > thead th { position: sticky; top: var(--topbar-h); z-index: 2; }
+/* wider than the page (more columns, wider ones): the box scrolls sideways, and its rows too, at most as high as the
+   window leaves (top bar, the pages bar): its header stays at the top of the box. Not for the cards of phones. */
+@media (min-width: 45.01em) {
+  /* and the box stops under the top bar, so its header never slides under it */
+  main .table-scroll:not(.fits) { overflow: auto; max-height: calc(100dvh - var(--topbar-h) - 5.5rem);
+                                  position: sticky; top: var(--topbar-h); }
+  main .table-scroll:not(.fits) > .table:not(.compact) > thead th { position: sticky; top: 0; z-index: 2; }
+  /* in a selection form (rules, events) the box fills the form: the form stops under the top bar instead */
+  main form[data-select-form]:has(> .table-scroll:not(.fits)) { position: sticky; top: var(--topbar-h); }
+}
 /* the buttons of a row: last column, right-aligned, the same place in every row. No percentage widths in these
    tables: the box around them is as wide as its content, and a percentage would stretch it to the window */
 .table td.row-actions { width: 1px; white-space: nowrap; text-align: right; }
@@ -81,6 +91,10 @@ a.badge:hover { text-decoration: none; filter: brightness(.95); outline: 1px sol
 .mac-rules .identifier-cell { max-width: 22rem; }
 /* with the column "Comment" shown, the comment is not repeated under the identifier */
 .table[data-shown~="comment"] .description-inline { display: none; }
+/* the same for the path, the group and the Team ID of the events: under the file, the Mac, the Signing ID until
+   their column is shown */
+.table[data-shown~="path"] .path-inline, .table[data-shown~="group"] .group-inline,
+.table[data-shown~="teamid"] .teamid-inline { display: none; }
 
 /* Keyboard: the row with the focus */
 [data-select-form] tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
@@ -132,7 +146,10 @@ body:has(.drawer.open) .bulkbar.visible { opacity: 0; visibility: hidden; pointe
   .bulkbar > [data-show-when], .bulkbar > .combobox { order: 2; flex: 1 1 100%; }
   /* a long label (e.g. in German) wraps in its button instead of being cut */
   .bulkbar > .button { white-space: normal; line-height: 1.2; text-align: center; padding-inline: .5rem; }
+  /* the action gets the room, "Apply" what its label needs */
   .bulkbar > select { white-space: nowrap; padding-inline: .6rem; overflow: hidden; text-overflow: ellipsis; }
+  .bulkbar > select[name="action"] { flex: 2 1 0; }
+  .bulkbar > select[name="action"] ~ .button { flex: none; }
   .bulkbar > details > summary { width: 100%; justify-content: center; }
   .bulkbar .picker-panel { max-width: calc(100vw - 3rem); }
   .bulkbar .picker-panel label { white-space: normal; }
@@ -155,6 +172,18 @@ body:has(.drawer.open) .bulkbar.visible { opacity: 0; visibility: hidden; pointe
 .pagination .per-page { grid-column: 3; justify-self: end; display: flex; gap: .5rem; align-items: center; }
 .pagination .segmented a { padding: .2rem .55rem; }
 .pagination .button { white-space: nowrap; }
+/* "Page 1 of 210 · 10464 total" wraps on a phone: centred between the buttons, also its second line */
+.pagination .pages > span { text-align: center; }
+/* the pages and the page size stay in sight at the bottom of the window while the list scrolls; above the bar of
+   the bulk actions when rows are selected. Phones: in the flow, the screen is too short for one more bar. */
+@media (min-width: 45.01em) {
+  main .pagination {
+    position: sticky; bottom: 0; z-index: 3; margin: 0 -.5rem 1rem; padding: .5rem;
+    background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(4px);
+    border-top: 1px solid var(--border);
+  }
+  body.has-bulkbar main .pagination { bottom: calc(var(--bulkbar-h, 4rem) + 1.5rem); }
+}
 @media (max-width: 45em) {
   .pagination { grid-template-columns: 1fr; justify-items: center; }
   .pagination .pages, .pagination .per-page { grid-column: 1; justify-self: center; }

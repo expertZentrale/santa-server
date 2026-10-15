@@ -3,14 +3,15 @@
   <input type="hidden" name="next" value="{{ request.get_full_path }}">
   <div class="bulkbar" data-bulkbar hidden>
     <span class="count" title="{% translate 'Click selects a row, Ctrl-click adds or removes one, Shift-click selects a range.' %}">{% blocktranslate %}<span data-selected-count>0</span> selected{% endblocktranslate %}</span>
-    <select name="action" aria-label="{% translate 'Action' %}">
+    {# the button: the customizable select can shorten the chosen action ("…") and keep its arrow on a phone #}
+    <select name="action" aria-label="{% translate 'Action' %}"><button><selectedcontent></selectedcontent></button>
       <option value="enable">{% translate "Enable / approve" %}</option><option value="disable">{% translate "Disable" %}</option>
       <option value="add_tag">{% translate "Add tag" %}</option><option value="remove_tag">{% translate "Remove tag" %}</option>
       <option value="set_policy">{% translate "Set policy" %}</option>
       <option value="add_groups">{% translate "Add groups" %}</option>{% if perms.santa.delete_rule %}<option value="delete">{% translate "Delete" %}</option>{% endif %}
     </select>
-    <input name="tag" placeholder="{% translate 'tag' %}" aria-label="{% translate 'Tag' %}" data-tags data-show-when="action=add_tag|remove_tag">
-    <select name="policy" aria-label="{% translate 'Policy' %}" data-show-when="action=set_policy">{% for value, label in policies %}{% if value != "CEL" %}<option value="{{ value }}">{{ label }}</option>{% endif %}{% endfor %}</select>
+    <input name="tag" autocomplete="off" placeholder="{% translate 'tag' %}" aria-label="{% translate 'Tag' %}" data-tags data-show-when="action=add_tag|remove_tag">
+    <select name="policy" aria-label="{% translate 'Policy' %}" data-show-when="action=set_policy"><button><selectedcontent></selectedcontent></button>{% for value, label in policies %}{% if value != "CEL" %}<option value="{{ value }}">{{ label }}</option>{% endif %}{% endfor %}</select>
     <details class="picker" data-show-when="action=add_groups" data-picker>
       <summary class="button">{% translate "Groups" %} <span class="badge" data-picker-count hidden></span></summary>
       <fieldset class="picker-panel"><legend class="sr-only">{% translate "Groups" %}</legend>
@@ -21,7 +22,7 @@
     <button type="button" class="bulkbar-clear" data-clear-selection aria-label="{% translate 'Clear selection' %}" title="{% translate 'Clear selection (Esc)' %}">×</button>
   </div>
   <table class="table" data-table="rules" data-optional="comment created">
-    <thead><tr><th class="select"><input type="checkbox" data-select-all aria-label="{% translate 'Select all' %}"></th>
+    <thead><tr><th class="select"><input type="checkbox" id="select-all-rules" data-select-all aria-label="{% translate 'Select all' %}"></th>
       {% sort_th _("Identifier") "identifier" %}<th data-col="comment">{% translate "Comment" %}</th>{% sort_th _("Type") "type" %}{% sort_th _("Policy") "policy" %}<th data-col="scope">{% translate "Scope" %}</th>
       <th data-col="tags">{% translate "Tags" %}</th>{% sort_th _("Created") "created" %}<th data-col="origin">{% translate "Origin" %}</th>{% sort_th _("Enabled") "enabled" %}<th class="row-actions" aria-label="{% translate 'Actions' %}"></th></tr></thead>
     <tbody>

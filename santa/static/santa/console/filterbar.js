@@ -18,6 +18,12 @@
       let changed = false;
       chip.addEventListener("change", (event) => {
         if (event.target.type === "radio") {
+          // "is / is not" of a lookup: right away only with values chosen, else with them when the chip closes
+          if (event.target.hasAttribute("data-lookup-mode")) {
+            if (chip.querySelector('input[type="checkbox"]:checked')) submit();
+            else changed = true;
+            return;
+          }
           // the date range waits for "Apply"
           if (!event.target.hasAttribute("data-range")) submit();
           return;
@@ -26,6 +32,12 @@
       });
       // closed without a change, a chip added with "+ Filter" stays ("all"); it goes with the next search
       chip.addEventListener("toggle", () => {
+        // a lookup (Mac, user) lists its first ones when it opens, not only once its search is used
+        const search = chip.querySelector("[data-lookup-search]");
+        if (chip.open && search && window.htmx) {
+          htmx.trigger(search, "lookup-open");
+          search.focus();
+        }
         if (!chip.open && changed) submit();
       });
     });
@@ -54,7 +66,7 @@
       requestAnimationFrame(() => {
         const details = chip.querySelector("details");
         details.open = true;
-        details.querySelector("input")?.focus();
+        (details.querySelector("[data-lookup-search]") || details.querySelector("input"))?.focus();
       });
     });
   }

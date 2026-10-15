@@ -5,6 +5,7 @@ from . import (
     views_event_packages,
     views_events,
     views_file_access,
+    views_filters,
     views_groups,
     views_history,
     views_progress,
@@ -17,6 +18,8 @@ app_name = "console"
 
 urlpatterns = [
     path("progress/<str:progress_id>/", views_progress.progress, name="progress"),
+    path("filters/macs/", views_filters.filter_macs, name="filter_macs"),
+    path("filters/users/", views_filters.filter_users, name="filter_users"),
     path("progress/<str:progress_id>/cancel/", views_progress.cancel, name="progress_cancel"),
 
     path("events/", views_events.events, name="events"),

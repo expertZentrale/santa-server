@@ -16,7 +16,7 @@
       <tbody>{% for row in section.rows %}
         <tr class="{% if row.status == 'unchanged' or row.skipped %}disabled{% endif %}">
           <td><input type="checkbox" name="skip" value="{{ row.token }}"{% if row.skipped %} checked{% endif %} aria-label="{% translate 'Skip' %} {{ row.label }}"></td>
-          <td>{% if row.renamable %}<input type="text" name="name-{{ row.token }}" value="{{ row.name|default:row.label }}" maxlength="200" aria-label="{% translate 'Name' %}">
+          <td>{% if row.renamable %}<input type="text" name="name-{{ row.token }}" autocomplete="off" value="{{ row.name|default:row.label }}" maxlength="200" aria-label="{% translate 'Name' %}">
             {% else %}<span class="mono">{{ row.label }}</span>{% endif %}
             {% if row.detail %}<small class="muted">{{ row.detail }}{% if row.description %} · {{ row.description|truncatechars:80 }}{% endif %}</small>{% endif %}</td>
           <td>{% if row.switchable %}<input type="checkbox" name="disabled" value="{{ row.token }}"{% if not row.enabled %} checked{% endif %} aria-label="{% translate 'Import disabled' %} {{ row.label }}">{% else %}<span class="muted">–</span>{% endif %}</td>

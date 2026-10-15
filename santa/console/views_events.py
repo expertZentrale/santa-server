@@ -9,11 +9,21 @@ from django.utils import timezone
 from django.utils.translation import gettext, ngettext
 from django.views.decorators.http import require_POST
 
-from ..models import NEEDS_RULE, AccessRequest, Event, Group, Machine, RuleType
+from ..models import NEEDS_RULE, AccessRequest, Event, Group, RuleType
 from ..package_detection import package_hints
 from ..progress import Progress, progress_for
 from ..services import allow_identifier, existing_rules, is_allowed
-from .filters import TIME_DAYS, TIME_PRESETS, Facet, chosen, date_range, filter_bar, in_range, remember_filters
+from .filters import (
+    TIME_DAYS,
+    TIME_PRESETS,
+    Facet,
+    chosen,
+    date_range,
+    filter_bar,
+    in_range,
+    lookup_values,
+    remember_filters,
+)
 from .forms import SCOPE_GLOBAL, SCOPE_GROUPS, SCOPE_MACHINES, EventRuleForm
 from .utils import (
     defer_rows,
@@ -29,6 +39,7 @@ from .utils import (
     sort_by,
     staff_required,
 )
+from .views_filters import MAX_LOOKUP_VALUES, machine_choices
 
 UPDATE_ROWS_LIMIT = 100
 EVENT_COLUMNS = {"time": "execution_time", "decision": "decision", "file": "file_name",
@@ -101,10 +112,12 @@ def filter_events(request, events):
         events = events.filter(group_id__in=groups)
     if decisions := chosen(params, "decision"):
         events = events.filter(decision__in=decisions)
-    if params.get("machine", "").isdigit():
-        events = events.filter(machine_id=params["machine"])
-    if params.get("user"):
-        events = events.filter(executing_user=params["user"])
+    machines, exclude = lookup_values(params, "machine")
+    if machines := [value for value in machines if value.isdigit()][:MAX_LOOKUP_VALUES]:
+        events = events.exclude(machine_id__in=machines) if exclude else events.filter(machine_id__in=machines)
+    users, exclude = lookup_values(params, "user")
+    if users := users[:MAX_LOOKUP_VALUES]:
+        events = events.exclude(executing_user__in=users) if exclude else events.filter(executing_user__in=users)
     if params.get("sha256"):
         events = events.filter(file_sha256=params["sha256"].lower())
     start, end = date_range(params, "days", TIME_DAYS, "7")
@@ -132,7 +145,8 @@ def resolved_status(params):
 
 
 def event_facets(request, view):
-    """The filters of the bar; sha256, machine and user come from links (e.g. "events" of a blocked app)"""
+    """The filters of the bar; sha256 comes from links (e.g. "events" of a blocked app), machine and user from links
+    or the search of their chip"""
     params = request.GET
     facets = [Facet("group", gettext("Group"), choices=Group.objects.order_by("name").values_list("pk", "name"))]
     if view == "all":
@@ -145,13 +159,15 @@ def event_facets(request, view):
     ]
     if sha256 := params.get("sha256", ""):
         facets.append(Facet("sha256", gettext("Binary"), kind="fixed", text=f"{sha256[:12]}…"))
-    if (machine := params.get("machine", "")).isdigit():
-        found = Machine.objects.filter(pk=machine).first()
-        facets.append(Facet("machine", gettext("Mac"), kind="fixed",
-                            text=(found.hostname or found.serial_number) if found else machine))
-    if params.get("user"):
-        facets.append(Facet("user", gettext("User"), kind="fixed"))
+    facets += [
+        Facet("machine", gettext("Mac"), kind="lookup", choices=machine_choices(params),
+              lookup_url=reverse("console:filter_macs")),
+        Facet("user", gettext("User"), kind="lookup", choices=[(user, user) for user in chosen(params, "user")],
+              lookup_url=f"{reverse('console:filter_users')}?source=events"),
+    ]
     return facets
+
+
 
 
 def filter_context(request):

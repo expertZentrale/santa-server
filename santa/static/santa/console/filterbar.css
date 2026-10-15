@@ -66,3 +66,15 @@
   .saved-filter-new { flex-wrap: wrap; }
   .saved-filter-new input { flex-basis: 8rem; }
 }
+/* a lookup filter (Mac, user): "is / is not", the chosen ones, a search for more (widgets.css styles the labels of a
+   panel, loaded after this file: hence .picker-panel in front) */
+.lookup-mode { justify-self: start; margin-bottom: .3rem; }
+.picker-panel .lookup-mode label { gap: 0; padding: .3rem .8rem; border-radius: 0; font-size: .875rem; color: var(--muted); }
+.lookup-mode input { position: absolute; opacity: 0; pointer-events: none; }
+.picker-panel .lookup-mode label:has(input:checked) { background: var(--accent); color: var(--accent-text); }
+.lookup-mode label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }
+.lookup-search { width: 100%; margin: .3rem 0 .2rem; }
+.lookup-options { display: grid; max-height: 15rem; overflow-y: auto; }
+.lookup-options label small { margin-left: .3rem; }
+.filter-chip-picker .picker-panel:has(.lookup-search) { min-width: min(20rem, calc(100vw - 2rem)); }
+.picker-panel .lookup-options label { white-space: normal; overflow-wrap: anywhere; }

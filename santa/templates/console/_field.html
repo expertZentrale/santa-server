@@ -1,9 +1,13 @@
 {% load console %}<div class="field{% if field.errors %} has-error{% endif %}{% if field.field.widget.input_type == 'checkbox' and not field.field.widget.allow_multiple_selected %} check{% endif %}" data-field="{{ field.name }}">
   {% if field.field.widget.input_type == "checkbox" and not field.field.widget.allow_multiple_selected %}
     {{ field|as_switch }}<label for="{{ field.id_for_label }}">{{ field.label }}</label>
+  {% elif not field.id_for_label %}
+    {# a group of radios or checkboxes: each choice has its own label, there is no one field for this one #}
+    <span class="field-label">{{ field.label }}</span>
+    {{ field }}
   {% else %}
     <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-    {{ field }}
+    {{ field|form_widget }}
   {% endif %}
   {% if field.help_text %}<small class="help">{{ field.help_text|safe }}</small>{% endif %}
   {% for error in field.errors %}<small class="error">{{ error }}</small>{% endfor %}

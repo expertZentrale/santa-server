@@ -125,7 +125,10 @@ class Facet:
     """One filter of the filter bar.
 
     kind: "multi" (checkboxes, nothing ticked = everything), "time" (presets or a date range), "choice" (one of
-    some values) or "fixed" (set by a link, e.g. the events of one binary: shown, only removable).
+    some values), "lookup" (values found with a search field, too many to list: Macs, users; "is" or "is not")
+    or "fixed" (set by a link, e.g. the events of one binary: shown, only removable).
+    lookup: choices are the labels of the chosen values (the view knows them), lookup_url the search, mode_name the
+    parameter of "is not" (default: name + "_not").
     default: the value when the parameter is missing; for "multi" only before the form was sent (no "q").
     unfiltered: the value of "time" and "choice" that doesn't filter (the × of the chip).
     """
@@ -138,10 +141,19 @@ class Facet:
     from_name: str = "from"
     to_name: str = "to"
     text: str = ""
+    lookup_url: str = ""
+    mode_name: str = ""
 
     def __post_init__(self):
         # compared with the strings of the query
         self.choices = [(str(value), label) for value, label in self.choices]
+        if self.kind == "lookup" and not self.mode_name:
+            self.mode_name = f"{self.name}_not"
+
+
+def lookup_values(params, name):
+    """(values, exclude) of a "lookup" filter: ?machine=3&machine=7&machine_not=1"""
+    return chosen(params, name), params.get(f"{name}_not") == "1"
 
 
 def _state(facet, params):
@@ -152,6 +164,8 @@ def _state(facet, params):
         return chosen(params, facet.name, [value for value, _label in facet.choices])
     if facet.kind == "fixed":
         return params.get(facet.name, "")
+    if facet.kind == "lookup":
+        return chosen(params, facet.name)
     value = params.get(facet.name, facet.default or facet.unfiltered)
     if facet.kind == "time" and value != RANGE and value not in dict(facet.choices):
         return facet.default or facet.unfiltered
@@ -161,6 +175,8 @@ def _state(facet, params):
 
 
 def _default(facet):
+    if facet.kind == "lookup":
+        return []
     if facet.kind == "multi":
         return [str(value) for value in facet.default or []]
     if facet.kind == "fixed":
@@ -169,12 +185,15 @@ def _default(facet):
 
 
 def _restricts(facet, value):
-    if facet.kind in ("multi", "fixed"):
+    if facet.kind in ("multi", "fixed", "lookup"):
         return bool(value)
     return value != facet.unfiltered
 
 
 def _pairs(facet, value, params):
+    if facet.kind == "lookup":
+        excluded = [(facet.mode_name, "1")] if value and params.get(facet.mode_name) == "1" else []
+        return [(facet.name, item) for item in value] + excluded or [(facet.name, "")]
     if facet.kind == "multi":
         # an empty value keeps a chip without a choice ("Group: all") in the URL; chosen() ignores it
         return [(facet.name, item) for item in sorted(value)] or [(facet.name, "")]
@@ -188,9 +207,12 @@ def _pairs(facet, value, params):
 
 def _chip_text(facet, value, params):
     labels = dict(facet.choices)
-    if facet.kind == "multi":
+    if facet.kind in ("multi", "lookup"):
         texts = [str(labels.get(item, item)) for item in value]
-        return ", ".join(texts) if len(texts) <= 2 else f"{', '.join(texts[:2])} +{len(texts) - 2}"
+        text = ", ".join(texts) if len(texts) <= 2 else f"{', '.join(texts[:2])} +{len(texts) - 2}"
+        if facet.kind == "lookup" and params.get(facet.mode_name) == "1":
+            return gettext("is not %(values)s") % {"values": text}
+        return text
     if facet.kind == "fixed":
         return facet.text or value
     if facet.kind == "time" and value == RANGE:
@@ -240,7 +262,7 @@ def filter_bar(request, page, facets, hidden=(), keep=(), placeholder=""):
         for facet, value in states:
             if facet is override:
                 if value != _default(facet) or not _restricts(facet, value):
-                    # back to the default
+                    # back to the default (a lookup: its values and its "is not" go)
                     continue
                 # the default filters (e.g. 7 days): × shows everything, a grey chip
                 value = [] if facet.kind == "multi" else facet.unfiltered
@@ -256,6 +278,7 @@ def filter_bar(request, page, facets, hidden=(), keep=(), placeholder=""):
             "facet": facet, "value": value, "active": active, "shown": shown[facet.name],
             "text": _chip_text(facet, value, params) if active else gettext("all"),
             "remove_url": f"?{query(override=facet)}",
+            "exclude": facet.kind == "lookup" and params.get(facet.mode_name) == "1",
             "date_from": params.get(facet.from_name, "") if facet.kind == "time" else "",
             "date_to": params.get(facet.to_name, "") if facet.kind == "time" else "",
         })

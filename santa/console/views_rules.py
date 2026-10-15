@@ -13,7 +13,7 @@ from django.utils import timezone
 from django.utils.translation import gettext, ngettext
 from django.views.decorators.http import require_POST
 
-from ..models import Group, Machine, Policy, ReleaseVersion, Rule, RuleType, Tag
+from ..models import Group, Machine, Policy, ReleaseVersion, Rule, RuleType, Tag, with_parent_groups
 from ..progress import progress_for
 from ..releases import ReleaseError, find_binaries
 from ..services import (
@@ -34,6 +34,7 @@ from .filters import (
     date_range,
     filter_bar,
     in_range,
+    lookup_values,
     remember_filters,
 )
 from .forms import SCOPE_GLOBAL, SCOPE_GROUPS, RuleBulkForm, RuleForm, UploadCheckForm, UploadRulesForm
@@ -53,6 +54,7 @@ from .utils import (
     sort_by,
     staff_required,
 )
+from .views_filters import MAX_LOOKUP_VALUES, machine_choices
 
 RULE_COLUMNS = {"identifier": "identifier", "type": "rule_type", "policy": "policy", "created": "created_at",
                 "enabled": "is_enabled"}
@@ -86,10 +88,28 @@ def filter_rules(request, rules):
     rules = in_range(rules, "created_at", start, end)
     if params.get("version", "").isdigit():
         rules = rules.filter(release_version_id=params["version"])
+    machines, exclude = lookup_values(params, "machine")
+    if machines := [value for value in machines if value.isdigit()][:MAX_LOOKUP_VALUES]:
+        rules = _on_machines(rules, Machine.objects.filter(pk__in=machines), exclude)
+    users, exclude = lookup_values(params, "user")
+    if users := users[:MAX_LOOKUP_VALUES]:
+        # the Macs of the users (their owner, MachineOwner of the profile)
+        rules = _on_machines(rules, Machine.objects.filter(primary_user__in=users), exclude)
     q = params.get("q", "").strip()
     if q:
         rules = rules.filter(Q(identifier__icontains=q) | Q(description__icontains=q) | Q(tags__name__iexact=q))
     return rules.distinct()
+
+
+def _on_machines(rules, machines, exclude):
+    """The rules the Macs get at their sync (or, exclude: the rules none of them gets): global, of their groups and
+    of the parents they take the rules of, directly for them. Enabled or not: the scope decides."""
+    machines = list(machines.only("pk", "group_id")[:MAX_LOOKUP_VALUES * 2])
+    groups = with_parent_groups({machine.group_id for machine in machines}, "inherit_rules")
+    reach = Q(is_global=True) | Q(groups__in=list(groups)) | Q(machines__in=[machine.pk for machine in machines])
+    if exclude:
+        return rules.exclude(pk__in=Rule.objects.filter(reach).values("pk"))
+    return rules.filter(reach) if machines else rules.none()
 
 
 @staff_required
@@ -112,6 +132,11 @@ def rules(request):
                                                     ("package", gettext("From package rules"))]),
         Facet("enabled", gettext("Status"), choices=[("yes", gettext("Enabled")),
                                                       ("no", gettext("Disabled / waiting"))]),
+        Facet("machine", gettext("Mac"), kind="lookup", choices=machine_choices(request.GET),
+              lookup_url=reverse("console:filter_macs")),
+        Facet("user", gettext("User"), kind="lookup",
+              choices=[(user, user) for user in chosen(request.GET, "user")],
+              lookup_url=f"{reverse('console:filter_users')}?source=machines"),
         Facet("created", gettext("Created"), kind="time", choices=TIME_PRESETS, from_name="created_from",
               to_name="created_to"),
     ]

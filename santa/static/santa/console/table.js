@@ -19,6 +19,7 @@
       label.className = "select-all-cards";
       const box = document.createElement("input");
       box.type = "checkbox";
+      box.id = `${all.id || "select-all"}-cards`;
       box.dataset.selectAll = "";
       label.append(box, text);
       scroll.before(label);
@@ -166,9 +167,19 @@
     table.style.width = `${visible.reduce((sum, th) => sum + parseFloat(th.style.width), 0)}rem`;
   }
 
-  function applyHidden(table, settings) {
+  // optional columns added after a browser stored its choice (it knew the others): hidden there too, as by default
+  const LATER_OPTIONAL = new Set(["path", "group", "teamid"]);
+
+  function hiddenColumns(table, settings) {
     const optional = (table.dataset.optional || "").split(" ").filter(Boolean);
-    const hidden = new Set(settings.hidden || optional);
+    if (!settings.hidden) return new Set(optional);
+    const known = settings.known ? new Set(settings.known) : null;
+    return new Set([...settings.hidden,
+                    ...optional.filter((key) => (known ? !known.has(key) : LATER_OPTIONAL.has(key)))]);
+  }
+
+  function applyHidden(table, settings) {
+    const hidden = hiddenColumns(table, settings);
     let style = document.getElementById(`table-style-${table.dataset.table}`);
     if (!style) {
       style = document.createElement("style");
@@ -296,6 +307,8 @@
       const label = document.createElement("label");
       const box = document.createElement("input");
       box.type = "checkbox";
+      // not sent with any form: an id, so the browser knows the field
+      box.id = `columns-${table.dataset.table || "table"}-${key}`;
       box.checked = !hidden.has(key);
       box.dataset.columnKey = key;
       label.append(box, ` ${th.textContent.trim()}`);
@@ -335,6 +348,7 @@
       if (!box) return;
       settings.hidden = [...panel.querySelectorAll("[data-column-key]")].filter((other) => !other.checked)
         .map((other) => other.dataset.columnKey);
+      settings.known = tableColumns(table).map((column) => column.key);
       applyHidden(table, settings);
       applyWidths(table, settings);
       updateFits(table);

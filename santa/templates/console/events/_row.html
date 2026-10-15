@@ -3,8 +3,10 @@
   <td>{{ event.execution_time|date:"d.m.Y H:i:s" }}</td>
   <td><span class="badge {{ event.decision|decision_class }}">{{ event.decision }}</span></td>
   <td><div class="cell-stack"><a href="{% url 'console:event' event.pk %}" hx-get="{% url 'console:event' event.pk %}" hx-target="#drawer" class="strong">{{ event.file_name|default:_("(no name)") }}</a>
-    <small class="muted mono cell-path" title="{{ event.file_path }}">{{ event.file_path }}</small></div></td>
-  <td><div class="cell-stack">{% url 'console:machine' event.machine_id as machine_url %}<a href="{{ machine_url }}" hx-get="{{ machine_url }}" hx-target="#drawer">{{ event.machine.hostname|default:event.machine.serial_number }}</a><small class="muted">{{ event.group.name }}</small></div></td>
+    <small class="muted mono cell-path path-inline" title="{{ event.file_path }}">{{ event.file_path }}</small></div></td>
+  <td class="mono small"><span class="cell-path" title="{{ event.file_path }}">{{ event.file_path }}</span></td>
+  <td><div class="cell-stack">{% url 'console:machine' event.machine_id as machine_url %}<a href="{{ machine_url }}" hx-get="{{ machine_url }}" hx-target="#drawer">{{ event.machine.hostname|default:event.machine.serial_number }}</a><small class="muted group-inline">{{ event.group.name }}</small></div></td>
+  <td>{{ event.group.name }}</td>
   <td>{{ event.executing_user|default:"–" }}</td>
   <td class="mono small cell-ids">{{ event.signing_id|default:"–" }}</td>
   <td>{% if event.resolved_at %}<span class="badge ok" title="{{ event.resolved_at }}">{% translate "resolved" %}</span>{% endif %}</td>

@@ -9,7 +9,7 @@
     {% endwith %}{% endif %}{% endfor %}
   </ul>
   <div class="combobox">
-    <input type="search" data-search autocomplete="off" aria-label="{% translate 'Add a package' %}"
+    <input type="search" id="{{ widget.attrs.id|default:widget.name }}-search" data-search autocomplete="off" aria-label="{% translate 'Add a package' %}"
            placeholder="{% translate 'Search the catalog, or type an identifier and press Enter' %}"
            data-placeholder-search="{% translate 'Search the catalog, or type an identifier and press Enter' %}"
            data-placeholder-plain="{% translate 'Type an identifier and press Enter' %}"
