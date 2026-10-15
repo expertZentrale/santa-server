@@ -141,7 +141,8 @@
     });
     box.addEventListener("click", (event) => {
       const option = event.target.closest(".suggestion");
-      if (!option) return;
+      // a package that can't be chosen (a formula only for Linux)
+      if (!option || option.getAttribute("aria-disabled") === "true") return;
       addChip(option.dataset.identifier, option.dataset.name, option.dataset.icon);
       search.value = "";
       box.classList.remove("open");
@@ -315,7 +316,81 @@
     });
   }
 
+  // One package typed in a field (the packages of blocked events): the catalog of the select named by
+  // data-kind-field is searched; a pick sets the identifier and keeps its name and icon (data-picked-field)
+  function setupCatalogInput(field) {
+    if (field.dataset.catalogReady) return;
+    field.dataset.catalogReady = "1";
+    const input = field.querySelector("input:not([type=hidden])");
+    const box = field.querySelector("[data-suggestions]");
+    const form = field.closest("form");
+    if (!input || !box || !form) return;
+    const kindSelect = form.querySelector(`[name="${field.dataset.kindField}"]`);
+    const picked = form.querySelector(`[name="${field.dataset.pickedField}"]`);
+    const searchable = (field.dataset.searchable || "").split(",");
+    input.setAttribute("role", "combobox");
+    input.setAttribute("aria-autocomplete", "list");
+    input.setAttribute("aria-controls", box.id);
+    input.setAttribute("aria-expanded", "false");
+    const setOpen = (open) => {
+      box.classList.toggle("open", open);
+      input.setAttribute("aria-expanded", String(open));
+      if (!open) input.removeAttribute("aria-activedescendant");
+    };
+    const lookup = debounce(() => {
+      const kind = kindSelect?.value || "";
+      if (!searchable.includes(kind)) {
+        closeSuggestions(box);
+        setOpen(false);
+        return;
+      }
+      fetchSuggestions(field.dataset.url, { kind, q: input.value }, box, setOpen);
+    }, 300);
+    const pick = (option) => {
+      if (option.getAttribute("aria-disabled") === "true") return;
+      input.value = option.dataset.identifier;
+      if (picked) {
+        picked.value = JSON.stringify({
+          [option.dataset.identifier]: { name: option.dataset.name || "", icon_url: option.dataset.icon || "" },
+        });
+      }
+      setOpen(false);
+      input.focus();
+    };
+    input.addEventListener("input", () => {
+      // typed by hand: no name or icon of a suggestion
+      if (picked) picked.value = "";
+      lookup();
+    });
+    kindSelect?.addEventListener("change", () => {
+      if (picked) picked.value = "";
+      closeSuggestions(box);
+      setOpen(false);
+    });
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        moveSelection(box, event.key === "ArrowDown" ? 1 : -1);
+      } else if (event.key === "Enter") {
+        // Enter picks a suggestion, it never sends the form from this field
+        const selected = box.classList.contains("open") && box.querySelector(".suggestion[aria-selected=true]");
+        event.preventDefault();
+        if (selected) pick(selected);
+        else setOpen(false);
+      } else if (event.key === "Escape" && box.classList.contains("open")) {
+        // only the suggestions close, not the drawer around the form
+        event.stopPropagation();
+        setOpen(false);
+      }
+    });
+    box.addEventListener("click", (event) => {
+      const option = event.target.closest(".suggestion");
+      if (option) pick(option);
+    });
+  }
+
   SantaConsole.onInit((root) => {
+    root.querySelectorAll("[data-catalog-input]").forEach(setupCatalogInput);
     root.querySelectorAll("[data-source-form]").forEach(setupIdentifiers);
     root.querySelectorAll("[data-package-form]").forEach(setupPackageRequest);
     root.querySelectorAll("[data-rule-search]").forEach(setupRuleSearch);

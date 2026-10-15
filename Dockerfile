@@ -10,8 +10,9 @@ WORKDIR /code
 
 # mssql-python ships its own ODBC Driver 18, it only needs libltdl and kerberos at runtime.
 # g++ / unixodbc-dev are only needed to build pyodbc (a dependency of mssql-django).
+# 7zip (7zz) unpacks the disk images (.dmg) of uploads and package rules.
 COPY requirements.txt .
-RUN apk add --no-cache ca-certificates libssl3 libstdc++ libtool krb5-libs unixodbc; \
+RUN apk add --no-cache ca-certificates libssl3 libstdc++ libtool krb5-libs unixodbc 7zip; \
     apk add --no-cache --virtual .build-deps g++ unixodbc-dev krb5-dev; \
     pip install --no-cache-dir -r requirements.txt; \
     apk del .build-deps

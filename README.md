@@ -61,6 +61,10 @@ Das Image (`santa_server/settings.py`) wird über Umgebungsvariablen konfigurier
 | `TIME_ZONE` | | Standard `UTC`; die Konsole zeigt die Zeiten in der Zeitzone des Browsers oder des Benutzerprofils |
 | `GITHUB_TOKEN` | empfohlen | für Paketregeln und die Katalogsuche; ohne erlaubt GitHub 60 Anfragen pro Stunde |
 | `RELEASE_MAX_DEPENDENCIES` | | Standard `200`: so viele Abhängigkeiten (direkte und indirekte) löst eine Paketregel mit *Abhängigkeiten erlauben* je Version höchstens auf |
+| `RELEASE_MAX_DOWNLOAD_BYTES` | | Standard `524288000` (500 MB): größere Dateien eines Releases werden nicht heruntergeladen (z. B. die Bottles von `agda`); vier Downloads laufen parallel, belegen also bis zum Vierfachen davon an temporärem Speicher |
+| `RELEASE_MAX_FILE_BYTES` | | Standard `536870912` (512 MB): größere ausführbare Dateien in einem Archiv werden übersprungen |
+| `RELEASE_MAX_UNPACKED_BYTES` | | Standard `2147483648` (2 GB): so viel darf ein Archiv insgesamt entpacken; es zählen nur die ausführbaren Dateien, Bibliotheken und Daten werden nicht entpackt |
+| `RELEASE_UNPACK_TIMEOUT` | | Standard `120`: so viele Sekunden darf 7-Zip zum Auflisten oder Entpacken eines Disk-Images (`.dmg`) brauchen |
 | `SANTA_SERVER_NAME` | | Name in Fenstertitel, Kopfzeile und Django-Admin, Standard `Santa Server` |
 | `SANTA_FAVICON_URL` | | eigenes Favicon: absolute URL oder Pfad ab `/` (SVG, PNG oder ICO); leer = die mitgelieferte Weihnachtsmütze |
 | `SANTA_CHRISTMAS_THEME` | | Standard `false`; `true` zeigt im Dezember das Weihnachtsdesign (Konsole, Anfrageformular, E-Mails) |
@@ -104,7 +108,8 @@ Benutzer ohne Rechte; SQL Server und Redis laufen separat.
 - **Geplante Jobs**, dasselbe Image mit einem anderen Befehl (sie warten nicht auf `WAIT_FOR_URL`, außer mit
   `WAIT_FOR_URL_JOBS=1`):
   - stündlich: `python manage.py sync_release_sources` (neue Releases der Paketregeln, verzögerte Freigaben)
-  - täglich: `python manage.py cleanup_events --days 90`
+  - täglich: `python manage.py cleanup_events --days 90` (löscht auch die Benachrichtigungen der Glocke nach 30 Tagen,
+    `--notification-days`)
   - täglich (mit E-Mail): `python manage.py send_notification_digest` (die tägliche Zusammenfassung)
 - **Endpunkte**: `/health` (Liveness, ohne Datenbank), `/ready` (prüft die Datenbank), `/metrics` (Prometheus).
   `/metrics` enthält auch die Datenbank-Metriken (`django_db_*`: Abfragen, Dauer, Fehler, Verbindungen); dafür
@@ -136,7 +141,8 @@ wird (Log: `Worker (pid:…) was sent SIGKILL! Perhaps out of memory?`). Der Con
   Genehmigen einer Paketanfrage laden die Releases in der Anfrage; das belegt nur einen Thread, der Worker bleibt
   erreichbar. Dauert es länger als das Timeout des Ingress, zeigt der Browser einen Fehler, die Prüfung läuft auf dem
   Server zu Ende: die Seite neu laden. `gevent` oder `eventlet` passen nicht, der SQL-Server-Treiber würde ihre
-  Ereignisschleife blockieren.
+  Ereignisschleife blockieren. Für den Upload eines Disk-Images von einigen hundert MB braucht der Ingress ein
+  passendes Limit für die Größe der Anfrage.
 
 ### Anmeldung
 
@@ -353,6 +359,14 @@ gesehen, offene Anfragen). *Alle Ereignisse* ist die flache Liste; ihre erste Se
 Ereignisse hinzu. Klicken Sie auf einen Dateinamen für die Details und *Regel anlegen*, mit einer Vorschau der
 Kennung, die die Regel verwenden wird.
 
+**Als Paket erlauben**: Apps oder Ereignisse auswählen → *Als Paket erlauben…* (oder im Ereignis der Hinweis
+„Stammt wahrscheinlich aus …“). Die Konsole schlägt je Paket vor, woher die Binaries stammen, die zuverlässigste Quelle
+zuerst: dieselbe Datei in einem schon erfassten Release, die Bundle-ID oder der App-Name in den Homebrew-Casks, der
+Installationspfad (`…/Cellar/redis/8.10.1/…` → Formel `redis`, `Caskroom`, `node_modules`, VS-Code-Erweiterungen; mit
+Prüfung im Katalog). Katalog, Paket und Ziel (neue oder bestehende Paketregel) lassen sich vor dem Speichern ändern.
+Danach werden die Paketregeln geprüft, und je Binary steht, ob es jetzt erlaubt ist; die erlaubten Ereignisse werden
+auf Wunsch als erledigt markiert.
+
 **Blockierte Software erlauben**: Apps oder Ereignisse auswählen → *Regeln anlegen…*. Jedes Binary erhält eine eigene
 Zeile: Regeltyp, Richtlinie, Geltungsbereich (die oben gewählten Gruppen, nur die Macs seiner Ereignisse oder alle
 Macs), Tags und Beschreibung. *Auf alle Zeilen anwenden* setzt eine Spalte für jede Zeile. Die Regeltypen:
@@ -363,8 +377,13 @@ Macs), Tags und Beschreibung. *Auf alle Zeilen anwenden* setzt eine Spalte für 
 Gibt es für die Kennung schon eine manuelle Regel, wird deren Geltungsbereich erweitert, statt eine zweite Regel
 anzulegen. Die Ereignisse werden als erledigt markiert.
 
-**Ein Binary hochladen**: *Ausführungsregeln* → *Binary hochladen*. Akzeptiert eine Mach-O-Datei oder ein Zip-/Tar-Archiv
-(jede ausführbare Datei darin oder die, die zum Glob-Muster passen). Die Datei wird nicht gespeichert.
+**Ein Binary hochladen**: *Ausführungsregeln* → *Binary hochladen*. Akzeptiert eine Mach-O-Datei, ein Zip-/Tar-Archiv,
+ein Installationspaket (`.pkg`) oder ein Disk-Image (`.dmg`), auch ein Paket in einem Disk-Image oder Archiv. *Datei
+prüfen* listet jede ausführbare Datei darin (oder die, die zum Glob-Muster passen) mit Signatur, Signing ID, Team ID,
+SHA-256, CDHash und den Regeln, die schon passen. Dann wählen Sie wie bei den Ereignissen, welche eine Regel erhalten
+und welchen Regeltyp (*Vorgeschlagen pro Binary*: Signing ID, ohne Signatur Binary). Mehrere Dateien mit derselben
+Kennung (die Helfer einer App mit einer Team ID) teilen sich eine Regel; die nicht gewählten bleiben für eine zweite
+Entscheidung. Die Datei wird nur gehasht, nicht gespeichert, und nicht noch einmal hochgeladen.
 
 **Tags**: Markierungen, um Regeln zu sortieren und zu finden. Sie haben keine Wirkung auf die Macs. Umbenennen und
 Löschen unter *Administration* → *Tags*.
@@ -376,7 +395,9 @@ Sie stattdessen ihre Paketregel.
 **Paketregeln**: *Paketregeln* → *Neue Paketregel*. Für GitHub, Homebrew, npm, VS Code und JetBrains tippen Sie unter
 *Pakete*, um den Katalog zu durchsuchen; `owner/teil` durchsucht die Repositories eines GitHub-Owners. Homebrew hat keine
 Such-API: der Server lädt die Liste der Formeln bzw. Casks einmal am Tag. URLs werden eingetippt und mit Enter
-hinzugefügt.
+hinzugefügt. Pakete aus einem **Homebrew-Tap** geben Sie mit vollem Namen an, wie bei `brew install`
+(`hashicorp/tap/terraform`); der Server liest die Formel- bzw. Cask-Datei aus dem GitHub-Repository
+`owner/homebrew-tap` (Version, Downloads mit SHA-256, Bottles). Taps haben nur ihre aktuelle Version.
 
 | Katalog | Kennung | Asset-Muster | Binary-Muster |
 |---|---|---|---|
@@ -394,7 +415,14 @@ wird für sich geprüft und behält seine eigenen Versionen. Eine Paketregel leg
   Zertifikat, Team ID für signierte Tools (eine Regel für alle Versionen). Unsignierte ausführbare Dateien erhalten
   stattdessen eine Binary-Regel.
 - **Richtlinie**: Erlauben, Compiler erlauben, Blockieren, still blockieren oder CEL, dazu Blockiermeldung und URL.
-- **Versionsmuster**: eine Regex, z. B. `^1\.`, um bei 1.x zu bleiben.
+- **Kommentar** (bei den Tags, wie bei den Ausführungsregeln): in der Liste und im Detail.
+- **Versions-, Asset- und Binary-Muster**: je Feld beliebig viele, eingegeben mit Enter, entfernt mit ×; ein Wert
+  zählt, wenn eines der Muster passt. Versionsmuster sind Regexe, z. B. `^1\.`, um bei 1.x zu bleiben.
+  *Vorschau* zeigt ohne Speichern die neuesten Releases jedes Pakets mit ✓/✗ für Version und Assets.
+- **Mindest-macOS** (Homebrew-Formula, z. B. `sequoia`): nur die Bottles für Macs mit diesem macOS oder neuer.
+  **Nächstliegendes Bottle nehmen** (Standard): wie Homebrew zählt ein Bottle für ein älteres macOS auch für die
+  neueren, auf denen es läuft (portable-ruby hat nur `arm64_big_sur`, das auch `arm64_sequoia` bedient); ohne die
+  Option zählt nur der eigene Tag des Bottles.
 - **Automatisch freigeben** und eine **Verzögerung** (z. B. 2 Tage nach der Veröffentlichung), um von einem
   kompromittierten Release zu erfahren, bevor es auf den Macs läuft.
 - **Behalten**: die letzten *n* Versionen, oder die Versionen der letzten *n* Wochen bzw. Monate; die Regeln älterer
@@ -411,10 +439,18 @@ wird für sich geprüft und behält seine eigenen Versionen. Eine Paketregel leg
   sind Skripte ohne ausführbare Datei und brauchen keine Regel. Höchstens `RELEASE_MAX_DEPENDENCIES` Pakete je
   Version.
 
-**Aufräumen**: Wird ein Paket aus der Paketregel entfernt, das Versionsmuster oder der behaltene Bereich geändert oder
-werden die Abhängigkeiten nicht mehr erlaubt, zeigt die Paketregel die Versionen, die sie nicht mehr abdeckt.
-*Aufräumen* zeigt sie mit der Zahl der Regeln und löscht sie nach der Bestätigung; die Macs entfernen die Regeln bei
-der nächsten Synchronisierung.
+**Aufräumen**: Wird ein Paket aus der Paketregel entfernt, ein Muster, das Mindest-macOS oder der behaltene Bereich
+geändert oder werden die Abhängigkeiten nicht mehr erlaubt, zeigt die Paketregel die Versionen und Regeln, die sie
+nicht mehr abdeckt (eine Regel gilt als abgedeckt, solange eine ihrer Dateien zu Asset- und Binary-Muster passt).
+*Aufräumen* zeigt sie und löscht sie nach der Bestätigung; die Macs entfernen die Regeln bei der nächsten
+Synchronisierung.
+
+**Benachrichtigungen**: Meldungen wie „gespeichert“ oder das Ergebnis einer Prüfung erscheinen kurz unten rechts und
+bleiben unter der Glocke neben dem Profil. Dort entfernt × eine einzelne, *Alle entfernen* alle; *Vollbild* zeigt
+alle mit Filter nach Art.
+
+Lange Aktionen (*Jetzt prüfen*, das Freigeben einer Anfrage mit Paketen, das Hochladen einer Datei, das Anlegen
+vieler Regeln) zeigen unter der Leiste, wie weit sie sind: „3 von 12 · podman“.
 
 Hinweise:
 - Homebrew-Bottles werden je macOS-Version gehasht. Homebrew kann ein Binary beim Installieren umschreiben
@@ -422,9 +458,19 @@ Hinweise:
   das GitHub-Release.
 - npm-Tarballs werden gegen den veröffentlichten SHA-512 geprüft, Homebrew-Bottles gegen ihren SHA-256.
 - Releases ohne ausführbare Dateien (die meisten npm-Pakete, VS-Code-Erweiterungen und JetBrains-Plugins sind
-  Skripte) werden mit 0 Binaries erfasst: Santa hat darin nichts zu erlauben.
-- `.dmg`- und `.pkg`-Dateien können nicht entpackt werden; diese Apps sind signiert, erlauben Sie sie mit einer
-  Signing-ID- oder Team-ID-Regel.
+  Skripte, viele Homebrew-Formeln nur Bibliotheken) werden mit 0 Binaries erfasst: Santa hat darin nichts zu
+  erlauben. Formeln nur für Linux (z. B. `acl`) melden das bei der Prüfung; die Katalogsuche zeigt sie als *Nur Linux*.
+- Aus Archiven werden nur die ausführbaren Mach-O-Dateien entpackt, Bibliotheken und Daten nicht. Bis zu vier
+  Dateien werden gleichzeitig geladen, und bereits erfasste Versionen einer Homebrew-Formel werden nicht erneut
+  abgefragt.
+- Neustart während einer Prüfung: Bei SIGTERM (z. B. einem Rollout) endet eine laufende Prüfung nach ihrem
+  aktuellen Paket, innerhalb des gunicorn-Graceful-Timeouts (25 s), und speichert, was sie gefunden hat. Wird der
+  Prozess hart beendet, bleiben die bis dahin erfassten Versionen; die nächste Prüfung meldet sie nach. Ein
+  abgebrochenes Entpacken eines Disk-Images kann Dateien in `/tmp` des Containers zurücklassen, bis er neu startet.
+- `.pkg`-Dateien liest der Server selbst (Payload und Scripts, gzip, bzip2 oder pbzx). `.dmg`-Dateien entpackt
+  7-Zip (`7zz`, im Image enthalten), nur die ausführbaren Dateien und die Pakete und Archive darin; eine Ebene tief,
+  in den Grenzen von `RELEASE_MAX_UNPACKED_BYTES` und `RELEASE_UNPACK_TIMEOUT`. So funktionieren auch
+  Homebrew-Casks, deren Download ein Disk-Image oder Paket ist.
 
 **Anfragen**: Benutzer öffnen `/request/`, melden sich an und wählen *Auf meinem Mac blockiert* (die offenen
 Blockierungen der letzten 30 Tage auf ihren Macs), *Paket* (ein oder mehrere Pakete aus den Katalogen) oder
@@ -432,7 +478,10 @@ Blockierungen der letzten 30 Tage auf ihren Macs), *Paket* (ein oder mehrere Pak
 *Anfragen* und genehmigen (eine Regel für den Mac des Anfragenden, Gruppen oder alle Macs; Pakete in eine neue oder
 bestehende Paketregel, jedes Paket für sich; bei *Sonstiges* gleich eine neue Ausführungsregel, per Kennung oder
 hochgeladener App, oder eine Paketregel; als Richtlinie Erlauben, Compiler erlauben oder ein CEL-Ausdruck, bei Team-ID-Regeln
-auch per Signing-ID-Präfix; die Pakete mit der Suche in den Katalogen) oder lehnen mit einer Notiz ab.
+auch per Signing-ID-Präfix; die Pakete mit der Suche in den Katalogen) oder lehnen mit einer Notiz ab. Erlaubt schon
+eine Regel das blockierte Binary (z. B. eine Team-ID-Regel, die nach der Blockierung angelegt wurde), genehmigen sie
+*Auf meinem Mac blockiert* mit dieser *bestehenden Regel*, auf Wunsch um den Geltungsbereich erweitert, oder ganz *ohne
+Regel*; die offenen Ereignisse des Binarys auf den Macs des Anfragenden werden als erledigt markiert.
 
 Um den Blockierdialog mit dem Formular zu verbinden, setzen Sie die *URL im Blockierdialog* der Gruppe auf
 `https://<host>/request/new/?sha256=%file_sha%` und den Text der Schaltfläche z. B. auf `Zugang anfragen`.
@@ -547,6 +596,7 @@ santa/
   rules.py             welche Regeln für einen Mac gelten, und der inkrementelle Regel-Sync
   events.py            Speichern der hochgeladenen Ereignisse
   macho.py             liest Hashes und Kennungen der Codesignatur aus Mach-O-Dateien
+  archives.py          liest Installationspakete (.pkg) und, mit 7-Zip, Disk-Images (.dmg)
   releases.py          Paketregeln (GitHub, Homebrew, npm, VS Code, JetBrains, URL)
   catalog.py           Suche in den Paketkatalogen (Vorschläge und Icons)
   notifications.py     E-Mail-Benachrichtigungen: wer welche E-Mail bekommt
@@ -630,6 +680,10 @@ The image (`santa_server/settings.py`) is configured with environment variables:
 | `TIME_ZONE` | | default `UTC`; the console shows the times in the time zone of the browser, or of the user profile |
 | `GITHUB_TOKEN` | recommended | for package rules and the catalog search; without it GitHub allows 60 requests per hour |
 | `RELEASE_MAX_DEPENDENCIES` | | default `200`: at most this many dependencies (direct and indirect) a package rule with *Allow the dependencies* resolves per version |
+| `RELEASE_MAX_DOWNLOAD_BYTES` | | default `524288000` (500 MB): bigger files of a release are not downloaded (e.g. the bottles of `agda`); four downloads run in parallel, so up to four times that much temporary disk |
+| `RELEASE_MAX_FILE_BYTES` | | default `536870912` (512 MB): bigger executables inside an archive are skipped |
+| `RELEASE_MAX_UNPACKED_BYTES` | | default `2147483648` (2 GB): at most this much an archive unpacks in total; only the executables count, libraries and data are not unpacked |
+| `RELEASE_UNPACK_TIMEOUT` | | default `120`: the seconds 7-Zip may take to list or unpack a disk image (`.dmg`) |
 | `SANTA_SERVER_NAME` | | name in the window title, the header and the Django admin, default `Santa Server` |
 | `SANTA_FAVICON_URL` | | your own favicon: an absolute URL or a path from `/` (SVG, PNG or ICO); empty = the Santa hat that comes with it |
 | `SANTA_CHRISTMAS_THEME` | | default `false`; `true` shows the Christmas theme in December (console, request form, e-mails) |
@@ -673,7 +727,8 @@ separately.
 - **Scheduled jobs**, the same image with another command (they don't wait for `WAIT_FOR_URL`, unless
   `WAIT_FOR_URL_JOBS=1`):
   - hourly: `python manage.py sync_release_sources` (new releases of the package rules, delayed approvals)
-  - daily: `python manage.py cleanup_events --days 90`
+  - daily: `python manage.py cleanup_events --days 90` (also deletes the notifications of the bell after 30 days,
+    `--notification-days`)
   - daily (with e-mail): `python manage.py send_notification_digest` (the daily summary)
 - **Endpoints**: `/health` (liveness, no database), `/ready` (checks the database), `/metrics` (Prometheus).
   `/metrics` also has the database metrics (`django_db_*`: queries, duration, errors, connections); for them the
@@ -702,7 +757,8 @@ the workers, stops them cleanly on `SIGTERM`, and starts a new one when one cras
 - **Long requests:** the hourly package check runs as its own job, not in the web server. "Check now" and approving a
   package request download the releases in the request; that holds one thread, the worker stays responsive. If it
   takes longer than the timeout of the ingress, the browser shows an error while the check finishes on the server:
-  reload the page. `gevent` or `eventlet` don't fit, the SQL Server driver would block their event loop.
+  reload the page. `gevent` or `eventlet` don't fit, the SQL Server driver would block their event loop. Uploading
+  a disk image of a few hundred MB needs a matching request body limit in the ingress.
 
 ### Sign-in
 
@@ -903,6 +959,13 @@ scope (*Remove this Mac*); the group and global scopes stay, a rule only for thi
 *All events* is the flat list; its first page adds new events every 5 seconds. Click a file name for the details
 and *Create rule*, with a preview of the identifier the rule will use.
 
+**Allow as package**: select apps or events → *Allow as package…* (or the hint "Probably from …" in an event). The
+console suggests per package where the binaries come from, the most reliable source first: the same file in a release
+recorded already, the bundle ID or the app name in the Homebrew casks, the install path (`…/Cellar/redis/8.10.1/…` →
+formula `redis`, `Caskroom`, `node_modules`, VS Code extensions; checked in the catalog). The catalog, the package
+and the target (a new or an existing package rule) can be changed before saving. Then the package rules are checked,
+and every binary shows whether it is allowed now; the allowed events are marked as resolved if wanted.
+
 **Allow blocked software**: select apps or events → *Create rules…*. Every binary gets its own row: rule type,
 policy, scope (the groups chosen at the top, only the Macs of its events, or all Macs), tags and description.
 *Apply to all rows* sets a column for every row. The rule types:
@@ -913,8 +976,13 @@ policy, scope (the groups chosen at the top, only the Macs of its events, or all
 If a manual rule for the identifier already exists, its scope is widened instead of creating a second rule. The events
 are marked resolved.
 
-**Upload a binary**: *Execution rules* → *Upload binary*. Accepts a Mach-O file, or a zip / tar archive (every
-executable inside, or those matching the glob pattern). The file is not stored.
+**Upload a binary**: *Execution rules* → *Upload binary*. Accepts a Mach-O file, a zip / tar archive, an installer
+package (`.pkg`) or a disk image (`.dmg`), also a package inside a disk image or an archive. *Check file* lists every
+executable inside (or those matching the glob pattern) with its signature, Signing ID, Team ID, SHA-256, CDHash and the
+rules that match already. Then you choose, like for events, which get a rule and of which rule type (*Suggested per
+binary*: Signing ID, Binary without a signature). Files with the same identifier (the helpers of an app with one Team
+ID) share one rule; the ones left out stay for a second decision. The file is only hashed, not stored, and not
+uploaded again.
 
 **Tags**: labels to sort and find rules. They have no effect on the Macs. Rename and delete them in
 *Administration* → *Tags*.
@@ -924,7 +992,10 @@ Rules created by package rules can only be enabled or disabled; change their pac
 
 **Package rules**: *Package rules* → *New package rule*. For GitHub, Homebrew, npm, VS Code and JetBrains, type in
 *Packages* to search the catalog; `owner/part` searches the repositories of a GitHub owner. Homebrew has no search API:
-the server loads the list of formulae or casks once a day. URLs are typed and added with Enter.
+the server loads the list of formulae or casks once a day. URLs are typed and added with Enter. Packages from a
+**Homebrew tap** are given with their full name, like for `brew install` (`hashicorp/tap/terraform`); the server reads
+the formula or cask file from the GitHub repository `owner/homebrew-tap` (version, downloads with SHA-256, bottles).
+Taps have only their current version.
 
 | Catalog | Identifier | Asset pattern | Binary pattern |
 |---|---|---|---|
@@ -941,7 +1012,14 @@ on its own and keeps its own versions. A package rule also chooses what the rule
 - **Preferred rule type**: Binary (default) or CDHash for one rule per file and version, or Signing ID, Certificate,
   Team ID for signed tools (one rule for all versions). Unsigned executables fall back to a Binary rule.
 - **Policy**: allow, allow compiler, block, block silently, or CEL, plus the block message and URL.
-- **Version pattern**: a regex, e.g. `^1\.` to stay on 1.x.
+- **Comment** (with the tags, like for the execution rules): in the list and the detail.
+- **Version, asset and binary patterns**: as many as needed per field, added with Enter, removed with ×; a value
+  counts when one of the patterns matches. Version patterns are regexes, e.g. `^1\.` to stay on 1.x. *Preview* shows
+  the latest releases of every package with ✓/✗ for the version and the assets, without saving.
+- **Minimum macOS** (Homebrew formula, e.g. `sequoia`): only the bottles for Macs with this macOS or newer.
+  **Take the nearest bottle** (default): like in Homebrew, a bottle for an older macOS counts for the newer ones it
+  runs on (portable-ruby has only `arm64_big_sur`, which serves `arm64_sequoia` too); without it only the bottle's own
+  tag counts.
 - **Auto approve** and a **delay** (e.g. 2 days after the publication), to hear about a compromised release before it
   runs on the Macs.
 - **Keep**: the last *n* versions, or the versions of the last *n* weeks or months; the rules of older versions are
@@ -957,24 +1035,45 @@ on its own and keeps its own versions. A package rule also chooses what the rule
   version shows its dependencies; most npm dependencies are scripts without an executable and need no rule. At most
   `RELEASE_MAX_DEPENDENCIES` packages per version.
 
-**Clean up**: when a package is removed from the package rule, the version pattern or the kept range changes, or the
-dependencies are no longer allowed, the package rule shows the versions it no longer covers. *Clean up* lists them
-with the number of rules and deletes them after the confirmation; the Macs remove the rules at their next sync.
+**Clean up**: when a package is removed from the package rule, a pattern, the minimum macOS or the kept range changes,
+or the dependencies are no longer allowed, the package rule shows the versions and rules it no longer covers (a rule
+is covered while one of its files matches the asset and binary patterns). *Clean up* lists them and deletes them after
+the confirmation; the Macs remove the rules at their next sync.
+
+**Notifications**: messages such as "saved" or the result of a check show for a moment at the bottom right and stay
+under the bell next to the profile. There × removes one, *Remove all* all of them; *Full view* lists them all with a
+filter by level.
+
+Long actions (*Check now*, approving a request with packages, uploading a file, creating many rules) show how far
+they are under the bar: "3 of 12 · podman".
 
 Notes:
 - Homebrew bottles are hashed per macOS version. Homebrew can rewrite a binary when it installs it (relocation); if
   the Macs still block it, compare with the blocked event and prefer the GitHub release.
 - npm tarballs are checked against the published SHA-512, Homebrew bottles against their SHA-256.
-- Releases without executables (most npm packages, VS Code extensions and JetBrains plugins are scripts) are recorded
-  with 0 binaries: Santa has nothing to allow in them.
-- `.dmg` and `.pkg` files cannot be unpacked; those apps are signed, allow them with a Signing ID or Team ID rule.
+- Releases without executables (most npm packages, VS Code extensions and JetBrains plugins are scripts, many
+  Homebrew formulae only libraries) are recorded with 0 binaries: Santa has nothing to allow in them. Formulae only
+  for Linux (e.g. `acl`) say so at the check; the catalog search shows them as *Linux only*.
+- From archives only the Mach-O executables are unpacked, not the libraries and data. Up to four files are
+  downloaded at the same time, and the versions of a Homebrew formula recorded already are not asked again.
+- A restart during a check: on SIGTERM (e.g. a rollout) a running check ends after its current package, within the
+  graceful timeout of gunicorn (25 s), and keeps what it found. If the process is killed hard, the versions recorded
+  until then stay; the next check announces them. An interrupted unpacking of a disk image can leave files in the
+  container's `/tmp` until it restarts.
+- The server reads `.pkg` files itself (Payload and Scripts, gzip, bzip2 or pbzx). `.dmg` files are unpacked by
+  7-Zip (`7zz`, part of the image), only the executables and the packages and archives inside; one level deep, within
+  `RELEASE_MAX_UNPACKED_BYTES` and `RELEASE_UNPACK_TIMEOUT`. That way Homebrew casks whose download is a disk image or
+  a package work too.
 
 **Access requests**: users open `/request/`, sign in and choose *Blocked on my Mac* (the open blocks of the last
 30 days on their Macs), *Package* (one or more packages from the catalogs) or *Other*. Their roles decide which kinds
 they may request. Administrators see the details in *Requests* and approve (a rule for the requester's Mac, groups or
 all Macs; packages into a new or an existing package rule, each package on its own; for *Other* a new execution rule
 right away, by identifier or uploaded app, or a package rule; as the policy allow, allow compiler or a CEL expression, for
-Team ID rules also by signing ID prefix; the packages with the search of the catalogs) or deny with a note.
+Team ID rules also by signing ID prefix; the packages with the search of the catalogs) or deny with a note. When a
+rule allows the blocked binary already (e.g. a Team ID rule created after the block), they approve *Blocked on my Mac*
+with this *existing rule*, with the scope widened if wanted, or with *no rule*; the open events of the binary on the
+requester's Macs are marked resolved.
 
 To link the block dialog to the form, set the group's *block dialog URL* to
 `https://<host>/request/new/?sha256=%file_sha%` and the button text to e.g. `Request access`.
@@ -1086,6 +1185,7 @@ santa/
   rules.py             which rules apply to a Mac, and the incremental rule sync
   events.py            storage of the uploaded events
   macho.py             reads hashes and code signature identifiers from Mach-O files
+  archives.py          reads installer packages (.pkg) and, with 7-Zip, disk images (.dmg)
   releases.py          package rules (GitHub, Homebrew, npm, VS Code, JetBrains, URL)
   catalog.py           search the package catalogs (suggestions and icons)
   notifications.py     e-mail notifications: who gets which e-mail

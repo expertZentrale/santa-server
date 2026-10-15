@@ -1,0 +1,12 @@
+{% load i18n %}{# The selected events: rules for the binaries, or their packages into package rules. Both get the selection. #}
+{% if perms.santa.add_releasesource and perms.santa.change_releasesource and perms.santa.add_rule %}
+<form method="post" class="allow-tabs">
+  {% csrf_token %}
+  {% for event in events %}<input type="hidden" name="ids" value="{{ event.pk }}">{% endfor %}
+  <input type="hidden" name="resolved" value="{{ resolved }}">
+  <span class="segmented" role="group" aria-label="{% translate 'Allow how' %}">
+    {% url 'console:events_create_rules' as rules_url %}<button formaction="{{ rules_url }}"{% if in_drawer %} hx-post="{{ rules_url }}" hx-target="#drawer"{% endif %} aria-pressed="{% if tab == 'rules' %}true{% else %}false{% endif %}">{% translate "Rules" %}</button>
+    {% url 'console:events_packages' as packages_url %}<button formaction="{{ packages_url }}"{% if in_drawer %} hx-post="{{ packages_url }}" hx-target="#drawer"{% endif %} aria-pressed="{% if tab == 'packages' %}true{% else %}false{% endif %}">{% translate "As package" %}{% if package_count %} <span class="tab-count">{{ package_count }}</span>{% endif %}</button>
+  </span>
+</form>
+{% endif %}

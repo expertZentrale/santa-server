@@ -37,6 +37,13 @@
   pointer-events: none; z-index: -1; opacity: .8; }
 /* the open navigation on small screens covers it; visibility keeps its size for the next drawing */
 .topbar.nav-open .garland { visibility: hidden; }
+/* the top bar lies above the drawer: the lights end at its edge, they don't hang over it (the widths of drawer.css) */
+.garland { clip-path: inset(0 0 0 0); transition: clip-path .2s ease; }
+body:has(#drawer.open) .garland { clip-path: inset(0 min(32.5rem, 100vw) 0 0); }
+body:has(#drawer.open .drawer-panel.wide) .garland { clip-path: inset(0 min(47.5rem, 100vw) 0 0); }
+@media (prefers-reduced-motion: reduce) {
+  .garland { transition: none; }
+}
 
 /* the Santa hat in front of the name */
 [data-season="christmas"] .brand { display: inline-flex; align-items: center; gap: .4rem; }

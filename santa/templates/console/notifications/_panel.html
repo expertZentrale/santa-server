@@ -1,0 +1,14 @@
+{% load i18n %}{# The menu of the bell (views_notifications.panel): the latest messages, each one to remove #}
+<div class="notifications-head">
+  <strong>{% translate "Notifications" %}</strong>
+  <span class="notifications-actions">
+    {% if items %}<form method="post" action="{% url 'notifications_clear' %}" hx-post="{% url 'notifications_clear' %}" hx-target="closest [data-notifications-panel]">{% csrf_token %}<button class="button small">{% translate "Remove all" %}</button></form>{% endif %}
+    <a class="icon-button" href="{% url 'notifications' %}" title="{% translate 'Full view' %}" aria-label="{% translate 'Full view' %}">{% include "console/icons/maximize.svg" %}</a>
+  </span>
+</div>
+{% if items %}
+<ul class="notifications-list">{% for item in items %}{% include "console/notifications/_item.html" with in_panel=True %}{% endfor %}</ul>
+{% if total > items|length %}<a class="notifications-more" href="{% url 'notifications' %}">{% blocktranslate with count=total %}Show all {{ count }}{% endblocktranslate %}</a>{% endif %}
+{% else %}
+<p class="muted notifications-empty">{% translate "No notifications." %}</p>
+{% endif %}

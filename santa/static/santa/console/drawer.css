@@ -8,12 +8,15 @@
 
 .drawer {
   position: fixed;
-  top: var(--topbar-h);
+  /* under the bottom border of the top bar, which lies above it: no hairline gap while it slides in (rounding),
+     through which the string of lights behind it would show */
+  top: calc(var(--topbar-h) - 1px);
   right: 0;
   bottom: 0;
   width: min(32.5rem, 100vw);
   background: var(--surface);
   border-left: 1px solid var(--border);
+  border-top: 1px solid var(--border);
   transform: translateX(100%);
   /* hidden when closed, else its border shows at the edge of every page */
   visibility: hidden;

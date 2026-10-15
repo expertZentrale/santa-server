@@ -20,6 +20,9 @@
   --info-bg: light-dark(#e3eefb, #203858);
   --warn: light-dark(#8a5300, #ffd47f);
   --warn-bg: light-dark(#fff4d6, #473b1c);
+  /* the counters of the top bar (open requests, unread notifications): readable in both modes */
+  --badge-bg: light-dark(#b42318, #ffb4ab);
+  --badge-text: light-dark(#ffffff, #410002);
   /* the frame of inputs, buttons and switches; --border is for cards, tables and dividers */
   --control-border: light-dark(#dde1e7, #6e7a8a);
   --scrollbar: light-dark(#c3c9d2, #566272);
@@ -39,6 +42,7 @@
   --control-h-sm: 1.75rem;
   --topbar-h: 3.5rem;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }
@@ -62,7 +66,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font: .875rem/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font: .875rem/1.5 var(--sans);
 }
 
 a { color: var(--accent); text-decoration: none; text-underline-offset: .15em; }
@@ -97,13 +101,22 @@ small.muted, small.help { display: block; }
   border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
-  z-index: 10;
+  /* above the drawer (15): the bell and the user menu open over it */
+  z-index: 18;
 }
 /* the progress of a running action, under the top bar: a moving stripe, or the share of an upload */
-.progress { position: fixed; top: var(--topbar-h); left: 0; right: 0; height: 3px; z-index: 12; overflow: hidden; pointer-events: none; }
+/* above the drawer (15), which starts at the bottom line of the top bar */
+.progress { position: fixed; top: var(--topbar-h); left: 0; right: 0; height: 3px; z-index: 16; overflow: hidden; pointer-events: none; }
 .progress > span { position: absolute; top: 0; bottom: 0; left: 0; width: 35%; background: var(--accent); border-radius: 0 2px 2px 0; animation: progress 1.1s ease-in-out infinite; }
 .progress.determinate > span { width: var(--progress, 0%); animation: none; transition: width .2s; }
 @keyframes progress { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+/* the step of a long request under the bar: "3 of 12 · podman" */
+.progress-status {
+  position: fixed; top: calc(var(--topbar-h) + .5rem); left: 50%; transform: translateX(-50%); z-index: 25;
+  max-width: calc(100vw - 2rem); padding: .35rem .85rem; border-radius: var(--radius); border: 1px solid var(--border);
+  background: var(--surface); color: var(--text); box-shadow: 0 4px 12px rgb(16 24 40 / 14%); font-size: .875rem;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none;
+}
 @media (prefers-reduced-motion: reduce) {
   .progress > span { width: 100%; opacity: .6; animation: none; }
   .connection[data-state="lost"]::before { animation: none; }
@@ -139,13 +152,19 @@ small.muted, small.help { display: block; }
 .topbar nav a.active { color: var(--text); background: var(--surface-2); font-weight: 600; }
 .topbar .count {
   display: inline-block;
-  min-width: 1.4em;
-  padding: 0 .35em;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  margin-left: .3rem;
+  padding: 0 .35rem;
   border-radius: 999px;
-  background: var(--bad);
-  color: #fff;
-  font-size: .75em;
+  background: var(--badge-bg);
+  color: var(--badge-text);
+  font-size: .75rem;
+  font-weight: 700;
+  line-height: 1.25rem;
   text-align: center;
+  font-variant-numeric: tabular-nums;
+  vertical-align: .1em;
 }
 .burger { display: none; border: 0; background: none; color: var(--text); padding: .25rem; cursor: pointer; border-radius: var(--radius-sm); }
 .burger .icon { width: 1.4rem; height: 1.4rem; }
@@ -171,6 +190,79 @@ small.muted, small.help { display: block; }
 .live-pill:hover { border-color: var(--accent); }
 .live-pill .dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--accent); animation: pulse 2s ease-in-out infinite; }
 .live-pill:not([hidden]) + .user-menu { margin-left: 0; }
+/* the bell before the user menu: the two at the right end of the top bar */
+.notifications-menu { position: relative; margin-left: auto; }
+.live-pill:not([hidden]) + .notifications-menu, .notifications-menu + .user-menu { margin-left: 0; }
+.notifications-menu > summary { list-style: none; position: relative; color: var(--text); }
+.notifications-menu > summary::-webkit-details-marker { display: none; }
+.notifications-menu > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.notifications-menu > summary .icon { width: 1.3rem; height: 1.3rem; }
+.notifications-menu .count { position: absolute; top: -.35rem; right: -.45rem; margin-left: 0; }
+.notifications-menu .count[hidden] { display: none; }
+.notifications-panel {
+  position: absolute; right: 0; top: calc(100% + .5rem); z-index: 30;
+  width: min(26rem, calc(100vw - 1.5rem)); max-height: min(32rem, calc(100vh - var(--topbar-h) - 2rem));
+  overflow-y: auto; overscroll-behavior: contain;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 18%); padding: .35rem;
+}
+.notifications-head {
+  display: flex; align-items: center; gap: .5rem; padding: .35rem .35rem .5rem .6rem;
+  border-bottom: 1px solid var(--border); margin-bottom: .25rem;
+}
+.notifications-actions { margin-left: auto; display: flex; align-items: center; gap: .25rem; }
+.notifications-actions form { margin: 0; }
+.notifications-empty { margin: .75rem .6rem; }
+.notifications-more { display: block; padding: .5rem .6rem; text-align: center; }
+.notifications-list { list-style: none; margin: 0; padding: 0; display: grid; }
+.notification {
+  display: flex; gap: .6rem; align-items: flex-start; padding: .5rem .35rem .5rem .6rem;
+  border-radius: var(--radius-sm);
+}
+.notification + .notification { border-top: 1px solid var(--border); }
+.notification.unread { background: var(--surface-2); }
+.notification form { margin: 0; flex: none; }
+.notification-body { flex: 1; min-width: 0; }
+.notification-text { margin: 0 0 .15rem; overflow-wrap: anywhere; white-space: pre-line; }
+.notification-dot { flex: none; width: .55rem; height: .55rem; margin-top: .45rem; border-radius: 50%; background: var(--info); }
+.notification.success .notification-dot { background: var(--ok); }
+.notification.warning .notification-dot { background: var(--warn); }
+.notification.error .notification-dot { background: var(--bad); }
+.notifications-filter { margin-bottom: 1rem; flex-wrap: wrap; }
+.notifications-filter .muted { margin-left: .35em; }
+.notifications-filter [aria-current] .muted { color: inherit; opacity: .8; }
+/* the level shows in the dot or the stripe; the text stays readable (not the red of .error) */
+.notifications-list .notification, .toasts .toast { color: var(--text); }
+.icon-button.small { width: 1.6rem; height: 1.6rem; }
+/* the messages of a request for a moment (core.js), they stay under the bell */
+.toasts {
+  position: fixed; right: 1rem; bottom: 1rem; z-index: 40; display: grid; gap: .5rem;
+  width: min(24rem, calc(100vw - 2rem)); pointer-events: none;
+}
+.toast {
+  display: flex; gap: .5rem; align-items: flex-start; padding: .6rem .5rem .6rem .9rem;
+  border-radius: var(--radius); border: 1px solid var(--border); border-left: .25rem solid var(--info);
+  background: var(--surface); color: var(--text); box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+  pointer-events: auto; animation: toast-in .2s ease;
+}
+.toast.success { border-left-color: var(--ok); }
+.toast.warning { border-left-color: var(--warn); }
+.toast.error { border-left-color: var(--bad); }
+.toast-text { flex: 1; min-width: 0; overflow-wrap: anywhere; white-space: pre-line; }
+.toast.leaving { opacity: 0; transform: translateY(.5rem); transition: opacity .2s, transform .2s; }
+/* "3 more messages": the rest of many at once, leads to the bell's full view */
+.toast-more { padding-right: .9rem; }
+.toast-more a { color: inherit; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(.5rem); } }
+@media (prefers-reduced-motion: reduce) {
+  .toast { animation: none; }
+  .toast.leaving { transition: none; }
+}
+@media (max-width: 40em) {
+  .toasts { right: .75rem; left: .75rem; bottom: .75rem; width: auto; }
+  /* the bell is not at the edge: the panel takes the width of the screen */
+  .notifications-panel { position: fixed; left: .75rem; right: .75rem; top: calc(var(--topbar-h) + .5rem); width: auto; }
+}
 @keyframes pulse { 50% { opacity: .35; } }
 @media (max-width: 40em) { .live-pill-text { display: none; } }
 .user-menu > summary { list-style: none; cursor: pointer; border-radius: 50%; display: block; }
@@ -307,6 +399,20 @@ main.narrow { max-width: 51.25rem; }
 .button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 .button.primary:hover { filter: brightness(1.08); }
 .button.danger { color: var(--bad); border-color: var(--bad); }
+.menu-item.danger { color: var(--bad); }
+/* a check of a package rule running (sources/_check_status.html, checks.js) */
+.check-status { display: grid; gap: .4rem; border-color: var(--info); }
+.check-status[hidden] { display: none; }
+.check-head { display: flex; flex-wrap: wrap; gap: .25rem .5rem; align-items: baseline; }
+.check-bar { position: relative; height: .25rem; border-radius: 1rem; background: var(--surface-2); overflow: hidden; }
+.check-bar > span { position: absolute; top: 0; bottom: 0; left: 0; width: 35%; border-radius: 1rem; background: var(--accent); animation: progress 1.1s ease-in-out infinite; }
+.check-bar.determinate > span { width: var(--progress, 0%); animation: none; transition: width .2s; }
+.check-status small { overflow-wrap: anywhere; }
+.check-cancelling { color: var(--warn); font-weight: 500; }
+.draft-note .button { margin-left: .5rem; }
+@media (prefers-reduced-motion: reduce) {
+  .check-bar > span { width: 100%; opacity: .6; animation: none; }
+}
 .button.small { min-height: var(--control-h-sm); padding: .15rem .6rem; font-size: .85em; }
 .button:disabled, .button[aria-disabled="true"] { opacity: .5; cursor: default; pointer-events: none; }
 .button.wide { width: 100%; justify-content: center; }
@@ -453,6 +559,14 @@ form.inline { display: inline; margin: 0; }
 .drawer-head .back { margin-bottom: .25rem; }
 
 .error-box { background: var(--bad-bg); color: var(--bad); padding: .75rem 1rem; border-radius: var(--radius); white-space: pre-wrap; overflow-wrap: anywhere; }
+/* the problems of the last check of a package rule, per package (sources/_errors.html) */
+.check-errors { border-color: var(--bad); display: grid; gap: .5rem; }
+.check-errors h2 { color: var(--bad); }
+.check-errors summary { cursor: pointer; overflow-wrap: anywhere; }
+.check-errors details > ul { margin: .4rem 0 .2rem 1rem; }
+.check-errors .error-text { overflow-wrap: anywhere; }
+.check-errors-head { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: center; justify-content: space-between; }
+.check-errors-fix { margin: .2rem 0 .4rem 1rem; }
 ul.plain { list-style: none; padding: 0; margin: 0; display: grid; gap: .3rem; }
 .card-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .75rem; }
 .card-head h2 { margin: 0; }

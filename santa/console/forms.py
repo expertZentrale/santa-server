@@ -1,6 +1,7 @@
 import base64
 import json
 import re
+from dataclasses import dataclass
 
 from django import forms
 from django.conf import settings
@@ -21,6 +22,7 @@ from ..models import (
     BRANDING_LOGO_TYPES,
     DEPENDENCY_KINDS,
     HISTORY_KINDS,
+    IDENTIFIER_MAX_LENGTH,
     AccessRequest,
     FileAccessProcess,
     FileAccessRule,
@@ -38,6 +40,8 @@ from ..models import (
     UserProfile,
     validate_logo_url,
 )
+from ..package_detection import SHORT_KIND_LABELS
+from ..services import is_allowed
 from ..users import profile_for, time_zone_names
 from ..validators import validate_identifier
 
@@ -315,24 +319,13 @@ class FileDropInput(forms.FileInput):
     template_name = "console/widgets/file_drop.html"
 
 
-class UploadBinaryForm(TagsMixin):
+class UploadCheckForm(forms.Form):
+    """Upload a file to see its executables (the rules are chosen afterwards, UploadRulesForm)"""
     file = forms.FileField(label=_("File"), widget=FileDropInput,
-                           help_text=_("Mach-O binary, or a zip / tar archive (e.g. a GitHub release asset). "
-                                       "The file is only hashed, it is not stored."))
+                           help_text=_("Mach-O binary, zip / tar archive, installer package (.pkg) or disk image "
+                                       "(.dmg). The file is only hashed, it is not stored."))
     binary_pattern = forms.CharField(required=False, max_length=200, label=_("Binary pattern"),
                                      help_text=_("Archives only: glob of the files to use, e.g. */bin/colima"))
-    rule_type = forms.ChoiceField(choices=rule_type_choices(), initial=RuleType.SIGNINGID, label=_("Rule type"))
-    policy = forms.ChoiceField(choices=Policy.choices, initial=Policy.ALLOWLIST, label=_("Policy"))
-    is_global = forms.BooleanField(required=False, label=_("All Macs (global)"))
-    groups = forms.ModelMultipleChoiceField(queryset=Group.objects.all(), required=False, label=_("Groups"),
-                                            widget=forms.CheckboxSelectMultiple)
-    description = forms.CharField(max_length=500, required=False, label=_("Comment"))
-
-    def clean(self):
-        cleaned_data = super().clean()
-        if not cleaned_data.get("is_global") and not cleaned_data.get("groups"):
-            self.add_error("groups", gettext("Select at least one group, or choose the global scope."))
-        return cleaned_data
 
 
 class IdentifiersWidget(forms.Textarea):
@@ -348,6 +341,14 @@ class IdentifiersWidget(forms.Textarea):
         return context
 
     icons = {}
+
+
+class PatternsWidget(forms.Textarea):
+    """Patterns, one per line, as chips: Enter adds one, × removes it (console/chips.js)"""
+    template_name = "console/widgets/patterns.html"
+
+    def __init__(self, attrs=None):
+        super().__init__(attrs={"rows": 2, "class": "mono", **(attrs or {})})
 
 
 def clean_picked(value):
@@ -370,18 +371,22 @@ class ReleaseSourceForm(TagsMixin, forms.ModelForm):
 
     class Meta:
         model = ReleaseSource
-        fields = ("name", "kind", "identifier", "is_enabled", "version_pattern", "asset_pattern", "binary_pattern",
-                  "include_prereleases", "rule_type", "policy", "cel_expr", "custom_msg", "custom_url", "is_global",
-                  "groups", "auto_approve", "auto_approve_delay_days", "keep_versions", "keep_unit",
-                  "approve_kept_versions", "include_dependencies", "tags")
+        fields = ("name", "description", "kind", "identifier", "is_enabled", "version_pattern", "asset_pattern",
+                  "binary_pattern", "macos_minimum", "macos_nearest", "include_prereleases", "rule_type", "policy",
+                  "cel_expr", "custom_msg", "custom_url", "is_global", "groups", "auto_approve",
+                  "auto_approve_delay_days", "keep_versions", "keep_unit", "approve_kept_versions",
+                  "include_dependencies", "tags")
         widgets = {
+            "description": forms.Textarea(attrs={"rows": 2}),
             "identifier": IdentifiersWidget,
+            "version_pattern": PatternsWidget, "asset_pattern": PatternsWidget, "binary_pattern": PatternsWidget,
             "groups": forms.CheckboxSelectMultiple,
             "cel_expr": forms.Textarea(attrs={"rows": 3, "class": "mono"}),
         }
         labels = {
-            **RULE_LABELS, "name": _("Name"), "version_pattern": _("Version pattern"),
-            "asset_pattern": _("Asset pattern"), "binary_pattern": _("Binary pattern"),
+            **RULE_LABELS, "name": _("Name"), "version_pattern": _("Version patterns"),
+            "asset_pattern": _("Asset patterns"), "binary_pattern": _("Binary patterns"),
+            "macos_minimum": _("Minimum macOS"), "macos_nearest": _("Take the nearest bottle"),
             "include_prereleases": _("Include prereleases"), "rule_type": _("Preferred rule type"),
             "auto_approve": _("Auto approve"), "auto_approve_delay_days": _("Auto approve delay (days)"),
             "keep_versions": _("Keep"), "keep_unit": _("Unit"),
@@ -501,6 +506,17 @@ class EventRuleForm(TagsMixin):
         return [row for row in self.rows if row[0].file_sha256 in chosen]
 
 
+class UploadRulesForm(EventRuleForm):
+    """The rules for the executables of an uploaded file: the form of the events with the binaries of the upload
+    (services.UploadedBinary), which have no Mac"""
+
+    def __init__(self, *args, binaries, **kwargs):
+        types = [rule_type for rule_type in RuleType.values if any(rule_type in b.rule_types for b in binaries)]
+        super().__init__(*args, rows=[[binary] for binary in binaries], available_types=types, **kwargs)
+        self.fields["scope"].choices = [(SCOPE_GROUPS, _("Groups")), (SCOPE_GLOBAL, _("All Macs"))]
+        self.fields["description"].help_text = _("Empty: the file name and the path of each executable.")
+
+
 class RequestEventForm(forms.Form):
     event = forms.ModelChoiceField(queryset=None, widget=forms.RadioSelect, empty_label=None,
                                    label=_("Blocked program"))
@@ -604,31 +620,89 @@ class CelPolicyMixin:
 
 
 class ApproveEventForm(CelPolicyMixin, TagsMixin):
-    field_order = ["rule_type", "policy", "signing_prefixes", "cel_expr", "scope", "groups", "tags", "new_tags",
-                   "note"]
+    """Approve a blocked binary: a new rule, a rule that already allows it (as it is, or with the scope of the form
+    added), or no rule
 
-    rule_type = forms.ChoiceField(choices=rule_type_choices(), label=_("Rule type"))
-    policy = forms.ChoiceField(choices=APPROVE_POLICIES, initial=Policy.ALLOWLIST, label=_("Policy"))
+    matches: existing_rules() of the binary; only its allowing rules can be chosen.
+    """
+    RULE, EXISTING, EXTEND, NONE = "rule", "existing", "extend", "none"
+
+    field_order = ["result", "existing_rule", "rule_type", "policy", "signing_prefixes", "cel_expr", "scope",
+                   "groups", "tags", "new_tags", "note"]
+
+    result = forms.ChoiceField(
+        choices=[(RULE, _("New rule")), (EXISTING, _("Existing rule")),
+                 (EXTEND, _("Existing rule, with the scope below added")), (NONE, _("No rule"))],
+        initial=RULE, required=False, widget=forms.RadioSelect, label=_("Approve with"))
+    existing_rule = forms.ModelChoiceField(queryset=Rule.objects.none(), required=False, widget=forms.RadioSelect,
+                                           empty_label=None, label=_("Rule"))
+    rule_type = forms.ChoiceField(choices=rule_type_choices(), required=False, label=_("Rule type"))
+    policy = forms.ChoiceField(choices=APPROVE_POLICIES, initial=Policy.ALLOWLIST, required=False, label=_("Policy"))
     signing_prefixes = signing_prefixes_field()
     cel_expr = cel_expr_field()
     scope = forms.ChoiceField(choices=[(SCOPE_MACHINES, _("The Mac of the requester")),
                                        (SCOPE_GROUPS, _("Groups")), (SCOPE_GLOBAL, _("All Macs"))],
-                              initial=SCOPE_GROUPS, widget=forms.RadioSelect, label=_("Scope"))
+                              initial=SCOPE_GROUPS, required=False, widget=forms.RadioSelect, label=_("Scope"))
     groups = forms.ModelMultipleChoiceField(queryset=Group.objects.all(), required=False, label=_("Groups"),
                                             widget=forms.CheckboxSelectMultiple)
     note = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 2}), label=_("Note"),
                            help_text=_("Shown to the user"))
 
-    def __init__(self, *args, available_types=None, **kwargs):
+    def __init__(self, *args, available_types=None, matches=(), allowed=None, **kwargs):
+        """allowed: () -> is the binary allowed on the Macs of the requester (services.decisions_for_machines)"""
         super().__init__(*args, **kwargs)
+        self.allowed = allowed
         self.fields["rule_type"].choices = rule_type_choices(available_types)
         add_cel_suggestions(self)
+        # a rule that blocks the binary is no approval
+        self.allowing = [match for match in matches
+                         if match["rule"].policy not in (Policy.BLOCKLIST, Policy.SILENT_BLOCKLIST)]
+        self.fields["existing_rule"].queryset = Rule.objects.filter(pk__in=[m["rule"].pk for m in self.allowing])
+        if not self.allowing:
+            self.fields["result"].choices = [choice for choice in self.fields["result"].choices
+                                             if choice[0] not in (self.EXISTING, self.EXTEND)]
+        elif not self.is_bound:
+            applying = [match for match in self.allowing if match["applies"]]
+            self.initial.setdefault("result", self.EXISTING if applying else self.RULE)
+            self.initial.setdefault("existing_rule", (applying or self.allowing)[0]["rule"].pk)
+
+    def clean_result(self):
+        # posted without the choice (a page loaded before it existed): a new rule, as before
+        return self.cleaned_data["result"] or self.RULE
+
+    def existing_choices(self):
+        """[(match, checked)] of the rules to choose from"""
+        value = str(self["existing_rule"].value() or "")
+        return [(match, str(match["rule"].pk) == value) for match in self.allowing]
 
     def clean(self):
         cleaned_data = super().clean()
-        if cleaned_data.get("scope") == SCOPE_GROUPS and not cleaned_data.get("groups"):
-            self.add_error("groups", gettext("Choose at least one group."))
-        clean_cel_policy(self, cleaned_data)
+        result = cleaned_data.get("result")
+        rule = cleaned_data.get("existing_rule")
+        if result in (self.EXISTING, self.EXTEND) and not rule:
+            self.add_error("existing_rule", gettext("Choose a rule."))
+        elif result == self.EXISTING and not (is_allowed([m for m in self.allowing if m["rule"].pk == rule.pk])
+                                              # and Santa lets it run there: no block of their group wins
+                                              and (self.allowed is None or self.allowed())):
+            # approved as it is, the rule has to allow the binary on these Macs already (disabled, another scope or
+            # a CEL rule that may block it: "with the scope below added")
+            self.add_error("existing_rule", gettext("This rule doesn't allow the binary on these Macs yet: choose "
+                                                    "“with the scope below added” or another rule."))
+        if result == self.EXTEND and rule and rule.release_source_id:
+            # its package rule decides its scope, the next versions would leave out the Macs added here
+            self.add_error("existing_rule", gettext(
+                "This rule comes from the package rule %(source)s: change its scope there, or approve with a new "
+                "rule.") % {"source": rule.release_source})
+        if result == self.RULE:
+            for name in ("rule_type", "policy"):
+                if not cleaned_data.get(name):
+                    self.add_error(name, gettext("This field is required."))
+            clean_cel_policy(self, cleaned_data)
+        if result in (self.RULE, self.EXTEND):
+            if not cleaned_data.get("scope"):
+                self.add_error("scope", gettext("This field is required."))
+            elif cleaned_data["scope"] == SCOPE_GROUPS and not cleaned_data.get("groups"):
+                self.add_error("groups", gettext("Choose at least one group."))
         return cleaned_data
 
 
@@ -717,6 +791,113 @@ class ApprovePackagesForm(forms.Form):
         return new_source_options(self.cleaned_data, kind)
 
 
+@dataclass(eq=False)
+class EventPackage:
+    """A package suggested for blocked events (package_detection.py), as the rows of ApprovePackagesForm want it"""
+    pk: int
+    kind: str
+    identifier: str
+    name: str = ""
+    icon_url: str = ""
+    suggestion: object = None
+
+
+class EventPackagesForm(ApprovePackagesForm):
+    """The packages of blocked events: each suggestion can be changed before saving (on/off, catalog, identifier,
+    package rule), into a new or an existing package rule of its catalog"""
+
+    resolve = forms.BooleanField(required=False, initial=True,
+                                 label=_("Mark the events as resolved once their binaries are allowed"))
+
+    def __init__(self, *args, suggestions=(), **kwargs):
+        packages = [EventPackage(pk=index, kind=item.kind, identifier=item.identifier, name=item.name,
+                                 icon_url=item.icon_url, suggestion=item)
+                    for index, item in enumerate(suggestions)]
+        super().__init__(*args, packages=packages, **kwargs)
+        del self.fields["note"]
+        kinds = [(value, SHORT_KIND_LABELS[value]) for value in ReleaseSource.Kind.values
+                 if value != ReleaseSource.Kind.URL]
+        all_sources = list(ReleaseSource.objects.order_by("name"))
+        self.sources = {source.pk: source for source in all_sources}
+        for package in self.packages:
+            self.fields[f"approve_{package.pk}"].label = _("Allow")
+            self.fields[f"kind_{package.pk}"] = forms.ChoiceField(choices=kinds, initial=package.kind,
+                                                                  label=_("Catalog"))
+            self.fields[f"identifier_{package.pk}"] = forms.CharField(
+                max_length=IDENTIFIER_MAX_LENGTH, initial=package.identifier, required=False, label=_("Package"),
+                widget=forms.TextInput(attrs={"autocomplete": "off", "spellcheck": "false"}))
+            # the suggestion of the catalog picked in the browser (suggestions.js): its name and icon
+            self.fields[f"picked_{package.pk}"] = forms.CharField(required=False, widget=forms.HiddenInput)
+            suggestion = package.suggestion
+            contained = suggestion.contained_in[0] if suggestion and suggestion.contained_in else None
+            same_kind = [source for source in all_sources if source.kind == package.kind]
+            initial = contained or (same_kind[0] if len(same_kind) == 1 else None)
+            choices = [(self.NEW, gettext("New package rule"))]
+            choices += [(str(source.pk), gettext("Add to %(name)s (%(kind)s)") % {
+                "name": source.name, "kind": SHORT_KIND_LABELS[source.kind]}) for source in all_sources]
+            self.fields[f"target_{package.pk}"] = forms.ChoiceField(
+                choices=choices, initial=str(initial.pk) if initial else self.NEW, label=_("Package rule"))
+            # a binary nobody recognised starts unchecked, to be filled in
+            if not package.identifier:
+                self.fields[f"approve_{package.pk}"].initial = False
+
+    @property
+    def bulk_kinds(self):
+        """The catalogs for the bar "for all checked" (no name: never sent, forms.js copies into the rows)"""
+        return [(value, SHORT_KIND_LABELS[value]) for value in ReleaseSource.Kind.values
+                if value != ReleaseSource.Kind.URL]
+
+    @property
+    def bulk_targets(self):
+        return [(str(source.pk), gettext("Add to %(name)s (%(kind)s)") % {
+            "name": source.name, "kind": SHORT_KIND_LABELS[source.kind]}) for source in self.sources.values()]
+
+    @property
+    def source_kinds(self):
+        """{pk: kind} of the package rules, for the choice of the package rule (forms.js)"""
+        return json.dumps({str(pk): source.kind for pk, source in self.sources.items()})
+
+    def rows(self):
+        return [(package, self[f"approve_{package.pk}"], self[f"kind_{package.pk}"],
+                 self[f"identifier_{package.pk}"], self[f"target_{package.pk}"], self[f"picked_{package.pk}"])
+                for package in self.packages]
+
+    def approved(self):
+        """[(package with the kind and identifier of the form, target or None)] of the checked rows"""
+        result = []
+        for package in self.packages:
+            if not self.cleaned_data.get(f"approve_{package.pk}"):
+                continue
+            kind = self.cleaned_data.get(f"kind_{package.pk}") or package.kind
+            identifier = (self.cleaned_data.get(f"identifier_{package.pk}") or "").strip()
+            changed = (kind, identifier) != (package.kind, package.identifier)
+            picked = clean_picked(self.cleaned_data.get(f"picked_{package.pk}")).get(identifier)
+            name, icon_url = (package.name, package.icon_url) if not changed else ("", "")
+            if picked:
+                name, icon_url = picked["name"], picked["icon_url"]
+            chosen = EventPackage(pk=package.pk, kind=kind, identifier=identifier, name=name, icon_url=icon_url,
+                                  suggestion=package.suggestion)
+            target = self.cleaned_data.get(f"target_{package.pk}")
+            result.append((chosen, self.sources.get(int(target)) if target and target != self.NEW else None))
+        return result
+
+    def clean(self):
+        if self.errors:
+            return self.cleaned_data
+        approved = self.approved()
+        if not approved:
+            raise ValidationError(gettext("Choose at least one package."))
+        for package, target in approved:
+            if not package.identifier:
+                self.add_error(f"identifier_{package.pk}", gettext("Enter the package."))
+            elif target is not None and target.kind != package.kind:
+                self.add_error(f"target_{package.pk}", gettext("%(name)s is a package rule for %(kind)s.") % {
+                    "name": target.name, "kind": target.get_kind_display()})
+        if self.errors:
+            return self.cleaned_data
+        return super().clean()
+
+
 class ApproveOtherForm(CelPolicyMixin, TagsMixin):
     """Approve a request for other software: create the rule for it right here, a manual rule or a package rule"""
 
@@ -734,8 +915,9 @@ class ApproveOtherForm(CelPolicyMixin, TagsMixin):
                                  widget=forms.TextInput(attrs={"class": "mono", "autocomplete": "off"}),
                                  help_text=_("Or upload the app below: the server reads the identifier from it."))
     file = forms.FileField(required=False, label=_("File"), widget=FileDropInput,
-                           help_text=_("Mach-O binary, or a zip / tar archive. Every executable in it gets a rule. "
-                                       "The file is only hashed, it is not stored."))
+                           help_text=_("Mach-O binary, zip / tar archive, installer package (.pkg) or disk image "
+                                       "(.dmg). Every executable in it gets a rule. The file is only hashed, it is "
+                                       "not stored."))
     binary_pattern = forms.CharField(required=False, max_length=200, label=_("Binary pattern"),
                                      help_text=_("Archives only: glob of the files to use, e.g. */bin/colima"))
     policy = forms.ChoiceField(choices=APPROVE_POLICIES, initial=Policy.ALLOWLIST, label=_("Policy"))

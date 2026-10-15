@@ -2,10 +2,12 @@ from django.urls import path
 
 from . import (
     views_admin,
+    views_event_packages,
     views_events,
     views_file_access,
     views_groups,
     views_history,
+    views_progress,
     views_requests,
     views_rules,
     views_sources,
@@ -14,10 +16,14 @@ from . import (
 app_name = "console"
 
 urlpatterns = [
+    path("progress/<str:progress_id>/", views_progress.progress, name="progress"),
+    path("progress/<str:progress_id>/cancel/", views_progress.cancel, name="progress_cancel"),
+
     path("events/", views_events.events, name="events"),
     path("events/updates/", views_events.event_updates, name="event_updates"),
     path("events/create-rules/", views_events.events_create_rules, name="events_create_rules"),
     path("events/resolve/", views_events.events_resolve, name="events_resolve"),
+    path("events/packages/", views_event_packages.events_packages, name="events_packages"),
     path("events/<int:pk>/", views_events.event_detail, name="event"),
     path("events/<int:pk>/create-rule/", views_events.event_create_rule, name="event_create_rule"),
 
@@ -35,11 +41,21 @@ urlpatterns = [
     path("packages/", views_sources.sources, name="sources"),
     path("packages/add/", views_sources.source_form, name="source_add"),
     path("packages/catalog/", views_sources.catalog_search, name="catalog_search"),
+    path("packages/preview/", views_sources.source_preview, name="source_preview"),
+    path("packages/preview/result/", views_sources.source_preview_result, name="source_preview_result"),
+    path("packages/preview/discard/", views_sources.source_preview_discard, name="source_preview_discard"),
     path("packages/<int:pk>/", views_sources.source_detail, name="source"),
     path("packages/<int:pk>/edit/", views_sources.source_form, name="source_edit"),
     path("packages/<int:pk>/delete/", views_sources.source_delete, name="source_delete"),
     path("packages/<int:pk>/check/", views_sources.source_check, name="source_check"),
+    path("packages/<int:pk>/check/status/", views_sources.source_check_status, name="source_check_status"),
+    path("packages/<int:pk>/check/cancel/", views_sources.source_check_cancel, name="source_check_cancel"),
+    path("packages/<int:pk>/remove-packages/", views_sources.source_remove_identifiers,
+         name="source_remove_identifiers"),
     path("packages/<int:pk>/cleanup/", views_sources.source_cleanup, name="source_cleanup"),
+    path("packages/<int:pk>/preview/", views_sources.source_preview, name="source_preview"),
+    path("packages/<int:pk>/preview/result/", views_sources.source_preview_result, name="source_preview_result"),
+    path("packages/<int:pk>/preview/discard/", views_sources.source_preview_discard, name="source_preview_discard"),
     path("packages/versions/<int:pk>/approve/", views_sources.version_set_enabled, {"enabled": True},
          name="version_approve"),
     path("packages/versions/<int:pk>/disable/", views_sources.version_set_enabled, {"enabled": False},

@@ -2,6 +2,8 @@
       data-searchable="{{ searchable_kinds|join:',' }}">
   {% csrf_token %}
   {{ form.picked }}
+  {% if draft %}<ul class="messages"><li class="info draft-note">{% blocktranslate with time=draft.started|date:"H:i" %}The unsaved changes of your preview at {{ time }} are restored.{% endblocktranslate %}
+    <button class="button small" form="draft-discard">{% translate "Discard them" %}</button></li></ul>{% endif %}
   {% if form.non_field_errors %}<div class="error">{{ form.non_field_errors }}</div>{% endif %}
   <section class="card"><h2>{% translate "Source and packages" %}</h2>
     {% include "console/_field.html" with field=form.name %}
@@ -13,7 +15,21 @@
     {% include "console/_field.html" with field=form.version_pattern %}
     {% include "console/_field.html" with field=form.asset_pattern %}
     {% include "console/_field.html" with field=form.binary_pattern %}
+    <div data-show-when="kind=HOMEBREW_FORMULA">
+      {% include "console/_field.html" with field=form.macos_minimum %}
+      {% include "console/_field.html" with field=form.macos_nearest %}</div>
     {% include "console/_field.html" with field=form.include_prereleases %}
+    {% if source %}{% url 'console:source_preview' source.pk as preview_url %}{% else %}{% url 'console:source_preview' as preview_url %}{% endif %}
+    {% if source %}{% url 'console:source_preview_result' source.pk as result_url %}{% else %}{% url 'console:source_preview_result' as result_url %}{% endif %}
+    {# while it runs, "Preview" is "Stop the preview" (checks.js); it goes on when the drawer is closed, the form shows it again #}
+    <div class="actions"><button type="button" class="button" hx-post="{{ preview_url }}" hx-target="#source-preview" hx-swap="innerHTML" data-progress data-preview-button{% if draft.running %} hidden{% endif %}>{% translate "Preview" %}</button>
+      <button type="button" class="button danger" data-preview-cancel data-cancel-url="{% url 'console:progress_cancel' '00000000-0000-0000-0000-000000000000' %}"{% if draft.running %} data-progress-id="{{ draft.progress_id }}"{% else %} hidden{% endif %}>{% translate "Stop the preview" %}</button>
+      <small class="help">{% translate "The latest releases of the packages: what the patterns take. Nothing is saved." %}</small></div>
+    <div id="source-preview" aria-live="polite"{% if draft.running %} data-preview-pending="{{ draft.progress_url }}" data-result-url="{{ result_url }}"{% endif %}>
+      {% if draft.running %}<p class="muted" aria-busy="true">{% translate "The preview is running…" %} <span data-preview-step></span></p>
+      {% elif draft.died %}<p class="error">{% translate "The preview stopped without an answer from the server. Preview again." %}</p>
+      {% elif draft %}{% include "console/sources/_preview.html" with results=draft.results stale_versions=draft.stale_versions stale_rules=draft.stale_rules cancelled_by=draft.cancelled_by restart=draft.restart %}{% endif %}
+    </div>
   </section>
   <section class="card"><h2>{% translate "Rules" %}</h2>
     {% include "console/_field.html" with field=form.rule_type %}
@@ -32,15 +48,18 @@
     {% include "console/_field.html" with field=form.auto_approve_delay_days %}
     {% include "console/sources/_keep_fields.html" with keep=form.keep_versions unit=form.keep_unit approve_kept=form.approve_kept_versions dependencies=form.include_dependencies kind="kind" %}
   </section>
-  <section class="card"><h2>{% translate "Tags" %}</h2>
+  <section class="card"><h2>{% translate "Tags and comment" %}</h2>
     {% include "console/_field.html" with field=form.tags %}
     {% include "console/_field.html" with field=form.new_tags %}
+    {% include "console/_field.html" with field=form.description %}
   </section>
   <div class="actions"><button class="button primary">{% translate "Save" %}</button>
     {% if in_drawer %}<button type="button" class="button" data-drawer-close>{% translate "Cancel" %}</button>{% endif %}
     {% if source and perms.santa.delete_releasesource %}
     <button class="button danger right" form="delete-form">{% translate "Delete" %}</button>{% endif %}</div>
 </form>
+{% if draft %}{% if source %}{% url 'console:source_preview_discard' source.pk as discard_url %}{% else %}{% url 'console:source_preview_discard' as discard_url %}{% endif %}
+<form id="draft-discard" method="post" action="{{ discard_url }}"{% if in_drawer %} hx-post="{{ discard_url }}" hx-swap="none"{% endif %}>{% csrf_token %}</form>{% endif %}
 {% if source and perms.santa.delete_releasesource %}
 <form id="delete-form" method="post" action="{% url 'console:source_delete' source.pk %}" data-confirm="{% blocktranslate with name=source.name %}Delete {{ name }} and all its rules?{% endblocktranslate %}">{% csrf_token %}</form>
 {% endif %}

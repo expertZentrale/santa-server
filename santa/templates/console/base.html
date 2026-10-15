@@ -15,19 +15,21 @@
   <script src="{% static 'santa/console/core.js' %}" defer></script>
   <script src="{% static 'santa/console/filterbar.js' %}" defer></script>
   <script src="{% static 'santa/console/drawer.js' %}" defer></script>
+  <script src="{% static 'santa/console/checks.js' %}" defer></script>
   <script src="{% static 'santa/console/table.js' %}" defer></script>
   <script src="{% static 'santa/console/live.js' %}" defer></script>
   <script src="{% static 'santa/console/forms.js' %}" defer></script>
   <script src="{% static 'santa/console/upload.js' %}" defer></script>
   <script src="{% static 'santa/console/suggestions.js' %}" defer></script>
   <script src="{% static 'santa/console/tags.js' %}" defer></script>
+  <script src="{% static 'santa/console/chips.js' %}" defer></script>
   <script src="{% static 'santa/console/cel.js' %}" defer></script>
   {% if christmas %}<link rel="stylesheet" href="{% static 'santa/console/christmas.css' %}">
   <script src="{% static 'santa/console/christmas.js' %}" defer></script>{% endif %}
 </head>
 {# every link and form loads in place (hx-boost, core.js); the drawer links and forms have their own target #}
 <body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}' hx-boost="true">
-<header class="topbar" data-topbar>
+<header class="topbar" data-topbar data-keeps-drawer>
   {% if user.is_authenticated %}
   <button type="button" class="burger" data-burger aria-expanded="false" aria-controls="main-nav" aria-label="{% translate 'Menu' %}">{% include "console/icons/menu.svg" %}</button>
   {% endif %}
@@ -40,7 +42,7 @@
       <a href="{% url 'console:sources' %}" {% if request.path|slice:":18" == "/console/packages/" %}class="active" aria-current="page"{% endif %}>{% translate "Package rules" %}</a>
       {% if perms.santa.view_fileaccessrule %}<a href="{% url 'console:file_access_rules' %}" {% if request.path|slice:":21" == "/console/file-access/" %}class="active" aria-current="page"{% endif %}>{% translate "File access" %}</a>{% endif %}
       {% pending_requests as pending %}
-      <a href="{% url 'console:requests' %}" {% if request.path|slice:":18" == "/console/requests/" %}class="active" aria-current="page"{% endif %}>{% translate "Requests" %}{% if pending %} <span class="count">{{ pending }}</span>{% endif %}</a>
+      <a href="{% url 'console:requests' %}" {% if request.path|slice:":18" == "/console/requests/" %}class="active" aria-current="page"{% endif %}>{% translate "Requests" %}{% if pending %} {% blocktranslate count count=pending asvar pending_label %}{{ count }} open request{% plural %}{{ count }} open requests{% endblocktranslate %}<span class="count" title="{{ pending_label }}" aria-hidden="true">{{ pending }}</span><span class="sr-only">{{ pending_label }}</span>{% endif %}</a>
       <a href="{% url 'console:machines' %}" {% if request.path|slice:":13" == "/console/macs" %}class="active" aria-current="page"{% endif %}>{% translate "Macs" %}</a>
       <a href="{% url 'console:groups' %}" {% if request.path|slice:":15" == "/console/groups" %}class="active" aria-current="page"{% endif %}>{% translate "Groups" %}</a>
       {% if perms.auth.view_user or perms.auth.view_group or perms.santa.view_signingroup or perms.santa.view_tag %}
@@ -50,6 +52,16 @@
     <a href="{% url 'requests:list' %}" {% if request.path|slice:":9" == "/request/" %}class="active" aria-current="page"{% endif %}>{% translate "My requests" %}</a>
   </nav>
   {% block topbar_extra %}{% endblock %}
+  {# the messages of the console, kept for the user (views_notifications.py); the panel loads when it opens #}
+  <details class="notifications-menu" data-notifications-menu>
+    {% blocktranslate count count=unread_notifications asvar unread_label %}Notifications, {{ count }} unread{% plural %}Notifications, {{ count }} unread{% endblocktranslate %}
+    <summary class="icon-button" title="{% translate 'Notifications' %}" aria-label="{% if unread_notifications %}{{ unread_label }}{% else %}{% translate 'Notifications' %}{% endif %}"
+             data-label="{% translate 'Notifications' %}" data-label-unread="{% blocktranslate with count='%(count)s' %}Notifications, {{ count }} unread{% endblocktranslate %}"
+             hx-get="{% url 'notifications_panel' %}" hx-target="next [data-notifications-panel]" hx-trigger="click" data-unread-url="{% url 'notifications_unread' %}">
+      {% include "console/icons/bell.svg" %}<span class="count" data-unread-count aria-hidden="true"{% if not unread_notifications %} hidden{% endif %}>{{ unread_notifications }}</span>
+    </summary>
+    <div class="menu notifications-panel" data-notifications-panel aria-live="polite"><p class="muted notifications-empty">{% translate "Loading…" %}</p></div>
+  </details>
   <details class="user-menu" data-user-menu>
     <summary aria-label="{% translate 'Account' %}: {{ user.get_full_name|default:user.get_username }}">
       <img class="avatar" src="{{ avatar_url }}" alt="" width="32" height="32" referrerpolicy="no-referrer">
@@ -102,13 +114,23 @@
 </header>
 {# an action is running: a request, an upload, a download (core.js) #}
 {# the connection to the server: lost, back again (core.js) #}
-<div id="connection" class="connection" role="status" aria-live="polite" hidden
+<div id="connection" class="connection" role="status" aria-live="polite" data-keeps-drawer hidden
      data-lost="{% translate 'Connection to the server lost. Retrying…' %}" data-back="{% translate 'Connected again.' %}"
      data-not-saved="{% translate 'The server was unreachable: the last change may not have been saved. Check it before you try again.' %}"><span></span></div>
 <div id="progress" class="progress" role="progressbar" aria-label="{% translate 'Working…' %}" data-download-error="{% translate 'The download failed. Try again, or reload the page.' %}" hidden><span></span></div>
+{# the steps of a long request: "3 / 12 · podman" (core.js, form[data-progress]) #}
+<div id="progress-status" class="progress-status" role="status" aria-live="polite" data-keeps-drawer hidden
+     data-url="{% url 'console:progress' '00000000-0000-0000-0000-000000000000' %}"
+     data-of="{% blocktranslate with current='%(current)s' total='%(total)s' %}{{ current }} of {{ total }}{% endblocktranslate %}"
+     data-found="{% blocktranslate with count='%(count)s' %}{{ count }} found{% endblocktranslate %}"
+     data-dead="{% translate 'No answer from the server: the action was stopped. Check the result before you try again.' %}"></div>
+{# the messages of a request, for a moment (core.js); the bell keeps them #}
+<div id="toasts" class="toasts" role="status" aria-live="polite" data-keeps-drawer data-close-label="{% translate 'Close' %}"
+     data-more-one="{% translate '1 more message' %}" data-more="{% blocktranslate with count='%(count)s' %}{{ count }} more messages{% endblocktranslate %}" data-more-url="{% url 'notifications' %}"></div>
 <main class="{% block main_class %}{% endblock %}">
   {% if messages %}
-  <ul class="messages">{% for message in messages %}<li class="{{ message.tags }}">{{ message }}</li>{% endfor %}</ul>
+  {# shown for a moment in #toasts (core.js), kept under the bell; without JavaScript they stay here #}
+  <ul class="messages" data-toasts>{% for message in messages %}<li class="{{ message.tags }}">{{ message }}</li>{% endfor %}</ul>
   {% endif %}
   {% block content %}{% endblock %}
 </main>

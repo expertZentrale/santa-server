@@ -33,6 +33,15 @@ main .table-scroll.fits > .table:not(.compact) > thead th { position: sticky; to
 /* the buttons of a row: last column, right-aligned, the same place in every row. No percentage widths in these
    tables: the box around them is as wide as its content, and a percentage would stretch it to the window */
 .table td.row-actions { width: 1px; white-space: nowrap; text-align: right; }
+/* the values of one cell, one under the other (name, path, package; Signing ID, Team ID): one block, also in the
+   cards on phones */
+.table .cell-stack { display: grid; gap: .15rem; justify-items: start; min-width: 0; }
+.table .cell-stack > * { max-width: 100%; }
+.table .cell-badges { display: flex; flex-wrap: wrap; gap: .3rem; }
+/* long IDs break instead of widening the table past the page */
+.table td.cell-ids { overflow-wrap: anywhere; min-width: 7rem; }
+/* the suggested package: one line, the long name in the title */
+.table .package-chip { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0; }
 /* a long path or description: one line in the room the column has, without widening it; the whole text is in the
    title */
 .cell-path, .cell-line { display: block; min-width: 100%; max-width: 0; overflow: hidden; text-overflow: ellipsis;
@@ -189,7 +198,12 @@ body:has(.drawer.open) .bulkbar.visible { opacity: 0; visibility: hidden; pointe
     column-gap: .5rem;
     overflow-wrap: anywhere;
   }
-  .table:not(.keep) td::before { content: attr(data-label); color: var(--muted); font-size: .8rem; grid-column: 1; grid-row: 1 / span 6; }
+  /* the label in the font of the page, also in a cell of IDs (.mono) */
+  .table:not(.keep) td::before { content: attr(data-label); color: var(--muted); font: .8rem/1.5 var(--sans); grid-column: 1; grid-row: 1 / span 6; }
+  /* a line break between two values: they stack anyway; as an item of the grid it would be an empty line */
+  .table:not(.keep) td > br { display: none; }
+  /* in a card the value wraps: on one line it would run under the ⋯ and the checkbox */
+  .table:not(.keep) td.nowrap { white-space: normal; }
   .table:not(.keep) td > * { grid-column: 2; }
   .table:not(.keep) td > * { justify-self: start; max-width: 100%; }
   /* a value that truncates itself (e.g. the identifier with its copy button) gets the whole width */
@@ -220,11 +234,16 @@ body:has(.drawer.open) .bulkbar.visible { opacity: 0; visibility: hidden; pointe
   .table.permissions thead th { font-size: .65rem; letter-spacing: 0; }
   .table.permissions tbody th { overflow-wrap: anywhere; }
   .table:not(.keep) td[data-label=""] { display: block; }
-  /* the ⋯ of a card: at the end, on the right */
-  .table:not(.keep) td.row-actions { width: auto; text-align: right; }
+  /* the ⋯ of a card: in the top right corner, next to the checkbox, not on a line of its own at the end */
+  .table:not(.keep) tbody tr:has(> td.row-actions) { position: relative; }
+  .table:not(.keep) td.row-actions { position: absolute; top: .45rem; right: .4rem; width: auto; padding: .25rem; }
+  .table:not(.keep) tr:has(> td.select) > td.row-actions { right: 2.75rem; }
+  .table:not(.keep) tr:has(> td.row-actions) > td.select + td { padding-right: 5.25rem; }
+  .table:not(.keep) tr:has(> td.row-actions):not(:has(> td.select)) > td:first-child { padding-right: 3rem; }
   .table:not(.keep) td[data-label=""]::before { content: none; }
   .table:not(.keep) td.num { text-align: left; }
   .table:not(.keep) tr.empty td { display: block; }
+  .table:not(.keep) tr.empty td::before { content: none; }
   .table.fixed { table-layout: auto; width: auto !important; }
   .table:not(.keep) th { width: auto !important; }
   .col-resize, .table-tools { display: none; }
@@ -252,6 +271,7 @@ body:has(.drawer.open) .bulkbar.visible { opacity: 0; visibility: hidden; pointe
 .table tr.skeleton:hover { background: none; }
 .skeleton-bar { display: block; width: 70%; max-width: 14rem; height: .75rem; border-radius: var(--radius-sm); background: var(--surface-2); animation: skeleton 1.6s ease-in-out infinite; }
 .skeleton-bar.short { width: 45%; height: .6rem; margin-top: .4rem; }
+.skeleton-card { display: grid; gap: .5rem; }
 .table tr.skeleton td:nth-child(3n) .skeleton-bar:not(.short) { width: 50%; }
 .table tr.skeleton td:nth-child(4n) .skeleton-bar:not(.short) { width: 35%; }
 /* the checkbox column: a box, not a bar (on phones in the corner of the card, like the checkbox) */

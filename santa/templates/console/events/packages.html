@@ -1,0 +1,7 @@
+{% extends "console/base.html" %}{% load i18n %}
+{% block title %}{% translate "Allow as package" %}{% endblock %}
+{% block content %}
+{% url 'console:events' as back_url %}{% include "console/_back.html" with url=back_url label=_("Events") %}
+<div class="page-head"><h1>{% translate "Allow as package" %}</h1></div>
+<section class="card">{% include "console/events/_packages_form.html" %}</section>
+{% endblock %}

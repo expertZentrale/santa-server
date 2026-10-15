@@ -1,0 +1,39 @@
+{% load i18n %}{# The executables of an uploaded file: which get a rule, of which type (rule_upload, after the check) #}
+<form method="post" action="{{ upload_url }}" class="stack" data-progress{% if in_drawer %} hx-post="{{ upload_url }}" hx-target="#drawer"{% endif %}>
+  {% csrf_token %}
+  <input type="hidden" name="token" value="{{ token }}">
+  {% if saved %}<input type="hidden" name="saved" value="1">{% endif %}
+  <p>{% blocktranslate count count=binaries|length %}{{ count }} executable in <strong>{{ name }}</strong>.{% plural %}{{ count }} executables in <strong>{{ name }}</strong>.{% endblocktranslate %}
+    <a href="{{ upload_url }}"{% if in_drawer %} hx-get="{{ upload_url }}" hx-target="#drawer"{% endif %}>{% translate "Check another file" %}</a></p>
+  {% if form.non_field_errors %}<div class="error">{{ form.non_field_errors }}</div>{% endif %}
+  {% include "console/events/_rule_form.html" %}
+  <fieldset class="plain field{% if form.include.errors %} has-error{% endif %}">
+    <legend class="strong">{% translate "Executables" %}</legend>
+    <ul class="plain binaries" data-binaries data-rule-types="{{ rule_types }}"
+        data-preview-label="{% translate 'The rule uses' %}" data-fallback-label="{% translate 'Not available, the rule uses' %}">
+      {% for item in binaries %}{% with binary=item.binary %}
+      <li><label>
+        <input type="checkbox" name="include" value="{{ binary.sha256 }}"{% if binary.sha256 in form.include.value %} checked{% endif %}>
+        <span class="binary-text">
+          <span><strong>{{ binary.file_name }}</strong>
+            <span class="badge">{% if binary.signature == "signed" %}{% translate "signed" %}{% elif binary.signature == "adhoc" %}{% translate "ad-hoc signed" %}{% else %}{% translate "unsigned" %}{% endif %}</span>
+            {% if binary.archs %}<span class="badge">{{ binary.archs|join:" · " }}</span>{% endif %}</span>
+          <small class="muted binary-path">{{ binary.path }}</small>
+          <small class="binary-ids">
+            {% if binary.signing_id %}<span>{% translate "Signing ID" %} <code>{{ binary.signing_id }}</code></span>{% endif %}
+            {% if binary.team_id %}<span>{% translate "Team ID" %} <code>{{ binary.team_id }}</code></span>{% endif %}
+            {% if binary.cert_cn %}<span>{% translate "Certificate" %} {{ binary.cert_cn }}</span>{% endif %}
+            <span>SHA-256 <code>{{ binary.sha256 }}</code></span>
+            {% for cdhash in binary.cdhashes %}<span>CDHash <code>{{ cdhash }}</code></span>{% endfor %}
+          </small>
+          {% include "console/rules/_existing.html" with matches=item.matches compact=True %}
+          <small class="rule-preview" data-binary-preview data-identifiers="{{ item.identifiers }}" data-suggested="{{ binary.suggested_rule_type }}"></small>
+        </span>
+      </label></li>
+      {% endwith %}{% endfor %}
+    </ul>
+    {% for error in form.include.errors %}<small class="error">{{ error }}</small>{% endfor %}
+  </fieldset>
+  <div class="actions"><button class="button primary">{% if binaries|length == 1 %}{% translate "Create rule" %}{% else %}{% translate "Create rules" %}{% endif %}</button>
+    {% if in_drawer %}<button type="button" class="button" data-drawer-close>{% translate "Cancel" %}</button>{% else %}<a class="button" href="{% url 'console:rules' %}">{% translate "Cancel" %}</a>{% endif %}</div>
+</form>

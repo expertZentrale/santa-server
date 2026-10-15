@@ -102,6 +102,18 @@ def is_macho_header(header):
     return MH_MAGIC in (magic_be, magic_le) or MH_MAGIC_64 in (magic_be, magic_le)
 
 
+def may_be_executable(header):
+    """The first 16 bytes of a file: a Mach-O that can be an executable (a universal binary can't tell yet; a thin
+    one names its file type: not the dylibs and bundles)"""
+    if len(header) < 16 or not is_macho_header(header):
+        return False
+    magic_le = struct.unpack("<I", header[:4])[0]
+    if struct.unpack(">I", header[:4])[0] in (FAT_MAGIC, FAT_MAGIC_64):
+        return True
+    endian = "<" if magic_le in (MH_MAGIC, MH_MAGIC_64) else ">"
+    return struct.unpack(endian + "I", header[12:16])[0] == MH_EXECUTE
+
+
 def file_sha256(fileobj):
     fileobj.seek(0)
     digest = hashlib.sha256()

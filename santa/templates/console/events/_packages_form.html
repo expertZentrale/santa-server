@@ -1,0 +1,72 @@
+{% load i18n %}{# Blocked events → package rules (views_event_packages.py): one suggestion per package, all of it can be changed #}
+{% url 'console:events_packages' as action %}
+{% if results %}
+<p>{% translate "The package rules were checked. Each binary of the events:" %}</p>
+<ul class="plain package-results">{% for event, allowed, matches, partly in results %}
+  <li class="{% if allowed %}ok{% else %}bad{% endif %}">
+    <span class="badge {% if allowed %}ok{% else %}bad{% endif %}">{% if allowed %}✓ {% translate "allowed" %}{% else %}✗ {% translate "not allowed" %}{% endif %}</span>
+    <strong>{{ event.file_name|default:_("(no name)") }}</strong>
+    <small class="muted mono binary-path">{{ event.file_path }}</small>
+    {% if allowed %}{% include "console/rules/_existing.html" with matches=matches compact=True %}{% elif partly %}<small class="help">{% translate "Allowed on some of the Macs only: on the others a more specific rule wins (a block of their group or of the Mac). Check the rules of the binary." %}</small>{% include "console/rules/_existing.html" with matches=matches compact=True %}{% else %}<small class="help">{% translate "No rule of the package rules covers this file: another version, another bottle, or Homebrew changed it when installing (relocation). Create a rule for it from the events." %}</small>{% endif %}
+  </li>{% endfor %}</ul>
+{% if resolved_count %}<p class="muted">{% blocktranslate count count=resolved_count %}{{ count }} event marked as resolved.{% plural %}{{ count }} events marked as resolved.{% endblocktranslate %}</p>{% endif %}
+<div class="actions">{% for source in saved_sources %}{% url 'console:source' source.pk as source_url %}<a class="button" href="{{ source_url }}"{% if in_drawer %} hx-get="{{ source_url }}" hx-target="#drawer"{% endif %}>{{ source.name }}</a>{% endfor %}
+  {% if in_drawer %}<button type="button" class="button primary" data-drawer-close>{% translate "Close" %}</button>{% else %}<a class="button primary" href="{% url 'console:events' %}">{% translate "Back to the events" %}</a>{% endif %}</div>
+{% elif not events %}
+<p class="card empty">{% translate "Select events in the list." %}</p>
+{% else %}
+{% include "console/events/_allow_tabs.html" %}
+<form method="post" action="{{ action }}" class="stack" data-progress data-event-packages data-source-kinds="{{ form.source_kinds }}"{% if in_drawer %} hx-post="{{ action }}" hx-target="#drawer"{% endif %}>
+  {% csrf_token %}
+  {% for event in events %}<input type="hidden" name="ids" value="{{ event.pk }}">{% endfor %}
+  <input type="hidden" name="resolved" value="{{ resolved }}">
+  {% if form.non_field_errors %}<div class="error">{{ form.non_field_errors }}</div>{% endif %}
+  <p class="help">{% translate "One suggestion per package, from the most reliable source the server found. Check each one, change the catalog, the package or the package rule if needed." %}</p>
+  {% if rows|length > 1 %}
+  {# the same catalog and package rule for every checked package (forms.js); the selects have no name: not sent #}
+  <div class="package-bulk" data-package-bulk role="group" aria-labelledby="package-bulk-title"
+       data-applied="{% blocktranslate with count='%(count)s' %}Applied to {{ count }} packages.{% endblocktranslate %}">
+    <strong id="package-bulk-title">{% translate "For all checked packages" %}</strong>
+    <div class="package-suggestion-fields">
+      <div class="field"><label for="package-bulk-kind">{% translate "Catalog" %}</label>
+        <select id="package-bulk-kind" data-bulk-kind><option value="">{% translate "unchanged" %}</option>
+          {% for value, label in form.bulk_kinds %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select></div>
+      <div class="field"><label for="package-bulk-target">{% translate "Package rule" %}</label>
+        <select id="package-bulk-target" data-bulk-target><option value="">{% translate "unchanged" %}</option>
+          <option value="new">{% translate "New package rule" %}</option>
+          {% for value, label in form.bulk_targets %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select></div>
+      <div class="field"><button type="button" class="button" data-bulk-apply>{% translate "Apply to all checked" %}</button></div>
+    </div>
+    <small class="muted" data-bulk-status aria-live="polite"></small>
+  </div>
+  {% endif %}
+  <ul class="plain package-suggestions">{% for package, approve, kind, identifier, target, picked, source_label in rows %}{% with suggestion=package.suggestion %}
+    <li class="package-suggestion">
+      <div class="package-suggestion-head">
+        <label class="check">{{ approve }} <span class="with-icon">{% if package.icon_url %}<img src="{{ package.icon_url }}" alt="" referrerpolicy="no-referrer">{% endif %}<strong>{{ package.name|default:package.identifier|default:_("Not recognised") }}</strong></span></label>
+        {% if source_label %}<span class="badge {% if suggestion.source == 'release' or suggestion.confirmed %}ok{% else %}warn{% endif %}" title="{% translate 'Where the suggestion comes from' %}">{{ source_label }}{% if suggestion.source == "path" %} · {% if suggestion.confirmed %}{% translate "in the catalog" %}{% else %}{% translate "not in the catalog" %}{% endif %}{% endif %}</span>{% endif %}
+      </div>
+      <small class="muted">{% blocktranslate count count=suggestion.shas|length %}{{ count }} binary{% plural %}{{ count }} binaries{% endblocktranslate %} · {% blocktranslate count count=suggestion.events|length %}{{ count }} event{% plural %}{{ count }} events{% endblocktranslate %}{% if suggestion.version %} · {% blocktranslate with version=suggestion.version %}version {{ version }}{% endblocktranslate %}{% endif %}{% if suggestion.latest_version %} · {% blocktranslate with version=suggestion.latest_version %}current: {{ version }}{% endblocktranslate %}{% endif %}</small>
+      <small class="muted mono binary-path">{{ suggestion.example_path }}</small>
+      {% if suggestion.alternatives %}<small class="help">{% blocktranslate with names=suggestion.alternatives|join:", " %}Other casks with this app: {{ names }}{% endblocktranslate %}</small>{% endif %}
+      {% if suggestion.contained_in %}<small class="help">{% blocktranslate with names=suggestion.contained_in|join:", " %}Already in {{ names }}.{% endblocktranslate %}</small>{% endif %}
+      <div class="package-suggestion-fields">
+        {% include "console/_field.html" with field=kind %}
+        {# the catalog search of the package field (suggestions.js), in the catalog chosen on the left #}
+        <div class="field combobox{% if identifier.errors %} has-error{% endif %}" data-field="{{ identifier.html_name }}" data-catalog-input
+             data-url="{% url 'console:catalog_search' %}" data-kind-field="{{ kind.html_name }}" data-picked-field="{{ picked.html_name }}"
+             data-searchable="{{ searchable_kinds|join:',' }}">
+          <label for="{{ identifier.id_for_label }}">{{ identifier.label }}</label>
+          {{ identifier }}{{ picked }}
+          <div class="suggestions" data-suggestions role="listbox" id="{{ identifier.id_for_label }}-suggestions"></div>
+          {% for error in identifier.errors %}<small class="error">{{ error }}</small>{% endfor %}
+        </div>
+        {% include "console/_field.html" with field=target %}
+      </div>
+    </li>{% endwith %}{% endfor %}</ul>
+  {% include "console/sources/_new_source_fields.html" with form=form %}
+  {% include "console/_field.html" with field=form.resolve %}
+  <div class="actions"><button class="button primary" name="apply" value="1">{% translate "Add and check" %}</button>
+    {% if in_drawer %}<button type="button" class="button" data-drawer-close>{% translate "Cancel" %}</button>{% else %}<a class="button" href="{% url 'console:events' %}">{% translate "Cancel" %}</a>{% endif %}</div>
+</form>
+{% endif %}

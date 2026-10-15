@@ -1,6 +1,10 @@
 import csv
+import json
+from dataclasses import asdict
 
 from django.contrib import messages
+from django.core import signing
+from django.db import transaction
 from django.db.models import Case, IntegerField, Q, Value, When, prefetch_related_objects
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -10,8 +14,17 @@ from django.utils.translation import gettext, ngettext
 from django.views.decorators.http import require_POST
 
 from ..models import Group, Machine, Policy, ReleaseVersion, Rule, RuleType, Tag
+from ..progress import progress_for
 from ..releases import ReleaseError, find_binaries
-from ..services import allow_identifier, binary_identifiers, set_rules_enabled, set_rules_policy
+from ..services import (
+    UploadedBinary,
+    allow_binaries,
+    binary_identifiers,
+    existing_rules_for_binaries,
+    is_allowed,
+    set_rules_enabled,
+    set_rules_policy,
+)
 from .filters import (
     TIME_DAYS,
     TIME_PRESETS,
@@ -23,7 +36,7 @@ from .filters import (
     in_range,
     remember_filters,
 )
-from .forms import RuleBulkForm, RuleForm, UploadBinaryForm
+from .forms import SCOPE_GLOBAL, SCOPE_GROUPS, RuleBulkForm, RuleForm, UploadCheckForm, UploadRulesForm
 from .utils import (
     changed_message,
     defer_rows,
@@ -318,47 +331,102 @@ def rule_form(request, pk=None):
                          {"form": form, "rule": rule})
 
 
+# the binaries found in an upload travel signed in the form of the second step: the file is not stored or sent again
+UPLOAD_SALT = "santa.console.rule_upload"
+UPLOAD_MAX_AGE = 60 * 60
+
+
+def _upload_binaries(token):
+    """(file name, [UploadedBinary]) of the signed check, or None when it is broken or too old"""
+    try:
+        data = signing.loads(token, salt=UPLOAD_SALT, max_age=UPLOAD_MAX_AGE)
+        return data["name"], [UploadedBinary(**binary) for binary in data["binaries"]]
+    except (signing.BadSignature, KeyError, TypeError):
+        return None
+
+
+def _upload_rules_page(request, name, binaries, form=None, include=None, saved=False):
+    matches = existing_rules_for_binaries(binaries)
+    if form is None:
+        # a binary an enabled allow rule matches starts unchecked
+        wanted = [b.sha256 for b in binaries if not is_allowed(matches.get(b.sha256, []))]
+        initial = {"include": wanted if include is None else include, "scope": SCOPE_GROUPS}
+        if len(binaries) == 1:
+            initial["rule_type"] = binaries[0].suggested_rule_type
+        form = UploadRulesForm(initial=initial, binaries=binaries)
+    token = signing.dumps({"name": name, "binaries": [asdict(binary) for binary in binaries]}, salt=UPLOAD_SALT,
+                          compress=True)
+    rule_types = dict(RuleType.choices)
+    return render_drawer(request, "console/rules/upload.html", "console/rules/drawer_upload.html", {
+        "form": form, "name": name, "token": token,
+        "binaries": [{"binary": binary, "matches": matches.get(binary.sha256, []),
+                      "identifiers": json.dumps({rule_type: ", ".join(binary_identifiers(rule_type, binary))
+                                                 for rule_type in binary.rule_types})}
+                     for binary in binaries],
+        "rule_types": json.dumps({value: str(label) for value, label in rule_types.items()}), "saved": saved,
+    })
+
+
 @staff_required
 def rule_upload(request):
+    """Upload a file, see its executables with their identifiers, then choose which get a rule of which type.
+
+    The second step posts the signed result of the check (token), never the file again. The binaries left out stay
+    for a second decision, like the rules from events.
+    """
     require_perms(request, "view_rule", "add_rule", "change_rule")
-    form = UploadBinaryForm(request.POST or None, request.FILES or None)
-    found = None
-    if request.method == "POST" and form.is_valid():
-        upload = form.cleaned_data["file"]
+    if request.method == "POST" and "token" in request.POST:
+        checked = _upload_binaries(request.POST["token"])
+        if checked is None:
+            messages.error(request, gettext("The check of the file is too old, upload it again."))
+            return render_drawer(request, "console/rules/upload.html", "console/rules/drawer_upload.html",
+                                 {"check_form": UploadCheckForm()})
+        name, binaries = checked
+        form = UploadRulesForm(request.POST, binaries=binaries)
+        if not form.is_valid():
+            return _upload_rules_page(request, name, binaries, form, saved=request.POST.get("saved") == "1")
+        data = form.cleaned_data
+        included = [row[0] for row in form.included_rows()]
+        with progress_for(request) as progress, transaction.atomic():
+            results = allow_binaries(
+                [(binary, binary.rule_type_for(data["rule_type"])) for binary in included], data["policy"],
+                data["scope"] == SCOPE_GLOBAL, data["groups"] if data["scope"] == SCOPE_GROUPS else [],
+                request.user, data["description"] or (lambda binary: f"Upload {name}: {binary.path}"),
+                form.all_tags(), cel_expr_for=form.cel_expr_for, progress=progress)
+            for rule, created in results:
+                if created:
+                    log_addition(request.user, rule, "Created from an uploaded file")
+                else:
+                    log_change(request.user, rule, "Scope extended from an uploaded file")
+        messages.success(request, ngettext(
+            "%(count)s rule saved (%(new)s new). The Macs get it at their next sync.",
+            "%(count)s rules saved (%(new)s new). The Macs get them at their next sync.", len(results),
+        ) % {"count": len(results), "new": sum(created for _rule, created in results)})
+        rest = [binary for binary in binaries if binary not in included]
+        if not rest:
+            return drawer_done(request, reverse("console:rules"))
+        messages.info(request, ngettext("%(count)s binary left: choose its rule, or close.",
+                                        "%(count)s binaries left: choose their rule, or close.", len(rest))
+                      % {"count": len(rest)})
+        return _upload_rules_page(request, name, rest, include=[], saved=True)
+    check_form = UploadCheckForm(request.POST or None, request.FILES or None)
+    if request.method == "POST" and check_form.is_valid():
+        upload = check_form.cleaned_data["file"]
+        found = []
         try:
-            found = list(find_binaries(upload, upload.name, form.cleaned_data["binary_pattern"]))
+            with progress_for(request) as progress:
+                progress.note(upload.name)
+                # the number of executables is only known at the end: the bar counts them and names the last one
+                for path, info in find_binaries(upload, upload.name, check_form.cleaned_data["binary_pattern"]):
+                    found.append((path, info))
+                    progress.start(path)
         except ReleaseError as e:
-            form.add_error("file", str(e))
+            check_form.add_error("file", str(e))
         else:
-            if not found:
-                form.add_error("file", gettext("No Mach-O executable found in this file."))
-            elif _rules_from_upload(request, form, found):
-                return drawer_done(request, reverse("console:rules"))
+            # the same file at two paths is one binary
+            binaries = list({info.sha256: UploadedBinary.from_info(path, info) for path, info in found}.values())
+            if binaries:
+                return _upload_rules_page(request, upload.name, binaries)
+            check_form.add_error("file", gettext("No Mach-O executable found in this file."))
     return render_drawer(request, "console/rules/upload.html", "console/rules/drawer_upload.html",
-                         {"form": form, "found": found})
-
-
-def _rules_from_upload(request, form, found):
-    data = form.cleaned_data
-    identifiers = {}
-    for path_in_file, info in found:
-        for identifier in binary_identifiers(data["rule_type"], info):
-            identifiers.setdefault(identifier, path_in_file)
-    if not identifiers:
-        form.add_error("rule_type", gettext("The file has no %(rule_type)s (unsigned or ad-hoc signed?). "
-                                            "Use a binary rule instead.") % {"rule_type": data["rule_type"]})
-        return 0
-    created_count = 0
-    for identifier, path_in_file in identifiers.items():
-        rule, created = allow_identifier(
-            data["rule_type"], identifier, data["policy"], data["is_global"], data["groups"], request.user,
-            data["description"] or f"Upload {data['file'].name}: {path_in_file}", form.all_tags(),
-        )
-        if created:
-            created_count += 1
-            log_addition(request.user, rule, "Created from an uploaded file")
-        else:
-            log_change(request.user, rule, "Scope extended from an uploaded file")
-    messages.success(request, ngettext("%(count)s rule saved (%(new)s new).", "%(count)s rules saved (%(new)s new).",
-                                       len(identifiers)) % {"count": len(identifiers), "new": created_count})
-    return len(identifiers)
+                         {"check_form": check_form})

@@ -29,7 +29,9 @@ class ConfigIOTestCase(TestCase):
         self.machine = Machine.objects.create(machine_id="M1", serial_number="C02TEST", group=self.dev)
         source = ReleaseSource.objects.create(name="colima", kind=ReleaseSource.Kind.GITHUB_RELEASE,
                                               identifier="abiosoft/colima\nlima-vm/lima", asset_pattern="Darwin",
-                                              version_pattern="^v1\\.", rule_type=RuleType.SIGNINGID,
+                                              version_pattern="^v1\\.\n^v2\\.", rule_type=RuleType.SIGNINGID,
+                                              description="Container runtime", binary_pattern="*/colima\n*/lima",
+                                              macos_minimum="sequoia", macos_nearest=False,
                                               policy=Policy.CEL, cel_expr=CEL_EXPR, custom_msg="Ask the IT",
                                               keep_versions=2, keep_unit=ReleaseSource.KeepUnit.MONTHS,
                                               approve_kept_versions=True)
@@ -88,7 +90,9 @@ class ConfigIOTestCase(TestCase):
         source = ReleaseSource.objects.get()
         self.assertEqual(source.identifiers, ["abiosoft/colima", "lima-vm/lima"])
         self.assertEqual((source.version_pattern, source.rule_type, source.policy, source.cel_expr, source.custom_msg),
-                         ("^v1\\.", RuleType.SIGNINGID, Policy.CEL, CEL_EXPR, "Ask the IT"))
+                         ("^v1\\.\n^v2\\.", RuleType.SIGNINGID, Policy.CEL, CEL_EXPR, "Ask the IT"))
+        self.assertEqual((source.description, source.binary_pattern, source.macos_minimum, source.macos_nearest),
+                         ("Container runtime", "*/colima\n*/lima", "sequoia", False))
         self.assertEqual((source.keep_versions, source.keep_unit, source.approve_kept_versions,
                           source.include_dependencies), (2, ReleaseSource.KeepUnit.MONTHS, True, False))
 

@@ -1,5 +1,5 @@
-{% load i18n %}{% if rows or dependency_rule_count %}
-<p>{% translate "These versions are no longer covered by the package rule. They are deleted with their rules, and the Macs remove the rules at their next sync." %}</p>
+{% load console i18n %}{% if rows or dependency_rule_count or rule_rows %}
+{% if rows %}<p>{% translate "These versions are no longer covered by the package rule. They are deleted with their rules, and the Macs remove the rules at their next sync." %}</p>{% endif %}
 {% if rows %}
 <section class="card">
   <table class="table compact">
@@ -12,8 +12,22 @@
   </table>
 </section>
 {% endif %}
-<p>{% blocktranslate count count=rule_count %}{{ count }} rule of these versions is deleted.{% plural %}{{ count }} rules of these versions are deleted.{% endblocktranslate %}
-{% if dependency_rule_count %}{% blocktranslate count count=dependency_rule_count %}And {{ count }} rule of dependencies, which the package rule no longer allows.{% plural %}And {{ count }} rules of dependencies, which the package rule no longer allows.{% endblocktranslate %}{% endif %}</p>
+{% if rule_rows %}
+<p>{% translate "These rules allow only files the asset or binary pattern no longer takes. They are deleted, their versions stay." %}</p>
+<section class="card">
+  <table class="table compact">
+    <thead><tr><th>{% translate "Version" %}</th><th>{% translate "Rule" %}</th><th>{% translate "Files" %}</th><th>{% translate "Why" %}</th></tr></thead>
+    <tbody>{% for rule, reason in rule_rows %}
+      <tr><td>{% if rule.release_version.identifier %}<code>{{ rule.release_version.identifier }}</code> {% endif %}<span class="strong">{{ rule.release_version.version }}</span></td>
+        <td><strong>{{ rule.get_rule_type_display }}</strong> <code class="binary-path">{{ rule.identifier }}</code></td>
+        <td>{% for file in rule.release_files %}<div class="small"><span class="muted">{{ file.asset }}:</span> <code class="binary-path">{{ file.path }}</code></div>{% endfor %}</td>
+        <td>{{ reason }}</td></tr>
+    {% endfor %}</tbody>
+  </table>
+</section>
+{% endif %}
+{% if rows %}<p>{% blocktranslate count count=rule_count %}{{ count }} rule of these versions is deleted.{% plural %}{{ count }} rules of these versions are deleted.{% endblocktranslate %}
+{% if dependency_rule_count %}{% blocktranslate count count=dependency_rule_count %}And {{ count }} rule of dependencies, which the package rule no longer allows.{% plural %}And {{ count }} rules of dependencies, which the package rule no longer allows.{% endblocktranslate %}{% endif %}</p>{% elif dependency_rule_count %}<p>{% blocktranslate count count=dependency_rule_count %}{{ count }} rule of dependencies is deleted, the package rule no longer allows them.{% plural %}{{ count }} rules of dependencies are deleted, the package rule no longer allows them.{% endblocktranslate %}</p>{% endif %}
 <form method="post" action="{% url 'console:source_cleanup' source.pk %}" class="actions"{% if in_drawer %} hx-post="{% url 'console:source_cleanup' source.pk %}" hx-target="#drawer"{% endif %}>
   {% csrf_token %}
   <button class="button danger">{% translate "Clean up" %}</button>

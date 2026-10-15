@@ -142,7 +142,8 @@ Every model and query must work on SQL Server (mssql-django 2.x, `mssql_python` 
   group profile to users who may change groups (`can_see_sync_token()` in `services.py`), never to read-only viewers.
 - Uploaded binaries are only hashed, never stored.
 - Everything the server decompresses has a size limit: sync bodies (`SYNC_MAX_DECOMPRESSED_BYTES`), archives
-  (`RELEASE_MAX_FILE_BYTES`, `RELEASE_MAX_UNPACKED_BYTES` through `_UnpackBudget`). Keep new code paths within them.
+  (`RELEASE_MAX_FILE_BYTES`, `RELEASE_MAX_UNPACKED_BYTES` through `_UnpackBudget`), disk images also
+  `RELEASE_UNPACK_TIMEOUT` (7-Zip, `santa/archives.py`). Keep new code paths within them.
 - `ALLOWED_HOSTS` is never `*` by default: it comes from `SANTA_PUBLIC_BASE_URL`.
 - Release downloads are size limited, and checked against the published hash when there is one
   (SHA-256 of Homebrew bottles, SHA-512 of npm tarballs). Never remove that check.

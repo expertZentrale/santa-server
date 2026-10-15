@@ -46,8 +46,8 @@ class AllowEventsForm(ScopeForm):
 
 
 class UploadBinaryForm(ScopeForm):
-    file = forms.FileField(help_text="Mach-O binary, or a zip / tar archive (e.g. a GitHub release asset). "
-                                     "The file is only hashed, it is not stored.")
+    file = forms.FileField(help_text="Mach-O binary, zip / tar archive, installer package (.pkg) or disk image "
+                                     "(.dmg). The file is only hashed, it is not stored.")
     rule_type = forms.ChoiceField(
         choices=[(RuleType.SIGNINGID, "Signing ID"),
                  (RuleType.BINARY, "Binary (SHA-256 of every executable found), for unsigned tools"),

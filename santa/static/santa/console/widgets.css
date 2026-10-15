@@ -99,6 +99,12 @@
 /* Identifiers widget */
 .identifiers .chips { list-style: none; padding: 0; margin: 0 0 .5rem; display: flex; flex-wrap: wrap; gap: .4rem; }
 .identifiers .chip { border-radius: var(--radius); padding: .3rem .4rem .3rem .35rem; }
+/* the patterns of a package rule (chips.js) */
+.patterns .chips { list-style: none; padding: 0; margin: 0 0 .4rem; display: flex; flex-wrap: wrap; gap: .4rem; }
+.patterns .chips:empty { display: none; }
+.patterns .chip { border-radius: var(--radius); padding: .2rem .35rem .2rem .5rem; max-width: 100%; }
+.patterns .chip-text { display: block; overflow-wrap: anywhere; font-size: .875em; }
+.patterns input { width: 100%; }
 .chip-text { display: grid; line-height: 1.2; }
 .chip-text code { color: var(--muted); font-size: .78em; }
 .chip-remove { border: 0; background: none; color: var(--muted); font-size: 1.1rem; cursor: pointer; padding: 0 .2rem; }
@@ -162,6 +168,10 @@
 .binary-text { display: grid; gap: .15rem; min-width: 0; }
 .binary-text .badge { margin-left: .35rem; }
 .binary-text .rule-preview { margin-top: 0; }
+/* the executables of an upload: their path and identifiers, long hashes wrap */
+.binary-path { overflow-wrap: anywhere; }
+.binary-ids { display: flex; flex-wrap: wrap; gap: .1rem .9rem; }
+.binary-ids code { overflow-wrap: anywhere; }
 .rule-preview.fallback { color: var(--bad); }
 fieldset.field > legend { padding: 0; margin-bottom: .35rem; }
 
@@ -309,3 +319,33 @@ details.dependencies code { overflow-wrap: anywhere; }
   .preview-table th:not(:nth-child(2)) { width: 1%; }
   .preview-table td:not(:nth-child(2)) { white-space: nowrap; }
 }
+
+/* the preview of the patterns of a package rule (sources/_preview.html) */
+.preview-package { margin-top: 1rem; }
+.preview-package h3 { margin: 0 0 .5rem; font-size: 1rem; }
+.preview-package details { margin-top: .5rem; }
+.preview-package details > summary { cursor: pointer; color: var(--muted); }
+
+/* events → package rules (events/_packages_form.html): one card per suggested package */
+.package-suggestions { display: grid; gap: .75rem; margin: 0 0 1rem; }
+.package-suggestion { display: grid; gap: .3rem; padding: .75rem; border: 1px solid var(--border); border-radius: var(--radius); }
+.package-suggestion-head { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; justify-content: space-between; }
+.package-suggestion-head label.check { display: flex; align-items: center; gap: .5rem; min-width: 0; }
+.package-suggestion-fields { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.4fr) minmax(0, 1.6fr); gap: .5rem; margin-top: .35rem; align-items: end; }
+.package-suggestion-fields .field { margin: 0; min-width: 0; }
+.package-suggestion-fields select, .package-suggestion-fields input { width: 100%; }
+/* one line: a long package rule name is cut, not wrapped (the card would grow) */
+.package-suggestion-fields select { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 40em) { .package-suggestion-fields { grid-template-columns: minmax(0, 1fr); } }
+.package-hint { margin: 1rem 0; padding: .75rem; border-radius: var(--radius); background: var(--info-bg); }
+.package-hint p { margin: 0 0 .5rem; overflow-wrap: anywhere; }
+.package-results { display: grid; gap: .6rem; margin: 0 0 1rem; }
+.package-results li { display: grid; gap: .2rem; padding: .6rem .75rem; border: 1px solid var(--border); border-left: .25rem solid var(--ok); border-radius: var(--radius); }
+.package-results li.bad { border-left-color: var(--bad); }
+/* rules or package rules for the selected events (events/_allow_tabs.html) */
+.allow-tabs { margin: 0 0 1rem; }
+.allow-tabs .segmented button { font-size: .875rem; padding: .35rem .8rem; }
+.allow-tabs .tab-count { margin-left: .3em; font-variant-numeric: tabular-nums; opacity: .8; }
+/* the same catalog and package rule for every checked package (events/_packages_form.html) */
+.package-bulk { display: grid; gap: .3rem; margin: 0 0 .75rem; padding: .75rem; border-radius: var(--radius); background: var(--surface-2); }
+.package-bulk .button { width: 100%; justify-content: center; }

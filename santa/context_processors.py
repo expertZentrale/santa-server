@@ -10,11 +10,13 @@ def favicon_url():
 
 
 def ui(request):
-    """Name and favicon of the server, the Christmas theme, theme and picture of the signed-in user, for the base
-    template"""
+    """Name and favicon of the server, the Christmas theme, theme, picture and unread notifications of the signed-in
+    user, for the base template"""
     context = {"server_name": settings.SANTA_SERVER_NAME, "favicon_url": favicon_url(),
                "default_favicon": not settings.SANTA_FAVICON_URL, "christmas": christmas_active()}
     user = getattr(request, "user", None)
     if user is None or not user.is_authenticated:
         return {**context, "ui_theme": "auto"}
-    return {**context, "ui_theme": profile_for(user).theme, "avatar_url": gravatar_url(user, 32)}
+    return {**context, "ui_theme": profile_for(user).theme, "avatar_url": gravatar_url(user, 32),
+            # the bell in the top bar
+            "unread_notifications": user.console_notifications.filter(read_at=None).count()}

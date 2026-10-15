@@ -1,0 +1,41 @@
+{% load console i18n %}{# Approve a blocked binary: a new rule, an existing one (widened or not), or no rule #}
+{% include "console/_field.html" with field=form.result %}
+{% if form.allowing %}
+<div data-show-when="result=existing|extend">
+  <fieldset class="plain field{% if form.existing_rule.errors %} has-error{% endif %}" data-field="existing_rule">
+    <legend class="strong">{{ form.existing_rule.label }}</legend>
+    <ul class="plain binaries">
+      {% for match, checked in form.existing_choices %}{% with rule=match.rule %}
+      <li><label>
+        <input type="radio" name="{{ form.existing_rule.html_name }}" value="{{ rule.pk }}"{% if checked %} checked{% endif %}>
+        <span class="binary-text">
+          <span><span class="badge {{ rule.policy|policy_class }}">{{ rule.get_policy_display }}</span> <strong>{{ rule.get_rule_type_display }}</strong> <code>{{ rule.identifier }}</code></span>
+          <small>{% if rule.is_global %}<span class="chip small">{% translate "All Macs" %}</span>{% else %}{% for group in rule.groups.all %}<span class="chip small">{{ group.name }}</span>{% endfor %}{% for machine in rule.machines.all %}<span class="chip small mac">{{ machine.hostname|default:machine.serial_number }}</span>{% endfor %}{% endif %}
+            {% if not rule.is_enabled %}<span class="badge">{% translate "disabled" %}</span>{% elif not match.applies %}<span class="muted">{% translate "not for these Macs" %}</span>{% endif %}</small>
+        </span>
+      </label></li>
+      {% endwith %}{% endfor %}
+    </ul>
+    {% for error in form.existing_rule.errors %}<small class="error">{{ error }}</small>{% endfor %}
+  </fieldset>
+  <p class="help small" data-show-when="result=existing">{% translate "The rule stays as it is. The open events of the binary on the Macs of the requester are marked as resolved." %}</p>
+  <p class="help small" data-show-when="result=extend">{% translate "The rule is enabled and gets the scope below." %}</p>
+</div>
+{% endif %}
+<div data-show-when="result=rule">
+  {% include "console/_field.html" with field=form.rule_type %}
+  {% include "console/_field.html" with field=form.policy %}
+  <div data-show-when="policy=CEL">
+    <div data-show-when="rule_type=TEAMID">{% include "console/_field.html" with field=form.signing_prefixes %}</div>
+    {% include "console/_field.html" with field=form.cel_expr %}{% include "console/rules/_cel_help.html" %}</div>
+</div>
+<div data-show-when="result=rule|extend">
+  {% include "console/_field.html" with field=form.scope %}
+  <div data-show-when="scope=groups">{% include "console/_field.html" with field=form.groups %}</div>
+</div>
+<div data-show-when="result=rule">
+  {% include "console/_field.html" with field=form.tags %}
+  {% include "console/_field.html" with field=form.new_tags %}
+</div>
+<p class="help small" data-show-when="result=none">{% translate "No rule is created or changed. The open events of the binary on the Macs of the requester are marked as resolved." %}</p>
+{% include "console/_field.html" with field=form.note %}
