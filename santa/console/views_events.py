@@ -114,7 +114,7 @@ def filter_events(request, events):
     if decisions := chosen(params, "decision"):
         events = events.filter(decision__in=decisions)
     machines, exclude = lookup_values(params, "machine")
-    if machines := [value for value in machines if value.isdigit()][:MAX_LOOKUP_VALUES]:
+    if machines := [value for value in machines[:MAX_LOOKUP_VALUES] if value.isdigit()]:
         events = events.exclude(machine_id__in=machines) if exclude else events.filter(machine_id__in=machines)
     users, exclude = lookup_values(params, "user")
     if users := users[:MAX_LOOKUP_VALUES]:
@@ -162,9 +162,10 @@ def event_facets(request, view):
         facets.append(Facet("sha256", gettext("Binary"), kind="fixed", text=f"{sha256[:12]}…"))
     facets += [
         Facet("machine", gettext("Mac"), kind="lookup", choices=machine_choices(params),
-              lookup_url=reverse("console:filter_macs")),
-        Facet("user", gettext("User"), kind="lookup", choices=[(user, user) for user in chosen(params, "user")],
-              lookup_url=f"{reverse('console:filter_users')}?source=events"),
+              lookup_url=reverse("console:filter_macs"), max_values=MAX_LOOKUP_VALUES),
+        Facet("user", gettext("User"), kind="lookup",
+              choices=[(user, user) for user in chosen(params, "user")[:MAX_LOOKUP_VALUES]],
+              lookup_url=f"{reverse('console:filter_users')}?source=events", max_values=MAX_LOOKUP_VALUES),
     ]
     return facets
 

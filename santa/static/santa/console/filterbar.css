@@ -1,16 +1,19 @@
 /* The filter bar (widgets/_filter_bar.html): a fixed toolbar, below it the chips of the active filters */
-.filter-bar { display: grid; gap: .6rem; margin-bottom: 1rem; }
+/* minmax: the column no wider than the page, whatever a chip says */
+.filter-bar { display: grid; grid-template-columns: minmax(0, 1fr); gap: .6rem; margin-bottom: 1rem; }
 .filter-toolbar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
 .filter-toolbar input[type="search"] { flex: 1 1 16rem; min-width: 12rem; max-width: 30rem; }
 .filter-tools { display: flex; gap: .5rem; align-items: center; margin-left: auto; }
 .filter-chips { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; min-height: var(--control-h-sm); }
-.filter-chip { display: inline-flex; align-items: center; border: 1px solid var(--control-border); border-radius: 999px; background: var(--surface); }
+/* a long text (Macs with long names, "+298") ends in "…": a chip wider than a phone widened the whole page */
+.filter-chip { display: inline-flex; align-items: center; max-width: 100%; border: 1px solid var(--control-border); border-radius: 999px; background: var(--surface); }
+.filter-chip > .filter-chip-picker { min-width: 0; }
 .filter-chip[data-active] { border-color: var(--accent); background: var(--info-bg); }
 /* chosen, but not filtering ("all") */
 .filter-chip:not([data-active]) .filter-chip-label { color: var(--muted); }
 .filter-chip:not([data-active]) strong { font-weight: 400; }
 .filter-chip[hidden] { display: none; }
-.filter-chip-label { display: inline-block; padding: .25rem .7rem; font-size: .875em; cursor: pointer; list-style: none; white-space: nowrap; }
+.filter-chip-label { display: inline-block; max-width: 100%; padding: .25rem .7rem; font-size: .875em; cursor: pointer; list-style: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: top; }
 .filter-chip-label::-webkit-details-marker { display: none; }
 .filter-chip-label strong { font-weight: 600; }
 .filter-chip-remove { padding: .2rem .6rem .2rem .1rem; color: var(--muted); font-size: 1.05rem; line-height: 1; }

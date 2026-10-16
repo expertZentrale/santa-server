@@ -31,10 +31,12 @@ from santa.progress import SHUTDOWN, SHUTTING_DOWN, Cancelled, Progress
 from santa.releases import (
     LINUX_ONLY_ERROR,
     Asset,
+    Errors,
     FoundBinary,
     Release,
     ReleaseError,
     _cut_lines,
+    _ghcr_release,
     _ghcr_tags,
     _npm_platform_ok,
     cleanup_preview,
@@ -42,6 +44,7 @@ from santa.releases import (
     collect_binaries,
     create_release_rules,
     find_binaries,
+    homebrew_dependencies,
     http_session,
     preview_release_source,
     prune_old_versions,
@@ -451,10 +454,10 @@ class DependenciesTestCase(ReleaseSourceBase):
         self.assertEqual(sorted(Rule.objects.filter(release_version=version)
                                 .values_list("release_dependency", flat=True)), ["", "lima@1.0", "qemu@1.0"])
 
-    def homebrew_routes(self, colima, lima, **others):
+    def homebrew_routes(self, colima, lima, lima_dependencies=(), **others):
         """colima 0.10.3 and lima 2.0 are current (formulae.brew.sh); the registry has their older versions.
         colima / lima / others: {tag: (created, tab dependencies or None[, "all"])}; a dependency of the tab is
-        {name: version} (direct) or {name: (version, False)} (indirect)"""
+        {name: version} (direct) or {name: (version, False)} (indirect). lima_dependencies: of the current lima."""
         routes = {}
 
         def formula(name, version, dependencies):
@@ -489,10 +492,12 @@ class DependenciesTestCase(ReleaseSourceBase):
                 routes[f"{base}/blobs/sha256:{digest}"] = FakeResponse(content=bottle)
 
         formula("colima", "0.10.3", ["lima"])
-        formula("lima", "2.0", [])
+        formula("lima", "2.0", list(lima_dependencies))
         registry("colima", colima)
         registry("lima", lima)
         for name, tags in others.items():
+            # current: the first tag
+            formula(name, next(iter(tags)).split("-")[0], [])
             registry(name, tags)
         return routes
 
@@ -540,6 +545,47 @@ class DependenciesTestCase(ReleaseSourceBase):
         source = self.colima_source(keep_versions=2, approve_kept_versions=True)
         sync_release_source(source, fake_session(routes))
         self.assertEqual(self.dependency_labels("0.10.2"), ["", "lima@1.0.2", "qemu@9.0"])
+
+    def test_the_dependencies_of_the_bottles_taken(self):
+        # lima was rebuilt for Sequoia with lima 2.0: a Sonoma Mac has the bottle built with lima 1.0
+        def bottle(tag, lima):
+            return {"platform": {"os": "darwin"}, "annotations": {
+                "org.opencontainers.image.ref.name": f"0.10.2.{tag}", "sh.brew.bottle.digest": tag.ljust(64, "0"),
+                "sh.brew.tab": json.dumps({"runtime_dependencies": [
+                    {"full_name": "lima", "pkg_version": lima, "declared_directly": True}]})}}
+        index = {"annotations": {"org.opencontainers.image.version": "0.10.2"},
+                 "manifests": [bottle("arm64_sonoma", "1.0"), bottle("arm64_sequoia", "2.0")]}
+        formula = ReleaseSource.Kind.HOMEBREW_FORMULA
+        sequoia = _ghcr_release(ReleaseSource(kind=formula, macos_minimum="sequoia"), "colima", "0.10.2", index)
+        self.assertEqual(sequoia.dependencies, [("lima", "2.0")])
+        both = _ghcr_release(ReleaseSource(kind=formula), "colima", "0.10.2", index)
+        self.assertEqual(sorted(both.dependencies), [("lima", "1.0"), ("lima", "2.0")])
+
+    def test_every_version_a_bottle_needs(self):
+        routes = self.homebrew_routes(
+            colima={"0.10.3": ("2026-09-20T08:00:00Z", None)},
+            lima={"1.0": ("2026-08-01T08:00:00Z", {}), "2.0": ("2026-09-10T08:00:00Z", {})})
+        release = Release(version="0.10.2", assets=[], published_at=timezone.now(),
+                          dependencies=[("lima", "1.0"), ("lima", "2.0")])
+        found = homebrew_dependencies(fake_session(routes), self.colima_source(), release, Errors())
+        self.assertEqual(sorted(found), ["lima@1.0", "lima@2.0"])
+
+    def test_an_older_dependency_without_its_versions_takes_the_names_of_the_current_formula(self):
+        # lima 1.0.2 names no dependencies in its bottle; lima needs qemu (the current formula): qemu of that day
+        for lima_tab, expected in [(None, ["", "lima@1.0.2", "qemu@9.0"]),
+                                   # said to have none: none
+                                   ({}, ["", "lima@1.0.2"])]:
+            with self.subTest(lima_tab=lima_tab):
+                ReleaseSource.objects.all().delete()
+                routes = self.homebrew_routes(
+                    colima={"0.10.2": ("2026-09-01T08:00:00Z", {"lima": "1.0.2"}),
+                            "0.10.3": ("2026-09-20T08:00:00Z", None)},
+                    lima={"1.0.2": ("2026-08-01T08:00:00Z", lima_tab), "2.0": ("2026-09-10T08:00:00Z", {})},
+                    lima_dependencies=["qemu"],
+                    qemu={"9.1": ("2026-09-15T08:00:00Z", {}), "9.0": ("2026-07-01T08:00:00Z", {})})
+                source = self.colima_source(keep_versions=2, approve_kept_versions=True)
+                sync_release_source(source, fake_session(routes))
+                self.assertEqual(self.dependency_labels("0.10.2"), expected)
 
     def test_the_tags_of_the_registry_come_in_pages(self):
         base = "https://ghcr.io/v2/homebrew/core/node"

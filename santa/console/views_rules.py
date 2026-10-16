@@ -102,7 +102,7 @@ def filter_rules(request, rules):
     if params.get("version", "").isdigit():
         rules = rules.filter(release_version_id=params["version"])
     machines, exclude = lookup_values(params, "machine")
-    if machines := [value for value in machines if value.isdigit()][:RULE_LOOKUP_VALUES]:
+    if machines := [value for value in machines[:RULE_LOOKUP_VALUES] if value.isdigit()]:
         rules = _on_machines(rules, Machine.objects.filter(pk__in=machines), exclude)
     users, exclude = lookup_values(params, "user")
     if users := users[:RULE_LOOKUP_VALUES]:
@@ -159,11 +159,11 @@ def rules(request):
                                                     ("package", gettext("From package rules"))]),
         Facet("enabled", gettext("Status"), choices=[("yes", gettext("Enabled")),
                                                       ("no", gettext("Disabled / waiting"))]),
-        Facet("machine", gettext("Mac"), kind="lookup", choices=machine_choices(request.GET),
-              lookup_url=reverse("console:filter_macs")),
+        Facet("machine", gettext("Mac"), kind="lookup", choices=machine_choices(request.GET, RULE_LOOKUP_VALUES),
+              lookup_url=reverse("console:filter_macs"), max_values=RULE_LOOKUP_VALUES),
         Facet("user", gettext("User"), kind="lookup",
-              choices=[(user, user) for user in chosen(request.GET, "user")],
-              lookup_url=f"{reverse('console:filter_users')}?source=machines"),
+              choices=[(user, user) for user in chosen(request.GET, "user")[:RULE_LOOKUP_VALUES]],
+              lookup_url=f"{reverse('console:filter_users')}?source=machines", max_values=RULE_LOOKUP_VALUES),
         Facet("created", gettext("Created"), kind="time", choices=TIME_PRESETS, from_name="created_from",
               to_name="created_to"),
     ]

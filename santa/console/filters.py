@@ -128,7 +128,8 @@ class Facet:
     some values), "lookup" (values found with a search field, too many to list: Macs, users; "is" or "is not")
     or "fixed" (set by a link, e.g. the events of one binary: shown, only removable).
     lookup: choices are the labels of the chosen values (the view knows them), lookup_url the search, mode_name the
-    parameter of "is not" (default: name + "_not").
+    parameter of "is not" (default: name + "_not"), max_values the most values the view filters by: only the first
+    ones are shown and kept, with a note.
     default: the value when the parameter is missing; for "multi" only before the form was sent (no "q").
     unfiltered: the value of "time" and "choice" that doesn't filter (the × of the chip).
     """
@@ -143,6 +144,7 @@ class Facet:
     text: str = ""
     lookup_url: str = ""
     mode_name: str = ""
+    max_values: int = 0
 
     def __post_init__(self):
         # compared with the strings of the query
@@ -165,7 +167,7 @@ def _state(facet, params):
     if facet.kind == "fixed":
         return params.get(facet.name, "")
     if facet.kind == "lookup":
-        return chosen(params, facet.name)
+        return chosen(params, facet.name)[:facet.max_values or None]
     value = params.get(facet.name, facet.default or facet.unfiltered)
     if facet.kind == "time" and value != RANGE and value not in dict(facet.choices):
         return facet.default or facet.unfiltered
@@ -279,6 +281,9 @@ def filter_bar(request, page, facets, hidden=(), keep=(), placeholder=""):
             "text": _chip_text(facet, value, params) if active else gettext("all"),
             "remove_url": f"?{query(override=facet)}",
             "exclude": facet.kind == "lookup" and params.get(facet.mode_name) == "1",
+            # more chosen than the view filters by: the chip says so, not only leaves them out
+            "limited": facet.kind == "lookup" and facet.max_values
+                       and len(chosen(params, facet.name)) > facet.max_values,
             "date_from": params.get(facet.from_name, "") if facet.kind == "time" else "",
             "date_to": params.get(facet.to_name, "") if facet.kind == "time" else "",
         })

@@ -102,7 +102,8 @@ class Release:
     assets: list
     published_at: object = None
     # what the release needs: {name: version range} (npm); [name, …] (Homebrew formula, the current one) or
-    # {name: version} (the versions an older bottle was built with)
+    # [(name, version), …] (the versions the bottles were built with; a name can come in several versions);
+    # None: not known
     dependencies: object = None
 
 
@@ -403,14 +404,19 @@ def bottle_taken(source, patterns, served):
     return bool(tags) and asset_matches(patterns, tags)
 
 
-def _bottle_assets(source, name, version, bottles):
-    """The assets of the bottles a source takes. bottles: {tag: (url, sha256, headers)}"""
+def _taken_bottles(source, bottles):
+    """The tags of the bottles a source takes, of {tag: …}, with the macOS versions each one serves"""
     patterns = _asset_regex(source)
     coverage = bottle_coverage(bottles)
+    return {tag: coverage[tag] for tag in bottles if bottle_taken(source, patterns, coverage[tag])}
+
+
+def _bottle_assets(source, name, version, bottles):
+    """The assets of the bottles a source takes. bottles: {tag: (url, sha256, headers)}"""
+    taken = _taken_bottles(source, bottles)
     return [Asset(name=f"{name}-{version}.{tag}.bottle.tar.gz", url=url, sha256=sha256, headers=headers,
-                  match=tuple(coverage[tag]))
-            for tag, (url, sha256, headers) in sorted(bottles.items())
-            if bottle_taken(source, patterns, coverage[tag])]
+                  match=tuple(taken[tag]))
+            for tag, (url, sha256, headers) in sorted(bottles.items()) if tag in taken]
 
 
 def latest_github_release(session, source, identifier):
@@ -554,11 +560,15 @@ def _ghcr_release(source, name, tag, index):
     runtime dependencies the bottles were built with (their "tab"; all of them, also the indirect ones).
 
     A bottle "all" (scripts, the same for every system) is built on Linux: its tab names the Linux dependencies, of
-    which only the direct ones are taken; the indirect ones come from their own macOS bottles."""
+    which only the direct ones are taken; the indirect ones come from their own macOS bottles.
+
+    The dependencies are the ones of the bottles the source takes: the bottles of a version are not always built
+    with the same dependency versions (a rebuild for one macOS), and a Mac gets the bottle of its macOS. The pairs
+    (name, version) keep each version a taken bottle needs."""
     headers = {"Authorization": f"Bearer {HOMEBREW_BOTTLE_TOKEN}"}
     annotations = index.get("annotations") or {}
     version = annotations.get("org.opencontainers.image.version") or tag
-    digests, dependencies, known = {}, {}, False
+    digests, tabs = {}, {}
     for manifest in index.get("manifests") or []:
         bottle = manifest.get("annotations") or {}
         # "0.9.1.arm64_sequoia.1": version, bottle tag, rebuild
@@ -573,16 +583,19 @@ def _ghcr_release(source, name, tag, index):
             tab = {}
         runtime = tab.get("runtime_dependencies") if isinstance(tab, dict) else None
         # an empty list is a bottle without dependencies, not one that doesn't say
-        known = known or isinstance(runtime, list)
-        for dependency in runtime or []:
-            if (isinstance(dependency, dict) and dependency.get("full_name") and dependency.get("pkg_version")
-                    and (bottle_tag != "all" or dependency.get("declared_directly"))):
-                dependencies.setdefault(dependency["full_name"], str(dependency["pkg_version"]))
+        if isinstance(runtime, list):
+            tabs[bottle_tag] = [(dependency["full_name"], str(dependency["pkg_version"])) for dependency in runtime
+                                if isinstance(dependency, dict) and dependency.get("full_name")
+                                and dependency.get("pkg_version")
+                                and (bottle_tag != "all" or dependency.get("declared_directly"))]
     bottles = {bottle_tag: (f"{_ghcr_base(name)}/blobs/sha256:{digest}", digest, headers)
                for bottle_tag, digest in digests.items()}
+    # none taken (a dependency without a bottle for these macOS versions): what any of them needs
+    taken = _taken_bottles(source, bottles) or tabs
+    known = [tabs[bottle_tag] for bottle_tag in sorted(taken) if bottle_tag in tabs]
     return Release(version=version, assets=_bottle_assets(source, name, version, bottles),
                    published_at=_published(annotations.get("org.opencontainers.image.created")),
-                   dependencies=dependencies if known else None)
+                   dependencies=list(dict.fromkeys(pair for pairs in known for pair in pairs)) if known else None)
 
 
 def homebrew_formula_releases(session, source, identifier, limit, known=None):
@@ -1092,23 +1105,23 @@ def _npm_documents(session, names):
 def homebrew_dependencies(session, source, release, errors):
     """The releases (bottles) of the runtime dependencies of a formula, also the indirect ones.
 
-    The current formula names them: their current versions. An older version gets the versions its bottle was built
-    with, or, without them, the newest ones published on or before its day."""
+    The current formula names them: their current versions. An older version gets the versions its bottles were
+    built with, or, without them, the newest ones published on or before its day."""
     found = {}
-    if isinstance(release.dependencies, dict):
-        queue = list(release.dependencies.items())
-    else:
-        queue = [(name, None) for name in release.dependencies]
+    # the release's own: every version its bottles need; one of an indirect dependency only for a name not seen yet
+    # (a bottle's versions mostly name the indirect ones already, they win; not the ones of a bottle "all")
+    queue = [(name, version, True) for name, version in _dependency_pairs(release.dependencies)]
     before = release.published_at
-    seen = set()
+    seen, names = set(), set()
     while queue:
-        name, version = queue.pop(0)
-        if name in seen:
+        name, version, own = queue.pop(0)
+        if (name, version) in seen or (not own and name in names):
             continue
         if len(seen) >= settings.RELEASE_MAX_DEPENDENCIES:
             errors.append(f"More than {settings.RELEASE_MAX_DEPENDENCIES} dependencies, the others are skipped")
             break
-        seen.add(name)
+        seen.add((name, version))
+        names.add(name)
         try:
             if version or before:
                 dependency = homebrew_formula_at(session, source, name, version=version, before=before)
@@ -1117,18 +1130,32 @@ def homebrew_dependencies(session, source, release, errors):
         except (ReleaseError, requests.RequestException, KeyError, ValueError) as e:
             if not (version or before):
                 raise
-            if is_transient(e) and isinstance(errors, Errors):
-                errors.retry = True
-            errors.append(f"Dependency {name}: {e}")
+            _dependency_error(errors, f"Dependency {name}", e)
             continue
+        if dependency.dependencies is None and not is_tap_identifier(name):
+            # an older bottle without its versions: the names of the current formula, in the newest versions of the
+            # day (before) as for the release itself; none at all would take away the indirect ones
+            try:
+                dependency.dependencies = list(latest_homebrew_formula(session, source, name).dependencies or [])
+            except (ReleaseError, requests.RequestException, KeyError, ValueError) as e:
+                _dependency_error(errors, f"Dependencies of {name}", e)
         found[f"{name}@{dependency.version}"] = dependency
-        # a bottle's versions mostly name the indirect ones already (queued before, they win); not the ones of a
-        # bottle "all"
-        if isinstance(dependency.dependencies, dict):
-            queue += list(dependency.dependencies.items())
-        else:
-            queue += [(other, None) for other in dependency.dependencies or []]
+        queue += [(other, other_version, False) for other, other_version in _dependency_pairs(dependency.dependencies)]
     return found
+
+
+def _dependency_pairs(dependencies):
+    """[(name, version or None)] of the dependencies of a Homebrew release: pairs, or names (the current formula)"""
+    if isinstance(dependencies, dict):
+        return list(dependencies.items())
+    return [tuple(item) if isinstance(item, tuple | list) else (item, None) for item in dependencies or []]
+
+
+def _dependency_error(errors, label, error):
+    # a warning keeps the rules the version has; a temporary one has the version resolved again at the next check
+    if is_transient(error) and isinstance(errors, Errors):
+        errors.retry = True
+    errors.append(f"{label}: {error}")
 
 
 def dependency_releases(session, source, release, errors):

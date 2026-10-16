@@ -4,6 +4,7 @@ from django.test import RequestFactory
 from django.urls import resolve, reverse
 
 from santa.console.filters import Facet, filter_bar, lookup_values
+from santa.console.views_rules import RULE_LOOKUP_VALUES
 from santa.models import Event, Group, Machine, Rule, RuleType, SavedFilter
 
 from .test_console import SHA_A, SHA_B, ConsoleBase
@@ -123,6 +124,20 @@ class RuleFiltersTestCase(ConsoleBase):
         macs = [self.machine.pk, *range(10**6, 10**6 + 400)]
         users = ["fleet@example.com", *(f"user{index}@example.com" for index in range(400))]
         self.assertEqual(self.rules(machine=macs, user=users), {self.global_rule.pk})
+
+
+    def test_more_values_than_the_filter_takes(self):
+        # the chip shows and keeps the ones the rules are filtered by, and says that the others are left out
+        macs = [self.machine.pk, *range(10**6, 10**6 + RULE_LOOKUP_VALUES)]
+        response = self.client.get(reverse("console:rules"), {"q": "", "machine": macs})
+        [chip] = [chip for chip in response.context["bar"]["chips"] if chip["facet"].name == "machine"]
+        self.assertEqual(len(chip["value"]), RULE_LOOKUP_VALUES)
+        self.assertEqual(len(chip["facet"].choices), RULE_LOOKUP_VALUES)
+        self.assertTrue(chip["limited"])
+        self.assertContains(response, f"only the first {RULE_LOOKUP_VALUES} are used")
+        self.assertNotIn(f"machine={10**6 + RULE_LOOKUP_VALUES - 1}", response.context["bar"]["query"])
+        response = self.client.get(reverse("console:rules"), {"q": "", "machine": macs[:RULE_LOOKUP_VALUES]})
+        self.assertNotContains(response, "are used")
 
 
 class LookupEndpointsTestCase(ConsoleBase):
