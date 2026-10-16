@@ -13,7 +13,7 @@ from django.utils import timezone
 from django.utils.translation import gettext, ngettext
 from django.views.decorators.http import require_POST
 
-from ..models import Group, Machine, Policy, ReleaseVersion, Rule, RuleType, Tag, with_parent_groups
+from ..models import Group, Machine, Policy, ReleaseVersion, Rule, RuleType, Tag
 from ..progress import progress_for
 from ..releases import ReleaseError, find_binaries
 from ..services import (
@@ -54,7 +54,7 @@ from .utils import (
     sort_by,
     staff_required,
 )
-from .views_filters import MAX_LOOKUP_VALUES, machine_choices
+from .views_filters import machine_choices
 
 RULE_COLUMNS = {"identifier": "identifier", "type": "rule_type", "policy": "policy", "created": "created_at",
                 "enabled": "is_enabled"}
@@ -89,10 +89,10 @@ def filter_rules(request, rules):
     if params.get("version", "").isdigit():
         rules = rules.filter(release_version_id=params["version"])
     machines, exclude = lookup_values(params, "machine")
-    if machines := [value for value in machines if value.isdigit()][:MAX_LOOKUP_VALUES]:
+    if machines := [value for value in machines if value.isdigit()][:RULE_LOOKUP_VALUES]:
         rules = _on_machines(rules, Machine.objects.filter(pk__in=machines), exclude)
     users, exclude = lookup_values(params, "user")
-    if users := users[:MAX_LOOKUP_VALUES]:
+    if users := users[:RULE_LOOKUP_VALUES]:
         # the Macs of the users (their owner, MachineOwner of the profile)
         rules = _on_machines(rules, Machine.objects.filter(primary_user__in=users), exclude)
     q = params.get("q", "").strip()
@@ -101,16 +101,24 @@ def filter_rules(request, rules):
     return rules.distinct()
 
 
+# the values of a Mac or user filter of the rules: each goes into three subqueries (_on_machines), both filters
+# together stay within the 2100 parameters of SQL Server
+RULE_LOOKUP_VALUES = 300
+
+
 def _on_machines(rules, machines, exclude):
     """The rules the Macs get at their sync (or, exclude: the rules none of them gets): global, of their groups and
     of the parents they take the rules of, directly for them. Enabled or not: the scope decides."""
     if not machines.exists():
         # no Macs (an owner without any, a deleted one): they get nothing, so nothing is excluded either
         return rules if exclude else rules.none()
-    # the Macs stay a subquery and the groups a short list: an owner can have thousands of Macs, and SQL Server takes
-    # at most 2100 parameters per query
-    groups = with_parent_groups(machines.values_list("group_id", flat=True).distinct(), "inherit_rules")
-    reach = Q(is_global=True) | Q(groups__in=sorted(groups)) | Q(machines__in=machines.values("pk"))
+    # the Macs, their groups and the parents of those are subqueries, no lists: an owner can have thousands of Macs
+    # in thousands of groups, and SQL Server takes at most 2100 parameters per query (each subquery repeats the
+    # values of the filter: RULE_LOOKUP_VALUES)
+    reach = (Q(is_global=True) | Q(groups__in=machines.values("group_id"))
+             | Q(groups__in=machines.filter(group__inherit_rules=True, group__parent__isnull=False)
+                 .values("group__parent_id"))
+             | Q(machines__in=machines.values("pk")))
     if exclude:
         return rules.exclude(pk__in=Rule.objects.filter(reach).values("pk"))
     return rules.filter(reach)
