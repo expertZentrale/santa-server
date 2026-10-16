@@ -6,9 +6,11 @@ import io
 import json
 import signal
 import time
+import zlib
 from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
+import requests
 from django.apps import apps as django_apps
 from django.contrib.admin.models import LogEntry
 from django.contrib.auth.models import Permission, User
@@ -21,20 +23,24 @@ from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
-from santa import catalog, semver
+from santa import catalog, macho, semver
+from santa import releases as release_module
 from santa.console.views_sources import error_groups, removable_packages
-from santa.models import ReleaseSource, ReleaseVersion, Rule, RuleType
+from santa.models import ReleaseSource, ReleaseVersion, Rule, RuleType, Tag
 from santa.progress import SHUTDOWN, SHUTTING_DOWN, Cancelled, Progress
 from santa.releases import (
     LINUX_ONLY_ERROR,
     Asset,
+    FoundBinary,
     Release,
     ReleaseError,
+    _cut_lines,
     _ghcr_tags,
     _npm_platform_ok,
     cleanup_preview,
     cleanup_release_source,
     collect_binaries,
+    create_release_rules,
     find_binaries,
     http_session,
     preview_release_source,
@@ -105,6 +111,20 @@ class KeepVersionsTestCase(ReleaseSourceBase):
         self.assertTrue(all(rule.is_enabled for rule in Rule.objects.filter(release_source=source)))
         # v2 was added after v3, it still is the older one: the next check keeps both
         self.assertEqual(sync_release_source(source, fake_session(self.github_routes(releases))), [])
+        self.assertEqual(sorted(source.versions.values_list("version", flat=True)), ["v2", "v3"])
+
+    def test_a_cancel_stops_before_the_next_older_version(self):
+        source = self.github_source(keep_versions=3, approve_kept_versions=True, asset_pattern="")
+        releases = [github_release("v3", "2026-09-03T10:00:00Z"), github_release("v2", "2026-09-02T10:00:00Z"),
+                    github_release("v1", "2026-09-01T10:00:00Z")]
+
+        class CancelAtV1(Progress):
+            def note(self, label):
+                if label.endswith(" v1"):
+                    self.cancelled_by = "test"
+                super().note(label)
+        new_versions = sync_release_source(source, fake_session(self.github_routes(releases)), progress=CancelAtV1())
+        self.assertEqual([version.version for version in new_versions], ["v3", "v2"])
         self.assertEqual(sorted(source.versions.values_list("version", flat=True)), ["v2", "v3"])
 
     def test_without_the_option_only_the_latest_version(self):
@@ -583,6 +603,42 @@ class DependenciesTestCase(ReleaseSourceBase):
         self.assertEqual(old.notes.count("Dependencies: "), 1)
         self.assertIn("colima.tar.gz: bin/colima", old.notes)
 
+    def test_a_dependency_of_several_versions_is_downloaded_once(self):
+        routes = self.homebrew_routes(
+            colima={"0.10.1": ("2026-08-20T08:00:00Z", {"lima": "1.0.2"}),
+                    "0.10.2": ("2026-09-01T08:00:00Z", {"lima": "1.0.2"}), "0.10.3": ("2026-09-20T08:00:00Z", None)},
+            lima={"1.0.2": ("2026-08-01T08:00:00Z", {}), "2.0": ("2026-09-10T08:00:00Z", {})})
+        source = self.colima_source()
+        # recorded before: resolved one after the other, each its own download batch
+        for version in ("0.10.1", "0.10.2"):
+            ReleaseVersion.objects.create(source=source, identifier="colima", version=version)
+        session = fake_session(routes)
+        sync_release_source(source, session)
+        self.assertEqual(self.dependency_labels("0.10.1"), ["lima@1.0.2"])
+        self.assertEqual(self.dependency_labels("0.10.2"), ["lima@1.0.2"])
+        urls = [call.args[0] for call in session.get.call_args_list]
+        self.assertEqual(len([url for url in urls if url.startswith("https://ghcr.io/v2/homebrew/core/lima/blobs/")]),
+                         1)
+        self.assertEqual(urls.count("https://ghcr.io/v2/homebrew/core/lima/manifests/1.0.2"), 1)
+
+    def test_dependencies_that_failed_for_now_are_resolved_at_the_next_check(self):
+        routes = self.homebrew_routes(
+            colima={"0.10.2": ("2026-09-01T08:00:00Z", {"lima": "1.0.2"}), "0.10.3": ("2026-09-20T08:00:00Z", None)},
+            lima={"1.0.2": ("2026-08-01T08:00:00Z", {}), "2.0": ("2026-09-10T08:00:00Z", {})})
+        source = self.colima_source()
+        old = ReleaseVersion.objects.create(source=source, identifier="colima", version="0.10.2")
+        working = routes["https://ghcr.io/v2/homebrew/core/lima/manifests/1.0.2"]
+        routes["https://ghcr.io/v2/homebrew/core/lima/manifests/1.0.2"] = FailingResponse(429)
+        sync_release_source(source, fake_session(routes))
+        old.refresh_from_db()
+        self.assertFalse(old.dependencies_resolved)
+        self.assertEqual(self.dependency_labels("0.10.2"), [])
+        routes["https://ghcr.io/v2/homebrew/core/lima/manifests/1.0.2"] = working
+        sync_release_source(source, fake_session(routes))
+        old.refresh_from_db()
+        self.assertTrue(old.dependencies_resolved)
+        self.assertEqual(self.dependency_labels("0.10.2"), ["lima@1.0.2"])
+
     def test_the_migration_resolves_the_older_homebrew_versions_again(self):
         migration = importlib.import_module("santa.migrations.0028_reresolve_homebrew_dependencies")
         source = self.colima_source()
@@ -708,7 +764,7 @@ class FasterChecksTestCase(ReleaseSourceBase):
         ReleaseVersion.objects.create(source=source, identifier="o/b", version="1")
         calls = []
         with patch("santa.releases._sync_identifier",
-                   side_effect=lambda session, source, identifier: calls.append(identifier) or ([], [])):
+                   side_effect=lambda session, source, identifier, **kwargs: calls.append(identifier) or ([], [])):
             sync_release_source(source, fake_session({}))
         self.assertEqual(calls, ["o/a", "o/c", "o/b"])
 
@@ -785,7 +841,7 @@ class FasterChecksTestCase(ReleaseSourceBase):
                                               identifier="o/a\no/b", is_global=True)
         self.addCleanup(SHUTTING_DOWN.clear)
 
-        def sync_identifier(session, source, identifier):
+        def sync_identifier(session, source, identifier, **kwargs):
             SHUTTING_DOWN.set()
             return [], []
 
@@ -878,8 +934,19 @@ class PackageProblemsTestCase(ReleaseSourceBase):
 
     def test_a_dropped_connection_is_asked_again(self):
         adapter = http_session().get_adapter("https://ghcr.io/")
-        self.assertEqual(adapter.max_retries.total, 3)
+        self.assertEqual(adapter.max_retries.total, 5)
         self.assertIn(503, adapter.max_retries.status_forcelist)
+
+    def test_a_rate_limit_is_waited_for_a_minute_at_most(self):
+        retry = http_session().get_adapter("https://ghcr.io/").max_retries
+        self.assertTrue(retry.respect_retry_after_header)
+        response = MagicMock(status=429)
+        response.headers = {"Retry-After": "5"}
+        self.assertEqual(retry.get_retry_after(response), 5)
+        response.headers = {"Retry-After": "3600"}
+        self.assertEqual(retry.get_retry_after(response), 60)
+        # the Retry of the next attempt keeps the limit
+        self.assertEqual(retry.increment(method="GET", url="/").get_retry_after(response), 60)
 
     def test_the_errors_per_package_once(self):
         source = ReleaseSource.objects.create(name="tools", kind=ReleaseSource.Kind.HOMEBREW_FORMULA,
@@ -1013,7 +1080,7 @@ class CheckNewPackagesTestCase(ReleaseSourceBase):
     def test_only_some_packages(self):
         calls = []
 
-        def sync_identifier(session, source, identifier):
+        def sync_identifier(session, source, identifier, **kwargs):
             calls.append(identifier)
             raise ReleaseError("not found")
 
@@ -1022,8 +1089,16 @@ class CheckNewPackagesTestCase(ReleaseSourceBase):
             sync_release_source(self.source, fake_session({}), only=["o/b"])
         self.assertEqual(calls, ["o/b"])
         self.source.refresh_from_db()
-        # the error of the package not checked stays
-        self.assertEqual(self.source.last_error, "o/a: down\no/b: not found")
+        # the error of the package not checked stays, after the ones of this check
+        self.assertEqual(self.source.last_error, "o/b: not found\no/a: down")
+
+    def test_the_errors_are_cut_at_a_line(self):
+        lines = [f"o/{n}: {'x' * 90}" for n in range(100)]
+        text = _cut_lines(lines, 5000)
+        self.assertLessEqual(len(text), 5000)
+        self.assertTrue(set(text.splitlines()[:-1]) <= set(lines))
+        self.assertRegex(text.splitlines()[-1], r"^… \d+ more$")
+        self.assertEqual(_cut_lines(["a", "b"], 5000), "a\nb")
 
     def test_the_new_ones(self):
         # o/a was checked (its error), o/b has a version: o/c is new
@@ -1046,3 +1121,114 @@ class CheckNewPackagesTestCase(ReleaseSourceBase):
                 "keep_versions": "1", "keep_unit": "VERSIONS", "auto_approve_delay_days": "0"}
         response = self.client.post(reverse("console:source_edit", args=(self.source.pk,)), data, follow=True)
         self.assertContains(response, "1 package added: “Check the new packages” gets its releases.")
+
+
+class FailingResponse(FakeResponse):
+    """A download the server refuses with this status"""
+
+    def __init__(self, status_code):
+        super().__init__(status_code=status_code)
+
+    def raise_for_status(self):
+        raise requests.HTTPError(f"{self.status_code} Server Error", response=self)
+
+
+class TemporaryFailuresTestCase(ReleaseSourceBase):
+    def routes(self, releases, failing=()):
+        routes = KeepVersionsTestCase.github_routes(self, releases)
+        for release in releases:
+            if release["tag_name"] in failing:
+                routes[release["assets"][0]["browser_download_url"]] = FailingResponse(503)
+        return routes
+
+    def test_a_temporary_failure_is_tried_again(self):
+        source = self.github_source(asset_pattern="")
+        releases = [github_release("v3", "2026-09-03T10:00:00Z")]
+        with self.assertRaises(ReleaseError):
+            sync_release_source(source, fake_session(self.routes(releases, failing=["v3"])))
+        self.assertFalse(source.versions.exists())
+        source.refresh_from_db()
+        self.assertIn("Tried again at the next check", source.last_error)
+        [version] = sync_release_source(source, fake_session(self.routes(releases)))
+        self.assertEqual((version.version, version.binary_count), ("v3", 1))
+
+    def test_a_missing_file_is_recorded(self):
+        # 404: gone at the source, not tried again at every check
+        source = self.github_source(keep_versions=2, approve_kept_versions=True, asset_pattern="")
+        releases = [github_release("v3", "2026-09-03T10:00:00Z"), github_release("v2", "2026-09-02T10:00:00Z")]
+        routes = self.routes(releases)
+        routes[releases[1]["assets"][0]["browser_download_url"]] = FailingResponse(404)
+        sync_release_source(source, fake_session(routes))
+        self.assertEqual(source.versions.get(version="v2").binary_count, 0)
+
+    def test_an_older_version_that_failed_for_now_is_not_recorded(self):
+        source = self.github_source(keep_versions=2, approve_kept_versions=True, asset_pattern="")
+        releases = [github_release("v3", "2026-09-03T10:00:00Z"), github_release("v2", "2026-09-02T10:00:00Z")]
+        sync_release_source(source, fake_session(self.routes(releases, failing=["v2"])))
+        self.assertEqual(list(source.versions.values_list("version", flat=True)), ["v3"])
+        sync_release_source(source, fake_session(self.routes(releases)))
+        self.assertEqual(source.versions.get(version="v2").binary_count, 1)
+
+    def test_a_broken_archive_does_not_stop_the_check(self):
+        source = self.github_source(asset_pattern="")
+        releases = [github_release("v3", "2026-09-03T10:00:00Z")]
+        with patch("santa.releases.find_binaries", side_effect=zlib.error("invalid stored block lengths")), \
+                self.assertRaises(ReleaseError):
+            sync_release_source(source, fake_session(self.routes(releases)))
+        source.refresh_from_db()
+        self.assertIn("broken archive", source.last_error)
+
+    def test_an_unexpected_error_in_one_package_leaves_the_others(self):
+        source = ReleaseSource.objects.create(name="tools", kind=ReleaseSource.Kind.GITHUB_RELEASE,
+                                              identifier="abiosoft/colima\nlima-vm/lima", is_global=True)
+        real = release_module._sync_identifier
+
+        def sync(session, source, identifier, *args, **kwargs):
+            if identifier == "abiosoft/colima":
+                raise RuntimeError("unexpected")
+            return real(session, source, identifier, *args, **kwargs)
+        routes = {"https://api.github.com/repos/lima-vm/lima/releases/latest": FakeResponse(
+            github_release("v1", "2026-09-01T10:00:00Z", binary_name="limactl")),
+            "https://github.example/v1/limactl": FakeResponse(content=unsigned("limactl"))}
+        with patch("santa.releases._sync_identifier", side_effect=sync), self.assertRaises(ReleaseError) as raised:
+            sync_release_source(source, fake_session(routes))
+        self.assertEqual([version.identifier for version in raised.exception.new_versions], ["lima-vm/lima"])
+        source.refresh_from_db()
+        self.assertIn("abiosoft/colima: RuntimeError: unexpected", source.last_error)
+
+    def test_the_command_goes_on_after_an_unexpected_error(self):
+        first = self.github_source(asset_pattern="")
+        second = ReleaseSource.objects.create(name="second", kind=ReleaseSource.Kind.GITHUB_RELEASE,
+                                              identifier="lima-vm/lima")
+        checked = []
+
+        def sync(source, *args, **kwargs):
+            checked.append(source.pk)
+            if source.pk == first.pk:
+                raise RuntimeError("unexpected")
+            return []
+        with patch("santa.management.commands.sync_release_sources.sync_release_source", side_effect=sync), \
+                self.assertRaises(SystemExit):
+            call_command("sync_release_sources", stdout=io.StringIO(), stderr=io.StringIO())
+        self.assertEqual(sorted(checked), sorted([first.pk, second.pk]))
+
+
+class BulkRulesTestCase(ReleaseSourceBase):
+    def test_many_rules_take_a_few_queries(self):
+        source = self.github_source(asset_pattern="")
+        tag = Tag.objects.create(name="tools")
+        source.tags.add(tag)
+        version = ReleaseVersion.objects.create(source=source, identifier="abiosoft/colima", version="v1")
+        binaries = [FoundBinary(asset="tools.tar.gz", path=f"bin/tool{n}",
+                                info=macho.inspect(io.BytesIO(unsigned(f"tool{n}")))) for n in range(250)]
+        with CaptureQueriesContext(connection) as queries:
+            rules = create_release_rules(source, version, binaries)
+        self.assertEqual(len(rules), 250)
+        self.assertLess(len(queries), 20)
+        self.assertEqual(version.rules.count(), 250)
+        links = Rule.groups.through.objects.filter(rule__release_version=version)
+        self.assertEqual(links.filter(group=self.dev).count(), 250)
+        self.assertEqual(Rule.tags.through.objects.filter(rule__release_version=version, tag=tag).count(), 250)
+        # created again with the same binaries: nothing new
+        existing = {(rule.rule_type, rule.identifier) for rule in rules}
+        self.assertEqual(create_release_rules(source, version, binaries, existing=existing), [])

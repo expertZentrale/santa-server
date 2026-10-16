@@ -73,7 +73,7 @@ class RunSourceCheckTestCase(SourceCheckBase):
     def test_stopped_by_someone_else_after_the_current_package(self):
         calls = []
 
-        def sync_identifier(session, source, identifier):
+        def sync_identifier(session, source, identifier, **kwargs):
             calls.append(identifier)
             # meanwhile, another admin stops it
             cancel_source_check(source.pk, self.user)
