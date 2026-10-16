@@ -8,6 +8,7 @@ from django.utils import timezone
 from django.views.decorators.cache import never_cache
 
 from ..models import Event, Machine
+from .filters import chosen
 from .utils import require_perms, staff_required
 
 LOOKUP_LIMIT = 20
@@ -24,11 +25,12 @@ def machine_label(machine):
     return machine.hostname or machine.serial_number or machine.machine_id
 
 
-def machine_choices(params):
+def machine_choices(params, limit=MAX_LOOKUP_VALUES):
     """The labels of the Macs of a filter (chosen by their pk); one that is gone shows its pk"""
-    pks = [value for value in params.getlist("machine") if value.isdigit()][:MAX_LOOKUP_VALUES]
+    # the first ones, as the filter takes them (Facet.max_values)
+    pks = [value for value in chosen(params, "machine")[:limit] if value.isdigit()]
     found = Machine.objects.in_bulk([int(pk) for pk in pks]) if pks else {}
-    return [(pk, machine_label(found[int(pk)]) if int(pk) in found else pk) for pk in dict.fromkeys(pks)]
+    return [(pk, machine_label(found[int(pk)]) if int(pk) in found else pk) for pk in pks]
 
 
 def _name(request):

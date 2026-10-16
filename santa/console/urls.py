@@ -29,6 +29,7 @@ urlpatterns = [
     path("events/packages/", views_event_packages.events_packages, name="events_packages"),
     path("events/<int:pk>/", views_events.event_detail, name="event"),
     path("events/<int:pk>/create-rule/", views_events.event_create_rule, name="event_create_rule"),
+    path("events/<int:pk>/add-signing-id/", views_events.event_add_signing_id, name="event_add_signing_id"),
 
     path("rules/", views_rules.rules, name="rules"),
     path("rules/bulk/", views_rules.rules_bulk, name="rules_bulk"),

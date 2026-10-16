@@ -164,7 +164,11 @@
 .field .binaries label { display: flex; align-items: flex-start; gap: .6rem; padding: .5rem .6rem; border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; }
 .field .binaries label:hover { background: var(--surface-2); }
 .field .binaries input { margin-top: .2rem; }
-.binaries li:has(input:not(:checked)) .binary-text { opacity: .55; }
+.binaries li:not(:has(input:checked)) .binary-text { opacity: .55; }
+/* "Instead: add the signing ID to the Team ID rule": below its binary, part of it */
+.field .binaries label.add-signing { margin-top: -1px; border-top-left-radius: 0; border-top-right-radius: 0; background: var(--info-bg); font-size: .875rem; }
+.field .binaries li:has(> label.add-signing) > label:first-child { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.binaries li:has(> label.add-signing input:checked) > label:first-child .binary-text { opacity: .55; }
 .binary-text { display: grid; gap: .15rem; min-width: 0; }
 .binary-text .badge { margin-left: .35rem; }
 .binary-text .rule-preview { margin-top: 0; }

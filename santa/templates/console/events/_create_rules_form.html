@@ -21,7 +21,11 @@
           {% include "console/rules/_existing.html" with matches=binary.matches compact=True %}
           <small class="rule-preview" data-binary-preview data-identifiers="{{ binary.identifiers }}" data-suggested="{{ binary.suggested }}"></small>
         </span>
-      </label></li>
+      </label>
+      {% if binary.signing_rule %}<label class="add-signing">
+        <input type="checkbox" name="add_signing" value="{{ sha }}"{% if sha in form.add_signing.value %} checked{% endif %}>
+        <span>{% blocktranslate with team=binary.signing_rule.identifier signing_id=binary.event.signing_id %}Instead: add <code>{{ signing_id }}</code> to the Team ID rule {{ team }}, with the scope above{% endblocktranslate %}</span>
+      </label>{% endif %}</li>
       {% endwith %}{% endfor %}
     </ul>
     {% for error in form.include.errors %}<small class="error">{{ error }}</small>{% endfor %}

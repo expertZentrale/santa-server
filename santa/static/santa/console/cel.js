@@ -154,7 +154,7 @@
   }
 
   // "Only signing IDs starting with": writes the CEL expression of the Team ID rule, the same as the server
-  // (forms.prefix_expression); an expression written by hand is never replaced
+  // (cel.prefix_expression); an expression written by hand is never replaced
   const PREFIX_EXPRESSION = /^\(target\.signing_id\.startsWith\("[A-Z0-9]{10}:[A-Za-z0-9._-]+"\)( \|\| target\.signing_id\.startsWith\("[A-Z0-9]{10}:[A-Za-z0-9._-]+"\))*\) \? ALLOWLIST : BLOCKLIST$/;
 
   document.addEventListener("input", (event) => {

@@ -41,6 +41,8 @@ from .services import (
     allow_identifier,
     binary_identifiers,
     can_see_sync_token,
+    groups_prefetch,
+    related_count,
     set_rules_enabled,
 )
 
@@ -112,7 +114,8 @@ class GroupAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         return super().get_queryset(request).annotate(
-            _machine_count=Count("machines", distinct=True), _rule_count=Count("rules", distinct=True)
+            _machine_count=related_count(Machine.objects.all(), "group"),
+            _rule_count=related_count(Rule.groups.through.objects.all(), "group"),
         )
 
     @admin.display(description="Machines", ordering="_machine_count")
@@ -260,7 +263,7 @@ class RuleAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         return (super().get_queryset(request).select_related("release_source")
-                                               .prefetch_related("groups", "tags"))
+                                               .prefetch_related(groups_prefetch(), "tags"))
 
     @admin.display(description="Identifier", ordering="identifier")
     def identifier_short(self, obj):

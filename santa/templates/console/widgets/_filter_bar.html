@@ -61,6 +61,7 @@ filters.{% endcomment %}
                    hx-include="next .lookup-options" hx-vals='{"name": "{{ facet.name }}"}'>
             {# the chosen ones, ticked; the search adds the others below them #}
             <div class="lookup-options" aria-live="polite">{% for value, label in facet.choices %}<label><input type="checkbox" name="{{ facet.name }}" value="{{ value }}" checked> {{ label }}</label>{% endfor %}</div>
+            {% if chip.limited %}<p class="muted small" role="status">{% blocktranslate with count=facet.max_values %}At most {{ count }} at a time: only the first {{ count }} are used.{% endblocktranslate %}</p>{% endif %}
           {% else %}
             {% for value, label in facet.choices %}<label><input type="radio" name="{{ facet.name }}" value="{{ value }}"{% if value == chip.value %} checked{% endif %}> {{ label }}</label>{% endfor %}
             {% if facet.kind == "time" %}

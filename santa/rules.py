@@ -7,12 +7,16 @@ logger = logging.getLogger(__name__)
 GLOBAL, PARENT, GROUP, MACHINE = 0, 1, 2, 3
 
 
-def effective_rule_objects(machine):
-    """Return {santa_key: (scope level, rule)} for the rules that apply to the machine.
+# The rules of a Mac are read as tuples of these fields, the first four always these: the package rules are tens of
+# thousands of rows, a model each took most of the time of a sync (and of the rules of a Mac in the console)
+KEY_FIELDS = ("pk", "rule_type", "identifier", "policy")
+# what the sync sends (Rule.santa_payload)
+SYNC_FIELDS = (*KEY_FIELDS, "custom_msg", "custom_url", "cel_expr")
+# what the console sorts and searches the rules of a Mac by
+LIST_FIELDS = (*KEY_FIELDS, "description", "created_at")
 
-    One Santa rule per identifier: the most specific scope wins (Mac, group, parent group, global), then the
-    strictest policy. A group based on another one can so allow what its parent blocks.
-    """
+
+def _scoped_querysets(machine):
     enabled = Rule.objects.filter(is_enabled=True)
     group = machine.group
     scoped_querysets = [
@@ -22,19 +26,36 @@ def effective_rule_objects(machine):
     ]
     if group.parent_id and group.inherit_rules:
         scoped_querysets.insert(1, (PARENT, enabled.filter(groups=group.parent_id)))
+    return scoped_querysets
+
+
+def effective_rule_values(machine, fields=SYNC_FIELDS):
+    """Return {santa_key: (scope level, row)} for the rules that apply to the machine; row: the tuple of the fields
+    (starting with KEY_FIELDS).
+
+    One Santa rule per identifier: the most specific scope wins (Mac, group, parent group, global), then the
+    strictest policy. A group based on another one can so allow what its parent blocks.
+    """
     chosen = {}
-    for level, qs in scoped_querysets:
-        for rule in qs:
-            rank = (level, POLICY_PRECEDENCE[rule.policy], rule.pk)
-            key = rule.santa_key
+    for level, qs in _scoped_querysets(machine):
+        for row in qs.values_list(*fields):
+            rank = (level, POLICY_PRECEDENCE[row[3]], row[0])
+            key = f"{row[1]}:{row[2]}"
             if key not in chosen or rank > chosen[key][0]:
-                chosen[key] = (rank, rule)
-    return {key: (rank[0], rule) for key, (rank, rule) in chosen.items()}
+                chosen[key] = (rank, row)
+    return {key: (rank[0], row) for key, (rank, row) in chosen.items()}
+
+
+def effective_rule_objects(machine):
+    """Return {santa_key: (scope level, rule)}: effective_rule_values() with the rules as models"""
+    values = effective_rule_values(machine, KEY_FIELDS)
+    rules = Rule.objects.in_bulk([row[0] for _level, row in values.values()])
+    return {key: (level, rules[row[0]]) for key, (level, row) in values.items()}
 
 
 def effective_rules(machine):
     """Return {santa_key: santa rule payload} for the rules that apply to the machine."""
-    return {key: rule.to_santa() for key, (_, rule) in effective_rule_objects(machine).items()}
+    return {key: Rule.santa_payload(*row[1:]) for key, (_level, row) in effective_rule_values(machine).items()}
 
 
 def build_sync_session(machine):

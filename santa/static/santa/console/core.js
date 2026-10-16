@@ -220,6 +220,8 @@
   let barShare = null;
   // the steps of a watched request are shown (with their total): an upload of another request doesn't change the bar
   let stepsShown = false;
+  // the step shown ("3 of 12 · podman"), for the page loaded next while it goes on
+  let stepText = "";
 
   function setShare(share) {
     barShare = share;
@@ -237,6 +239,12 @@
     bar.hidden = !visible;
     if (!visible) barShare = null;
     setShare(barShare);
+    // another page loaded meanwhile (a tab of the console): its step again at once, not only at the next answer
+    const status = progressStatus();
+    if (status && watching && stepText) {
+      status.textContent = stepText;
+      status.hidden = false;
+    }
   }
 
   function startProgress() {
@@ -304,7 +312,8 @@
       parts.push(status.dataset.found.replace("%(count)s", data.current));
     }
     if (data.label) parts.push(data.label);
-    status.textContent = parts.join(" · ");
+    stepText = parts.join(" · ");
+    status.textContent = stepText;
     status.hidden = false;
     // without a total (the upload is sent, the server works on it): the moving stripe again
     stepsShown = Boolean(data.total);
@@ -389,6 +398,7 @@
     watching = null;
     clearTimeout(watchTimer);
     stepsShown = false;
+    stepText = "";
     setShare(null);
     const status = progressStatus();
     if (status) {
@@ -866,6 +876,12 @@
   // lost: a network error; suspect: no answer in time, the server is checked first; timeout: for a request's own
   // time limit
   SantaConsole.connection = { lost: () => lost(null), suspect, isLost: () => connectionLost, timeout: healthTimeout };
+  // a request nobody waits for any more (the drawer closed before its view came): stopped, not taken for a lost
+  // connection (an aborted request ends without a status, like a network error) nor asked again
+  SantaConsole.abortRequest = (xhr) => {
+    inflight.delete(xhr);
+    xhr.abort();
+  };
 
   function failRows(element) {
     if (!element?.matches?.(".rows-loading")) return;
