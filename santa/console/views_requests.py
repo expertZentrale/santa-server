@@ -334,7 +334,8 @@ def _approve_forms(access_request, data=None, files=None, matches=None):
                    "groups": [event.group_id] if event else []}
         form = ApproveEventForm(data, initial=initial, available_types=available,
                                 matches=_matches_of(access_request, event) if matches is None else matches,
-                                allowed=_allowed_for_requester(access_request, event))
+                                allowed=_allowed_for_requester(access_request, event),
+                                signing_id=event.signing_id if event else "")
         if event:
             show_rule_preview(form.fields["rule_type"], event)
         return form

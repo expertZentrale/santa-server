@@ -570,6 +570,19 @@ class DependenciesTestCase(ReleaseSourceBase):
         found = homebrew_dependencies(fake_session(routes), self.colima_source(), release, Errors())
         self.assertEqual(sorted(found), ["lima@1.0", "lima@2.0"])
 
+    def test_two_versions_a_dependency_needs(self):
+        # lima's bottles need qemu 8 and qemu 9 (Macs of different macOS): both; the release's own versions win
+        def at(session, source, name, version=None, before=None):
+            return Release(version=version, assets=[],
+                           dependencies=[("qemu", "8.0"), ("qemu", "9.0")] if name == "lima" else [])
+
+        source = self.colima_source()
+        with patch("santa.releases.homebrew_formula_at", side_effect=at):
+            for own, expected in [([("lima", "1.0")], ["lima@1.0", "qemu@8.0", "qemu@9.0"]),
+                                  ([("lima", "1.0"), ("qemu", "9.0")], ["lima@1.0", "qemu@9.0"])]:
+                release = Release(version="0.10.2", assets=[], published_at=timezone.now(), dependencies=own)
+                self.assertEqual(sorted(homebrew_dependencies(None, source, release, Errors())), expected)
+
     def test_an_older_dependency_without_its_versions_takes_the_names_of_the_current_formula(self):
         # lima 1.0.2 names no dependencies in its bottle; lima needs qemu (the current formula): qemu of that day
         for lima_tab, expected in [(None, ["", "lima@1.0.2", "qemu@9.0"]),

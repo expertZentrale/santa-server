@@ -15,7 +15,7 @@ from django.utils.translation import gettext_lazy as _
 
 from .. import notifications
 from ..catalog import update_identifier_icons
-from ..cel import SIGNING_PREFIX_RE, parse_prefix_expression, prefix_expression
+from ..cel import SIGNING_PREFIX_RE, parse_prefix_expression, prefix_expression, signing_prefix
 from ..config_io import PREVIEW_LISTS, RENAMABLE_LISTS, item_token
 from ..models import (
     BRANDING_LOGO_MAX_BYTES,
@@ -648,8 +648,9 @@ class ApproveEventForm(CelPolicyMixin, TagsMixin):
     note = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 2}), label=_("Note"),
                            help_text=_("Shown to the user"))
 
-    def __init__(self, *args, available_types=None, matches=(), allowed=None, **kwargs):
-        """allowed: () -> is the binary allowed on the Macs of the requester (services.decisions_for_machines)"""
+    def __init__(self, *args, available_types=None, matches=(), allowed=None, signing_id="", **kwargs):
+        """allowed: () -> is the binary allowed on the Macs of the requester (services.decisions_for_machines);
+        signing_id: of the binary of the request"""
         super().__init__(*args, **kwargs)
         self.allowed = allowed
         self.fields["rule_type"].choices = rule_type_choices(available_types)
@@ -659,9 +660,11 @@ class ApproveEventForm(CelPolicyMixin, TagsMixin):
                          if match["rule"].policy not in (Policy.BLOCKLIST, Policy.SILENT_BLOCKLIST)]
         self.fields["existing_rule"].queryset = Rule.objects.filter(pk__in=[m["rule"].pk for m in self.allowing])
         # a Team ID rule of signing ID prefixes that leaves this binary out: it takes its signing ID (not one of a
-        # package rule, which writes its rules itself)
+        # package rule, which writes its rules itself). Only a signing ID it can take: without one (or of another
+        # team) the choice would always fail.
         self.signing_missing = [match for match in self.allowing
-                                if match.get("cel") is False and not match["rule"].release_source_id]
+                                if match.get("cel") is False and not match["rule"].release_source_id
+                                and signing_prefix(match["rule"], signing_id) is not None]
         hidden = set()
         if not self.allowing:
             hidden |= {self.EXISTING, self.EXTEND}

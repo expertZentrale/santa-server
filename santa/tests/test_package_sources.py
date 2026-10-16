@@ -1,9 +1,10 @@
 import base64
 import hashlib
+from unittest.mock import patch
 
 from django.core.exceptions import ValidationError
 
-from santa.models import Policy, ReleaseSource, Rule, RuleType
+from santa.models import Policy, ReleaseSource, ReleaseVersion, Rule, RuleType
 from santa.releases import VSCODE_GALLERY_URL, ReleaseError, sync_release_source
 
 from .test_releases import FakeResponse, ReleaseSourceBase, fake_session, tar_gz, zip_file
@@ -49,6 +50,21 @@ class SeveralIdentifiersTestCase(ReleaseSourceBase):
         self.assertEqual((new_version.identifier, new_version.version), ("colima", "0.9.1"))
         self.assertEqual(set(source.versions.values_list("identifier", "version")),
                          {("colima", "0.9.1"), ("lima", "1.2.0")})
+
+    def test_versions_recorded_before_a_later_step_failed_are_new(self):
+        # colima recorded its version, then its dependencies failed: announced now, the next check won't
+        source = self.formula_source()
+
+        def sync(session, source, identifier, **kwargs):
+            version = ReleaseVersion.objects.create(source=source, identifier=identifier, version="1.0",
+                                                    binary_count=1)
+            if identifier == "colima":
+                raise RuntimeError("dependencies")
+            return [version], []
+
+        with patch("santa.releases._sync_identifier", side_effect=sync), self.assertRaises(ReleaseError) as cm:
+            sync_release_source(source, session=object())
+        self.assertEqual(sorted(v.identifier for v in cm.exception.new_versions), ["colima", "lima"])
 
     def test_a_failing_identifier_does_not_stop_the_others(self):
         source = self.formula_source()

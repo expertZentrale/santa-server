@@ -1108,14 +1108,17 @@ def homebrew_dependencies(session, source, release, errors):
     The current formula names them: their current versions. An older version gets the versions its bottles were
     built with, or, without them, the newest ones published on or before its day."""
     found = {}
-    # the release's own: every version its bottles need; one of an indirect dependency only for a name not seen yet
-    # (a bottle's versions mostly name the indirect ones already, they win; not the ones of a bottle "all")
-    queue = [(name, version, True) for name, version in _dependency_pairs(release.dependencies)]
+    # every version the bottles need, of the release and of its dependencies. The release's own name the indirect
+    # ones mostly, with the versions its bottles were built with: theirs win over what a dependency names (not the
+    # ones of a bottle "all", which names only the direct ones). A name without a version (the current formula)
+    # adds nothing to a version of it already queued.
+    queue = _dependency_pairs(release.dependencies)
+    own = {name for name, _version in queue}
     before = release.published_at
     seen, names = set(), set()
     while queue:
-        name, version, own = queue.pop(0)
-        if (name, version) in seen or (not own and name in names):
+        name, version = queue.pop(0)
+        if (name, version) in seen or (version is None and name in names):
             continue
         if len(seen) >= settings.RELEASE_MAX_DEPENDENCIES:
             errors.append(f"More than {settings.RELEASE_MAX_DEPENDENCIES} dependencies, the others are skipped")
@@ -1140,7 +1143,8 @@ def homebrew_dependencies(session, source, release, errors):
             except (ReleaseError, requests.RequestException, KeyError, ValueError) as e:
                 _dependency_error(errors, f"Dependencies of {name}", e)
         found[f"{name}@{dependency.version}"] = dependency
-        queue += [(other, other_version, False) for other, other_version in _dependency_pairs(dependency.dependencies)]
+        queue += [(other, other_version) for other, other_version in _dependency_pairs(dependency.dependencies)
+                  if other not in own]
     return found
 
 
@@ -1863,6 +1867,13 @@ def unchecked_identifiers(source):
     return [identifier for identifier in source.identifiers if identifier not in recorded | with_errors]
 
 
+def _recorded_since(source, identifier, started):
+    """The versions a package recorded in this check before it stopped (cancelled, or a later step failed): new all
+    the same. The check is recorded, the next one would not announce them."""
+    return list(source.versions.filter(identifier=identifier, created_at__gte=started, binary_count__gt=0)
+                .order_by("created_at"))
+
+
 def sync_release_source(source, session=None, progress=None, only=None):
     """Check every identifier of the source for a new release. Return the new ReleaseVersions.
 
@@ -1896,18 +1907,18 @@ def sync_release_source(source, session=None, progress=None, only=None):
             found, warnings = _sync_identifier(session, source, identifier, progress=progress)
         except Cancelled:
             logger.info("Release source %s: check cancelled by %s", source.name, progress.cancelled_by)
-            # what the package recorded before it stopped is new all the same
-            new_versions += list(source.versions.filter(identifier=identifier, created_at__gte=started,
-                                                        binary_count__gt=0).order_by("created_at"))
+            new_versions += _recorded_since(source, identifier, started)
             break
         except (ReleaseError, requests.RequestException, KeyError, ValueError) as e:
             logger.warning("Release source %s: %s%s", source.name, prefix, e)
             failed.append(f"{prefix}{e}")
+            new_versions += _recorded_since(source, identifier, started)
             continue
         except Exception as e:
             # something unexpected in one package: the others are checked, the check is recorded
             logger.exception("Release source %s: %s", source.name, identifier)
             failed.append(f"{prefix}{type(e).__name__}: {e}")
+            new_versions += _recorded_since(source, identifier, started)
             continue
         errors += [f"{prefix}{warning}" for warning in warnings]
         new_versions += found

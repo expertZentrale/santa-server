@@ -149,6 +149,16 @@ class PrefixRulesTestCase(ConsoleBase):
         self.assertEqual(set(self.rule.groups.all()), {self.dev, self.sales})
         self.assertEqual(Event.objects.get(pk=self.outside.pk).resolution_rule, self.rule)
 
+    def test_without_a_signing_id_it_cannot_be_added(self):
+        # a Team ID event without a signing ID: the rule leaves it out, but there is nothing to add
+        Event.objects.filter(pk=self.outside.pk).update(signing_id="")
+        access_request = AccessRequest.objects.create(requester=self.user, kind="EVENT", event=self.outside,
+                                                      machine=self.machine, file_sha256=SHA_A, title="a",
+                                                      justification="x")
+        form = self.client.get(reverse("console:request", args=(access_request.pk,))).context["approve_form"]
+        self.assertNotIn("signing", [value for value, _label in form.fields["result"].choices])
+        self.assertNotEqual(form["result"].value(), "signing")
+
     def test_approve_a_request_with_a_rule_that_includes_it(self):
         access_request = AccessRequest.objects.create(requester=self.user, kind="EVENT", event=self.inside,
                                                       machine=self.machine, file_sha256=SHA_B, title="b",

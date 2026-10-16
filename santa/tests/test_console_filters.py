@@ -1,6 +1,8 @@
 """The filters Mac and User of the events and the execution rules: several values, "is" or "is not"."""
 from django.contrib.auth.models import Permission, User
+from django.db import connection
 from django.test import RequestFactory
+from django.test.utils import CaptureQueriesContext
 from django.urls import resolve, reverse
 
 from santa.console.filters import Facet, filter_bar, lookup_values
@@ -173,6 +175,16 @@ class LookupEndpointsTestCase(ConsoleBase):
                                              group=self.dev) for n in range(30)])
         response = self.client.get(reverse("console:filter_macs"), {"q": "lab-"})
         self.assertEqual(response.content.decode().count('type="checkbox"'), 20)
+
+    def test_macs_without_their_rule_ledger(self):
+        with CaptureQueriesContext(connection) as queries:
+            self.client.get(reverse("console:filter_macs"), {"q": "jdoe", "machine": [self.other_machine.pk]})
+            self.client.get(reverse("console:rules"), {"q": "", "machine": [self.machine.pk]})
+        machine_queries = [query["sql"] for query in queries.captured_queries if "santa_machine" in query["sql"]]
+        self.assertTrue(machine_queries)
+        for sql in machine_queries:
+            self.assertNotIn("synced_rules", sql)
+            self.assertNotIn("pending_sync", sql)
 
     def test_users(self):
         self.make_event(executing_user="jdoe")

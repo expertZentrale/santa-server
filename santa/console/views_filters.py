@@ -21,6 +21,10 @@ LOOKUP_NAMES = ("machine", "user")
 MAX_LOOKUP_VALUES = 500
 
 
+# what the lookups show of a Mac: not its rule ledger (synced_rules, pending_sync), for up to 500 Macs
+LABEL_FIELDS = ("id", "hostname", "serial_number", "machine_id", "primary_user")
+
+
 def machine_label(machine):
     return machine.hostname or machine.serial_number or machine.machine_id
 
@@ -29,7 +33,7 @@ def machine_choices(params, limit=MAX_LOOKUP_VALUES):
     """The labels of the Macs of a filter (chosen by their pk); one that is gone shows its pk"""
     # the first ones, as the filter takes them (Facet.max_values)
     pks = [value for value in chosen(params, "machine")[:limit] if value.isdigit()]
-    found = Machine.objects.in_bulk([int(pk) for pk in pks]) if pks else {}
+    found = Machine.objects.only(*LABEL_FIELDS).in_bulk([int(pk) for pk in pks]) if pks else {}
     return [(pk, machine_label(found[int(pk)]) if int(pk) in found else pk) for pk in pks]
 
 
@@ -56,12 +60,12 @@ def _render(request, chosen, hits):
 def filter_macs(request):
     require_perms(request, "view_machine")
     q = request.GET.get("q", "").strip()
-    machines = Machine.objects.order_by("hostname", "serial_number")
+    machines = Machine.objects.only(*LABEL_FIELDS).order_by("hostname", "serial_number")
     if q:
         machines = machines.filter(Q(hostname__icontains=q) | Q(serial_number__icontains=q)
                                    | Q(primary_user__icontains=q))
     pks = [int(value) for value in _chosen(request) if value.isdigit()]
-    found = Machine.objects.in_bulk(pks) if pks else {}
+    found = Machine.objects.only(*LABEL_FIELDS).in_bulk(pks) if pks else {}
     chosen = [(pk, machine_label(found[pk]), found[pk].primary_user) if pk in found else (pk, str(pk), "")
               for pk in pks]
     return _render(request, chosen, [(machine.pk, machine_label(machine), machine.primary_user)

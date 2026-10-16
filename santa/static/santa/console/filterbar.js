@@ -16,6 +16,7 @@
     });
     form.querySelectorAll("details[data-chip]").forEach((chip) => {
       let changed = false;
+      setupLookup(chip);
       chip.addEventListener("change", (event) => {
         if (event.target.type === "radio") {
           // "is / is not" of a lookup: right away only with values chosen, else with them when the chip closes
@@ -59,6 +60,37 @@
       item.closest("details").open = false;
       // after the click: the document closes the pickers the click was not in
       requestAnimationFrame(() => openFacet(form, item.dataset.openFacet));
+    });
+  }
+
+  // A lookup (Mac, user) replaces its hits with each search, ticked as they were when it was sent: what was ticked
+  // or unticked since (while it loaded, or a hit of an earlier search) is set again on the new hits, and a value
+  // ticked that is not among them stays at the top, so the filter still gets it. Forgotten when the chip closes.
+  function setupLookup(chip) {
+    const options = chip.querySelector(".lookup-options");
+    if (!options) return;
+    const edits = new Map();
+    options.addEventListener("change", (event) => {
+      const input = event.target;
+      if (input.type !== "checkbox") return;
+      edits.set(input.value, input.closest("label").cloneNode(true));
+      edits.get(input.value).querySelector("input").checked = input.checked;
+    });
+    options.addEventListener("htmx:afterSwap", () => {
+      const missing = [];
+      edits.forEach((label, value) => {
+        const checked = label.querySelector("input").checked;
+        const input = [...options.querySelectorAll('input[type="checkbox"]')].find((item) => item.value === value);
+        if (input) input.checked = checked;
+        else if (checked) missing.push(label.cloneNode(true));
+      });
+      if (missing.length) {
+        options.querySelector("p.muted")?.remove();
+        options.prepend(...missing);
+      }
+    });
+    chip.addEventListener("toggle", () => {
+      if (!chip.open) edits.clear();
     });
   }
 
