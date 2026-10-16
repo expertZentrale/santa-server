@@ -558,7 +558,7 @@ def _ghcr_release(source, name, tag, index):
     headers = {"Authorization": f"Bearer {HOMEBREW_BOTTLE_TOKEN}"}
     annotations = index.get("annotations") or {}
     version = annotations.get("org.opencontainers.image.version") or tag
-    digests, dependencies = {}, {}
+    digests, dependencies, known = {}, {}, False
     for manifest in index.get("manifests") or []:
         bottle = manifest.get("annotations") or {}
         # "0.9.1.arm64_sequoia.1": version, bottle tag, rebuild
@@ -571,7 +571,10 @@ def _ghcr_release(source, name, tag, index):
             tab = json.loads(bottle.get("sh.brew.tab") or "{}")
         except ValueError:
             tab = {}
-        for dependency in (tab.get("runtime_dependencies") if isinstance(tab, dict) else None) or []:
+        runtime = tab.get("runtime_dependencies") if isinstance(tab, dict) else None
+        # an empty list is a bottle without dependencies, not one that doesn't say
+        known = known or isinstance(runtime, list)
+        for dependency in runtime or []:
             if (isinstance(dependency, dict) and dependency.get("full_name") and dependency.get("pkg_version")
                     and (bottle_tag != "all" or dependency.get("declared_directly"))):
                 dependencies.setdefault(dependency["full_name"], str(dependency["pkg_version"]))
@@ -579,7 +582,7 @@ def _ghcr_release(source, name, tag, index):
                for bottle_tag, digest in digests.items()}
     return Release(version=version, assets=_bottle_assets(source, name, version, bottles),
                    published_at=_published(annotations.get("org.opencontainers.image.created")),
-                   dependencies=dependencies or None)
+                   dependencies=dependencies if known else None)
 
 
 def homebrew_formula_releases(session, source, identifier, limit, known=None):
@@ -1572,9 +1575,11 @@ def _release_of_version(session, source, identifier, version, latest):
                 release = homebrew_formula_at(session, source, identifier, version=version.version)
             except ReleaseError:
                 pass
-        if release and release.dependencies:
+        if release and release.dependencies is not None:
             return release
-        return Release(version=version.version, assets=[], published_at=version.published_at or version.created_at,
+        # the day of the bottle in the registry: a version recorded as the current one has no date of its own
+        published_at = (release.published_at if release else None) or version.published_at or version.created_at
+        return Release(version=version.version, assets=[], published_at=published_at,
                        dependencies=list(latest.dependencies or []))
     if source.kind != ReleaseSource.Kind.NPM_PACKAGE:
         return latest
@@ -1608,11 +1613,24 @@ def _add_dependencies(session, source, identifier, latest, errors, progress=None
                           [:2000])
             continue
         own_rules = version.rules.filter(release_dependency="")
-        wanted = {key for binary in binaries for key in rule_identifiers(source.rule_type, binary.info)}
+        binaries_of = {}
+        for binary in binaries:
+            for key in rule_identifiers(source.rule_type, binary.info):
+                binaries_of.setdefault(key, []).append(binary)
         with transaction.atomic():
-            # a rule of an unchanged binary stays: the Macs don't get it removed and added again
-            previous = list(version.rules.exclude(release_dependency="").only("pk", "rule_type", "identifier"))
-            obsolete = [rule.pk for rule in previous if (rule.rule_type, rule.identifier) not in wanted]
+            # a rule of an unchanged binary stays: the Macs don't get it removed and added again; it takes the
+            # dependency it comes from now (its label, files)
+            previous = list(version.rules.exclude(release_dependency=""))
+            for rule in previous:
+                if same := binaries_of.get((rule.rule_type, rule.identifier)):
+                    rule.release_dependency = same[0].dependency[:300]
+                    rule.description = f"{version} – {same[0].asset}: {same[0].path}"[:500]
+                    rule.release_files = [release_file(item.asset, item.asset_match, item.path, item.info.sha256)
+                                          for item in same]
+                    rule.save(update_fields=["release_dependency", "description", "release_files", "updated_at"])
+            # only after a complete result: a dependency that failed doesn't take away what was allowed so far
+            obsolete = [] if warnings else [rule.pk for rule in previous
+                                             if (rule.rule_type, rule.identifier) not in binaries_of]
             for chunk in chunked(obsolete):
                 Rule.objects.filter(pk__in=chunk).delete()
             # the dependencies follow the approval of the version: enabled when its own rules are (or it had none)
@@ -1622,7 +1640,9 @@ def _add_dependencies(session, source, identifier, latest, errors, progress=None
             own = {file.get("sha256") for rule in own_rules.only("release_files") for file in rule.release_files}
             own.discard(None)
             own.discard("")
-            added = {b.info.sha256 for b in binaries} - own
+            # the binaries of the dependency rules the version has now (kept ones too, after a failure)
+            added = {file.get("sha256") for rule in version.rules.exclude(release_dependency="").only("release_files")
+                     for file in rule.release_files} - own - {None, ""}
             version.binary_count = len(own) + len(added)
             version.dependency_binary_count = len(added)
             version.notes = "\n".join(filter(None, [

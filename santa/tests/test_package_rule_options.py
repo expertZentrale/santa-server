@@ -598,6 +598,8 @@ class DependenciesTestCase(ReleaseSourceBase):
         self.assertEqual(old.dependencies, ["lima@1.0.2"])
         self.assertEqual(set(old.rules.values_list("identifier", flat=True)), {"a" * 64, lima_sha})
         self.assertTrue(Rule.objects.filter(pk=kept.pk).exists())
+        # the rule kept belongs to the dependency it comes from now (the versions table matches the labels)
+        self.assertEqual(Rule.objects.get(pk=kept.pk).release_dependency, "lima@1.0.2")
         self.assertEqual((old.binary_count, old.dependency_binary_count), (2, 1))
         self.assertNotIn("lima@2.0", old.notes)
         self.assertEqual(old.notes.count("Dependencies: "), 1)
@@ -638,6 +640,42 @@ class DependenciesTestCase(ReleaseSourceBase):
         old.refresh_from_db()
         self.assertTrue(old.dependencies_resolved)
         self.assertEqual(self.dependency_labels("0.10.2"), ["lima@1.0.2"])
+    def test_a_bottle_without_dependencies(self):
+        # its tab lists none: not the dependencies of the current formula
+        routes = self.homebrew_routes(
+            colima={"0.10.2": ("2026-09-01T08:00:00Z", {}), "0.10.3": ("2026-09-20T08:00:00Z", None)},
+            lima={"1.0": ("2026-08-01T08:00:00Z", {}), "2.0": ("2026-09-10T08:00:00Z", {})})
+        source = self.colima_source(keep_versions=2, approve_kept_versions=True)
+        sync_release_source(source, fake_session(routes))
+        self.assertEqual(self.dependency_labels("0.10.2"), [""])
+        self.assertEqual(ReleaseVersion.objects.get(version="0.10.2").dependencies, [])
+
+    def test_a_failed_dependency_keeps_the_rules_the_version_had(self):
+        routes = self.homebrew_routes(
+            colima={"0.10.2": ("2026-09-01T08:00:00Z", {"lima": "1.0.2"}), "0.10.3": ("2026-09-20T08:00:00Z", None)},
+            lima={"1.0.2": ("2026-08-01T08:00:00Z", {}), "2.0": ("2026-09-10T08:00:00Z", {})})
+        # lima 1.0.2 can't be looked up
+        del routes["https://ghcr.io/v2/homebrew/core/lima/manifests/1.0.2"]
+        source = self.colima_source()
+        old = ReleaseVersion.objects.create(source=source, identifier="colima", version="0.10.2",
+                                            dependencies=["lima@2.0"])
+        allowed = Rule.objects.create(rule_type=RuleType.BINARY, identifier="b" * 64, release_source=source,
+                                      release_version=old, is_global=True, release_dependency="lima@2.0",
+                                      release_files=[{"sha256": "b" * 64}])
+        sync_release_source(source, fake_session(routes))
+        self.assertTrue(Rule.objects.filter(pk=allowed.pk).exists())
+        old.refresh_from_db()
+        self.assertIn("Dependency lima", old.notes)
+
+    def test_without_a_tab_the_day_of_the_bottle_in_the_registry(self):
+        # recorded as the current version (no date of its own): its bottle is of 2026-09-01, lima 2.0 came later
+        routes = self.homebrew_routes(
+            colima={"0.10.2": ("2026-09-01T08:00:00Z", None), "0.10.3": ("2026-09-20T08:00:00Z", None)},
+            lima={"1.0": ("2026-08-01T08:00:00Z", {}), "2.0": ("2026-09-10T08:00:00Z", {})})
+        source = self.colima_source()
+        ReleaseVersion.objects.create(source=source, identifier="colima", version="0.10.2")
+        sync_release_source(source, fake_session(routes))
+        self.assertEqual(self.dependency_labels("0.10.2"), ["lima@1.0"])
 
     def test_the_migration_resolves_the_older_homebrew_versions_again(self):
         migration = importlib.import_module("santa.migrations.0028_reresolve_homebrew_dependencies")
@@ -650,7 +688,8 @@ class DependenciesTestCase(ReleaseSourceBase):
         versions = {
             "older": ReleaseVersion.objects.create(source=source, identifier="colima", version="1",
                                                    published_at=now, dependencies_resolved=True),
-            "current": ReleaseVersion.objects.create(source=source, identifier="colima", version="2",
+            # recorded as the current version, without a date: a newer one came since
+            "undated": ReleaseVersion.objects.create(source=source, identifier="colima", version="2",
                                                      dependencies_resolved=True),
             "without": ReleaseVersion.objects.create(source=without, identifier="colima", version="1",
                                                      published_at=now, dependencies_resolved=True),
@@ -660,7 +699,7 @@ class DependenciesTestCase(ReleaseSourceBase):
         migration.reresolve_homebrew_dependencies(django_apps, None)
         self.assertEqual({name: ReleaseVersion.objects.get(pk=version.pk).dependencies_resolved
                           for name, version in versions.items()},
-                         {"older": False, "current": True, "without": True, "npm": True})
+                         {"older": False, "undated": False, "without": True, "npm": True})
 
 
 class CleanupTestCase(ConsoleBase):
