@@ -30,16 +30,21 @@
 /* the header stays under the top bar; only when the table fits the page (a scrolling box would hold it) */
 main .table-scroll.fits { overflow: visible; }
 main .table-scroll.fits > .table:not(.compact) > thead th { position: sticky; top: var(--topbar-h); z-index: 2; }
-/* wider than the page (more columns, wider ones): the box scrolls sideways, and its rows too, at most as high as the
-   window leaves (top bar, the pages bar): its header stays at the top of the box. Not for the cards of phones. */
-@media (min-width: 45.01em) {
-  /* and the box stops under the top bar, so its header never slides under it */
-  main .table-scroll:not(.fits) { overflow: auto; max-height: calc(100dvh - var(--topbar-h) - 5.5rem);
-                                  position: sticky; top: var(--topbar-h); }
-  main .table-scroll:not(.fits) > .table:not(.compact) > thead th { position: sticky; top: 0; z-index: 2; }
-  /* in a selection form (rules, events) the box fills the form: the form stops under the top bar instead */
-  main form[data-select-form]:has(> .table-scroll:not(.fits)) { position: sticky; top: var(--topbar-h); }
-}
+/* wider than the page (more columns, wider ones): the box scrolls only sideways, the page keeps the one vertical
+   scrollbar. A box scrolling sideways holds no sticky header, table.js moves it under the top bar instead; the
+   box's own scrollbar gives way to the one at the bottom of the window (.table-hscroll) */
+main .table-scroll.has-hscroll:not(.fits) { scrollbar-width: none; }
+main .table-scroll.has-hscroll:not(.fits)::-webkit-scrollbar { display: none; }
+main .table-scroll:not(.fits) > .table:not(.compact) > thead th { position: relative; z-index: 2; }
+/* the scrollbar of a wide table at the bottom of the window while the table is on screen (above the pages, which
+   stay there too, see .pagination), under it at its end. min-height: room for the scrollbars macOS shows only while
+   scrolling */
+.table-hscroll { position: sticky; bottom: var(--pages-h, 0rem); z-index: 3; overflow-x: auto; overflow-y: hidden;
+                 min-height: .75rem; margin: -1rem 0 1rem 50%; transform: translateX(-50%); background: var(--surface);
+                 border-radius: 0 0 var(--radius) var(--radius); }
+body.has-bulkbar .table-hscroll { bottom: calc(var(--bulkbar-h, 4rem) + 1.5rem + var(--pages-h, 0rem)); }
+.table-hscroll > div { height: 1px; }
+.table-hscroll[hidden] { display: none; }
 /* the buttons of a row: last column, right-aligned, the same place in every row. No percentage widths in these
    tables: the box around them is as wide as its content, and a percentage would stretch it to the window */
 .table td.row-actions { width: 1px; white-space: nowrap; text-align: right; }

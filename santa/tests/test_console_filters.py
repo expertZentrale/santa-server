@@ -4,7 +4,7 @@ from django.test import RequestFactory
 from django.urls import resolve, reverse
 
 from santa.console.filters import Facet, filter_bar, lookup_values
-from santa.models import Event, Machine, Rule, RuleType, SavedFilter
+from santa.models import Event, Group, Machine, Rule, RuleType, SavedFilter
 
 from .test_console import SHA_A, SHA_B, ConsoleBase
 
@@ -95,6 +95,30 @@ class RuleFiltersTestCase(ConsoleBase):
         child = self.sales.__class__.objects.create(name="Sales EU", parent=self.sales, inherit_rules=True)
         mac = Machine.objects.create(machine_id="M3", serial_number="C02EU", hostname="eu", group=child)
         self.assertIn(self.sales_rule.pk, self.rules(machine=mac.pk))
+
+    def test_excluding_macs_that_do_not_exist_keeps_every_rule(self):
+        everything = {self.global_rule.pk, self.dev_rule.pk, self.sales_rule.pk, self.mac_rule.pk}
+        self.assertEqual(self.rules(user="nobody@example.com", user_not="1"), everything)
+        self.assertEqual(self.rules(machine=999999, machine_not="1"), everything)
+        self.assertEqual(self.rules(machine=999999), set())
+
+    def test_mac_and_user_together(self):
+        self.assertEqual(self.rules(machine=self.machine.pk, user="someone", user_not="1"),
+                         {self.dev_rule.pk, self.mac_rule.pk})
+
+    def test_an_owner_of_many_macs(self):
+        # more Macs than SQL Server takes parameters in one query, in many groups, one in an inheriting group
+        Group.objects.bulk_create([Group(name=f"Team {index}") for index in range(300)])
+        # SQL Server doesn't return the keys of a bulk insert
+        groups = list(Group.objects.filter(name__startswith="Team "))
+        child = Group.objects.create(name="Sales EU", parent=self.sales, inherit_rules=True)
+        Machine.objects.bulk_create([
+            Machine(machine_id=f"BULK{index}", serial_number=f"C02B{index}", group=groups[index % len(groups)],
+                    primary_user="fleet@example.com") for index in range(2200)])
+        Machine.objects.create(machine_id="BULK-LAST", serial_number="C02LAST", group=child,
+                               primary_user="fleet@example.com")
+        self.assertEqual(self.rules(user="fleet@example.com"), {self.global_rule.pk, self.sales_rule.pk})
+        self.assertEqual(self.rules(user="fleet@example.com", user_not="1"), {self.dev_rule.pk, self.mac_rule.pk})
 
 
 class LookupEndpointsTestCase(ConsoleBase):

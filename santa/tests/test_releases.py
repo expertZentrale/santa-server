@@ -42,6 +42,7 @@ class FakeResponse:
         self._json = json_data
         self.content = content
         self.status_code = status_code
+        self.links = {}
 
     def raise_for_status(self):
         pass

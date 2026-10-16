@@ -104,12 +104,16 @@ def filter_rules(request, rules):
 def _on_machines(rules, machines, exclude):
     """The rules the Macs get at their sync (or, exclude: the rules none of them gets): global, of their groups and
     of the parents they take the rules of, directly for them. Enabled or not: the scope decides."""
-    machines = list(machines.only("pk", "group_id")[:MAX_LOOKUP_VALUES * 2])
-    groups = with_parent_groups({machine.group_id for machine in machines}, "inherit_rules")
-    reach = Q(is_global=True) | Q(groups__in=list(groups)) | Q(machines__in=[machine.pk for machine in machines])
+    if not machines.exists():
+        # no Macs (an owner without any, a deleted one): they get nothing, so nothing is excluded either
+        return rules if exclude else rules.none()
+    # the Macs stay a subquery and the groups a short list: an owner can have thousands of Macs, and SQL Server takes
+    # at most 2100 parameters per query
+    groups = with_parent_groups(machines.values_list("group_id", flat=True).distinct(), "inherit_rules")
+    reach = Q(is_global=True) | Q(groups__in=sorted(groups)) | Q(machines__in=machines.values("pk"))
     if exclude:
         return rules.exclude(pk__in=Rule.objects.filter(reach).values("pk"))
-    return rules.filter(reach) if machines else rules.none()
+    return rules.filter(reach)
 
 
 @staff_required

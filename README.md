@@ -435,9 +435,11 @@ wird für sich geprüft und behält seine eigenen Versionen. Eine Paketregel leg
   neuen Version, auch der indirekten (npm: `dependencies` und `optionalDependencies` für macOS, z. B. die
   Plattformpakete von esbuild; Homebrew: die Laufzeitabhängigkeiten, z. B. lima für colima). Ihre Regeln gehören zur
   Version und werden mit ihr gelöscht. Wird die Option bei bestehenden Versionen eingeschaltet, erhalten sie ihre
-  Abhängigkeiten bei der nächsten Prüfung. Jede Version zeigt ihre Abhängigkeiten; die meisten npm-Abhängigkeiten
-  sind Skripte ohne ausführbare Datei und brauchen keine Regel. Höchstens `RELEASE_MAX_DEPENDENCIES` Pakete je
-  Version.
+  Abhängigkeiten bei der nächsten Prüfung. Ältere Homebrew-Versionen erhalten die Versionen der Abhängigkeiten, mit
+  denen ihr Bottle gebaut wurde, ohne diese Angabe die neuesten, die bis zu ihrem Veröffentlichungstag erschienen
+  sind (z. B. colima 0.8.1 mit lima 1.0.2, nicht mit der aktuellen lima); früher erfasste Versionen werden dafür
+  einmal neu aufgelöst. Jede Version zeigt ihre Abhängigkeiten; die meisten npm-Abhängigkeiten sind Skripte ohne
+  ausführbare Datei und brauchen keine Regel. Höchstens `RELEASE_MAX_DEPENDENCIES` Pakete je Version.
 
 **Aufräumen**: Wird ein Paket aus der Paketregel entfernt, ein Muster, das Mindest-macOS oder der behaltene Bereich
 geändert oder werden die Abhängigkeiten nicht mehr erlaubt, zeigt die Paketregel die Versionen und Regeln, die sie
@@ -1031,9 +1033,11 @@ on its own and keeps its own versions. A package rule also chooses what the rule
 - **Allow the dependencies** (npm, Homebrew formula): also allows the executables of the dependencies of every new
   version, also the indirect ones (npm: `dependencies` and `optionalDependencies` for macOS, e.g. the platform
   packages of esbuild; Homebrew: the runtime dependencies, e.g. lima for colima). Their rules belong to the version
-  and are deleted with it. Switched on for existing versions, they get their dependencies at the next check. Every
-  version shows its dependencies; most npm dependencies are scripts without an executable and need no rule. At most
-  `RELEASE_MAX_DEPENDENCIES` packages per version.
+  and are deleted with it. Switched on for existing versions, they get their dependencies at the next check. Older
+  Homebrew versions get the dependency versions their bottle was built with, without them the newest ones released
+  up to their day of publication (e.g. colima 0.8.1 with lima 1.0.2, not with the current lima); versions recorded
+  before are resolved again once. Every version shows its dependencies; most npm dependencies are scripts without an
+  executable and need no rule. At most `RELEASE_MAX_DEPENDENCIES` packages per version.
 
 **Clean up**: when a package is removed from the package rule, a pattern, the minimum macOS or the kept range changes,
 or the dependencies are no longer allowed, the package rule shows the versions and rules it no longer covers (a rule

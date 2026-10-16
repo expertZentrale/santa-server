@@ -200,7 +200,71 @@
     if (!box) return;
     box.classList.remove("fits");
     box.classList.toggle("fits", box.scrollWidth <= box.clientWidth + 1);
+    updateScrollbar(box);
+    moveHeader(table);
   }
+
+  // A table wider than the page scrolls sideways in its box, the page alone scrolls down: the box's scrollbar is at
+  // the bottom of the window while the table is on screen (a box scrolling down too was a second vertical one)
+  function addScrollbar(box) {
+    if (box.nextElementSibling?.matches(".table-hscroll")) return;
+    const bar = document.createElement("div");
+    bar.className = "table-hscroll";
+    bar.setAttribute("aria-hidden", "true");
+    bar.hidden = true;
+    bar.append(document.createElement("div"));
+    box.after(bar);
+    box.classList.add("has-hscroll");
+    // its own scrollbar is hidden: the keyboard scrolls it
+    if (!box.hasAttribute("tabindex")) box.tabIndex = 0;
+    // one follows the other; the position set is the one it reports back, which ends it
+    bar.addEventListener("scroll", () => {
+      if (box.scrollLeft !== bar.scrollLeft) box.scrollLeft = bar.scrollLeft;
+    }, { passive: true });
+    box.addEventListener("scroll", () => {
+      if (bar.scrollLeft !== box.scrollLeft) bar.scrollLeft = box.scrollLeft;
+    }, { passive: true });
+  }
+
+  function updateScrollbar(box) {
+    const bar = box.nextElementSibling;
+    if (!bar?.matches(".table-hscroll")) return;
+    bar.hidden = box.classList.contains("fits") || cardLayout.matches;
+    if (bar.hidden) return;
+    // the pages stay at the bottom of the window too (sticky, not on phones): the bar sits on them
+    const pages = document.querySelector("main .pagination");
+    const sticky = pages && getComputedStyle(pages).position === "sticky";
+    document.body.style.setProperty("--pages-h", `${sticky ? pages.offsetHeight / rem() : 0}rem`);
+    bar.style.width = `${box.offsetWidth / rem()}rem`;
+    bar.firstElementChild.style.width = `${box.scrollWidth / rem()}rem`;
+    bar.scrollLeft = box.scrollLeft;
+  }
+
+  // the header of a wide table under the top bar: CSS can't (sticky stops at the box that scrolls sideways)
+  function moveHeader(table) {
+    const box = table.closest(".table-scroll");
+    const cells = table.tHead ? [...table.tHead.rows[0].cells] : [];
+    if (!box || !cells.length) return;
+    let offset = 0;
+    if (!box.classList.contains("fits") && !cardLayout.matches && !table.classList.contains("compact")) {
+      const topbar = document.querySelector(".topbar")?.getBoundingClientRect().bottom || 0;
+      const rect = table.getBoundingClientRect();
+      const head = table.tHead.getBoundingClientRect().height;
+      const lastRow = table.tBodies[0]?.rows[table.tBodies[0].rows.length - 1]?.getBoundingClientRect().height || 0;
+      offset = Math.max(0, Math.min(topbar - rect.top, rect.height - head - lastRow));
+    }
+    const value = offset ? `translateY(${offset / rem()}rem)` : "";
+    if (cells[0].style.transform !== value) cells.forEach((th) => { th.style.transform = value; });
+  }
+
+  let headerFrame = 0;
+  window.addEventListener("scroll", () => {
+    if (headerFrame) return;
+    headerFrame = requestAnimationFrame(() => {
+      headerFrame = 0;
+      document.querySelectorAll("main .table-scroll:not(.fits) > table[data-table]").forEach(moveHeader);
+    });
+  }, { passive: true });
 
   // the width below which the tables are cards (table.css)
   const cardLayout = window.matchMedia("(max-width: 45em)");
@@ -381,6 +445,8 @@
       tools.append(picker);
       (table.closest(".table-scroll") || table).before(tools);
     }
+    const box = table.closest(".table-scroll");
+    if (box) addScrollbar(box);
     updateFits(table);
     rememberLayout(table);
   }

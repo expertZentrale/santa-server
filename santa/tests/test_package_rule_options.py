@@ -1,12 +1,15 @@
 import base64
 import hashlib
+import importlib
 import importlib.util
 import io
+import json
 import signal
 import time
 from datetime import timedelta
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
+from django.apps import apps as django_apps
 from django.contrib.admin.models import LogEntry
 from django.contrib.auth.models import Permission, User
 from django.core.cache import cache
@@ -27,6 +30,7 @@ from santa.releases import (
     Asset,
     Release,
     ReleaseError,
+    _ghcr_tags,
     _npm_platform_ok,
     cleanup_preview,
     cleanup_release_source,
@@ -426,6 +430,181 @@ class DependenciesTestCase(ReleaseSourceBase):
         self.assertEqual(version.binary_count, 3)
         self.assertEqual(sorted(Rule.objects.filter(release_version=version)
                                 .values_list("release_dependency", flat=True)), ["", "lima@1.0", "qemu@1.0"])
+
+    def homebrew_routes(self, colima, lima, **others):
+        """colima 0.10.3 and lima 2.0 are current (formulae.brew.sh); the registry has their older versions.
+        colima / lima / others: {tag: (created, tab dependencies or None[, "all"])}; a dependency of the tab is
+        {name: version} (direct) or {name: (version, False)} (indirect)"""
+        routes = {}
+
+        def formula(name, version, dependencies):
+            bottle = tar_gz({f"{name}/{version}/bin/{name}": unsigned(f"{name}-{version}")})
+            routes[f"https://formulae.brew.sh/api/formula/{name}.json"] = FakeResponse({
+                "versions": {"stable": version}, "revision": 0, "dependencies": dependencies,
+                "bottle": {"stable": {"files": {"arm64_sequoia": {
+                    "url": f"https://ghcr.example/{name}", "sha256": hashlib.sha256(bottle).hexdigest()}}}}})
+            routes[f"https://ghcr.example/{name}"] = FakeResponse(content=bottle)
+
+        def registry(name, tags):
+            base = f"https://ghcr.io/v2/homebrew/core/{name}"
+            routes[f"{base}/tags/list"] = FakeResponse({"tags": list(tags)})
+            for tag, (created, dependencies, *bottle_tag) in tags.items():
+                bottle_tag = bottle_tag[0] if bottle_tag else "arm64_sequoia"
+                version = tag.split("-")[0]
+                bottle = tar_gz({f"{name}/{version}/bin/{name}": unsigned(f"{name}-{tag}")})
+                digest = hashlib.sha256(bottle).hexdigest()
+                bottle_annotations = {"org.opencontainers.image.ref.name": f"{version}.{bottle_tag}",
+                                      "sh.brew.bottle.digest": digest}
+                if dependencies is not None:
+                    bottle_annotations["sh.brew.tab"] = json.dumps({"runtime_dependencies": [
+                        {"full_name": other, "pkg_version": other_version[0] if isinstance(other_version, tuple)
+                         else other_version, "declared_directly": not isinstance(other_version, tuple)}
+                        for other, other_version in dependencies.items()]})
+                # a bottle "all" is built on Linux
+                routes[f"{base}/manifests/{tag}"] = FakeResponse({
+                    "annotations": {"org.opencontainers.image.version": version,
+                                    "org.opencontainers.image.created": created},
+                    "manifests": [{"platform": {"os": "linux" if bottle_tag == "all" else "darwin"},
+                                   "annotations": bottle_annotations}]})
+                routes[f"{base}/blobs/sha256:{digest}"] = FakeResponse(content=bottle)
+
+        formula("colima", "0.10.3", ["lima"])
+        formula("lima", "2.0", [])
+        registry("colima", colima)
+        registry("lima", lima)
+        for name, tags in others.items():
+            registry(name, tags)
+        return routes
+
+    def dependency_labels(self, version):
+        return sorted(Rule.objects.filter(release_version__version=version)
+                      .values_list("release_dependency", flat=True))
+
+    def colima_source(self, **options):
+        return ReleaseSource.objects.create(name="colima", kind=ReleaseSource.Kind.HOMEBREW_FORMULA,
+                                            identifier="colima", is_global=True, include_dependencies=True,
+                                            **options)
+
+    def test_an_older_formula_gets_the_dependencies_its_bottle_was_built_with(self):
+        routes = self.homebrew_routes(
+            colima={"0.10.2": ("2026-09-01T08:00:00Z", {"lima": "1.0.2"}), "0.10.3": ("2026-09-20T08:00:00Z", None)},
+            # a rebuild of lima 1.0.2: the newest build
+            lima={"1.0.2": ("2026-08-01T08:00:00Z", {}), "1.0.2-1": ("2026-08-02T08:00:00Z", {}),
+                  "2.0": ("2026-09-10T08:00:00Z", {})})
+        source = self.colima_source(keep_versions=2, approve_kept_versions=True)
+        sync_release_source(source, fake_session(routes))
+        self.assertEqual(self.dependency_labels("0.10.3"), ["", "lima@2.0"])
+        self.assertEqual(self.dependency_labels("0.10.2"), ["", "lima@1.0.2"])
+        self.assertTrue(Rule.objects.filter(identifier=hashlib.sha256(unsigned("lima-1.0.2-1")).hexdigest(),
+                                            release_version__version="0.10.2").exists())
+
+    def test_a_dependency_rebuilt_later_comes_in_the_build_of_that_day(self):
+        # lima 1.0.2 was rebuilt after colima 0.10.2: the Macs of then have the first build
+        routes = self.homebrew_routes(
+            colima={"0.10.2": ("2026-09-01T08:00:00Z", {"lima": "1.0.2"}), "0.10.3": ("2026-09-20T08:00:00Z", None)},
+            lima={"1.0.2": ("2026-08-01T08:00:00Z", {}), "1.0.2-1": ("2026-09-15T08:00:00Z", {}),
+                  "2.0": ("2026-09-10T08:00:00Z", {})})
+        source = self.colima_source(keep_versions=2, approve_kept_versions=True)
+        sync_release_source(source, fake_session(routes))
+        identifiers = set(Rule.objects.filter(release_version__version="0.10.2", release_dependency="lima@1.0.2")
+                          .values_list("identifier", flat=True))
+        self.assertEqual(identifiers, {hashlib.sha256(unsigned("lima-1.0.2")).hexdigest()})
+
+    def test_a_bottle_for_all_systems_takes_its_direct_dependencies(self):
+        # built on Linux: zlib comes with macOS; qemu comes through the macOS bottle of lima
+        routes = self.homebrew_routes(
+            colima={"0.10.2": ("2026-09-01T08:00:00Z", {"lima": "1.0.2", "zlib": ("1.3", False)}, "all"),
+                    "0.10.3": ("2026-09-20T08:00:00Z", None)},
+            lima={"1.0.2": ("2026-08-01T08:00:00Z", {"qemu": "9.0"}), "2.0": ("2026-09-10T08:00:00Z", {})},
+            qemu={"9.0": ("2026-07-01T08:00:00Z", {})})
+        source = self.colima_source(keep_versions=2, approve_kept_versions=True)
+        sync_release_source(source, fake_session(routes))
+        self.assertEqual(self.dependency_labels("0.10.2"), ["", "lima@1.0.2", "qemu@9.0"])
+
+    def test_the_tags_of_the_registry_come_in_pages(self):
+        base = "https://ghcr.io/v2/homebrew/core/node"
+        first, second = FakeResponse({"tags": ["20.0.0", "21.0.0"]}), FakeResponse({"tags": ["22.0.0"]})
+        first.links = {"next": {"url": "/v2/homebrew/core/node/tags/list?last=21.0.0&n=0"}}
+        session = MagicMock()
+        session.get.side_effect = lambda url, params=None, **kwargs: (
+            second if (params or {}).get("last") == "21.0.0" else first) if url == f"{base}/tags/list" else None
+        self.assertEqual(_ghcr_tags(session, "node"), ["22.0.0", "21.0.0", "20.0.0"])
+
+    def test_without_their_versions_the_dependencies_of_the_day(self):
+        # the bottle of colima 0.10.2 names no versions: lima as it was at the end of that day
+        routes = self.homebrew_routes(
+            colima={"0.10.2": ("2026-09-01T08:00:00Z", None), "0.10.3": ("2026-09-20T08:00:00Z", None)},
+            lima={"1.0": ("2026-08-01T08:00:00Z", {}), "1.1": ("2026-09-01T20:00:00Z", {}),
+                  "1.2": ("2026-09-05T08:00:00Z", {}), "2.0": ("2026-09-10T08:00:00Z", {})})
+        source = self.colima_source(keep_versions=2, approve_kept_versions=True)
+        sync_release_source(source, fake_session(routes))
+        self.assertEqual(self.dependency_labels("0.10.2"), ["", "lima@1.1"])
+
+    def test_a_recorded_older_formula_gets_the_dependencies_of_its_bottle(self):
+        routes = self.homebrew_routes(
+            colima={"0.10.2": ("2026-09-01T08:00:00Z", {"lima": "1.0.2"}), "0.10.3": ("2026-09-20T08:00:00Z", None)},
+            lima={"1.0.2": ("2026-08-01T08:00:00Z", {}), "2.0": ("2026-09-10T08:00:00Z", {})})
+        source = self.colima_source()
+        # recorded before the source took the dependencies
+        old = ReleaseVersion.objects.create(source=source, identifier="colima", version="0.10.2")
+        Rule.objects.create(rule_type=RuleType.BINARY, identifier="a" * 64, release_source=source,
+                            release_version=old, is_global=True)
+        sync_release_source(source, fake_session(routes))
+        self.assertEqual(self.dependency_labels("0.10.2"), ["", "lima@1.0.2"])
+        self.assertEqual(self.dependency_labels("0.10.3"), ["", "lima@2.0"])
+
+    def test_resolved_again_the_dependencies_are_replaced(self):
+        routes = self.homebrew_routes(
+            colima={"0.10.2": ("2026-09-01T08:00:00Z", {"lima": "1.0.2"}), "0.10.3": ("2026-09-20T08:00:00Z", None)},
+            lima={"1.0.2": ("2026-08-01T08:00:00Z", {}), "2.0": ("2026-09-10T08:00:00Z", {})})
+        source = self.colima_source()
+        lima_sha = hashlib.sha256(unsigned("lima-1.0.2")).hexdigest()
+        current_sha = hashlib.sha256(unsigned("lima-2.0")).hexdigest()
+        # recorded with the dependencies of the current formula, and one binary that stays
+        old = ReleaseVersion.objects.create(
+            source=source, identifier="colima", version="0.10.2", published_at=timezone.now(),
+            dependencies=["lima@2.0"], binary_count=3, dependency_binary_count=2,
+            notes=f"colima.tar.gz: bin/colima {'a' * 64}\nlima@2.0 – lima.tar.gz: bin/lima {current_sha}\n"
+                  "Dependencies: lima@2.0")
+        Rule.objects.create(rule_type=RuleType.BINARY, identifier="a" * 64, release_source=source,
+                            release_version=old, is_global=True, is_enabled=True,
+                            release_files=[{"sha256": "a" * 64}])
+        Rule.objects.create(rule_type=RuleType.BINARY, identifier=current_sha, release_source=source,
+                            release_version=old, is_global=True, release_dependency="lima@2.0")
+        kept = Rule.objects.create(rule_type=RuleType.BINARY, identifier=lima_sha, release_source=source,
+                                   release_version=old, is_global=True, release_dependency="lima@2.0")
+        sync_release_source(source, fake_session(routes))
+        old.refresh_from_db()
+        self.assertEqual(old.dependencies, ["lima@1.0.2"])
+        self.assertEqual(set(old.rules.values_list("identifier", flat=True)), {"a" * 64, lima_sha})
+        self.assertTrue(Rule.objects.filter(pk=kept.pk).exists())
+        self.assertEqual((old.binary_count, old.dependency_binary_count), (2, 1))
+        self.assertNotIn("lima@2.0", old.notes)
+        self.assertEqual(old.notes.count("Dependencies: "), 1)
+        self.assertIn("colima.tar.gz: bin/colima", old.notes)
+
+    def test_the_migration_resolves_the_older_homebrew_versions_again(self):
+        migration = importlib.import_module("santa.migrations.0028_reresolve_homebrew_dependencies")
+        source = self.colima_source()
+        without = ReleaseSource.objects.create(name="no deps", kind=ReleaseSource.Kind.HOMEBREW_FORMULA,
+                                               identifier="colima", is_global=True)
+        npm = ReleaseSource.objects.create(name="npm", kind=ReleaseSource.Kind.NPM_PACKAGE, identifier="tool",
+                                           is_global=True, include_dependencies=True)
+        now = timezone.now()
+        versions = {
+            "older": ReleaseVersion.objects.create(source=source, identifier="colima", version="1",
+                                                   published_at=now, dependencies_resolved=True),
+            "current": ReleaseVersion.objects.create(source=source, identifier="colima", version="2",
+                                                     dependencies_resolved=True),
+            "without": ReleaseVersion.objects.create(source=without, identifier="colima", version="1",
+                                                     published_at=now, dependencies_resolved=True),
+            "npm": ReleaseVersion.objects.create(source=npm, identifier="tool", version="1", published_at=now,
+                                                 dependencies_resolved=True),
+        }
+        migration.reresolve_homebrew_dependencies(django_apps, None)
+        self.assertEqual({name: ReleaseVersion.objects.get(pk=version.pk).dependencies_resolved
+                          for name, version in versions.items()},
+                         {"older": False, "current": True, "without": True, "npm": True})
 
 
 class CleanupTestCase(ConsoleBase):

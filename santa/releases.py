@@ -7,14 +7,17 @@ import base64
 import copy
 import fnmatch
 import hashlib
+import json
 import logging
 import re
 import tarfile
 import tempfile
+import weakref
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from urllib.parse import parse_qs, urlsplit
 
 import requests
 from django.conf import settings
@@ -77,7 +80,8 @@ class Release:
     version: str
     assets: list
     published_at: object = None
-    # what the release needs: {name: version range} (npm), [name, …] (Homebrew formula)
+    # what the release needs: {name: version range} (npm); [name, …] (Homebrew formula, the current one) or
+    # {name: version} (the versions an older bottle was built with)
     dependencies: object = None
 
 
@@ -467,6 +471,71 @@ def _ghcr_repository(name):
     return name.replace("@", "/").replace("+", "x")
 
 
+GHCR_TAGS_PAGE = 1000
+GHCR_MAX_TAG_PAGES = 20
+
+
+def _ghcr_base(name):
+    return f"https://ghcr.io/v2/homebrew/core/{_ghcr_repository(name)}"
+
+
+def _ghcr_tags(session, name):
+    """The tags of a formula in the Homebrew registry, newest first. The registry pages them (100 by default, node has
+    more): asked for a large page, and the next ones it links."""
+    url, params, tags = f"{_ghcr_base(name)}/tags/list", {"n": GHCR_TAGS_PAGE}, []
+    for _page in range(GHCR_MAX_TAG_PAGES):
+        response = session.get(url, params=params, timeout=settings.RELEASE_HTTP_TIMEOUT,
+                               headers={"Authorization": f"Bearer {HOMEBREW_BOTTLE_TOKEN}"})
+        response.raise_for_status()
+        tags += response.json().get("tags") or []
+        last = parse_qs(urlsplit((response.links or {}).get("next", {}).get("url", "")).query).get("last")
+        if not last:
+            break
+        params = {"n": GHCR_TAGS_PAGE, "last": last[0]}
+    return list(reversed(tags))
+
+
+def _ghcr_index(session, name, tag):
+    response = session.get(f"{_ghcr_base(name)}/manifests/{tag}", timeout=settings.RELEASE_HTTP_TIMEOUT,
+                           headers={"Authorization": f"Bearer {HOMEBREW_BOTTLE_TOKEN}",
+                                    "Accept": "application/vnd.oci.image.index.v1+json"})
+    response.raise_for_status()
+    return response.json()
+
+
+def _ghcr_release(source, name, tag, index):
+    """The Release of a version's index in the Homebrew registry: its macOS bottles, the date, and the versions of the
+    runtime dependencies the bottles were built with (their "tab"; all of them, also the indirect ones).
+
+    A bottle "all" (scripts, the same for every system) is built on Linux: its tab names the Linux dependencies, of
+    which only the direct ones are taken; the indirect ones come from their own macOS bottles."""
+    headers = {"Authorization": f"Bearer {HOMEBREW_BOTTLE_TOKEN}"}
+    annotations = index.get("annotations") or {}
+    version = annotations.get("org.opencontainers.image.version") or tag
+    digests, dependencies = {}, {}
+    for manifest in index.get("manifests") or []:
+        bottle = manifest.get("annotations") or {}
+        # "0.9.1.arm64_sequoia.1": version, bottle tag, rebuild
+        bottle_tag = bottle.get("org.opencontainers.image.ref.name", "").removeprefix(f"{version}.").split(".")[0]
+        if (manifest.get("platform") or {}).get("os") != "darwin" and bottle_tag != "all":
+            continue
+        if digest := bottle.get("sh.brew.bottle.digest"):
+            digests[bottle_tag] = digest
+        try:
+            tab = json.loads(bottle.get("sh.brew.tab") or "{}")
+        except ValueError:
+            tab = {}
+        for dependency in (tab.get("runtime_dependencies") if isinstance(tab, dict) else None) or []:
+            if (isinstance(dependency, dict) and dependency.get("full_name") and dependency.get("pkg_version")
+                    and (bottle_tag != "all" or dependency.get("declared_directly"))):
+                dependencies.setdefault(dependency["full_name"], str(dependency["pkg_version"]))
+    bottles = {bottle_tag: (f"{_ghcr_base(name)}/blobs/sha256:{digest}", digest, headers)
+               for bottle_tag, digest in digests.items()}
+    return Release(version=version, assets=_bottle_assets(source, name, version, bottles),
+                   published_at=_published(annotations.get("org.opencontainers.image.created")),
+                   dependencies=dependencies or None)
+
+
 def homebrew_formula_releases(session, source, identifier, limit, known=None):
     """The bottles of the older versions of a formula, newest first, from the Homebrew registry (ghcr.io).
 
@@ -478,14 +547,10 @@ def homebrew_formula_releases(session, source, identifier, limit, known=None):
     if is_tap_identifier(identifier):
         # a tap has only its current version
         return [latest_homebrew_tap(session, source, identifier, cask=False)]
-    headers = {"Authorization": f"Bearer {HOMEBREW_BOTTLE_TOKEN}"}
-    base = f"https://ghcr.io/v2/homebrew/core/{_ghcr_repository(identifier)}"
-    response = session.get(f"{base}/tags/list", headers=headers, timeout=settings.RELEASE_HTTP_TIMEOUT)
-    response.raise_for_status()
     cutoff = source.keep_cutoff()
     releases = {}
-    # the tags come oldest first; a looked-up version older than the range ends the search
-    for tag in reversed(response.json().get("tags") or []):
+    # a looked-up version older than the range ends the search
+    for tag in _ghcr_tags(session, identifier):
         if len(releases) >= limit:
             break
         # a rebuild of a version: "-1"; a version can end like that itself (ca-certificates 2026-09-25)
@@ -496,32 +561,43 @@ def homebrew_formula_releases(session, source, identifier, limit, known=None):
                 break
             releases.setdefault(version, Release(version=version, assets=[], published_at=published_at))
             continue
-        response = session.get(f"{base}/manifests/{tag}", timeout=settings.RELEASE_HTTP_TIMEOUT,
-                               headers={**headers, "Accept": "application/vnd.oci.image.index.v1+json"})
-        response.raise_for_status()
-        index = response.json()
-        annotations = index.get("annotations") or {}
-        version = annotations.get("org.opencontainers.image.version") or tag
-        published_at = _published(annotations.get("org.opencontainers.image.created"))
-        if cutoff and published_at and published_at < cutoff:
+        release = _ghcr_release(source, identifier, tag, _ghcr_index(session, identifier, tag))
+        if cutoff and release.published_at and release.published_at < cutoff:
             break
-        if version in releases:
-            # an older build of a version already found
-            continue
-        digests = {}
-        for manifest in index.get("manifests") or []:
-            if (manifest.get("platform") or {}).get("os") != "darwin":
-                continue
-            bottle = manifest.get("annotations") or {}
-            # "0.9.1.arm64_sequoia.1": version, bottle tag, rebuild
-            bottle_tag = bottle.get("org.opencontainers.image.ref.name", "").removeprefix(f"{version}.").split(".")[0]
-            if digest := bottle.get("sh.brew.bottle.digest"):
-                digests[bottle_tag] = digest
-        bottles = {bottle_tag: (f"{base}/blobs/sha256:{digest}", digest, headers)
-                   for bottle_tag, digest in digests.items()}
-        releases[version] = Release(version=version, assets=_bottle_assets(source, identifier, version, bottles),
-                                    published_at=published_at)
+        # an older build of a version already found is skipped
+        releases.setdefault(release.version, release)
     return list(releases.values())
+
+
+# {session: {formula: tags}}: the tag lists of one sync (a session each)
+_GHCR_TAGS = weakref.WeakKeyDictionary()
+
+
+def homebrew_formula_at(session, source, name, version=None, before=None):
+    """A formula from the Homebrew registry, as it was on the day of `before` (the dependency of an older version):
+    the given version or else the newest one published by then. A version is rebuilt now and then (a new tag "-1",
+    other files, often for other macOS versions): its build of that day, the one the Macs got then."""
+    if is_tap_identifier(name):
+        # a tap has only its current version
+        return latest_homebrew_tap(session, source, name, cask=False)
+    # the same dependencies (python, openssl…) come up for many versions in one sync
+    cache = _GHCR_TAGS.setdefault(session, {})
+    if name not in cache:
+        cache[name] = _ghcr_tags(session, name)
+    tags = cache[name]
+    if version:
+        tags = [tag for tag in tags if tag == version or re.fullmatch(rf"{re.escape(version)}-\d+", tag)]
+    # the whole day: the registry gives the older bottles only a day, and a release of the same day counts
+    end_of_day = before and datetime.combine(before.astimezone(UTC).date(), datetime.max.time(), tzinfo=UTC)
+    release = None
+    for tag in tags[:HISTORY_LIMIT]:
+        release = _ghcr_release(source, name, tag, _ghcr_index(session, name, tag))
+        if not end_of_day or (release.published_at and release.published_at <= end_of_day):
+            return release
+    if version and release:
+        # every build is younger (a date missing): the oldest one, the closest
+        return release
+    raise ReleaseError(f"{name}: no version {version or f'up to {before:%Y-%m-%d}'} in the Homebrew registry")
 
 
 def latest_homebrew_cask(session, source, identifier):
@@ -969,21 +1045,42 @@ def _npm_documents(session, names):
 
 
 def homebrew_dependencies(session, source, release, errors):
-    """The releases (bottles) of the runtime dependencies of a formula, also the indirect ones"""
+    """The releases (bottles) of the runtime dependencies of a formula, also the indirect ones.
+
+    The current formula names them: their current versions. An older version gets the versions its bottle was built
+    with, or, without them, the newest ones published on or before its day."""
     found = {}
-    queue = list(release.dependencies or [])
+    if isinstance(release.dependencies, dict):
+        queue = list(release.dependencies.items())
+    else:
+        queue = [(name, None) for name in release.dependencies]
+    before = release.published_at
     seen = set()
     while queue:
-        name = queue.pop(0)
+        name, version = queue.pop(0)
         if name in seen:
             continue
         if len(seen) >= settings.RELEASE_MAX_DEPENDENCIES:
             errors.append(f"More than {settings.RELEASE_MAX_DEPENDENCIES} dependencies, the others are skipped")
             break
         seen.add(name)
-        dependency = latest_homebrew_formula(session, source, name)
+        try:
+            if version or before:
+                dependency = homebrew_formula_at(session, source, name, version=version, before=before)
+            else:
+                dependency = latest_homebrew_formula(session, source, name)
+        except (ReleaseError, requests.RequestException, KeyError, ValueError) as e:
+            if not (version or before):
+                raise
+            errors.append(f"Dependency {name}: {e}")
+            continue
         found[f"{name}@{dependency.version}"] = dependency
-        queue += dependency.dependencies or []
+        # a bottle's versions mostly name the indirect ones already (queued before, they win); not the ones of a
+        # bottle "all"
+        if isinstance(dependency.dependencies, dict):
+            queue += list(dependency.dependencies.items())
+        else:
+            queue += [(other, None) for other in dependency.dependencies or []]
     return found
 
 
@@ -1088,8 +1185,9 @@ def release_file(asset, match, path, sha256):
     return {"asset": asset, "match": list(match), "path": path, "sha256": sha256}
 
 
-def create_release_rules(source, release_version, binaries, enabled=None):
-    """enabled: None = as the source approves new versions"""
+def create_release_rules(source, release_version, binaries, enabled=None, existing=()):
+    """enabled: None = as the source approves new versions; existing: (rule type, identifier) of rules the version has
+    already, not created again"""
     if enabled is None:
         enabled = source.auto_approve and not release_version.auto_enable_pending
     rules = []
@@ -1099,6 +1197,8 @@ def create_release_rules(source, release_version, binaries, enabled=None):
         for key in rule_identifiers(source.rule_type, binary.info):
             binaries_of.setdefault(key, []).append(binary)
     for (rule_type, identifier), same in binaries_of.items():
+        if (rule_type, identifier) in existing:
+            continue
         binary = same[0]
         rule = Rule(
             rule_type=rule_type,
@@ -1369,9 +1469,23 @@ def uses_dependencies(source):
 
 
 def _release_of_version(session, source, identifier, version, latest):
-    """The release of a recorded version, for its dependencies: npm has every version; a formula only the current
-    one, its dependencies stand for the older versions too"""
-    if version.version == latest.version or source.kind != ReleaseSource.Kind.NPM_PACKAGE:
+    """The release of a recorded version, for its dependencies: npm has every version; a formula the older ones in
+    the Homebrew registry, with the dependency versions of their bottles, else the names of the current formula, for
+    the versions of their day"""
+    if version.version == latest.version:
+        return latest
+    if source.kind == ReleaseSource.Kind.HOMEBREW_FORMULA:
+        release = None
+        if not is_tap_identifier(identifier):
+            try:
+                release = homebrew_formula_at(session, source, identifier, version=version.version)
+            except ReleaseError:
+                pass
+        if release and release.dependencies:
+            return release
+        return Release(version=version.version, assets=[], published_at=version.published_at or version.created_at,
+                       dependencies=list(latest.dependencies or []))
+    if source.kind != ReleaseSource.Kind.NPM_PACKAGE:
         return latest
     response = session.get(f"{_npm_url(identifier)}/{version.version}", timeout=settings.RELEASE_HTTP_TIMEOUT)
     response.raise_for_status()
@@ -1379,7 +1493,8 @@ def _release_of_version(session, source, identifier, version, latest):
 
 
 def _add_dependencies(session, source, identifier, latest, errors):
-    """The dependencies of the versions recorded before the source allowed them (or before they were cleaned up)"""
+    """The dependencies of the versions recorded before the source allowed them (or before they were cleaned up, or
+    resolved again): they replace the ones the version had"""
     for version in source.versions.filter(identifier=identifier, dependencies_resolved=False).order_by(
             "-created_at")[:MAX_KEPT_VERSIONS_PER_SYNC]:
         release = _release_of_version(session, source, identifier, version, latest)
@@ -1393,24 +1508,41 @@ def _add_dependencies(session, source, identifier, latest, errors):
             binaries += found
             warnings += [f"{label}: {error}" for error in dependency_errors]
         own_rules = version.rules.filter(release_dependency="")
+        wanted = {key for binary in binaries for key in rule_identifiers(source.rule_type, binary.info)}
         with transaction.atomic():
+            # a rule of an unchanged binary stays: the Macs don't get it removed and added again
+            previous = list(version.rules.exclude(release_dependency="").only("pk", "rule_type", "identifier"))
+            obsolete = [rule.pk for rule in previous if (rule.rule_type, rule.identifier) not in wanted]
+            for chunk in chunked(obsolete):
+                Rule.objects.filter(pk__in=chunk).delete()
             # the dependencies follow the approval of the version: enabled when its own rules are (or it had none)
             create_release_rules(source, version, binaries, enabled=(
-                own_rules.filter(is_enabled=True).exists() if own_rules.exists() else None))
+                own_rules.filter(is_enabled=True).exists() if own_rules.exists() else None),
+                existing={(rule.rule_type, rule.identifier) for rule in previous})
+            own = {file.get("sha256") for rule in own_rules.only("release_files") for file in rule.release_files}
+            own.discard(None)
+            own.discard("")
+            added = {b.info.sha256 for b in binaries} - own
+            version.binary_count = len(own) + len(added)
+            version.dependency_binary_count = len(added)
+            version.notes = "\n".join(filter(None, [
+                _without_dependency_notes(version.notes, version.dependencies or []),
+                *[f"{b.dependency} – {b.asset}: {b.path} {b.info.sha256}" for b in binaries],
+                f"Dependencies: {', '.join(included)}" if included else "", *warnings]))[:10000]
             version.dependencies = included
             version.dependencies_resolved = True
-            added = len({b.info.sha256 for b in binaries})
-            version.binary_count += added
-            version.dependency_binary_count += added
-            notes = [f"{b.dependency} – {b.asset}: {b.path} {b.info.sha256}" for b in binaries]
-            if included:
-                notes.append(f"Dependencies: {', '.join(included)}")
-            version.notes = "\n".join(filter(None, [version.notes, *notes, *warnings]))[:10000]
             version.save(update_fields=["dependencies", "dependencies_resolved", "binary_count",
                                         "dependency_binary_count", "notes"])
         errors += [f"{version.version}: {warning}" for warning in warnings]
-        logger.info("Release source %s: %s version %s, %s dependencies added",
-                    source.name, identifier, version.version, len(included))
+        logger.info("Release source %s: %s version %s, %s dependencies, %s rules of others removed",
+                    source.name, identifier, version.version, len(included), len(obsolete))
+
+
+def _without_dependency_notes(notes, labels):
+    """The notes of a version without the lines of its previous dependencies"""
+    prefixes = ("Dependencies: ", "Dependency ", "More than ", *(f"{label} – " for label in labels),
+                *(f"{label}: " for label in labels))
+    return "\n".join(line for line in (notes or "").splitlines() if not line.startswith(prefixes))
 
 
 def kept_releases(source, releases, now=None):
@@ -1422,7 +1554,7 @@ def kept_releases(source, releases, now=None):
     return [release for release in releases if release.published_at and release.published_at >= cutoff]
 
 
-def _sync_kept_versions(session, source, identifier, errors):
+def _sync_kept_versions(session, source, identifier, errors, latest):
     """The older versions in the range to keep that have no rules yet"""
     limit = source.keep_versions if source.keep_unit == ReleaseSource.KeepUnit.VERSIONS else HISTORY_LIMIT
     known = dict(source.versions.filter(identifier=identifier).values_list("version", "published_at"))
@@ -1431,6 +1563,11 @@ def _sync_kept_versions(session, source, identifier, errors):
     releases = kept_releases(source, HISTORY[source.kind](session, source, identifier, limit, **options))
     new_versions = []
     missing = [release for release in releases if release.version not in known][:MAX_KEPT_VERSIONS_PER_SYNC]
+    if source.kind == ReleaseSource.Kind.HOMEBREW_FORMULA:
+        for release in missing:
+            # a bottle without its dependency versions: the ones of the current formula, in the versions of its day
+            if release.dependencies is None and release.published_at:
+                release.dependencies = list(latest.dependencies or [])
     # all their files at once, recorded one after the other
     collected = _collect_releases(session, source, [release for release in missing if release.assets])
     for release in missing:
@@ -1456,7 +1593,7 @@ def _sync_identifier(session, source, identifier):
     new_versions = [release_version] if release_version else []
     if source.approve_kept_versions and source.keep_versions and source.kind in HISTORY:
         try:
-            new_versions += _sync_kept_versions(session, source, identifier, errors)
+            new_versions += _sync_kept_versions(session, source, identifier, errors, release)
         except (ReleaseError, requests.RequestException, KeyError, ValueError) as e:
             errors.append(f"Older versions: {e}")
     if uses_dependencies(source):
