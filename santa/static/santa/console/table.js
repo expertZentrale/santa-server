@@ -19,6 +19,7 @@
       label.className = "select-all-cards";
       const box = document.createElement("input");
       box.type = "checkbox";
+      box.id = `${all.id || "select-all"}-cards`;
       box.dataset.selectAll = "";
       label.append(box, text);
       scroll.before(label);
@@ -115,13 +116,33 @@
     if (cardLayout.matches || !table.dataset.table) return;
     const cells = [...table.tHead.rows[0].cells];
     if (!cells.some((th) => th.getClientRects().length)) return;
+    const rows = [...(table.tBodies[0]?.rows || [])].filter((row) => !row.matches(".empty"));
     const layout = { table: table.getBoundingClientRect().width / rem(),
-                     widths: cells.map((th) => (th.getClientRects().length ? th.getBoundingClientRect().width / rem() : 0)) };
+                     widths: cells.map((th) => (th.getClientRects().length ? th.getBoundingClientRect().width / rem() : 0)),
+                     // the grey rows of the next load take their place: as many, as high, and the pages below
+                     rows: rows.length,
+                     rowHeight: rows.length ? table.tBodies[0].getBoundingClientRect().height / rows.length / rem() : 0,
+                     pages: !!table.closest("[data-list-rows]")?.querySelector(".pagination:not([data-pages-placeholder])") };
     try {
       sessionStorage.setItem(`santa.layout.${table.dataset.table}`, JSON.stringify(layout));
     } catch (error) {
       // private window or blocked storage: the grey rows have their own widths
     }
+  }
+
+  // the grey rows as the rows were last time (rememberLayout): their number and height, the pages bar if there was one
+  function skeletonLikeLast(table, layout) {
+    const body = table.tBodies[0];
+    const skeletons = [...(body?.rows || [])].filter((row) => row.matches(".skeleton"));
+    if (!skeletons.length || !layout.rows) return;
+    // never more than the page size of this load (the server renders that many)
+    const count = Math.min(layout.rows, skeletons.length);
+    while (body.querySelectorAll("tr.skeleton").length > count) body.querySelector("tr.skeleton:last-child").remove();
+    while (body.querySelectorAll("tr.skeleton").length < count) body.append(skeletons[0].cloneNode(true));
+    if (layout.rowHeight) {
+      body.querySelectorAll("tr.skeleton > td").forEach((td) => { td.style.height = `${layout.rowHeight}rem`; });
+    }
+    if (layout.pages) table.closest("[data-list-rows]")?.querySelector("[data-pages-placeholder]")?.removeAttribute("hidden");
   }
 
   function applyRememberedLayout(table) {
@@ -137,6 +158,7 @@
     cells.forEach((th, index) => { th.style.width = `${layout.widths[index]}rem`; });
     table.classList.add("fixed");
     table.style.width = `${layout.table}rem`;
+    skeletonLikeLast(table, layout);
     return true;
   }
 
@@ -166,9 +188,19 @@
     table.style.width = `${visible.reduce((sum, th) => sum + parseFloat(th.style.width), 0)}rem`;
   }
 
-  function applyHidden(table, settings) {
+  // optional columns added after a browser stored its choice (it knew the others): hidden there too, as by default
+  const LATER_OPTIONAL = new Set(["path", "group", "teamid"]);
+
+  function hiddenColumns(table, settings) {
     const optional = (table.dataset.optional || "").split(" ").filter(Boolean);
-    const hidden = new Set(settings.hidden || optional);
+    if (!settings.hidden) return new Set(optional);
+    const known = settings.known ? new Set(settings.known) : null;
+    return new Set([...settings.hidden,
+                    ...optional.filter((key) => (known ? !known.has(key) : LATER_OPTIONAL.has(key)))]);
+  }
+
+  function applyHidden(table, settings) {
+    const hidden = hiddenColumns(table, settings);
     let style = document.getElementById(`table-style-${table.dataset.table}`);
     if (!style) {
       style = document.createElement("style");
@@ -189,7 +221,76 @@
     if (!box) return;
     box.classList.remove("fits");
     box.classList.toggle("fits", box.scrollWidth <= box.clientWidth + 1);
+    measurePages();
+    updateScrollbar(box);
+    moveHeader(table);
   }
+
+  // A table wider than the page scrolls sideways in its box, the page alone scrolls down: the box's scrollbar is at
+  // the bottom of the window while the table is on screen (a box scrolling down too was a second vertical one)
+  function addScrollbar(box) {
+    if (box.nextElementSibling?.matches(".table-hscroll")) return;
+    const bar = document.createElement("div");
+    bar.className = "table-hscroll";
+    bar.setAttribute("aria-hidden", "true");
+    bar.hidden = true;
+    bar.append(document.createElement("div"));
+    box.after(bar);
+    box.classList.add("has-hscroll");
+    // its own scrollbar is hidden: the keyboard scrolls it
+    if (!box.hasAttribute("tabindex")) box.tabIndex = 0;
+    // one follows the other; the position set is the one it reports back, which ends it
+    bar.addEventListener("scroll", () => {
+      if (box.scrollLeft !== bar.scrollLeft) box.scrollLeft = bar.scrollLeft;
+    }, { passive: true });
+    box.addEventListener("scroll", () => {
+      if (bar.scrollLeft !== box.scrollLeft) bar.scrollLeft = box.scrollLeft;
+    }, { passive: true });
+  }
+
+  // the pages stay at the bottom of the window (sticky, not on phones): the scrollbar of a wide table and the bulk
+  // actions sit on them (table.css)
+  function measurePages() {
+    const pages = document.querySelector("main .pagination");
+    const sticky = pages && getComputedStyle(pages).position === "sticky";
+    document.body.style.setProperty("--pages-h", `${sticky ? pages.offsetHeight / rem() : 0}rem`);
+  }
+
+  function updateScrollbar(box) {
+    const bar = box.nextElementSibling;
+    if (!bar?.matches(".table-hscroll")) return;
+    bar.hidden = box.classList.contains("fits") || cardLayout.matches;
+    if (bar.hidden) return;
+    bar.style.width = `${box.offsetWidth / rem()}rem`;
+    bar.firstElementChild.style.width = `${box.scrollWidth / rem()}rem`;
+    bar.scrollLeft = box.scrollLeft;
+  }
+
+  // the header of a wide table under the top bar: CSS can't (sticky stops at the box that scrolls sideways)
+  function moveHeader(table) {
+    const box = table.closest(".table-scroll");
+    const cells = table.tHead ? [...table.tHead.rows[0].cells] : [];
+    if (!box || !cells.length) return;
+    let offset = 0;
+    if (!box.classList.contains("fits") && !cardLayout.matches && !table.classList.contains("compact")) {
+      const topbar = document.querySelector(".topbar")?.getBoundingClientRect().bottom || 0;
+      const rect = table.getBoundingClientRect();
+      const head = table.tHead.getBoundingClientRect().height;
+      const lastRow = table.tBodies[0]?.rows[table.tBodies[0].rows.length - 1]?.getBoundingClientRect().height || 0;
+      offset = Math.max(0, Math.min(topbar - rect.top, rect.height - head - lastRow));
+    }
+    const value = offset ? `translateY(${offset / rem()}rem)` : "";
+    if (cells[0].style.transform !== value) cells.forEach((th) => { th.style.transform = value; });
+  }
+
+  let headerFrame = 0;
+  window.addEventListener("scroll", () => {
+    if (headerFrame) return;
+    headerFrame = requestAnimationFrame(() => {
+      headerFrame = 0;
+      document.querySelectorAll("main .table-scroll:not(.fits) > table[data-table]").forEach(moveHeader);
+    });
+  }, { passive: true });
 
   // the width below which the tables are cards (table.css)
   const cardLayout = window.matchMedia("(max-width: 45em)");
@@ -296,6 +397,8 @@
       const label = document.createElement("label");
       const box = document.createElement("input");
       box.type = "checkbox";
+      // not sent with any form: an id, so the browser knows the field
+      box.id = `columns-${table.dataset.table || "table"}-${key}`;
       box.checked = !hidden.has(key);
       box.dataset.columnKey = key;
       label.append(box, ` ${th.textContent.trim()}`);
@@ -335,6 +438,7 @@
       if (!box) return;
       settings.hidden = [...panel.querySelectorAll("[data-column-key]")].filter((other) => !other.checked)
         .map((other) => other.dataset.columnKey);
+      settings.known = tableColumns(table).map((column) => column.key);
       applyHidden(table, settings);
       applyWidths(table, settings);
       updateFits(table);
@@ -367,6 +471,8 @@
       tools.append(picker);
       (table.closest(".table-scroll") || table).before(tools);
     }
+    const box = table.closest(".table-scroll");
+    if (box) addScrollbar(box);
     updateFits(table);
     rememberLayout(table);
   }

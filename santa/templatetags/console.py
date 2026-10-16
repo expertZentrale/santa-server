@@ -20,6 +20,21 @@ def as_switch(field):
     return field.as_widget(attrs={"role": "switch"})
 
 
+# the fields of the console are configuration: the browser offers no addresses or names of people for them; the
+# fields that are about a person (the user form) name their autocomplete in their widget
+AUTOCOMPLETE_TYPES = ("text", "search", "email", "url", "number", "password", "tel")
+
+
+@register.filter
+def form_widget(field):
+    """The widget of a field, with autocomplete="off" unless it names its own"""
+    widget = field.field.widget
+    if getattr(widget, "input_type", None) in AUTOCOMPLETE_TYPES or widget.__class__.__name__ == "Textarea":
+        if "autocomplete" not in widget.attrs:
+            return field.as_widget(attrs={"autocomplete": "off"})
+    return field
+
+
 @register.filter
 def policy_class(policy):
     return POLICY_CLASSES.get(policy, "")

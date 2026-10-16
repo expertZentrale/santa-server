@@ -1,3 +1,4 @@
+import logging
 import signal
 import threading
 
@@ -7,6 +8,8 @@ from django.core.management.base import BaseCommand
 from santa.models import ReleaseSource
 from santa.progress import SHUTDOWN, SHUTTING_DOWN, AlreadyRunning, run_source_check
 from santa.releases import ReleaseError, enable_due_releases, http_session, sync_release_source
+
+logger = logging.getLogger(__name__)
 
 LOCK_KEY = "santa:sync_release_sources"
 # held while the job runs, refreshed by a heartbeat: a job that was killed blocks the next run only this long
@@ -59,6 +62,12 @@ class Command(BaseCommand):
                     release_versions = e.new_versions
                     if not release_versions:
                         continue
+                except Exception as e:
+                    # one source never stops the others, nor enabling the due releases below
+                    failures += 1
+                    logger.exception("Release source %s: check failed", source)
+                    self.stderr.write(f"{source}: {type(e).__name__}: {e}")
+                    continue
                 for release_version in release_versions:
                     self.stdout.write(f"{release_version}: new version ({release_version.binary_count} binaries)")
                 if progress.cancelled_by == SHUTDOWN:

@@ -217,3 +217,18 @@ class ConsoleGroupsTestCase(ConsoleBase):
         self.assertContains(response, "Remounting needs at least one flag.")
         self.dev.refresh_from_db()
         self.assertEqual(self.dev.branding_company_logo, "")
+
+
+class GroupCountsTestCase(ConsoleBase):
+    def test_the_counts_of_a_group_with_macs_and_rules(self):
+        # counted apart: joined, the Macs and rules multiplied each other (seconds with thousands of rules)
+        Machine.objects.create(machine_id="M3", serial_number="C02THIRD", group=self.dev,
+                               last_postflight_at=timezone.now())
+        for identifier in (SHA_A, SHA_B, "c" * 64):
+            Rule.objects.create(rule_type=RuleType.BINARY, identifier=identifier).groups.add(self.dev)
+        response = self.client.get(reverse("console:groups"), {"q": "", "sort": "-rules"})
+        rows = {group.name: (group.machine_count, group.rule_count, bool(group.last_sync))
+                for group in response.context["page"]}
+        self.assertEqual(rows["Development"], (2, 3, True))
+        self.assertEqual(rows["Sales"], (1, 0, False))
+        self.assertEqual(next(iter(response.context["page"])).name, "Development")

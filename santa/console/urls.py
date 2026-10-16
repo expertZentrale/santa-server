@@ -5,6 +5,7 @@ from . import (
     views_event_packages,
     views_events,
     views_file_access,
+    views_filters,
     views_groups,
     views_history,
     views_progress,
@@ -17,6 +18,8 @@ app_name = "console"
 
 urlpatterns = [
     path("progress/<str:progress_id>/", views_progress.progress, name="progress"),
+    path("filters/macs/", views_filters.filter_macs, name="filter_macs"),
+    path("filters/users/", views_filters.filter_users, name="filter_users"),
     path("progress/<str:progress_id>/cancel/", views_progress.cancel, name="progress_cancel"),
 
     path("events/", views_events.events, name="events"),
@@ -26,6 +29,7 @@ urlpatterns = [
     path("events/packages/", views_event_packages.events_packages, name="events_packages"),
     path("events/<int:pk>/", views_events.event_detail, name="event"),
     path("events/<int:pk>/create-rule/", views_events.event_create_rule, name="event_create_rule"),
+    path("events/<int:pk>/add-signing-id/", views_events.event_add_signing_id, name="event_add_signing_id"),
 
     path("rules/", views_rules.rules, name="rules"),
     path("rules/bulk/", views_rules.rules_bulk, name="rules_bulk"),

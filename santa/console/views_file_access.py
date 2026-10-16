@@ -7,6 +7,7 @@ from django.utils.translation import gettext
 from django.views.decorators.http import require_POST
 
 from ..models import FileAccessRule, FileAccessRuleType, Group, with_child_groups, with_parent_groups
+from ..services import groups_prefetch
 from .filters import Facet, chosen, filter_bar, remember_filters
 from .forms import FileAccessProcessFormSet, FileAccessRuleForm
 from .utils import (
@@ -43,7 +44,7 @@ def file_access_rules(request):
     require_perms(request, "view_fileaccessrule")
     if remembered := remember_filters(request, "file-access"):
         return remembered
-    queryset = (FileAccessRule.objects.prefetch_related("groups")
+    queryset = (FileAccessRule.objects.prefetch_related(groups_prefetch())
                                       .annotate(process_count=Count("processes", distinct=True)))
     if groups := [value for value in chosen(request.GET, "group") if value.isdigit()]:
         # the rules in the profile of the group: also the ones of the parent it takes them from

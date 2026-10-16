@@ -18,12 +18,12 @@
         <td><a href="{% url 'console:rules' %}?version={{ version.pk }}">{{ version.binary_count }}</a></td>
         <td>{% if not version.binary_count %}<span class="muted">{% translate "no executable, nothing to allow" %}</span>
           {% elif version.auto_enable_pending %}<span class="badge info">{% blocktranslate with date=version.auto_enable_at|date:"d.m.Y H:i" %}automatic on {{ date }}{% endblocktranslate %}</span>
-          {% else %}{% for rule in version.rules.all|slice:":1" %}{% if rule.is_enabled %}<span class="badge ok">{% translate "enabled" %}</span>{% else %}<span class="badge">{% translate "waiting / disabled" %}</span>{% endif %}{% endfor %}{% endif %}</td>
+          {% elif version.rules_enabled %}<span class="badge ok">{% translate "enabled" %}</span>{% else %}<span class="badge">{% translate "waiting / disabled" %}</span>{% endif %}</td>
         {# only the action that changes something: approve a waiting version, disable an enabled one #}
-        <td class="nowrap">{% if perms.santa.change_rule and version.binary_count %}{% with rule=version.rules.all.0 %}
-          {% if rule.is_enabled %}<form method="post" action="{% url 'console:version_disable' version.pk %}" class="inline"{% if in_drawer %} hx-post="{% url 'console:version_disable' version.pk %}" hx-target="#drawer"{% endif %}>{% csrf_token %}<button class="button small">{% translate "Disable" %}</button></form>
+        <td class="nowrap">{% if perms.santa.change_rule and version.binary_count %}
+          {% if version.rules_enabled %}<form method="post" action="{% url 'console:version_disable' version.pk %}" class="inline"{% if in_drawer %} hx-post="{% url 'console:version_disable' version.pk %}" hx-target="#drawer"{% endif %}>{% csrf_token %}<button class="button small">{% translate "Disable" %}</button></form>
           {% else %}<form method="post" action="{% url 'console:version_approve' version.pk %}" class="inline"{% if in_drawer %} hx-post="{% url 'console:version_approve' version.pk %}" hx-target="#drawer"{% endif %}>{% csrf_token %}<button class="button small">{% if version.auto_enable_pending %}{% translate "Approve now" %}{% else %}{% translate "Approve" %}{% endif %}</button></form>{% endif %}
-        {% endwith %}{% endif %}</td>
+        {% endif %}</td>
       </tr>
     {% empty %}
       <tr class="empty"><td colspan="5">{% translate "No version yet. Use “Check now”." %}</td></tr>

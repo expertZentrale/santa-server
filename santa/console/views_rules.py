@@ -1,11 +1,13 @@
 import csv
 import json
 from dataclasses import asdict
+from itertools import batched
 
 from django.contrib import messages
 from django.core import signing
 from django.db import transaction
 from django.db.models import Case, IntegerField, Q, Value, When, prefetch_related_objects
+from django.db.models.functions import Coalesce, NullIf
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -21,7 +23,9 @@ from ..services import (
     allow_binaries,
     binary_identifiers,
     existing_rules_for_binaries,
+    groups_prefetch,
     is_allowed,
+    machines_prefetch,
     set_rules_enabled,
     set_rules_policy,
 )
@@ -34,6 +38,7 @@ from .filters import (
     date_range,
     filter_bar,
     in_range,
+    lookup_values,
     remember_filters,
 )
 from .forms import SCOPE_GLOBAL, SCOPE_GROUPS, RuleBulkForm, RuleForm, UploadCheckForm, UploadRulesForm
@@ -53,13 +58,22 @@ from .utils import (
     sort_by,
     staff_required,
 )
+from .views_filters import machine_choices
 
 RULE_COLUMNS = {"identifier": "identifier", "type": "rule_type", "policy": "policy", "created": "created_at",
                 "enabled": "is_enabled"}
 
 
+# The filters on groups, tags and Macs are subqueries, not joins: a join repeats a rule per group or tag, and the
+# DISTINCT that removes them again sorts every whole row (seconds with 25,000 rules on SQL Server)
+def rules_of(through, **lookup):
+    """Q: the rules with a row in the M2M table (Rule.groups.through…) matching the lookup"""
+    return Q(pk__in=through.objects.filter(**lookup).values("rule_id"))
+
+
 # the scopes of the filter besides the groups (their pks)
-SCOPE_CONDITIONS = {"global": Q(is_global=True), "machines": Q(is_global=False, machines__isnull=False)}
+SCOPE_CONDITIONS = {"global": Q(is_global=True),
+                    "machines": Q(is_global=False) & rules_of(Rule.machines.through)}
 
 
 def filter_rules(request, rules):
@@ -69,12 +83,13 @@ def filter_rules(request, rules):
         rules = rules.filter(rule_type__in=rule_types)
     if policies := chosen(params, "policy", Policy.values):
         rules = rules.filter(policy__in=policies)
-    scope = any_of([SCOPE_CONDITIONS[value] if value in SCOPE_CONDITIONS else Q(groups__id=value)
+    scope = any_of([SCOPE_CONDITIONS[value] if value in SCOPE_CONDITIONS
+                    else rules_of(Rule.groups.through, group_id=value)
                     for value in chosen(params, "scope") if value in SCOPE_CONDITIONS or value.isdigit()])
     if scope is not None:
         rules = rules.filter(scope)
     if tags := [value for value in chosen(params, "tag") if value.isdigit()]:
-        rules = rules.filter(tags__id__in=tags)
+        rules = rules.filter(rules_of(Rule.tags.through, tag_id__in=tags))
     # both ticked is the same as none
     enabled = chosen(params, "enabled", ["yes", "no"])
     if len(enabled) == 1:
@@ -86,10 +101,41 @@ def filter_rules(request, rules):
     rules = in_range(rules, "created_at", start, end)
     if params.get("version", "").isdigit():
         rules = rules.filter(release_version_id=params["version"])
+    machines, exclude = lookup_values(params, "machine")
+    if machines := [value for value in machines[:RULE_LOOKUP_VALUES] if value.isdigit()]:
+        rules = _on_machines(rules, Machine.objects.filter(pk__in=machines), exclude)
+    users, exclude = lookup_values(params, "user")
+    if users := users[:RULE_LOOKUP_VALUES]:
+        # the Macs of the users (their owner, MachineOwner of the profile)
+        rules = _on_machines(rules, Machine.objects.filter(primary_user__in=users), exclude)
     q = params.get("q", "").strip()
     if q:
-        rules = rules.filter(Q(identifier__icontains=q) | Q(description__icontains=q) | Q(tags__name__iexact=q))
-    return rules.distinct()
+        rules = rules.filter(Q(identifier__icontains=q) | Q(description__icontains=q)
+                             | rules_of(Rule.tags.through, tag__name__iexact=q))
+    return rules
+
+
+# the values of a Mac or user filter of the rules: each goes into three subqueries (_on_machines), both filters
+# together stay within the 2100 parameters of SQL Server
+RULE_LOOKUP_VALUES = 300
+
+
+def _on_machines(rules, machines, exclude):
+    """The rules the Macs get at their sync (or, exclude: the rules none of them gets): global, of their groups and
+    of the parents they take the rules of, directly for them. Enabled or not: the scope decides."""
+    if not machines.exists():
+        # no Macs (an owner without any, a deleted one): they get nothing, so nothing is excluded either
+        return rules if exclude else rules.none()
+    # the Macs, their groups and the parents of those are subqueries, no lists: an owner can have thousands of Macs
+    # in thousands of groups, and SQL Server takes at most 2100 parameters per query (each subquery repeats the
+    # values of the filter: RULE_LOOKUP_VALUES)
+    reach = (Q(is_global=True) | rules_of(Rule.groups.through, group_id__in=machines.values("group_id"))
+             | rules_of(Rule.groups.through, group_id__in=machines.filter(
+                 group__inherit_rules=True, group__parent__isnull=False).values("group__parent_id"))
+             | rules_of(Rule.machines.through, machine__in=machines.values("pk")))
+    if exclude:
+        return rules.exclude(pk__in=Rule.objects.filter(reach).values("pk"))
+    return rules.filter(reach)
 
 
 @staff_required
@@ -98,9 +144,10 @@ def rules(request):
     if remembered := remember_filters(request, "rules"):
         return remembered
     queryset, sort = sort_by(request, filter_rules(request, Rule.objects.all()), RULE_COLUMNS, "-created")
-    queryset = queryset.select_related("release_source", "created_by").prefetch_related("groups", "tags", "machines")
+    queryset = queryset.select_related("release_source", "created_by").prefetch_related(
+        groups_prefetch(), "tags", machines_prefetch())
     page = None if defer_rows(request) else paginate(request, queryset)
-    groups = Group.objects.order_by("name")
+    groups = Group.objects.order_by("name").only("id", "name")
     facets = [
         Facet("type", gettext("Type"), choices=RuleType.choices),
         Facet("policy", gettext("Policy"), choices=Policy.choices),
@@ -112,6 +159,11 @@ def rules(request):
                                                     ("package", gettext("From package rules"))]),
         Facet("enabled", gettext("Status"), choices=[("yes", gettext("Enabled")),
                                                       ("no", gettext("Disabled / waiting"))]),
+        Facet("machine", gettext("Mac"), kind="lookup", choices=machine_choices(request.GET, RULE_LOOKUP_VALUES),
+              lookup_url=reverse("console:filter_macs"), max_values=RULE_LOOKUP_VALUES),
+        Facet("user", gettext("User"), kind="lookup",
+              choices=[(user, user) for user in chosen(request.GET, "user")[:RULE_LOOKUP_VALUES]],
+              lookup_url=f"{reverse('console:filter_users')}?source=machines", max_values=RULE_LOOKUP_VALUES),
         Facet("created", gettext("Created"), kind="time", choices=TIME_PRESETS, from_name="created_from",
               to_name="created_to"),
     ]
@@ -128,6 +180,17 @@ def rules(request):
     })
 
 
+EXPORT_CHUNK = 2000
+
+
+def _names_of(pairs):
+    """{rule pk: [names]} of (rule pk, name) rows"""
+    names = {}
+    for rule_id, name in pairs:
+        names.setdefault(rule_id, []).append(name)
+    return names
+
+
 # a spreadsheet would run a cell starting with one of these as a formula
 CSV_FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
 
@@ -142,7 +205,14 @@ def rules_export(request):
     """The rules of the list with its filters, all pages, as CSV"""
     require_perms(request, "view_rule")
     queryset, _sort = sort_by(request, filter_rules(request, Rule.objects.all()), RULE_COLUMNS, "-created")
-    queryset = queryset.select_related("release_source", "created_by").prefetch_related("groups", "tags", "machines")
+    # tens of thousands of rows: only the columns of the file, the related names only
+    queryset = queryset.select_related("release_source", "created_by").only(
+        "rule_type", "identifier", "policy", "is_global", "is_enabled", "description", "created_at",
+        "release_source__name", "created_by__username",
+    )
+    # the labels translated once, not per row
+    rule_types, policies = {k: str(v) for k, v in RuleType.choices}, {k: str(v) for k, v in Policy.choices}
+    everywhere, yes, no = gettext("All Macs"), gettext("yes"), gettext("no")
     response = HttpResponse(content_type="text/csv; charset=utf-8")
     response["Content-Disposition"] = f'attachment; filename="santa-rules-{timezone.localdate():%Y-%m-%d}.csv"'
     # the BOM makes Excel read UTF-8
@@ -151,19 +221,27 @@ def rules_export(request):
     writer.writerow([gettext("Type"), gettext("Identifier"), gettext("Policy"), gettext("Scope"), gettext("Tags"),
                      gettext("Enabled"), gettext("Package rule"), gettext("Comment"), gettext("Created"),
                      gettext("Created by")])
-    for rule in queryset.iterator(chunk_size=500):
-        if rule.is_global:
-            scope = gettext("All Macs")
-        else:
-            scope = ", ".join([group.name for group in rule.groups.all()]
-                              + [machine.hostname or machine.serial_number for machine in rule.machines.all()])
-        writer.writerow([csv_cell(value) for value in (
-            rule.get_rule_type_display(), rule.identifier, rule.get_policy_display(), scope,
-            ", ".join(tag.name for tag in rule.tags.all()), gettext("yes") if rule.is_enabled else gettext("no"),
-            rule.release_source.name if rule.release_source else "", rule.description,
-            timezone.localtime(rule.created_at).strftime("%Y-%m-%d %H:%M"),
-            rule.created_by.get_username() if rule.created_by else "",
-        )])
+    # in blocks: the names of their groups, Macs and tags read at once (a prefetch builds objects per rule), the
+    # pks within the 2100 parameters of SQL Server
+    for chunk in batched(queryset.iterator(chunk_size=EXPORT_CHUNK), EXPORT_CHUNK):
+        pks = [rule.pk for rule in chunk]
+        groups = _names_of(Rule.groups.through.objects.filter(rule_id__in=pks).order_by("group__name")
+                           .values_list("rule_id", "group__name"))
+        machines = _names_of(Rule.machines.through.objects.filter(rule_id__in=pks).order_by("machine__serial_number")
+                             .values_list("rule_id", Coalesce(NullIf("machine__hostname", Value("")),
+                                                              "machine__serial_number")))
+        tags = _names_of(Rule.tags.through.objects.filter(rule_id__in=pks).order_by("tag__name")
+                         .values_list("rule_id", "tag__name"))
+        for rule in chunk:
+            scope = everywhere if rule.is_global else ", ".join(groups.get(rule.pk, []) + machines.get(rule.pk, []))
+            writer.writerow([csv_cell(value) for value in (
+                rule_types.get(rule.rule_type, rule.rule_type), rule.identifier,
+                policies.get(rule.policy, rule.policy), scope, ", ".join(tags.get(rule.pk, [])),
+                yes if rule.is_enabled else no,
+                rule.release_source.name if rule.release_source else "", rule.description,
+                timezone.localtime(rule.created_at).strftime("%Y-%m-%d %H:%M"),
+                rule.created_by.get_username() if rule.created_by else "",
+            )])
     return response
 
 
@@ -273,7 +351,7 @@ def rules_existing(request):
     rules = []
     if identifier and request.GET.get("rule_type") in RuleType.values:
         rules = (Rule.objects.filter(rule_type=request.GET["rule_type"], identifier__iexact=identifier)
-                             .prefetch_related("groups", "machines")[:10])
+                             .prefetch_related(groups_prefetch(), machines_prefetch())[:10])
     # "applies" only means something for a binary of an event
     return render(request, "console/rules/_existing.html", {"matches": [{"rule": rule, "applies": True}
                                                                         for rule in rules], "same_identifier": True})
@@ -293,9 +371,9 @@ def rule_suggestions(request):
         rank = Case(When(identifier__iexact=q, then=Value(0)), When(identifier__istartswith=q, then=Value(1)),
                     default=Value(2), output_field=IntegerField())
         rules = list(Rule.objects.filter(Q(identifier__icontains=q) | Q(description__icontains=q)
-                                         | Q(tags__name__icontains=q))
-                     .annotate(rank=rank).distinct().order_by("rank", "identifier", "pk")[:MAX_RULE_SUGGESTIONS])
-        prefetch_related_objects(rules, "groups", "machines")
+                                         | rules_of(Rule.tags.through, tag__name__icontains=q))
+                     .annotate(rank=rank).order_by("rank", "identifier", "pk")[:MAX_RULE_SUGGESTIONS])
+        prefetch_related_objects(rules, groups_prefetch(), machines_prefetch())
     return render(request, "console/rules/_suggestions.html", {"rules": rules, "query": q})
 
 

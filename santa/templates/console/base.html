@@ -23,6 +23,7 @@
   <script src="{% static 'santa/console/suggestions.js' %}" defer></script>
   <script src="{% static 'santa/console/tags.js' %}" defer></script>
   <script src="{% static 'santa/console/chips.js' %}" defer></script>
+  <script src="{% static 'santa/console/tabs.js' %}" defer></script>
   <script src="{% static 'santa/console/cel.js' %}" defer></script>
   {% if christmas %}<link rel="stylesheet" href="{% static 'santa/console/christmas.css' %}">
   <script src="{% static 'santa/console/christmas.js' %}" defer></script>{% endif %}
@@ -135,7 +136,11 @@
   {% block content %}{% endblock %}
 </main>
 <aside id="drawer" class="drawer" aria-live="polite"></aside>
+{# the arrows of a tab bar that scrolls sideways (tabs.js); the tabs themselves stay reachable with Tab #}
+<template id="tabs-arrows"><button type="button" class="tabs-arrow left" data-tabs-scroll="-1" tabindex="-1" aria-hidden="true" title="{% translate 'More to the left' %}">‹</button><button type="button" class="tabs-arrow right" data-tabs-scroll="1" tabindex="-1" aria-hidden="true" title="{% translate 'More to the right' %}">›</button></template>
 <template id="table-texts" data-resize="{% translate 'Resize column' %}" data-columns="{% translate 'Columns' %}" data-reset="{% translate 'Reset widths and columns' %}" data-select-all="{% translate 'Select all' %}"></template>
+{# what the drawer shows at once while a view loads (drawer.js) #}
+<template id="drawer-loading"><div class="drawer-panel drawer-loading" data-drawer-loading aria-busy="true"><span class="sr-only">{% translate "Loading…" %}</span><div class="drawer-head"><div><span class="skeleton-bar title"></span><span class="skeleton-bar short"></span></div></div><div class="skeleton-card"><span class="skeleton-bar"></span><span class="skeleton-bar short"></span><span class="skeleton-bar"></span><span class="skeleton-bar short"></span><span class="skeleton-bar"></span></div></div></template>
 <template id="drawer-back"><button type="button" class="icon-button" data-drawer-back title="{% translate 'Back' %}" aria-label="{% translate 'Back' %}">{% include "console/icons/chevron-left.svg" %}</button></template>
 {% if user.is_staff %}{% tag_names as names %}{{ names|json_script:"tag-names" }}{% endif %}
 </body>

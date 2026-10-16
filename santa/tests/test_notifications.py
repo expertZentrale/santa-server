@@ -86,7 +86,7 @@ class NotificationsTestCase(ConsoleBase):
         self.assertEqual(mail.outbox, [])
 
     def test_failing_source_mails_once(self):
-        def fail(session, source, identifier):
+        def fail(session, source, identifier, **kwargs):
             raise ReleaseError("formulae.brew.sh is down")
 
         with patch("santa.releases._sync_identifier", side_effect=fail):

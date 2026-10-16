@@ -1,16 +1,19 @@
 /* The filter bar (widgets/_filter_bar.html): a fixed toolbar, below it the chips of the active filters */
-.filter-bar { display: grid; gap: .6rem; margin-bottom: 1rem; }
+/* minmax: the column no wider than the page, whatever a chip says */
+.filter-bar { display: grid; grid-template-columns: minmax(0, 1fr); gap: .6rem; margin-bottom: 1rem; }
 .filter-toolbar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
 .filter-toolbar input[type="search"] { flex: 1 1 16rem; min-width: 12rem; max-width: 30rem; }
 .filter-tools { display: flex; gap: .5rem; align-items: center; margin-left: auto; }
 .filter-chips { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; min-height: var(--control-h-sm); }
-.filter-chip { display: inline-flex; align-items: center; border: 1px solid var(--control-border); border-radius: 999px; background: var(--surface); }
+/* a long text (Macs with long names, "+298") ends in "…": a chip wider than a phone widened the whole page */
+.filter-chip { display: inline-flex; align-items: center; max-width: 100%; border: 1px solid var(--control-border); border-radius: 999px; background: var(--surface); }
+.filter-chip > .filter-chip-picker { min-width: 0; }
 .filter-chip[data-active] { border-color: var(--accent); background: var(--info-bg); }
 /* chosen, but not filtering ("all") */
 .filter-chip:not([data-active]) .filter-chip-label { color: var(--muted); }
 .filter-chip:not([data-active]) strong { font-weight: 400; }
 .filter-chip[hidden] { display: none; }
-.filter-chip-label { display: inline-block; padding: .25rem .7rem; font-size: .875em; cursor: pointer; list-style: none; white-space: nowrap; }
+.filter-chip-label { display: inline-block; max-width: 100%; padding: .25rem .7rem; font-size: .875em; cursor: pointer; list-style: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: top; }
 .filter-chip-label::-webkit-details-marker { display: none; }
 .filter-chip-label strong { font-weight: 600; }
 .filter-chip-remove { padding: .2rem .6rem .2rem .1rem; color: var(--muted); font-size: 1.05rem; line-height: 1; }
@@ -56,7 +59,8 @@
 @media (max-width: 40em) {
   .filter-toolbar input[type="search"] { flex-basis: 100%; min-width: 0; max-width: none; }
   .filter-tools { margin-left: 0; }
-  /* the menus of the bar: as wide as the window below their button, wherever the button is */
+  /* the menus of the bar: as wide as the window below their button, wherever the button is (its top and height:
+     filterbar.js) */
   .filter-bar .picker.down .picker-panel, .filter-tools .picker.down .picker-panel {
     position: fixed; top: auto; left: 1rem; right: 1rem; min-width: 0; margin-top: .5rem; max-height: 60vh; overflow-y: auto;
   }
@@ -66,3 +70,15 @@
   .saved-filter-new { flex-wrap: wrap; }
   .saved-filter-new input { flex-basis: 8rem; }
 }
+/* a lookup filter (Mac, user): "is / is not", the chosen ones, a search for more (widgets.css styles the labels of a
+   panel, loaded after this file: hence .picker-panel in front) */
+.lookup-mode { justify-self: start; margin-bottom: .3rem; }
+.picker-panel .lookup-mode label { gap: 0; padding: .3rem .8rem; border-radius: 0; font-size: .875rem; color: var(--muted); }
+.lookup-mode input { position: absolute; opacity: 0; pointer-events: none; }
+.picker-panel .lookup-mode label:has(input:checked) { background: var(--accent); color: var(--accent-text); }
+.lookup-mode label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }
+.lookup-search { width: 100%; margin: .3rem 0 .2rem; }
+.lookup-options { display: grid; max-height: 15rem; overflow-y: auto; }
+.lookup-options label small { margin-left: .3rem; }
+.filter-chip-picker .picker-panel:has(.lookup-search) { min-width: min(20rem, calc(100vw - 2rem)); }
+.picker-panel .lookup-options label { white-space: normal; overflow-wrap: anywhere; }

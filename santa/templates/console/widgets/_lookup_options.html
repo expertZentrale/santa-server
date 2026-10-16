@@ -1,0 +1,3 @@
+{% load i18n %}{# The hits of a lookup filter (views_filters): the chosen ones first, ticked; ticked, they go with the filter when the chip closes #}
+{% for value, label, note, checked in options %}<label><input type="checkbox" name="{{ name }}" value="{{ value }}"{% if checked %} checked{% endif %}> {{ label }}{% if note %} <small class="muted">{{ note }}</small>{% endif %}</label>
+{% empty %}<p class="muted small">{% translate "Nothing found." %}</p>{% endfor %}

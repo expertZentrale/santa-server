@@ -9,11 +9,22 @@ from django.utils import timezone
 from django.utils.translation import gettext, ngettext
 from django.views.decorators.http import require_POST
 
-from ..models import NEEDS_RULE, AccessRequest, Event, Group, Machine, RuleType
+from ..cel import signing_prefix
+from ..models import NEEDS_RULE, AccessRequest, Event, Group, Rule, RuleType
 from ..package_detection import package_hints
 from ..progress import Progress, progress_for
-from ..services import allow_identifier, existing_rules, is_allowed
-from .filters import TIME_DAYS, TIME_PRESETS, Facet, chosen, date_range, filter_bar, in_range, remember_filters
+from ..services import SigningIdError, add_signing_prefix, allow_identifier, existing_rules, is_allowed, widen_rule
+from .filters import (
+    TIME_DAYS,
+    TIME_PRESETS,
+    Facet,
+    chosen,
+    date_range,
+    filter_bar,
+    in_range,
+    lookup_values,
+    remember_filters,
+)
 from .forms import SCOPE_GLOBAL, SCOPE_GROUPS, SCOPE_MACHINES, EventRuleForm
 from .utils import (
     defer_rows,
@@ -29,6 +40,7 @@ from .utils import (
     sort_by,
     staff_required,
 )
+from .views_filters import MAX_LOOKUP_VALUES, machine_choices
 
 UPDATE_ROWS_LIMIT = 100
 EVENT_COLUMNS = {"time": "execution_time", "decision": "decision", "file": "file_name",
@@ -101,10 +113,12 @@ def filter_events(request, events):
         events = events.filter(group_id__in=groups)
     if decisions := chosen(params, "decision"):
         events = events.filter(decision__in=decisions)
-    if params.get("machine", "").isdigit():
-        events = events.filter(machine_id=params["machine"])
-    if params.get("user"):
-        events = events.filter(executing_user=params["user"])
+    machines, exclude = lookup_values(params, "machine")
+    if machines := [value for value in machines[:MAX_LOOKUP_VALUES] if value.isdigit()]:
+        events = events.exclude(machine_id__in=machines) if exclude else events.filter(machine_id__in=machines)
+    users, exclude = lookup_values(params, "user")
+    if users := users[:MAX_LOOKUP_VALUES]:
+        events = events.exclude(executing_user__in=users) if exclude else events.filter(executing_user__in=users)
     if params.get("sha256"):
         events = events.filter(file_sha256=params["sha256"].lower())
     start, end = date_range(params, "days", TIME_DAYS, "7")
@@ -132,7 +146,8 @@ def resolved_status(params):
 
 
 def event_facets(request, view):
-    """The filters of the bar; sha256, machine and user come from links (e.g. "events" of a blocked app)"""
+    """The filters of the bar; sha256 comes from links (e.g. "events" of a blocked app), machine and user from links
+    or the search of their chip"""
     params = request.GET
     facets = [Facet("group", gettext("Group"), choices=Group.objects.order_by("name").values_list("pk", "name"))]
     if view == "all":
@@ -145,13 +160,16 @@ def event_facets(request, view):
     ]
     if sha256 := params.get("sha256", ""):
         facets.append(Facet("sha256", gettext("Binary"), kind="fixed", text=f"{sha256[:12]}…"))
-    if (machine := params.get("machine", "")).isdigit():
-        found = Machine.objects.filter(pk=machine).first()
-        facets.append(Facet("machine", gettext("Mac"), kind="fixed",
-                            text=(found.hostname or found.serial_number) if found else machine))
-    if params.get("user"):
-        facets.append(Facet("user", gettext("User"), kind="fixed"))
+    facets += [
+        Facet("machine", gettext("Mac"), kind="lookup", choices=machine_choices(params),
+              lookup_url=reverse("console:filter_macs"), max_values=MAX_LOOKUP_VALUES),
+        Facet("user", gettext("User"), kind="lookup",
+              choices=[(user, user) for user in chosen(params, "user")[:MAX_LOOKUP_VALUES]],
+              lookup_url=f"{reverse('console:filter_users')}?source=events", max_values=MAX_LOOKUP_VALUES),
+    ]
     return facets
+
+
 
 
 def filter_context(request):
@@ -219,6 +237,8 @@ def annotate_app_rows(rows):
     for row in rows:
         row["has_request"] = row["file_sha256"] in pending
         row["rules"] = matches.get(row["file_sha256"], [])
+        # only Team ID rules of signing ID prefixes that leave this one out: they block it, no "rule exists"
+        row["signing_id_missing"] = bool(row["rules"]) and all(match["cel"] is False for match in row["rules"])
         row["package"] = packages.get(row["file_sha256"])
 
 
@@ -261,24 +281,69 @@ def event_detail(request, pk):
     return render(request, template, {"event": event, "same_binary": same_binary, "form": event_rule_form([[event]]),
                                       "requests": event.access_requests.select_related("requester"),
                                       "matches": matches,
+                                      # without a signing ID there is nothing to add
+                                      "add_signing_url": reverse("console:event_add_signing_id", args=(event.pk,))
+                                      if event.signing_id else "",
                                       "package": package_hints([event]).get(event.file_sha256)})
 
 
-def event_rule_form(rows, data=None, preview=True, initial=None, include=None):
+@staff_required
+@require_POST
+def event_add_signing_id(request, pk):
+    """The signing ID of the event added to a Team ID rule of signing ID prefixes ("only signing IDs starting
+    with"), which blocks it so far"""
+    require_perms(request, "view_event", "change_rule")
+    event = get_object_or_404(Event, pk=pk)
+    rule = get_object_or_404(Rule, pk=request.POST.get("rule"), rule_type=RuleType.TEAMID, identifier=event.team_id)
+    try:
+        prefix = add_signing_prefix(rule, event.signing_id, request.user)
+    except SigningIdError as e:
+        messages.error(request, str(e))
+    else:
+        if prefix:
+            log_change(request.user, rule, f"Signing ID prefix {prefix} added from event {event.pk}")
+            messages.success(request, gettext("%(signing_id)s added to the rule of the team %(team_id)s.")
+                             % {"signing_id": event.signing_id, "team_id": rule.identifier})
+    return drawer_done(request, reverse("console:event", args=(event.pk,)), open_in_drawer=True)
+
+
+def signing_rules_of(matches, rows):
+    """{SHA-256: the Team ID rule of signing ID prefixes that leaves the binary out and can take its signing ID}
+    (existing_rules() of the binaries, rows: their events); not a rule of a package rule, which writes its rules
+    itself, nor for a binary without a signing ID"""
+    rules = {}
+    for row in rows:
+        sha = row[0].file_sha256
+        for match in matches.get(sha, []):
+            if (match["cel"] is False and not match["rule"].release_source_id
+                    and signing_prefix(match["rule"], row[0].signing_id)):
+                rules[sha] = match["rule"]
+                break
+    return rules
+
+
+def event_rule_form(rows, data=None, preview=True, initial=None, include=None, signing_rules=None, add_signing=None):
     """The rule form for the binaries of some events (rows: the events grouped by binary)
 
     preview: the identifier under the rule type (one event; the list of binaries shows its own)
     initial / include: the values and the checked binaries to show (the drawer after a change of the selection)
+    signing_rules / add_signing: the binaries that can have their signing ID added to a Team ID rule, the ones
+    checked (by default the ones still blocked, see the view)
     """
     events = [event for row in rows for event in row]
     types = [rule_type for rule_type in RuleType.values if any(rule_type in available_rule_types(row[0])
                                                                  for row in rows)]
     # groups: "this Mac" is for tests and exceptions
+    signing_rules = signing_rules or {}
+    add_signing = add_signing or []
     defaults = {"groups": sorted({event.group_id for event in events}), "scope": SCOPE_GROUPS,
-                "include": include if include is not None else [row[0].file_sha256 for row in rows]}
+                "include": [sha for sha in (include if include is not None else [row[0].file_sha256 for row in rows])
+                            if sha not in add_signing],
+                "add_signing": add_signing}
     if len(rows) == 1:
         defaults["rule_type"] = default_rule_type(rows[0][0])
-    form = EventRuleForm(data, rows=rows, initial={**defaults, **(initial or {})}, available_types=types)
+    form = EventRuleForm(data, rows=rows, initial={**defaults, **(initial or {})}, available_types=types,
+                         signing_rules=signing_rules)
     if len(rows) == 1 and preview:
         show_rule_preview(form.fields["rule_type"], rows[0][0])
     return form
@@ -311,12 +376,28 @@ def rule_from_event(user, event, rule_type, policy, scope, groups, tags, descrip
 
 
 def save_event_rules(user, form, progress=None):
-    """The rules of the included binaries. Returns (saved, created)."""
+    """The rules of the included binaries, and the signing IDs added to their Team ID rules with the scope of the
+    form. Returns (saved, created, failed): failed, [(row, message)] of the signing IDs that couldn't be added."""
     data = form.cleaned_data
     progress = progress or Progress()
     rows = form.included_rows()
-    progress.add_total(len(rows))
+    signing_rows = form.signing_rows()
+    progress.add_total(len(rows) + len(signing_rows))
     saved = created = 0
+    failed = []
+    for row, rule in signing_rows:
+        progress.start(row[0].bundle_name or row[0].file_name or row[0].file_path)
+        machines = list({event.machine for event in row})
+        try:
+            prefix = add_signing_prefix(rule, row[0].signing_id, user)
+        except SigningIdError as e:
+            failed.append((row, str(e)))
+            continue
+        widen_rule(rule, data["scope"] == SCOPE_GLOBAL, data["groups"] if data["scope"] == SCOPE_GROUPS else [],
+                   machines if data["scope"] == SCOPE_MACHINES else [], user)
+        log_change(user, rule, f"{f'Signing ID prefix {prefix} added, s' if prefix else 'S'}cope extended from "
+                               f"event {row[0].pk}")
+        saved += 1
     for row in rows:
         progress.start(row[0].bundle_name or row[0].file_name or row[0].file_path)
         result = rule_from_event(user, row[0], rule_type_for(row[0], data["rule_type"]), data["policy"],
@@ -325,7 +406,7 @@ def save_event_rules(user, form, progress=None):
         if result:
             saved += 1
             created += result[1]
-    return saved, created
+    return saved, created, failed
 
 
 @staff_required
@@ -358,6 +439,7 @@ def _binaries(rows, matches):
     """The binaries of the form with what their rule would use for every rule type (forms.js shows the chosen one)"""
     return [{
         "matches": matches.get(row[0].file_sha256, []),
+        "signing_rule": signing_rules_of(matches, [row]).get(row[0].file_sha256),
         "event": row[0], "events": len(row), "macs": len({event.machine_id for event in row}),
         "identifiers": json.dumps({rule_type: row[0].identifier_for(rule_type)
                                    for rule_type in available_rule_types(row[0])}),
@@ -387,7 +469,9 @@ def events_create_rules(request):
         return redirect("console:events")
     rows = _rows_for(events)
     matches = existing_rules(events)
-    # a binary an allow rule already reaches starts unchecked
+    signing_rules = signing_rules_of(matches, rows)
+    # a binary an allow rule already reaches starts unchecked; one a Team ID rule leaves out gets its signing ID
+    # added, unless another rule allows it already (a prefix would widen the rule for nothing)
     wanted = [row[0].file_sha256 for row in rows if not is_allowed(matches.get(row[0].file_sha256, []))]
     saved_before = request.POST.get("saved") == "1"
     saved_shas = []
@@ -396,28 +480,40 @@ def events_create_rules(request):
         checked = set(request.POST.getlist("include"))
         include = [sha for sha in (row[0].file_sha256 for row in rows)
                    if sha in checked or (sha not in known and sha in wanted)]
+        adding = set(request.POST.getlist("add_signing"))
+        add_signing = [sha for sha in signing_rules if sha in adding or (sha not in known and sha in wanted)]
         initial = {name: request.POST[name] for name in KEPT_FIELDS if name in request.POST}
         initial.update({name: request.POST.getlist(name) for name in KEPT_LISTS if name in request.POST})
-        form = event_rule_form(rows, preview=False, initial=initial, include=include)
+        form = event_rule_form(rows, preview=False, initial=initial, include=include, signing_rules=signing_rules,
+                               add_signing=add_signing)
     else:
         form = event_rule_form(rows, request.POST if "apply" in request.POST else None, preview=False,
-                               include=wanted)
+                               include=wanted, signing_rules=signing_rules,
+                               add_signing=[sha for sha in signing_rules if sha in wanted])
     if form.is_bound and form.is_valid():
         with progress_for(request) as progress:
-            saved, created = save_event_rules(request.user, form, progress)
+            saved, created, failed = save_event_rules(request.user, form, progress)
         messages.success(request, ngettext(
             "%(count)s rule saved (%(new)s new). The Macs get it at their next sync.",
             "%(count)s rules saved (%(new)s new). The Macs get them at their next sync.", saved,
         ) % {"count": saved, "new": created})
+        for row, message in failed:
+            messages.error(request, f"{row[0].file_name or row[0].file_sha256}: {message}")
+        # the binaries done leave the drawer; one whose signing ID couldn't be added stays
+        failed_shas = {row[0].file_sha256 for row, _message in failed}
         saved_shas = [row[0].file_sha256 for row in form.included_rows()]
+        saved_shas += [row[0].file_sha256 for row, _rule in form.signing_rows()
+                       if row[0].file_sha256 not in failed_shas]
         rest = [row for row in rows if row[0].file_sha256 not in saved_shas]
         if not rest:
             return drawer_done(request, reverse("console:events"))
         rows, saved_before = rest, True
         events = [event for row in rest for event in row]
         matches = existing_rules(events)
-        form = event_rule_form(rest, preview=False, include=[row[0].file_sha256 for row in rest
-                                                             if not is_allowed(matches.get(row[0].file_sha256, []))])
+        signing_rules = signing_rules_of(matches, rest)
+        wanted = [row[0].file_sha256 for row in rest if not is_allowed(matches.get(row[0].file_sha256, []))]
+        form = event_rule_form(rest, preview=False, include=wanted, signing_rules=signing_rules,
+                               add_signing=[sha for sha in signing_rules if sha in wanted])
         messages.info(request, ngettext("%(count)s binary left: choose its rule, or close.",
                                         "%(count)s binaries left: choose their rule, or close.", len(rest))
                       % {"count": len(rest)})

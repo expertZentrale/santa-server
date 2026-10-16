@@ -197,7 +197,13 @@ small.muted, small.help { display: block; }
 .notifications-menu > summary::-webkit-details-marker { display: none; }
 .notifications-menu > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .notifications-menu > summary .icon { width: 1.3rem; height: 1.3rem; }
-.notifications-menu .count { position: absolute; top: -.35rem; right: -.45rem; margin-left: 0; }
+/* at the icon (1.3rem, centred), not at the corner of the button: on a touch screen the button is bigger (2.75rem)
+   and the count went over the top edge of the screen. Above the user menu next to it, which would cover it. */
+.notifications-menu .count { position: absolute; top: calc(50% - 1.35rem); right: calc(50% - 1.45rem); margin-left: 0; z-index: 1; }
+@media (max-width: 40em) {
+  /* the gap of the top bar is narrower here: room for the count before the avatar */
+  .notifications-menu { margin-right: .35rem; }
+}
 .notifications-menu .count[hidden] { display: none; }
 .notifications-panel {
   position: absolute; right: 0; top: calc(100% + .5rem); z-index: 30;
@@ -462,7 +468,7 @@ input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 form.stack { margin-bottom: 1rem; }
 .stack.compact .field { margin-bottom: .5rem; }
 .field { display: grid; gap: .25rem; margin-bottom: .9rem; }
-.field > label { font-weight: 600; }
+.field > label, .field > .field-label { font-weight: 600; }
 /* a yes / no field: the switch, then its label with the help text under it */
 .field.check { grid-template-columns: auto 1fr; column-gap: .6rem; align-items: start; }
 .field.check > label { font-weight: 500; display: flex; gap: .45rem; align-items: center; min-height: 1.4rem; grid-column: 1 / -1; }
@@ -524,7 +530,21 @@ form.inline { display: inline; margin: 0; }
 }
 .tabs a:hover { color: var(--text); text-decoration: none; }
 .tabs a.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
-.page-head .tabs { box-shadow: none; margin: 0 0 0 1rem; }
+.page-head .tabs { box-shadow: none; margin: 0; }
+/* the scrolling tab bar with its arrows (tabs.js): an arrow shows only where there is more */
+.tabs-scroller { position: relative; min-width: 0; max-width: 100%; }
+.page-head .tabs-scroller { margin-left: 1rem; }
+.tabs-arrow {
+  position: absolute; top: 0; bottom: 2px; width: 2.25rem; display: none; align-items: center; z-index: 1;
+  border: 0; padding: 0; font: inherit; font-size: 1.4rem; line-height: 1; color: var(--text); cursor: pointer;
+}
+.tabs-arrow.left { left: 0; justify-content: flex-start; padding-left: .25rem; background: linear-gradient(to right, var(--bg) 55%, transparent); }
+.tabs-arrow.right { right: 0; justify-content: flex-end; padding-right: .25rem; background: linear-gradient(to left, var(--bg) 55%, transparent); }
+.tabs-arrow:hover { color: var(--accent); }
+.tabs-scroller.more-left > .tabs-arrow.left, .tabs-scroller.more-right > .tabs-arrow.right { display: flex; }
+@media (max-width: 40em) {
+  .page-head .tabs-scroller { margin-left: 0; flex: 1 1 100%; }
+}
 
 .filters { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-bottom: 1rem; }
 .filters input[type="search"] { min-width: 16.25rem; flex: 1 1 16.25rem; max-width: 26.25rem; }
@@ -627,6 +647,10 @@ details.upload summary { cursor: pointer; color: var(--muted); margin-bottom: .5
   .field select:not([multiple]), td select:not([multiple]) { min-width: 0; max-width: 100%; white-space: normal; text-align: start; }
   select:not([multiple])::picker-icon { content: ""; width: .45em; height: .45em; border: solid var(--muted); border-width: 0 1.5px 1.5px 0; transform: translateY(-.15em) rotate(45deg); transition: transform .15s; margin-left: auto; }
   select:not([multiple]):open::picker-icon { transform: translateY(.1em) rotate(-135deg); }
+  /* a select with its own button (<button><selectedcontent>): the choice shortens with "…", the arrow stays */
+  select:not([multiple]) > button { all: unset; display: flex; align-items: center; flex: 1 1 auto; min-width: 0; }
+  select:not([multiple]) > button > selectedcontent { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  select:not([multiple])::picker-icon { flex: none; }
   select:not([multiple])::picker(select) {
     margin-block: .25rem;
     padding: .3rem;

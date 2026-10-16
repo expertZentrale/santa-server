@@ -124,6 +124,8 @@
     if (newField && newField !== field) {
       newField.querySelectorAll(".error").forEach((error) => field.append(error));
       newField.hidden = true;
+      // its field moved into the tag picker, hidden: its label would point at nothing
+      newField.querySelector("label")?.remove();
     }
     const options = [...select.options];
     let added = newInput.value.split(",").map((name) => name.trim()).filter(Boolean);

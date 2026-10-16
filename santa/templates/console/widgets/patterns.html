@@ -5,7 +5,7 @@
       <button type="button" class="chip-remove" aria-label="{% translate 'Remove' %} {{ pattern.strip }}">×</button></li>
     {% endif %}{% endfor %}
   </ul>
-  <input type="text" class="mono" data-chips-input autocomplete="off" spellcheck="false"
+  <input type="text" id="{{ widget.attrs.id|default:widget.name }}-add" class="mono" data-chips-input autocomplete="off" spellcheck="false"
          aria-label="{% translate 'Add a pattern' %}" placeholder="{% translate 'Type a pattern and press Enter' %}"
          data-remove-label="{% translate 'Remove' %}">
   <textarea name="{{ widget.name }}" hidden{% include "django/forms/widgets/attrs.html" %}>{% if widget.value %}{{ widget.value }}{% endif %}</textarea>

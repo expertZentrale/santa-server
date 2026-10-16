@@ -4,7 +4,7 @@ filters.{% endcomment %}
 <form class="filter-bar" method="get" action="{{ request.path }}" data-filter-form hx-swap="innerHTML show:none">
   {% for name, value in bar.hidden %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
   <div class="filter-toolbar">
-    <input type="search" id="filter-search" name="q" value="{{ bar.q }}" placeholder="{{ bar.placeholder }}" aria-label="{% translate 'Search' %}">
+    <input type="search" id="filter-search" name="q" autocomplete="off" value="{{ bar.q }}" placeholder="{{ bar.placeholder }}" aria-label="{% translate 'Search' %}">
     <noscript><button class="button">{% translate "Filter" %}</button></noscript>
     <div class="filter-tools" data-table-tools>
       <details class="picker down views-picker" data-picker>
@@ -13,13 +13,13 @@ filters.{% endcomment %}
           {% for view in bar.views %}<div class="saved-filter{% if view == bar.active_view %} current{% endif %}">
             <a href="?{{ view.query }}"{% if view == bar.active_view %} aria-current="true"{% endif %}>{{ view.name }}</a>
             <details class="rename-view"><summary class="icon-button" title="{% translate 'Rename' %}" aria-label="{% translate 'Rename' %} {{ view.name }}">{% include "console/icons/pencil.svg" %}</summary>
-              <div class="rename-view-form"><input name="name" form="rename-filter-{{ view.pk }}" value="{{ view.name }}" maxlength="100" required aria-label="{% translate 'New name' %}">
+              <div class="rename-view-form"><input name="name" form="rename-filter-{{ view.pk }}" autocomplete="off" value="{{ view.name }}" maxlength="100" required aria-label="{% translate 'New name' %}">
                 <div class="actions"><button class="button primary" form="rename-filter-{{ view.pk }}">{% translate "Save" %}</button>
                   <button type="button" class="button" data-rename-cancel>{% translate "Cancel" %}</button></div></div></details>
             <button class="icon-button" form="delete-filter-form" formaction="{% url 'delete_filter' view.pk %}" title="{% translate 'Delete' %}" aria-label="{% translate 'Delete' %} {{ view.name }}">{% include "console/icons/x.svg" %}</button></div>
           {% empty %}<p class="muted small">{% translate "No saved views yet." %}</p>{% endfor %}
           <div class="saved-filter-new">
-            <input name="name" form="save-filter-form" maxlength="100" placeholder="{% translate 'Name of the view' %}" aria-label="{% translate 'Name of the view' %}" required>
+            <input name="name" form="save-filter-form" autocomplete="off" maxlength="100" placeholder="{% translate 'Name of the view' %}" aria-label="{% translate 'Name of the view' %}" required>
             <button class="button" form="save-filter-form">{% translate "Save current view" %}</button>
           </div>
           <small class="muted">{% translate "An existing name is overwritten with the current filter." %}</small>
@@ -48,6 +48,20 @@ filters.{% endcomment %}
         <fieldset class="picker-panel"{% if not chip.shown %} disabled{% endif %}><legend class="sr-only">{{ facet.label }}</legend>
           {% if facet.kind == "multi" %}<input type="hidden" name="{{ facet.name }}" value="">
             {% for value, label in facet.choices %}<label><input type="checkbox" name="{{ facet.name }}" value="{{ value }}"{% if value in chip.value %} checked{% endif %}> {{ label }}</label>{% empty %}<span class="muted small">–</span>{% endfor %}
+          {% elif facet.kind == "lookup" %}
+            {# too many to list (Macs, users): the chosen ones, a search for more; "is not" leaves them out #}
+            <div class="segmented lookup-mode" role="radiogroup" aria-label="{{ facet.label }}">
+              <label><input type="radio" name="{{ facet.mode_name }}" value=""{% if not chip.exclude %} checked{% endif %} data-lookup-mode> {% translate "is" %}</label>
+              <label><input type="radio" name="{{ facet.mode_name }}" value="1"{% if chip.exclude %} checked{% endif %} data-lookup-mode> {% translate "is not" %}</label>
+            </div>
+            <input type="hidden" name="{{ facet.name }}" value="">
+            {# form="": not a field of the filter, only of its search (htmx sends it as q, with the ones ticked: they stay on top) #}
+            <input type="search" name="q" form="" class="lookup-search" data-lookup-search autocomplete="off" placeholder="{% translate 'Search…' %}" aria-label="{% blocktranslate with label=facet.label %}Search: {{ label }}{% endblocktranslate %}"
+                   hx-get="{{ facet.lookup_url }}" hx-trigger="input changed delay:250ms, lookup-open once" hx-target="next .lookup-options" hx-swap="innerHTML"
+                   hx-include="next .lookup-options" hx-vals='{"name": "{{ facet.name }}"}'>
+            {# the chosen ones, ticked; the search adds the others below them #}
+            <div class="lookup-options" aria-live="polite">{% for value, label in facet.choices %}<label><input type="checkbox" name="{{ facet.name }}" value="{{ value }}" checked> {{ label }}</label>{% endfor %}</div>
+            {% if chip.limited %}<p class="muted small" role="status">{% blocktranslate with count=facet.max_values %}At most {{ count }} at a time: only the first {{ count }} are used.{% endblocktranslate %}</p>{% endif %}
           {% else %}
             {% for value, label in facet.choices %}<label><input type="radio" name="{{ facet.name }}" value="{{ value }}"{% if value == chip.value %} checked{% endif %}> {{ label }}</label>{% endfor %}
             {% if facet.kind == "time" %}

@@ -11,7 +11,7 @@
   <h2>{% translate "Rules for this Mac" %}</h2>
   <p class="muted small">{% translate "The rule that wins for each identifier (this Mac, then its group, then all Macs), and the disabled rules that list this Mac." %}</p>
   <form class="filters" method="get" action="#rules">
-    <input type="search" name="q" value="{{ params.q }}" placeholder="{% translate 'Identifier, description…' %}" aria-label="{% translate 'Search' %}">
+    <input type="search" name="q" autocomplete="off" value="{{ params.q }}" placeholder="{% translate 'Identifier, description…' %}" aria-label="{% translate 'Search' %}">
     <select name="rules" aria-label="{% translate 'Applies through' %}">
       <option value="">{% translate "All rules" %}</option>
       <option value="mac" {% if params.rules == "mac" %}selected{% endif %}>{% translate "This Mac" %}</option>
