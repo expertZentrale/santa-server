@@ -76,6 +76,14 @@ def render_list(request, template, rows_template, context):
     if rows_only(request):
         response = render(request, rows_template, context)
     else:
+        if context.get("page") is None:
+            # the grey rows while the rows load: as many as the page will have (the window full, the pages below
+            # where they will be), and the pages bar of this page size (console/_pagination.html)
+            size = page_size(request)
+            page_number = request.GET.get("page", "")
+            context = {**context, "skeleton_rows": range(min(size, 50)), "skeleton_page": {
+                "number": int(page_number) if page_number.isdigit() else 1, "per_page": size,
+                "page_sizes": PAGE_SIZES}}
         response = render(request, template, {**context, "rows_template": rows_template})
     # the same URL answers with the page or the rows: a cached copy must not mix them up (Back button)
     # every header defer_rows(), rows_only() and is_htmx() read

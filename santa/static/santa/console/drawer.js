@@ -29,7 +29,8 @@
   }
 
   function keepView(drawer) {
-    if (!drawer.firstChild) return;
+    // the placeholder of a view that loads is no view to come back to
+    if (!drawer.firstChild || isLoading(drawer)) return;
     const view = document.createDocumentFragment();
     const scroll = drawer.scrollTop;
     while (drawer.firstChild) view.append(drawer.firstChild);
@@ -46,7 +47,22 @@
     }).then(() => window.scrollTo(0, scroll));
   }
 
+  // the view asked for when the drawer was closed: it shows at once, with a placeholder until the view comes
+  let loadingRequest = null;
+
+  function isLoading(drawer) {
+    return !!drawer.querySelector(":scope > [data-drawer-loading]");
+  }
+
   function hideDrawer(drawer) {
+    if (isLoading(drawer)) {
+      // closed before its view came: it doesn't open again for it
+      if (loadingRequest) SantaConsole.abortRequest(loadingRequest);
+      loadingRequest = null;
+      drawer.replaceChildren();
+      drawer.classList.remove("open", "loading");
+      return;
+    }
     // the drawer saved something the page behind it doesn't show yet
     if (drawerSaved || drawer.querySelector("[data-refresh-on-close]")) {
       drawer.classList.remove("open");
@@ -172,6 +188,34 @@
 
   // what the next swap into the drawer does to the history: a new entry, or none
   let pending = null;
+
+  // A view opens at once: a click shows the drawer right away (or, open, that it loads), not only when the server
+  // answered; also a POST from the page ("Create rules…" of a selection). A form of the view saving (a POST from
+  // inside) and a reload of the view shown keep their view as it is.
+  document.addEventListener("htmx:beforeRequest", (event) => {
+    const drawer = getDrawer();
+    const config = event.detail.requestConfig || {};
+    if (event.detail.target !== drawer || (config.headers || {})["X-Drawer-Reload"]) return;
+    const inside = config.elt && config.elt !== drawer && drawer.contains(config.elt);
+    if (inside && (config.verb || "get") !== "get") return;
+    drawer.classList.add("loading");
+    const template = document.getElementById("drawer-loading");
+    if (isOpen() || !template) return;
+    drawer.replaceChildren(template.content.cloneNode(true));
+    drawer.classList.add("open");
+    loadingRequest = event.detail.xhr;
+  });
+  document.addEventListener("htmx:afterRequest", (event) => {
+    const drawer = getDrawer();
+    if (event.detail.target !== drawer) return;
+    drawer.classList.remove("loading");
+    if (event.detail.xhr === loadingRequest) loadingRequest = null;
+    // no view came (an error, a stopped request): the placeholder goes again
+    if (isLoading(drawer)) {
+      drawer.replaceChildren();
+      drawer.classList.remove("open");
+    }
+  });
 
   // a request sent from a view of the drawer: it answers into that view only while it is shown
   document.addEventListener("htmx:beforeRequest", (event) => {

@@ -4,9 +4,12 @@ import uuid
 import zlib
 
 from django.conf import settings
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 
 from santa.models import Event, Group, Machine, Policy, RemovableMediaAction, Rule, RuleType
+from santa.rules import effective_rules
 
 SHA_A = "a" * 64
 SHA_B = "b" * 64
@@ -309,3 +312,17 @@ class SyncTestCase(TestCase):
                 # switched off in the environment (METRICS_ENABLED=false): an ordinary path, the host check refuses it
                 self.assertEqual(metrics.status_code, 400)
             self.assertEqual(self.client.get("/login/", HTTP_HOST="10.0.0.1").status_code, 400)
+
+
+class SyncRuleFieldsTestCase(TestCase):
+    def test_the_sync_loads_only_what_the_macs_get(self):
+        group = Group.objects.create(name="Development")
+        machine = Machine.objects.create(machine_id="M1", serial_number="C02TEST", group=group)
+        rule = Rule.objects.create(rule_type=RuleType.BINARY, identifier="a" * 64, is_global=True,
+                                   policy=Policy.BLOCKLIST, custom_msg="Not here", description="x" * 400,
+                                   release_files=[{"sha256": "a" * 64, "path": "bin/tool"}])
+        with CaptureQueriesContext(connection) as queries:
+            rules = effective_rules(machine)
+        self.assertEqual(rules, {rule.santa_key: rule.to_santa()})
+        self.assertFalse(any("release_files" in query["sql"] or "description" in query["sql"]
+                             for query in queries.captured_queries))

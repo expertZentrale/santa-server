@@ -866,6 +866,12 @@
   // lost: a network error; suspect: no answer in time, the server is checked first; timeout: for a request's own
   // time limit
   SantaConsole.connection = { lost: () => lost(null), suspect, isLost: () => connectionLost, timeout: healthTimeout };
+  // a request nobody waits for any more (the drawer closed before its view came): stopped, not taken for a lost
+  // connection (an aborted request ends without a status, like a network error) nor asked again
+  SantaConsole.abortRequest = (xhr) => {
+    inflight.delete(xhr);
+    xhr.abort();
+  };
 
   function failRows(element) {
     if (!element?.matches?.(".rows-loading")) return;

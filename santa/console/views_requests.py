@@ -16,7 +16,9 @@ from ..progress import progress_for
 from ..releases import ReleaseError, find_binaries, sync_release_source, unchecked_identifiers
 from ..seasonal import christmas_active
 from ..services import (
+    SigningIdError,
     add_packages_to_sources,
+    add_signing_prefix,
     allow_identifier,
     allowed_packages,
     binary_identifiers,
@@ -452,14 +454,22 @@ def _approve_event(request, access_request, form):
         access_request.result_rule = _allow_for_request(request, access_request, form, [identifier])
         return
     rule = data["existing_rule"] if data["result"] != ApproveEventForm.NONE else None
-    if data["result"] == ApproveEventForm.EXTEND:
+    if data["result"] in (ApproveEventForm.EXTEND, ApproveEventForm.SIGNING_ID):
         require_perms(request, "change_rule")
         machines = _requester_machines(access_request)
         if data["scope"] == SCOPE_MACHINES and not machines:
             raise ValidationError(gettext("The Mac of the requester is not known, choose groups or all Macs."))
+        added = ""
+        if data["result"] == ApproveEventForm.SIGNING_ID:
+            event = _event_of(access_request)
+            try:
+                prefix = add_signing_prefix(rule, event.signing_id if event else "", request.user)
+            except SigningIdError as e:
+                raise ValidationError(str(e)) from e
+            added = f"Signing ID prefix {prefix} added, " if prefix else ""
         widen_rule(rule, data["scope"] == SCOPE_GLOBAL, data["groups"] if data["scope"] == SCOPE_GROUPS else [],
                    machines if data["scope"] == SCOPE_MACHINES else [], request.user)
-        log_change(request.user, rule, f"Scope extended for access request {access_request.pk}")
+        log_change(request.user, rule, f"{added}Scope extended for access request {access_request.pk}")
     if access_request.file_sha256:
         resolve_binary_events(access_request.file_sha256, _requester_machines(access_request), request.user, rule)
     access_request.result_rule = rule

@@ -1,11 +1,13 @@
 import csv
 import json
 from dataclasses import asdict
+from itertools import batched
 
 from django.contrib import messages
 from django.core import signing
 from django.db import transaction
 from django.db.models import Case, IntegerField, Q, Value, When, prefetch_related_objects
+from django.db.models.functions import Coalesce, NullIf
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -60,8 +62,16 @@ RULE_COLUMNS = {"identifier": "identifier", "type": "rule_type", "policy": "poli
                 "enabled": "is_enabled"}
 
 
+# The filters on groups, tags and Macs are subqueries, not joins: a join repeats a rule per group or tag, and the
+# DISTINCT that removes them again sorts every whole row (seconds with 25,000 rules on SQL Server)
+def rules_of(through, **lookup):
+    """Q: the rules with a row in the M2M table (Rule.groups.through…) matching the lookup"""
+    return Q(pk__in=through.objects.filter(**lookup).values("rule_id"))
+
+
 # the scopes of the filter besides the groups (their pks)
-SCOPE_CONDITIONS = {"global": Q(is_global=True), "machines": Q(is_global=False, machines__isnull=False)}
+SCOPE_CONDITIONS = {"global": Q(is_global=True),
+                    "machines": Q(is_global=False) & rules_of(Rule.machines.through)}
 
 
 def filter_rules(request, rules):
@@ -71,12 +81,13 @@ def filter_rules(request, rules):
         rules = rules.filter(rule_type__in=rule_types)
     if policies := chosen(params, "policy", Policy.values):
         rules = rules.filter(policy__in=policies)
-    scope = any_of([SCOPE_CONDITIONS[value] if value in SCOPE_CONDITIONS else Q(groups__id=value)
+    scope = any_of([SCOPE_CONDITIONS[value] if value in SCOPE_CONDITIONS
+                    else rules_of(Rule.groups.through, group_id=value)
                     for value in chosen(params, "scope") if value in SCOPE_CONDITIONS or value.isdigit()])
     if scope is not None:
         rules = rules.filter(scope)
     if tags := [value for value in chosen(params, "tag") if value.isdigit()]:
-        rules = rules.filter(tags__id__in=tags)
+        rules = rules.filter(rules_of(Rule.tags.through, tag_id__in=tags))
     # both ticked is the same as none
     enabled = chosen(params, "enabled", ["yes", "no"])
     if len(enabled) == 1:
@@ -97,8 +108,9 @@ def filter_rules(request, rules):
         rules = _on_machines(rules, Machine.objects.filter(primary_user__in=users), exclude)
     q = params.get("q", "").strip()
     if q:
-        rules = rules.filter(Q(identifier__icontains=q) | Q(description__icontains=q) | Q(tags__name__iexact=q))
-    return rules.distinct()
+        rules = rules.filter(Q(identifier__icontains=q) | Q(description__icontains=q)
+                             | rules_of(Rule.tags.through, tag__name__iexact=q))
+    return rules
 
 
 def _on_machines(rules, machines, exclude):
@@ -110,7 +122,8 @@ def _on_machines(rules, machines, exclude):
     # the Macs stay a subquery and the groups a short list: an owner can have thousands of Macs, and SQL Server takes
     # at most 2100 parameters per query
     groups = with_parent_groups(machines.values_list("group_id", flat=True).distinct(), "inherit_rules")
-    reach = Q(is_global=True) | Q(groups__in=sorted(groups)) | Q(machines__in=machines.values("pk"))
+    reach = (Q(is_global=True) | rules_of(Rule.groups.through, group_id__in=sorted(groups))
+             | rules_of(Rule.machines.through, machine__in=machines.values("pk")))
     if exclude:
         return rules.exclude(pk__in=Rule.objects.filter(reach).values("pk"))
     return rules.filter(reach)
@@ -157,6 +170,17 @@ def rules(request):
     })
 
 
+EXPORT_CHUNK = 2000
+
+
+def _names_of(pairs):
+    """{rule pk: [names]} of (rule pk, name) rows"""
+    names = {}
+    for rule_id, name in pairs:
+        names.setdefault(rule_id, []).append(name)
+    return names
+
+
 # a spreadsheet would run a cell starting with one of these as a formula
 CSV_FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
 
@@ -171,7 +195,14 @@ def rules_export(request):
     """The rules of the list with its filters, all pages, as CSV"""
     require_perms(request, "view_rule")
     queryset, _sort = sort_by(request, filter_rules(request, Rule.objects.all()), RULE_COLUMNS, "-created")
-    queryset = queryset.select_related("release_source", "created_by").prefetch_related("groups", "tags", "machines")
+    # tens of thousands of rows: only the columns of the file, the related names only
+    queryset = queryset.select_related("release_source", "created_by").only(
+        "rule_type", "identifier", "policy", "is_global", "is_enabled", "description", "created_at",
+        "release_source__name", "created_by__username",
+    )
+    # the labels translated once, not per row
+    rule_types, policies = {k: str(v) for k, v in RuleType.choices}, {k: str(v) for k, v in Policy.choices}
+    everywhere, yes, no = gettext("All Macs"), gettext("yes"), gettext("no")
     response = HttpResponse(content_type="text/csv; charset=utf-8")
     response["Content-Disposition"] = f'attachment; filename="santa-rules-{timezone.localdate():%Y-%m-%d}.csv"'
     # the BOM makes Excel read UTF-8
@@ -180,19 +211,27 @@ def rules_export(request):
     writer.writerow([gettext("Type"), gettext("Identifier"), gettext("Policy"), gettext("Scope"), gettext("Tags"),
                      gettext("Enabled"), gettext("Package rule"), gettext("Comment"), gettext("Created"),
                      gettext("Created by")])
-    for rule in queryset.iterator(chunk_size=500):
-        if rule.is_global:
-            scope = gettext("All Macs")
-        else:
-            scope = ", ".join([group.name for group in rule.groups.all()]
-                              + [machine.hostname or machine.serial_number for machine in rule.machines.all()])
-        writer.writerow([csv_cell(value) for value in (
-            rule.get_rule_type_display(), rule.identifier, rule.get_policy_display(), scope,
-            ", ".join(tag.name for tag in rule.tags.all()), gettext("yes") if rule.is_enabled else gettext("no"),
-            rule.release_source.name if rule.release_source else "", rule.description,
-            timezone.localtime(rule.created_at).strftime("%Y-%m-%d %H:%M"),
-            rule.created_by.get_username() if rule.created_by else "",
-        )])
+    # in blocks: the names of their groups, Macs and tags read at once (a prefetch builds objects per rule), the
+    # pks within the 2100 parameters of SQL Server
+    for chunk in batched(queryset.iterator(chunk_size=EXPORT_CHUNK), EXPORT_CHUNK):
+        pks = [rule.pk for rule in chunk]
+        groups = _names_of(Rule.groups.through.objects.filter(rule_id__in=pks).order_by("group__name")
+                           .values_list("rule_id", "group__name"))
+        machines = _names_of(Rule.machines.through.objects.filter(rule_id__in=pks).order_by("machine__serial_number")
+                             .values_list("rule_id", Coalesce(NullIf("machine__hostname", Value("")),
+                                                              "machine__serial_number")))
+        tags = _names_of(Rule.tags.through.objects.filter(rule_id__in=pks).order_by("tag__name")
+                         .values_list("rule_id", "tag__name"))
+        for rule in chunk:
+            scope = everywhere if rule.is_global else ", ".join(groups.get(rule.pk, []) + machines.get(rule.pk, []))
+            writer.writerow([csv_cell(value) for value in (
+                rule_types.get(rule.rule_type, rule.rule_type), rule.identifier,
+                policies.get(rule.policy, rule.policy), scope, ", ".join(tags.get(rule.pk, [])),
+                yes if rule.is_enabled else no,
+                rule.release_source.name if rule.release_source else "", rule.description,
+                timezone.localtime(rule.created_at).strftime("%Y-%m-%d %H:%M"),
+                rule.created_by.get_username() if rule.created_by else "",
+            )])
     return response
 
 
@@ -322,8 +361,8 @@ def rule_suggestions(request):
         rank = Case(When(identifier__iexact=q, then=Value(0)), When(identifier__istartswith=q, then=Value(1)),
                     default=Value(2), output_field=IntegerField())
         rules = list(Rule.objects.filter(Q(identifier__icontains=q) | Q(description__icontains=q)
-                                         | Q(tags__name__icontains=q))
-                     .annotate(rank=rank).distinct().order_by("rank", "identifier", "pk")[:MAX_RULE_SUGGESTIONS])
+                                         | rules_of(Rule.tags.through, tag__name__icontains=q))
+                     .annotate(rank=rank).order_by("rank", "identifier", "pk")[:MAX_RULE_SUGGESTIONS])
         prefetch_related_objects(rules, "groups", "machines")
     return render(request, "console/rules/_suggestions.html", {"rules": rules, "query": q})
 

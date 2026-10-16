@@ -1,8 +1,11 @@
 from dataclasses import dataclass, field
 
-from django.db.models import Q
+from django.db.models import Count, IntegerField, OuterRef, Q, Subquery
+from django.db.models.functions import Coalesce
 from django.utils import timezone
+from django.utils.translation import gettext
 
+from .cel import prefix_decision, prefix_expression, rule_prefixes, signing_prefix
 from .models import (
     POLICY_PRECEDENCE,
     AccessRequest,
@@ -27,6 +30,18 @@ EVENT_IDENTIFIER_FIELDS = {
     RuleType.SIGNINGID: "signing_id",
     RuleType.CDHASH: "cdhash",
 }
+
+
+def related_aggregate(queryset, outer_field, aggregate):
+    """An aggregate of related rows per object, as a subquery of its own. Several Count()s over joins multiply their
+    rows first (a group with 20,000 rules and its Macs: seconds); a subquery each counts only its own.
+    queryset: the related rows, outer_field: their field pointing at the object (e.g. "group")."""
+    return Subquery(queryset.filter(**{outer_field: OuterRef("pk")}).order_by().values(outer_field)
+                    .annotate(value=aggregate).values("value")[:1])
+
+
+def related_count(queryset, outer_field):
+    return Coalesce(related_aggregate(queryset, outer_field, Count("pk")), 0, output_field=IntegerField())
 
 
 def allow_identifier(rule_type, identifier, policy, is_global, groups, user, description="", tags=(), machines=(),
@@ -66,9 +81,47 @@ def widen_rule(rule, is_global, groups, machines, user, tags=()):
 def resolve_events(rule, user):
     identifier_field = EVENT_IDENTIFIER_FIELDS[rule.rule_type]
     events = Event.objects.filter(resolved_at__isnull=True, **{identifier_field: rule.identifier})
+    # a Team ID rule of signing ID prefixes allows only those binaries of the team, the others stay blocked
+    if (prefixes := rule_prefixes(rule)) is not None:
+        events = events.filter(any_of_q([Q(signing_id__startswith=f"{rule.identifier}:{prefix}")
+                                         for prefix in prefixes]))
     if not rule.is_global:
         events = events.filter(Q(group__in=rule.groups.all()) | Q(machine__in=rule.machines.all()))
     return events.update(resolved_at=timezone.now(), resolved_by=user, resolution_rule=rule)
+
+
+def any_of_q(conditions):
+    combined = Q(pk__in=[])
+    for condition in conditions:
+        combined |= condition
+    return combined
+
+
+class SigningIdError(ValueError):
+    """The signing ID can't be added to the rule (the message says why)"""
+
+
+def add_signing_prefix(rule, signing_id, user):
+    """Add the signing ID to a Team ID rule of signing ID prefixes ("only signing IDs starting with"); the open
+    events it allows now are resolved. Returns the prefix added (None: it was in the rule already)."""
+    # the expression as it is now: several binaries of a selection can add theirs to the same rule
+    rule.refresh_from_db(fields=["policy", "rule_type", "identifier", "cel_expr", "release_source"])
+    prefixes = rule_prefixes(rule)
+    if prefixes is None:
+        raise SigningIdError(gettext("Only a Team ID rule with “Only signing IDs starting with” takes signing IDs."))
+    if rule.release_source_id:
+        raise SigningIdError(gettext("This rule comes from the package rule %(source)s: change it there.")
+                             % {"source": rule.release_source})
+    prefix = signing_prefix(rule, signing_id)
+    if prefix is None:
+        raise SigningIdError(gettext("The signing ID %(signing_id)s doesn't belong to the team %(team_id)s.")
+                             % {"signing_id": signing_id or "–", "team_id": rule.identifier})
+    if prefix_decision(rule, signing_id):
+        return None
+    rule.cel_expr = prefix_expression(rule.identifier, [*prefixes, prefix])
+    rule.save(update_fields=["cel_expr", "updated_at"])
+    resolve_events(rule, user)
+    return prefix
 
 
 def resolve_binary_events(file_sha256, machines, user, rule=None):
@@ -104,11 +157,12 @@ def _matching_rules(identifiers_of):
 
 
 def existing_rules(events, machines=None):
-    """The rules that already match the binaries of the events, by SHA-256: [{"rule", "applies"}]
+    """The rules that already match the binaries of the events, by SHA-256: [{"rule", "applies", "cel"}]
 
     applies: the rule is enabled and reaches at least one Mac of the events (global, its group, the parent group
     it is based on, or the Mac). machines: these Macs instead of the ones of the events (the Macs of a requester,
-    when the event is of another Mac).
+    when the event is of another Mac). cel: what the expression of a Team ID rule with "only signing IDs starting
+    with" does with the signing ID (True allows, False blocks; None: no such rule).
     """
     events_of = {}
     for event in events:
@@ -129,9 +183,11 @@ def existing_rules(events, machines=None):
         if group_ids not in rule_groups:
             rule_groups[group_ids] = with_parent_groups(group_ids, "inherit_rules")
         groups = rule_groups[group_ids]
+        signing_id = next((event.signing_id for event in events_of[sha] if event.signing_id), "")
         result[sha] = [{"rule": rule, "applies": rule.is_enabled and (
             rule.is_global or any(group.pk in groups for group in rule.groups.all())
-            or any(machine.pk in machine_ids for machine in rule.machines.all()))}
+            or any(machine.pk in machine_ids for machine in rule.machines.all())),
+            "cel": prefix_decision(rule, signing_id)}
             for rule in rules]
     return result
 
@@ -144,7 +200,9 @@ def existing_rules_for_binaries(binaries):
     found = _matching_rules({binary.sha256: {rule_type: binary_identifiers(rule_type, binary)
                                              for rule_type in EVENT_IDENTIFIER_FIELDS}
                              for binary in binaries})
-    return {sha: [{"rule": rule, "applies": rule.is_enabled} for rule in rules] for sha, rules in found.items()}
+    signing_ids = {binary.sha256: binary.signing_id for binary in binaries}
+    return {sha: [{"rule": rule, "applies": rule.is_enabled, "cel": prefix_decision(rule, signing_ids[sha])}
+                  for rule in rules] for sha, rules in found.items()}
 
 
 def _event_identifiers(event):
@@ -152,10 +210,20 @@ def _event_identifiers(event):
             if (value := getattr(event, field))}
 
 
-def _allowed_on(machine, group, rules):
+def effective_policy(rule, signing_id):
+    """The policy of the rule for a binary: the one a Team ID rule with "only signing IDs starting with" gives its
+    signing ID, as Santa evaluates it; another CEL expression stays CEL (not known to allow)"""
+    decision = prefix_decision(rule, signing_id)
+    if decision is None:
+        return rule.policy
+    return Policy.ALLOWLIST if decision else Policy.BLOCKLIST
+
+
+def _allowed_on(machine, group, rules, signing_id=""):
     """What Santa does with the binary on the Mac, by the rules matching its identifiers: as the sync sends them
     (rules.effective_rule_objects: the most specific scope, then the strictest policy, per identifier), then the
-    most specific rule type decides. Allowed only by an allow rule; a CEL expression is not known to allow."""
+    most specific rule type decides. Allowed only by an allow rule, or a CEL expression of signing ID prefixes that
+    includes it; another CEL expression is not known to allow."""
     chosen = {}
     for rule in rules:
         if not rule.is_enabled:
@@ -175,8 +243,8 @@ def _allowed_on(machine, group, rules):
         decisive = [rule for _rank, rule in chosen.values() if rule.rule_type == rule_type]
         if decisive:
             # several identifiers of one type (the CDHashes of the slices): the strictest
-            strictest = max(decisive, key=lambda rule: POLICY_PRECEDENCE[rule.policy])
-            return strictest.policy in ALLOW_POLICIES
+            policies = [effective_policy(rule, signing_id) for rule in decisive]
+            return max(policies, key=POLICY_PRECEDENCE.__getitem__) in ALLOW_POLICIES
     return False
 
 
@@ -185,7 +253,8 @@ def decisions_on(events):
     events = list(events)
     found = _matching_rules({event.pk: _event_identifiers(event) for event in events})
     groups = Group.objects.in_bulk({event.machine.group_id for event in events})
-    return {event.pk: _allowed_on(event.machine, groups.get(event.machine.group_id), found[event.pk])
+    return {event.pk: _allowed_on(event.machine, groups.get(event.machine.group_id), found[event.pk],
+                                  event.signing_id)
             for event in events}
 
 
@@ -194,12 +263,15 @@ def decisions_for_machines(event, machines):
     machines = list(machines)
     rules = _matching_rules({0: _event_identifiers(event)})[0]
     groups = Group.objects.in_bulk({machine.group_id for machine in machines})
-    return {machine.pk: _allowed_on(machine, groups.get(machine.group_id), rules) for machine in machines}
+    return {machine.pk: _allowed_on(machine, groups.get(machine.group_id), rules, event.signing_id)
+            for machine in machines}
 
 
 def is_allowed(matches):
-    """An allow rule of existing_rules() reaches the Macs of the binary"""
-    return any(match["applies"] and match["rule"].policy in ALLOW_POLICIES for match in matches)
+    """An allow rule of existing_rules() reaches the Macs of the binary (also a CEL rule of signing ID prefixes that
+    includes its signing ID)"""
+    return any(match["applies"] and (match["rule"].policy in ALLOW_POLICIES or match.get("cel") is True)
+               for match in matches)
 
 
 def set_rules_enabled(rules, enabled):

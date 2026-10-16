@@ -33,7 +33,14 @@ class ListRowsTestCase(ConsoleBase):
         self.assertNotContains(response, SHA_A)
         # the real table with grey rows where the rows come, not "no rules"
         self.assertContains(response, 'data-table="rules"')
-        self.assertContains(response, '<tr class="skeleton" aria-hidden="true">', count=8)
+        # as many as the page will have (50 by default), and the pages bar in its place (hidden on the first page:
+        # table.js shows it if the list had pages last time)
+        self.assertContains(response, '<tr class="skeleton" aria-hidden="true">', count=50)
+        self.assertContains(response, "data-pages-placeholder hidden")
+        response = self.client.get(url + "&page=3&per_page=25", **NAVIGATE)
+        self.assertContains(response, '<tr class="skeleton" aria-hidden="true">', count=25)
+        self.assertContains(response, "data-pages-placeholder>")
+        response = self.client.get(url, **NAVIGATE)
         self.assertNotContains(response, "No rules for these filters.")
         self.assertIsNone(response.context["page"])
         for header in ("X-Santa-Rows", "HX-Request", "HX-Boosted", "HX-History-Restore-Request", "Sec-Fetch-Mode",

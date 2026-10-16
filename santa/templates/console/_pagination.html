@@ -1,4 +1,18 @@
-{% load i18n %}{% if page.paginator.count > page.page_sizes.0 %}
+{% load i18n %}{% if skeleton %}{% if skeleton_page %}
+{% comment %}While the rows load: the bar in its place, without numbers; shown when the list had pages last time (table.js), or
+on a later page{% endcomment %}
+<nav class="pagination pages-placeholder" aria-hidden="true" data-pages-placeholder{% if skeleton_page.number == 1 %} hidden{% endif %}>
+  <div class="pages">
+    <span class="button small" aria-disabled="true">‹ {% translate "Previous" %}</span>
+    <span class="skeleton-bar"></span>
+    <span class="button small" aria-disabled="true">{% translate "Next" %} ›</span>
+  </div>
+  <div class="per-page">
+    <span class="small">{% translate "Per page" %}</span>
+    <span class="segmented">{% for size in skeleton_page.page_sizes %}<a aria-disabled="true"{% if size == skeleton_page.per_page %} aria-current="true"{% endif %}>{{ size }}</a>{% endfor %}</span>
+  </div>
+</nav>{% endif %}
+{% elif page.paginator.count > page.page_sizes.0 %}
 <nav class="pagination" aria-label="{% translate 'Pages' %}">
   <div class="pages">
     {% if page.has_previous %}<a class="button small" href="{% querystring page=page.previous_page_number %}">‹ {% translate "Previous" %}</a>{% else %}<span class="button small" aria-disabled="true">‹ {% translate "Previous" %}</span>{% endif %}

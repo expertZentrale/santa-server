@@ -132,10 +132,19 @@ def source_detail(request, pk, defer=None):
 def _versions_context(source):
     """The versions per package, and what "Clean up" would delete"""
     versions = {}
-    for version in source.versions.prefetch_related("rules").order_by("-created_at"):
-        # the dependencies with executables (rules); the others are scripts, nothing to allow
-        with_rules = {rule.release_dependency for rule in version.rules.all()}
-        version.dependency_rows = [(label, label in with_rules) for label in version.dependencies]
+    # what the table shows of the rules (tens of thousands with dependencies), not the rules: whether a version's
+    # rules are enabled, and its dependencies with executables (rules); the others are scripts, nothing to allow
+    with_rules = {}
+    for version_id, label in (source.rules.exclude(release_dependency="").order_by()
+                              .values_list("release_version_id", "release_dependency").distinct()):
+        with_rules.setdefault(version_id, set()).add(label)
+    # one query for all versions (an EXISTS per version is slow on SQL Server)
+    enabled = set(source.rules.filter(is_enabled=True).order_by().values_list("release_version_id", flat=True)
+                  .distinct())
+    # the notes (the files found, up to 10,000 characters each) are not in the table
+    for version in source.versions.defer("notes").order_by("-created_at"):
+        version.rules_enabled = version.pk in enabled
+        version.dependency_rows = [(label, label in with_rules.get(version.pk, ())) for label in version.dependencies]
         versions.setdefault(version.identifier, []).append(version)
     per_identifier = [(identifier, source.identifier_icons.get(identifier) or {}, versions.pop(identifier, []))
                       for identifier in source.identifiers]

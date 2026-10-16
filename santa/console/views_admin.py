@@ -35,7 +35,8 @@ from ..config_io import (
     import_config,
     item_token,
 )
-from ..models import SignInGroup, Tag
+from ..models import ReleaseSource, Rule, SignInGroup, Tag
+from ..services import related_count
 from .filters import Facet, any_of, chosen, filter_bar, remember_filters
 from .forms import ConfigImportForm, ConfigPreviewForm, RoleForm, SignInGroupForm, TagForm, UserForm
 from .utils import (
@@ -352,8 +353,8 @@ def tags(request):
     require_perms(request, "view_tag")
     if remembered := remember_filters(request, "tags"):
         return remembered
-    queryset = Tag.objects.annotate(rule_count=Count("rules", distinct=True),
-                                    source_count=Count("release_sources", distinct=True))
+    queryset = Tag.objects.annotate(rule_count=related_count(Rule.tags.through.objects.all(), "tag"),
+                                    source_count=related_count(ReleaseSource.tags.through.objects.all(), "tag"))
     q = request.GET.get("q", "").strip()
     if q:
         queryset = queryset.filter(Q(name__icontains=q) | Q(description__icontains=q))

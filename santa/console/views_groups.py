@@ -1,7 +1,7 @@
 from datetime import timedelta
 
 from django.contrib import messages
-from django.db.models import Count, Max, Q, prefetch_related_objects
+from django.db.models import Max, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -12,8 +12,14 @@ from django.views.decorators.http import require_POST
 
 from ..models import NEEDS_RULE, AccessRequest, ClientMode, Event, Group, Machine, Rule, generate_sync_token
 from ..profiles import base_profile, file_access_rules, group_profile
-from ..rules import GLOBAL, GROUP, MACHINE, PARENT, effective_rule_objects
-from ..services import can_see_sync_token, remove_machine_from_rules, rules_only_for
+from ..rules import GLOBAL, GROUP, LIST_FIELDS, MACHINE, PARENT, effective_rule_values
+from ..services import (
+    can_see_sync_token,
+    related_aggregate,
+    related_count,
+    remove_machine_from_rules,
+    rules_only_for,
+)
 from .filters import Facet, any_of, chosen, filter_bar, remember_filters
 from .forms import GroupForm
 from .utils import (
@@ -53,8 +59,9 @@ def groups(request):
     if remembered := remember_filters(request, "groups"):
         return remembered
     queryset = Group.objects.select_related("parent").annotate(
-        machine_count=Count("machines", distinct=True), rule_count=Count("rules", distinct=True),
-        last_sync=Max("machines__last_postflight_at"))
+        machine_count=related_count(Machine.objects.all(), "group"),
+        rule_count=related_count(Rule.groups.through.objects.all(), "group"),
+        last_sync=related_aggregate(Machine.objects.all(), "group", Max("last_postflight_at")))
     if modes := chosen(request.GET, "mode", ClientMode.values):
         # the mode the Macs get: a group based on another one can inherit it (overridden_settings is a document)
         queryset = queryset.filter(pk__in=[group.pk for group in Group.objects.select_related("parent")
@@ -219,34 +226,41 @@ MACHINE_RULE_SCOPES = {"mac": MACHINE, "group": GROUP, "parent": PARENT, "global
 
 def machine_rules(machine, effective, params):
     """The rules that reach the Mac (the winning one per identifier), plus the disabled or overridden rules
-    that list the Mac itself: those can still be removed from it."""
-    winners = {rule.pk for _, rule in effective.values()}
-    rows = {rule.pk: (level, rule) for level, rule in effective.values()}
-    for rule in Rule.objects.filter(machines=machine):
-        rows.setdefault(rule.pk, (MACHINE, rule))
+    that list the Mac itself: those can still be removed from it. As [(scope level, row, wins)] of LIST_FIELDS
+    tuples, sorted: thousands of rules, models only for the page shown (rules_of_page)."""
+    winners = {row[0] for _level, row in effective.values()}
+    rows = {row[0]: (level, row) for level, row in effective.values()}
+    for row in Rule.objects.filter(machines=machine).values_list(*LIST_FIELDS):
+        rows.setdefault(row[0], (MACHINE, row))
     level = MACHINE_RULE_SCOPES.get(params.get("rules"))
     q = params.get("q", "").strip().lower()
-    result = []
-    for rule_level, rule in rows.values():
-        if level is not None and rule_level != level:
-            continue
-        if q and q not in rule.identifier.lower() and q not in rule.description.lower():
-            continue
-        rule.scope_level = rule_level
-        rule.wins = rule.pk in winners
-        result.append(rule)
-    result.sort(key=lambda rule: (-rule.scope_level, -rule.created_at.timestamp(), -rule.pk))
+    description, created_at = LIST_FIELDS.index("description"), LIST_FIELDS.index("created_at")
+    result = [(rule_level, row, row[0] in winners) for rule_level, row in rows.values()
+              if (level is None or rule_level == level)
+              and (not q or q in row[2].lower() or q in row[description].lower())]
+    result.sort(key=lambda item: (-item[0], -item[1][created_at].timestamp(), -item[1][0]))
     return result
+
+
+def rules_of_page(items):
+    """The rules of a page of machine_rules(), as models with their scope_level and wins"""
+    rules = Rule.objects.prefetch_related("tags", "groups").in_bulk([row[0] for _level, row, _wins in items])
+    page = []
+    for rule_level, row, wins in items:
+        rule = rules[row[0]]
+        rule.scope_level, rule.wins = rule_level, wins
+        page.append(rule)
+    return page
 
 
 @staff_required
 def machine_detail(request, pk):
     require_perms(request, "view_machine")
     machine = get_object_or_404(Machine.objects.select_related("group__parent"), pk=pk)
-    effective = effective_rule_objects(machine)
+    effective = effective_rule_values(machine, LIST_FIELDS)
     synced = machine.synced_rules or {}
     page = paginate(request, machine_rules(machine, effective, request.GET))
-    prefetch_related_objects(page.object_list, "tags", "groups")
+    page.object_list = rules_of_page(page.object_list)
     on_mac = set(machine.rules.values_list("pk", flat=True))
     for rule in page:
         rule.on_mac = rule.pk in on_mac

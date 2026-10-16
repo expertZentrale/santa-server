@@ -767,14 +767,20 @@ class Rule(models.Model):
         return f"{self.rule_type}:{self.identifier}"
 
     def to_santa(self):
-        rule = {"identifier": self.identifier, "rule_type": self.rule_type, "policy": self.policy}
-        if self.policy in (Policy.BLOCKLIST, Policy.CEL):
-            if self.custom_msg:
-                rule["custom_msg"] = self.custom_msg
-            if self.custom_url:
-                rule["custom_url"] = self.custom_url
-        if self.policy == Policy.CEL:
-            rule["cel_expr"] = self.cel_expr
+        return self.santa_payload(self.rule_type, self.identifier, self.policy, self.custom_msg, self.custom_url,
+                                  self.cel_expr)
+
+    @staticmethod
+    def santa_payload(rule_type, identifier, policy, custom_msg, custom_url, cel_expr):
+        """The rule as the sync sends it; from the values, for the sync that reads thousands of rules as tuples"""
+        rule = {"identifier": identifier, "rule_type": rule_type, "policy": policy}
+        if policy in (Policy.BLOCKLIST, Policy.CEL):
+            if custom_msg:
+                rule["custom_msg"] = custom_msg
+            if custom_url:
+                rule["custom_url"] = custom_url
+        if policy == Policy.CEL:
+            rule["cel_expr"] = cel_expr
         return rule
 
 

@@ -96,4 +96,45 @@
     open.open = false;
     open.querySelector("summary").focus();
   });
+  // Phones: the menus of the bar are as wide as the window (filterbar.css, position: fixed). Without a top, a fixed
+  // box stays where it would be in the page: scrolled down, it opened that far below its button
+  const narrow = window.matchMedia("(max-width: 40em)");
+  const BAR_MENUS = ".filter-bar .picker.down[open] > .picker-panel, .filter-tools .picker.down[open] > .picker-panel";
+
+  function place(panel) {
+    if (!narrow.matches) {
+      panel.style.top = "";
+      panel.style.maxHeight = "";
+      return;
+    }
+    const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    // the gap below the button is the margin of the panel
+    const top = panel.parentElement.querySelector(":scope > summary").getBoundingClientRect().bottom;
+    panel.style.top = `${top / rem}rem`;
+    // at most 60% of the window, and never below its bottom
+    panel.style.maxHeight = `${Math.max(8 * rem, Math.min(0.6 * window.innerHeight, window.innerHeight - top - 1.5 * rem))
+      / rem}rem`;
+  }
+
+  function placeMenus() {
+    document.querySelectorAll(BAR_MENUS).forEach(place);
+  }
+
+  // placed before it opens (the click on its button, also Enter / Space): placed only when the "toggle" event came,
+  // it showed for a moment at the wrong place first
+  document.addEventListener("click", (event) => {
+    const summary = event.target.closest?.(".filter-bar .picker.down > summary, .filter-tools .picker.down > summary");
+    const panel = summary?.parentElement.querySelector(":scope > .picker-panel");
+    if (panel && !summary.parentElement.open) place(panel);
+  }, true);
+  // opened otherwise (by a script): as soon as it is open. toggle doesn't bubble: caught on the way down
+  document.addEventListener("toggle", (event) => {
+    if (event.target.matches?.(".filter-bar .picker.down, .filter-tools .picker.down")) placeMenus();
+  }, true);
+  let frame = 0;
+  const later = () => {
+    if (!frame) frame = requestAnimationFrame(() => { frame = 0; placeMenus(); });
+  };
+  window.addEventListener("scroll", later, { passive: true });
+  window.addEventListener("resize", later);
 })();

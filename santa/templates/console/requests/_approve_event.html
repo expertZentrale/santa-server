@@ -1,7 +1,7 @@
 {% load console i18n %}{# Approve a blocked binary: a new rule, an existing one (widened or not), or no rule #}
 {% include "console/_field.html" with field=form.result %}
 {% if form.allowing %}
-<div data-show-when="result=existing|extend">
+<div data-show-when="result=existing|extend|signing">
   <fieldset class="plain field{% if form.existing_rule.errors %} has-error{% endif %}" data-field="existing_rule">
     <legend class="strong">{{ form.existing_rule.label }}</legend>
     <ul class="plain binaries">
@@ -11,7 +11,8 @@
         <span class="binary-text">
           <span><span class="badge {{ rule.policy|policy_class }}">{{ rule.get_policy_display }}</span> <strong>{{ rule.get_rule_type_display }}</strong> <code>{{ rule.identifier }}</code></span>
           <small>{% if rule.is_global %}<span class="chip small">{% translate "All Macs" %}</span>{% else %}{% for group in rule.groups.all %}<span class="chip small">{{ group.name }}</span>{% endfor %}{% for machine in rule.machines.all %}<span class="chip small mac">{{ machine.hostname|default:machine.serial_number }}</span>{% endfor %}{% endif %}
-            {% if not rule.is_enabled %}<span class="badge">{% translate "disabled" %}</span>{% elif not match.applies %}<span class="muted">{% translate "not for these Macs" %}</span>{% endif %}</small>
+            {% if not rule.is_enabled %}<span class="badge">{% translate "disabled" %}</span>{% elif not match.applies %}<span class="muted">{% translate "not for these Macs" %}</span>{% endif %}
+            {% if match.cel is True %}<span class="muted">{% translate "includes this signing ID" %}</span>{% elif match.cel is False %}<span class="badge warn">{% translate "signing ID not included" %}</span>{% endif %}</small>
         </span>
       </label></li>
       {% endwith %}{% endfor %}
@@ -20,6 +21,7 @@
   </fieldset>
   <p class="help small" data-show-when="result=existing">{% translate "The rule stays as it is. The open events of the binary on the Macs of the requester are marked as resolved." %}</p>
   <p class="help small" data-show-when="result=extend">{% translate "The rule is enabled and gets the scope below." %}</p>
+  <p class="help small" data-show-when="result=signing">{% translate "The signing ID of the binary is added to the prefixes of the rule (“Only signing IDs starting with”), the rule is enabled and gets the scope below." %}</p>
 </div>
 {% endif %}
 <div data-show-when="result=rule">
@@ -29,7 +31,7 @@
     <div data-show-when="rule_type=TEAMID">{% include "console/_field.html" with field=form.signing_prefixes %}</div>
     {% include "console/_field.html" with field=form.cel_expr %}{% include "console/rules/_cel_help.html" %}</div>
 </div>
-<div data-show-when="result=rule|extend">
+<div data-show-when="result=rule|extend|signing">
   {% include "console/_field.html" with field=form.scope %}
   <div data-show-when="scope=groups">{% include "console/_field.html" with field=form.groups %}</div>
 </div>

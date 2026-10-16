@@ -1,6 +1,5 @@
 import base64
 import json
-import re
 from dataclasses import dataclass
 
 from django import forms
@@ -16,6 +15,7 @@ from django.utils.translation import gettext_lazy as _
 
 from .. import notifications
 from ..catalog import update_identifier_icons
+from ..cel import SIGNING_PREFIX_RE, parse_prefix_expression, prefix_expression
 from ..config_io import PREVIEW_LISTS, RENAMABLE_LISTS, item_token
 from ..models import (
     BRANDING_LOGO_MAX_BYTES,
@@ -169,25 +169,6 @@ CEL_SUGGESTIONS = [
 def cel_suggestions_json():
     return json.dumps([{"text": text, "kind": kind, "help": str(help_text)}
                        for text, kind, help_text in CEL_SUGGESTIONS])
-
-
-# "Only signing IDs starting with": a Team ID rule with this CEL expression (Santa has no wildcards)
-SIGNING_PREFIX_RE = re.compile(r"^[A-Za-z0-9._-]+$")
-PREFIX_EXPRESSION_RE = re.compile(
-    r'^\(target\.signing_id\.startsWith\("[A-Z0-9]{10}:[A-Za-z0-9._-]+"\)'
-    r'(?: \|\| target\.signing_id\.startsWith\("[A-Z0-9]{10}:[A-Za-z0-9._-]+"\))*\) \? ALLOWLIST : BLOCKLIST$')
-
-
-def prefix_expression(team_id, prefixes):
-    tests = " || ".join(f'target.signing_id.startsWith("{team_id}:{prefix}")' for prefix in prefixes)
-    return f"({tests}) ? ALLOWLIST : BLOCKLIST"
-
-
-def parse_prefix_expression(expression):
-    """The prefixes of an expression written by prefix_expression(), else None"""
-    if not PREFIX_EXPRESSION_RE.match(expression or ""):
-        return None
-    return re.findall(r'startsWith\("[A-Z0-9]{10}:([A-Za-z0-9._-]+)"\)', expression)
 
 
 def signing_prefixes_field():
@@ -457,12 +438,17 @@ class EventRuleForm(TagsMixin):
                                             widget=forms.CheckboxSelectMultiple)
     description = forms.CharField(max_length=500, required=False, label=_("Comment"),
                                   help_text=_("Empty: the name and path of each binary."))
-    include = forms.MultipleChoiceField(label=_("Binaries"), widget=forms.CheckboxSelectMultiple,
-                                        error_messages={"required": _("Choose at least one binary.")})
+    include = forms.MultipleChoiceField(label=_("Binaries"), widget=forms.CheckboxSelectMultiple, required=False)
+    # the binaries whose signing ID is added to the Team ID rule of signing ID prefixes that leaves it out, with the
+    # scope of the form (instead of a new rule)
+    add_signing = forms.MultipleChoiceField(required=False, widget=forms.CheckboxSelectMultiple)
 
-    def __init__(self, *args, rows, available_types=None, **kwargs):
+    def __init__(self, *args, rows, available_types=None, signing_rules=None, **kwargs):
+        """signing_rules: {SHA-256: the Team ID rule of signing ID prefixes that leaves the binary out}"""
         super().__init__(*args, **kwargs)
         self.rows = rows
+        self.signing_rules = signing_rules or {}
+        self.fields["add_signing"].choices = [(sha, sha) for sha in self.signing_rules]
         self.several = len(rows) > 1
         types = rule_type_choices(available_types)
         if self.several:
@@ -479,6 +465,11 @@ class EventRuleForm(TagsMixin):
 
     def clean(self):
         cleaned_data = super().clean()
+        # added to its Team ID rule: no new rule for it
+        adding = set(cleaned_data.get("add_signing") or [])
+        cleaned_data["include"] = [sha for sha in cleaned_data.get("include") or [] if sha not in adding]
+        if not cleaned_data["include"] and not adding and "include" not in self.errors:
+            self.add_error("include", gettext("Choose at least one binary."))
         if cleaned_data.get("scope") == SCOPE_GROUPS and not cleaned_data.get("groups"):
             self.add_error("groups", gettext("Choose at least one group."))
         # with prefixes the expression is written per binary, from its own Team ID (see cel_expr_for)
@@ -504,6 +495,12 @@ class EventRuleForm(TagsMixin):
     def included_rows(self):
         chosen = set(self.cleaned_data.get("include") or [])
         return [row for row in self.rows if row[0].file_sha256 in chosen]
+
+    def signing_rows(self):
+        """[(row, rule)] of the binaries whose signing ID is added to their Team ID rule"""
+        chosen = set(self.cleaned_data.get("add_signing") or [])
+        return [(row, self.signing_rules[row[0].file_sha256]) for row in self.rows
+                if row[0].file_sha256 in chosen]
 
 
 class UploadRulesForm(EventRuleForm):
@@ -625,14 +622,16 @@ class ApproveEventForm(CelPolicyMixin, TagsMixin):
 
     matches: existing_rules() of the binary; only its allowing rules can be chosen.
     """
-    RULE, EXISTING, EXTEND, NONE = "rule", "existing", "extend", "none"
+    RULE, EXISTING, EXTEND, SIGNING_ID, NONE = "rule", "existing", "extend", "signing", "none"
 
     field_order = ["result", "existing_rule", "rule_type", "policy", "signing_prefixes", "cel_expr", "scope",
                    "groups", "tags", "new_tags", "note"]
 
     result = forms.ChoiceField(
         choices=[(RULE, _("New rule")), (EXISTING, _("Existing rule")),
-                 (EXTEND, _("Existing rule, with the scope below added")), (NONE, _("No rule"))],
+                 (EXTEND, _("Existing rule, with the scope below added")),
+                 (SIGNING_ID, _("Existing Team ID rule, with this signing ID and the scope below added")),
+                 (NONE, _("No rule"))],
         initial=RULE, required=False, widget=forms.RadioSelect, label=_("Approve with"))
     existing_rule = forms.ModelChoiceField(queryset=Rule.objects.none(), required=False, widget=forms.RadioSelect,
                                            empty_label=None, label=_("Rule"))
@@ -658,13 +657,27 @@ class ApproveEventForm(CelPolicyMixin, TagsMixin):
         self.allowing = [match for match in matches
                          if match["rule"].policy not in (Policy.BLOCKLIST, Policy.SILENT_BLOCKLIST)]
         self.fields["existing_rule"].queryset = Rule.objects.filter(pk__in=[m["rule"].pk for m in self.allowing])
+        # a Team ID rule of signing ID prefixes that leaves this binary out: it takes its signing ID (not one of a
+        # package rule, which writes its rules itself)
+        self.signing_missing = [match for match in self.allowing
+                                if match.get("cel") is False and not match["rule"].release_source_id]
+        hidden = set()
         if not self.allowing:
-            self.fields["result"].choices = [choice for choice in self.fields["result"].choices
-                                             if choice[0] not in (self.EXISTING, self.EXTEND)]
-        elif not self.is_bound:
-            applying = [match for match in self.allowing if match["applies"]]
-            self.initial.setdefault("result", self.EXISTING if applying else self.RULE)
-            self.initial.setdefault("existing_rule", (applying or self.allowing)[0]["rule"].pk)
+            hidden |= {self.EXISTING, self.EXTEND}
+        if not self.signing_missing:
+            hidden.add(self.SIGNING_ID)
+        self.fields["result"].choices = [choice for choice in self.fields["result"].choices
+                                         if choice[0] not in hidden]
+        if self.allowing and not self.is_bound:
+            applying = [match for match in self.allowing if match["applies"] and match.get("cel") is not False]
+            if applying:
+                result, chosen = self.EXISTING, applying[0]
+            elif self.signing_missing:
+                result, chosen = self.SIGNING_ID, self.signing_missing[0]
+            else:
+                result, chosen = self.RULE, self.allowing[0]
+            self.initial.setdefault("result", result)
+            self.initial.setdefault("existing_rule", chosen["rule"].pk)
 
     def clean_result(self):
         # posted without the choice (a page loaded before it existed): a new rule, as before
@@ -679,8 +692,11 @@ class ApproveEventForm(CelPolicyMixin, TagsMixin):
         cleaned_data = super().clean()
         result = cleaned_data.get("result")
         rule = cleaned_data.get("existing_rule")
-        if result in (self.EXISTING, self.EXTEND) and not rule:
+        if result in (self.EXISTING, self.EXTEND, self.SIGNING_ID) and not rule:
             self.add_error("existing_rule", gettext("Choose a rule."))
+        elif result == self.SIGNING_ID and rule.pk not in {match["rule"].pk for match in self.signing_missing}:
+            self.add_error("existing_rule", gettext("Choose a Team ID rule with “Only signing IDs starting with” "
+                                                    "that doesn't include this signing ID yet."))
         elif result == self.EXISTING and not (is_allowed([m for m in self.allowing if m["rule"].pk == rule.pk])
                                               # and Santa lets it run there: no block of their group wins
                                               and (self.allowed is None or self.allowed())):
@@ -698,7 +714,7 @@ class ApproveEventForm(CelPolicyMixin, TagsMixin):
                 if not cleaned_data.get(name):
                     self.add_error(name, gettext("This field is required."))
             clean_cel_policy(self, cleaned_data)
-        if result in (self.RULE, self.EXTEND):
+        if result in (self.RULE, self.EXTEND, self.SIGNING_ID):
             if not cleaned_data.get("scope"):
                 self.add_error("scope", gettext("This field is required."))
             elif cleaned_data["scope"] == SCOPE_GROUPS and not cleaned_data.get("groups"):

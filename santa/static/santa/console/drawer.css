@@ -28,6 +28,13 @@
 }
 .drawer.open { transform: none; visibility: visible; transition: transform .2s ease; }
 .drawer-panel { padding: 1.25rem; }
+/* a view that loads: in the closed drawer its place at once (drawer.js, base.html), in the open one a moment later
+   (a quick answer doesn't flicker) */
+.drawer-loading .drawer-head > div { flex: 1; }
+.drawer-loading .skeleton-bar.title { width: 60%; max-width: 18rem; height: 1.2rem; margin-bottom: .5rem; }
+.drawer-loading .skeleton-card { margin-top: 1.5rem; gap: .9rem; }
+.drawer-loading .skeleton-bar { max-width: none; }
+.drawer.loading:not(:has(> [data-drawer-loading])) > * { opacity: .55; transition: opacity .15s ease .25s; }
 /* the head stays at the top while the drawer scrolls: back, open as page and close are always at hand */
 .drawer-head {
   display: flex; justify-content: space-between; gap: 1rem;
