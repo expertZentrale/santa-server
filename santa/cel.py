@@ -15,18 +15,23 @@ def prefix_expression(team_id, prefixes):
     return f"({tests}) ? ALLOWLIST : BLOCKLIST"
 
 
-def parse_prefix_expression(expression):
-    """The prefixes of an expression written by prefix_expression(), else None"""
+def parse_prefix_expression(expression, team_id=None):
+    """The prefixes of an expression written by prefix_expression(), else None. team_id: only with this Team ID in
+    every test (an expression by hand can test another team)."""
     if not PREFIX_EXPRESSION_RE.match(expression or ""):
         return None
-    return re.findall(r'startsWith\("[A-Z0-9]{10}:([A-Za-z0-9._-]+)"\)', expression)
+    tests = re.findall(r'startsWith\("([A-Z0-9]{10}):([A-Za-z0-9._-]+)"\)', expression)
+    if team_id is not None and any(team != team_id for team, _prefix in tests):
+        return None
+    return [prefix for _team, prefix in tests]
 
 
 def rule_prefixes(rule):
-    """The prefixes of a Team ID rule with such an expression, else None (another rule, an expression by hand)"""
+    """The prefixes of a Team ID rule with such an expression, else None (another rule, an expression by hand, one
+    that tests another team: not known what Santa does)"""
     if rule.policy != Policy.CEL or rule.rule_type != RuleType.TEAMID:
         return None
-    return parse_prefix_expression(rule.cel_expr)
+    return parse_prefix_expression(rule.cel_expr, rule.identifier)
 
 
 def prefix_decision(rule, signing_id):

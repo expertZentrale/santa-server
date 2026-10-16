@@ -247,7 +247,8 @@ class RuleForm(TagsMixin, forms.ModelForm):
         self.fields["cel_expr"].widget.attrs["data-cel-suggestions"] = cel_suggestions_json()
         if self.instance.pk:
             self.initial["machines"] = self.instance.machines.all()
-            prefixes = parse_prefix_expression(self.instance.cel_expr)
+            # only the prefixes of its own team (an expression by hand can test another one)
+            prefixes = parse_prefix_expression(self.instance.cel_expr, self.instance.identifier)
             if prefixes:
                 self.initial["signing_prefixes"] = "\n".join(prefixes)
 
@@ -704,6 +705,12 @@ class ApproveEventForm(CelPolicyMixin, TagsMixin):
             # a CEL rule that may block it: "with the scope below added")
             self.add_error("existing_rule", gettext("This rule doesn't allow the binary on these Macs yet: choose "
                                                     "“with the scope below added” or another rule."))
+        if result == self.EXTEND and rule and any(match["rule"].pk == rule.pk and match.get("cel") is False
+                                                  for match in self.allowing):
+            # a wider scope doesn't change its expression: Santa would still block the binary
+            self.add_error("existing_rule", gettext(
+                "This Team ID rule doesn't include the signing ID of the binary: choose “with this signing ID and the "
+                "scope below added” or another rule."))
         if result == self.EXTEND and rule and rule.release_source_id:
             # its package rule decides its scope, the next versions would leave out the Macs added here
             self.add_error("existing_rule", gettext(

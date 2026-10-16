@@ -7,7 +7,7 @@ from django.urls import reverse
 
 from santa.cel import parse_prefix_expression, prefix_decision, prefix_expression, signing_prefix
 from santa.models import AccessRequest, Event, Policy, ReleaseSource, Rule, RuleType
-from santa.services import decisions_on, existing_rules, is_allowed
+from santa.services import add_signing_prefix, decisions_on, existing_rules, is_allowed, widen_rule
 
 from .test_console import SHA_A, SHA_B, ConsoleBase
 
@@ -157,3 +157,45 @@ class PrefixRulesTestCase(ConsoleBase):
             "result": "existing", "existing_rule": self.rule.pk})
         access_request.refresh_from_db()
         self.assertEqual(access_request.status, AccessRequest.Status.APPROVED)
+
+    def test_extending_a_rule_that_leaves_the_signing_id_out_is_refused(self):
+        access_request = AccessRequest.objects.create(requester=self.user, kind="EVENT", event=self.outside,
+                                                      machine=self.machine, file_sha256=SHA_A, title="a",
+                                                      justification="x")
+        response = self.client.post(reverse("console:request_approve", args=(access_request.pk,)), {
+            "result": "extend", "existing_rule": self.rule.pk, "scope": "groups", "groups": [self.dev.pk]})
+        self.assertContains(response, "doesn&#x27;t include the signing ID")
+        access_request.refresh_from_db()
+        self.assertEqual(access_request.status, AccessRequest.Status.PENDING)
+
+    def test_additions_with_stale_copies_of_the_rule_keep_each_other(self):
+        first, second = Rule.objects.get(pk=self.rule.pk), Rule.objects.get(pk=self.rule.pk)
+        add_signing_prefix(first, f"{TEAM}:com.example.a", self.admin)
+        add_signing_prefix(second, f"{TEAM}:org.other", self.admin)
+        # and a wider scope with an old copy doesn't write back its expression
+        widen_rule(first, True, [], [], self.admin)
+        self.rule.refresh_from_db()
+        self.assertEqual(set(parse_prefix_expression(self.rule.cel_expr)),
+                         {"com.example.b", "com.example.a", "org.other"})
+
+    def test_a_disabled_rule_resolves_no_events(self):
+        Rule.objects.filter(pk=self.rule.pk).update(is_enabled=False)
+        add_signing_prefix(self.rule, self.outside.signing_id, self.admin)
+        self.outside.refresh_from_db()
+        self.assertIsNone(self.outside.resolved_at)
+
+    def test_an_expression_of_another_team_is_not_known(self):
+        rule = Rule(rule_type=RuleType.TEAMID, identifier=TEAM, policy=Policy.CEL,
+                    cel_expr=prefix_expression("OTHER12345", ["com.example.a"]))
+        self.assertIsNone(prefix_decision(rule, f"{TEAM}:com.example.a"))
+
+    def test_the_selection_adds_signing_ids_only_where_needed(self):
+        # allowed by its own signing ID rule: no prefix for it; without a signing ID: none to add
+        Rule.objects.create(rule_type=RuleType.SIGNINGID, identifier=self.outside.signing_id, is_global=True)
+        no_signing_id = self.make_event(sha256="e" * 64, team_id=TEAM, file_name="nosig")
+        response = self.client.post(reverse("console:events_create_rules"),
+                                    {"ids": [self.outside.pk, no_signing_id.pk]}, headers={"HX-Request": "true"})
+        self.assertEqual(response.context["form"]["add_signing"].value(), [])
+        self.assertEqual(list(response.context["form"].signing_rules), [SHA_A])
+        response = self.client.get(reverse("console:event", args=(no_signing_id.pk,)), HTTP_HX_REQUEST="true")
+        self.assertNotContains(response, "Add signing ID")

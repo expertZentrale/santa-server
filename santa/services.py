@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 
+from django.db import transaction
 from django.db.models import Count, IntegerField, OuterRef, Q, Subquery
 from django.db.models.functions import Coalesce
 from django.utils import timezone
@@ -70,7 +71,9 @@ def widen_rule(rule, is_global, groups, machines, user, tags=()):
     resolved"""
     rule.is_global = rule.is_global or is_global
     rule.is_enabled = True
-    rule.save()
+    # only what it changes: a whole save would write back an expression another request changed meanwhile (a new
+    # rule is saved as a whole)
+    rule.save(update_fields=["is_global", "is_enabled", "updated_at"] if rule.pk else None)
     if not is_global:
         rule.groups.add(*groups)
         rule.machines.add(*machines)
@@ -104,23 +107,30 @@ class SigningIdError(ValueError):
 def add_signing_prefix(rule, signing_id, user):
     """Add the signing ID to a Team ID rule of signing ID prefixes ("only signing IDs starting with"); the open
     events it allows now are resolved. Returns the prefix added (None: it was in the rule already)."""
-    # the expression as it is now: several binaries of a selection can add theirs to the same rule
-    rule.refresh_from_db(fields=["policy", "rule_type", "identifier", "cel_expr", "release_source"])
-    prefixes = rule_prefixes(rule)
-    if prefixes is None:
-        raise SigningIdError(gettext("Only a Team ID rule with “Only signing IDs starting with” takes signing IDs."))
-    if rule.release_source_id:
-        raise SigningIdError(gettext("This rule comes from the package rule %(source)s: change it there.")
-                             % {"source": rule.release_source})
-    prefix = signing_prefix(rule, signing_id)
-    if prefix is None:
-        raise SigningIdError(gettext("The signing ID %(signing_id)s doesn't belong to the team %(team_id)s.")
-                             % {"signing_id": signing_id or "–", "team_id": rule.identifier})
-    if prefix_decision(rule, signing_id):
-        return None
-    rule.cel_expr = prefix_expression(rule.identifier, [*prefixes, prefix])
-    rule.save(update_fields=["cel_expr", "updated_at"])
-    resolve_events(rule, user)
+    with transaction.atomic():
+        # read, changed and saved under a lock: two additions at the same time (several binaries of a selection,
+        # two administrators) don't overwrite each other
+        locked = Rule.objects.select_for_update().get(pk=rule.pk)
+        for name in ("policy", "rule_type", "identifier", "cel_expr", "release_source_id", "is_enabled"):
+            setattr(rule, name, getattr(locked, name))
+        prefixes = rule_prefixes(rule)
+        if prefixes is None:
+            raise SigningIdError(gettext("Only a Team ID rule with “Only signing IDs starting with” takes signing "
+                                         "IDs."))
+        if rule.release_source_id:
+            raise SigningIdError(gettext("This rule comes from the package rule %(source)s: change it there.")
+                                 % {"source": rule.release_source})
+        prefix = signing_prefix(rule, signing_id)
+        if prefix is None:
+            raise SigningIdError(gettext("The signing ID %(signing_id)s doesn't belong to the team %(team_id)s.")
+                                 % {"signing_id": signing_id or "–", "team_id": rule.identifier})
+        if prefix_decision(rule, signing_id):
+            return None
+        rule.cel_expr = prefix_expression(rule.identifier, [*prefixes, prefix])
+        rule.save(update_fields=["cel_expr", "updated_at"])
+    # a disabled rule doesn't reach the Macs: its events stay open (enabling it, widen_rule resolves them)
+    if rule.is_enabled:
+        resolve_events(rule, user)
     return prefix
 
 

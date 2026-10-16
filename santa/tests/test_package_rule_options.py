@@ -1217,6 +1217,17 @@ class TemporaryFailuresTestCase(ReleaseSourceBase):
         source.refresh_from_db()
         self.assertIn("broken archive", source.last_error)
 
+    def test_an_unexpected_error_inspecting_a_file_is_tried_again(self):
+        # not a known problem of the file (a bug, since fixed): the version comes again at the next check
+        source = self.github_source(asset_pattern="")
+        releases = [github_release("v3", "2026-09-03T10:00:00Z")]
+        with patch("santa.releases.find_binaries", side_effect=RuntimeError("unexpected")), \
+                self.assertRaises(ReleaseError):
+            sync_release_source(source, fake_session(self.routes(releases)))
+        self.assertFalse(source.versions.exists())
+        [version] = sync_release_source(source, fake_session(self.routes(releases)))
+        self.assertEqual(version.binary_count, 1)
+
     def test_an_unexpected_error_in_one_package_leaves_the_others(self):
         source = ReleaseSource.objects.create(name="tools", kind=ReleaseSource.Kind.GITHUB_RELEASE,
                                               identifier="abiosoft/colima\nlima-vm/lima", is_global=True)

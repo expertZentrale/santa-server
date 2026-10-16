@@ -1195,10 +1195,12 @@ def collect_many(session, source, releases):
             errors.append(str(e))
             continue
         except Exception as e:
-            # the network, the disk, or something unexpected: one file never stops the check
-            if is_transient(e):
+            # the network, the disk, or something unexpected: one file never stops the check. Tried again at the
+            # next check, all but a refused request (404): an unexpected error can be gone with the next version
+            # of the server, a version recorded without the file would stay so
+            if not isinstance(e, requests.HTTPError) or is_transient(e):
                 errors.retry = True
-            else:
+            if not is_transient(e):
                 logger.exception("Release source %s: %s", source.name, asset.name)
             errors.append(f"{asset.name}: {type(e).__name__}: {e}")
             continue
