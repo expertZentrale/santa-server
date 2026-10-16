@@ -23,7 +23,9 @@ from ..services import (
     allow_binaries,
     binary_identifiers,
     existing_rules_for_binaries,
+    groups_prefetch,
     is_allowed,
+    machines_prefetch,
     set_rules_enabled,
     set_rules_policy,
 )
@@ -142,9 +144,10 @@ def rules(request):
     if remembered := remember_filters(request, "rules"):
         return remembered
     queryset, sort = sort_by(request, filter_rules(request, Rule.objects.all()), RULE_COLUMNS, "-created")
-    queryset = queryset.select_related("release_source", "created_by").prefetch_related("groups", "tags", "machines")
+    queryset = queryset.select_related("release_source", "created_by").prefetch_related(
+        groups_prefetch(), "tags", machines_prefetch())
     page = None if defer_rows(request) else paginate(request, queryset)
-    groups = Group.objects.order_by("name")
+    groups = Group.objects.order_by("name").only("id", "name")
     facets = [
         Facet("type", gettext("Type"), choices=RuleType.choices),
         Facet("policy", gettext("Policy"), choices=Policy.choices),
@@ -348,7 +351,7 @@ def rules_existing(request):
     rules = []
     if identifier and request.GET.get("rule_type") in RuleType.values:
         rules = (Rule.objects.filter(rule_type=request.GET["rule_type"], identifier__iexact=identifier)
-                             .prefetch_related("groups", "machines")[:10])
+                             .prefetch_related(groups_prefetch(), machines_prefetch())[:10])
     # "applies" only means something for a binary of an event
     return render(request, "console/rules/_existing.html", {"matches": [{"rule": rule, "applies": True}
                                                                         for rule in rules], "same_identifier": True})
@@ -370,7 +373,7 @@ def rule_suggestions(request):
         rules = list(Rule.objects.filter(Q(identifier__icontains=q) | Q(description__icontains=q)
                                          | rules_of(Rule.tags.through, tag__name__icontains=q))
                      .annotate(rank=rank).order_by("rank", "identifier", "pk")[:MAX_RULE_SUGGESTIONS])
-        prefetch_related_objects(rules, "groups", "machines")
+        prefetch_related_objects(rules, groups_prefetch(), machines_prefetch())
     return render(request, "console/rules/_suggestions.html", {"rules": rules, "query": q})
 
 

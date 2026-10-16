@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 
 from django.db import transaction
-from django.db.models import Count, IntegerField, OuterRef, Q, Subquery
+from django.db.models import Count, IntegerField, OuterRef, Prefetch, Q, Subquery
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 from django.utils.translation import gettext
@@ -43,6 +43,17 @@ def related_aggregate(queryset, outer_field, aggregate):
 
 def related_count(queryset, outer_field):
     return Coalesce(related_aggregate(queryset, outer_field, Count("pk")), 0, output_field=IntegerField())
+
+
+# The groups and Macs of list rows, with only what the lists show of them. A prefetch reads a group or a Mac once
+# per row it belongs to, with every column: the branding logos of a group (hundreds of KB) or the rule ledger of
+# a Mac, 25 times on a page of rules.
+def groups_prefetch(lookup="groups"):
+    return Prefetch(lookup, queryset=Group.objects.only("id", "name"))
+
+
+def machines_prefetch(lookup="machines"):
+    return Prefetch(lookup, queryset=Machine.objects.only("id", "serial_number", "hostname"))
 
 
 def allow_identifier(rule_type, identifier, policy, is_global, groups, user, description="", tags=(), machines=(),
@@ -159,7 +170,7 @@ def _matching_rules(identifiers_of):
         # SQL Server: at most 2100 parameters per query
         for chunk in chunked(keys_of):
             for rule in (Rule.objects.filter(rule_type=rule_type, identifier__in=chunk)
-                                     .prefetch_related("groups", "machines")):
+                                     .prefetch_related(groups_prefetch(), machines_prefetch())):
                 for key in keys_of[rule.identifier]:
                     found[key].append(rule)
     return {key: sorted(rules, key=lambda rule: RULE_TYPE_PRECEDENCE.index(rule.rule_type))

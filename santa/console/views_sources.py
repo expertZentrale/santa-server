@@ -38,7 +38,7 @@ from ..releases import (
     sync_release_source,
     unchecked_identifiers,
 )
-from ..services import set_rules_enabled
+from ..services import groups_prefetch, set_rules_enabled
 from .filters import Facet, any_of, chosen, filter_bar, remember_filters
 from .forms import ReleaseSourceForm
 from .utils import (
@@ -74,7 +74,7 @@ def sources(request):
     require_perms(request, "view_releasesource")
     if remembered := remember_filters(request, "sources"):
         return remembered
-    queryset = ReleaseSource.objects.prefetch_related("groups", "versions")
+    queryset = ReleaseSource.objects.prefetch_related(groups_prefetch(), "versions")
     if kinds := chosen(request.GET, "kind", ReleaseSource.Kind.values):
         queryset = queryset.filter(kind__in=kinds)
     statuses = {"error": ~Q(last_error=""), "disabled": Q(is_enabled=False)}

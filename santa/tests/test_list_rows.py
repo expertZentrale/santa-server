@@ -1,3 +1,5 @@
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from santa.models import (
@@ -229,6 +231,33 @@ class RowMenuTestCase(ConsoleBase):
         response = self.client.get(reverse("console:groups"))
         self.assertContains(response, reverse("console:group_profile", args=(self.dev.pk,)))
         self.assertContains(response, f'{reverse("console:machines")}?group={self.dev.pk}')
+
+
+class ListColumnsTestCase(ConsoleBase):
+    """The lists read only the names of the groups and Macs of their rows: a prefetch reads a group once per row,
+    with its branding logos (hundreds of KB), and a Mac with its rule ledger"""
+
+    def test_no_logos_or_ledgers_per_row(self):
+        self.dev.branding_company_logo = self.dev.branding_company_logo_dark = "data:image/png;base64," + "A" * 1000
+        self.dev.save()
+        rule = Rule.objects.create(rule_type=RuleType.BINARY, identifier=SHA_A, description="the tool")
+        rule.groups.add(self.dev)
+        rule.machines.add(self.machine)
+        FileAccessRule.objects.create(name="Secrets", paths="/etc/secret").groups.add(self.dev)
+        ReleaseSource.objects.create(name="tools", kind=ReleaseSource.Kind.GITHUB_RELEASE,
+                                     identifier="example/tool").groups.add(self.dev)
+        for name, params, headers in [
+                ("console:rules", {"q": ""}, ROWS),
+                ("console:rules_existing", {"identifier": SHA_A, "rule_type": RuleType.BINARY}, {}),
+                ("console:rule_suggestions", {"q": "tool"}, {}),
+                ("console:file_access_rules", {}, {}),
+                ("console:sources", {"q": ""}, ROWS)]:
+            with self.subTest(name), CaptureQueriesContext(connection) as queries:
+                response = self.client.get(reverse(name), params, **headers)
+                self.assertContains(response, "Development")
+                for query in queries.captured_queries:
+                    self.assertNotIn("branding_company_logo", query["sql"])
+                    self.assertNotIn("synced_rules", query["sql"])
 
 
 class RowMenuTextsTestCase(ConsoleBase):

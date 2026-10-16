@@ -15,6 +15,7 @@ from ..profiles import base_profile, file_access_rules, group_profile
 from ..rules import GLOBAL, GROUP, LIST_FIELDS, MACHINE, PARENT, effective_rule_values
 from ..services import (
     can_see_sync_token,
+    groups_prefetch,
     related_aggregate,
     related_count,
     remove_machine_from_rules,
@@ -244,7 +245,7 @@ def machine_rules(machine, effective, params):
 
 def rules_of_page(items):
     """The rules of a page of machine_rules(), as models with their scope_level and wins"""
-    rules = Rule.objects.prefetch_related("tags", "groups").in_bulk([row[0] for _level, row, _wins in items])
+    rules = Rule.objects.prefetch_related("tags", groups_prefetch()).in_bulk([row[0] for _level, row, _wins in items])
     page = []
     for rule_level, row, wins in items:
         rule = rules[row[0]]
