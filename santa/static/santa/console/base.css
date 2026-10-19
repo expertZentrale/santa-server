@@ -48,8 +48,6 @@
 :root[data-theme="dark"] { color-scheme: dark; }
 
 * { box-sizing: border-box; }
-/* the room of the scrollbar is always kept: a long page doesn't move the content (and the avatar) to the left */
-html { scrollbar-gutter: stable; }
 
 /* Scrollbars in the colors of the theme: thin, a rounded thumb on a transparent track */
 * { scrollbar-width: thin; scrollbar-color: var(--scrollbar) transparent; }

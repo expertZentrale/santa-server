@@ -42,9 +42,10 @@ main .table-scroll:not(.fits) > .table:not(.compact) > thead th { position: rela
 .table-hscroll { position: sticky; bottom: var(--pages-h, 0rem); z-index: 3; overflow-x: auto; overflow-y: hidden;
                  min-height: .75rem; margin: -1rem 0 1rem 50%; transform: translateX(-50%); background: var(--surface);
                  border-radius: 0 0 var(--radius) var(--radius); }
-body.has-bulkbar .table-hscroll { bottom: calc(var(--pages-h, 0rem) + var(--bulkbar-h, 4rem) + 1.25rem); }
 .table-hscroll > div { height: 1px; }
 .table-hscroll[hidden] { display: none; }
+/* the bar of the bulk actions floats above that scrollbar, which stays at the bottom with the pages */
+body:has(main .table-hscroll:not([hidden])) .bulkbar { bottom: calc(1rem + .75rem); }
 /* the buttons of a row: last column, right-aligned, the same place in every row. No percentage widths in these
    tables: the box around them is as wide as its content, and a percentage would stretch it to the window */
 .table td.row-actions { width: 1px; white-space: nowrap; text-align: right; }
@@ -192,7 +193,13 @@ body:has(.drawer.open) .bulkbar.visible { opacity: 0; visibility: hidden; pointe
   }
   /* the bar of the bulk actions floats above them: selecting rows doesn't move the pages (--pages-h: table.js) */
   body:has(main .pagination) .bulkbar { bottom: calc(var(--pages-h, 3.25rem) + .75rem); }
+  body:has(main .pagination):has(main .table-hscroll:not([hidden])) .bulkbar {
+    bottom: calc(var(--pages-h, 3.25rem) + .75rem + .75rem);
+  }
+  main .pagination.wide { width: calc(var(--table-w) + 1rem); margin-right: 0; }
 }
+/* as wide as a table that grows out of the page (.table-scroll), centered like it (--table-w: table.js) */
+.pagination.wide { width: var(--table-w); margin-left: 50%; transform: translateX(-50%); }
 @media (max-width: 45em) {
   .pagination { grid-template-columns: 1fr; justify-items: center; }
   .pagination .pages, .pagination .per-page { grid-column: 1; justify-self: center; }
