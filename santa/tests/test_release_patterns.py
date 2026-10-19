@@ -275,6 +275,70 @@ end
 ''' % {"a": "a" * 64, "b": "b" * 64}
 
 
+# rustfs/tap/rustfs: constants, a hash of checksums, the program in a resource for the platform
+CONSTANTS_FORMULA = '''
+class Tool < Formula
+  VERSION = "1.0.3".freeze
+  GITHUB_REPO = "example/tool".freeze
+  BINARIES = {
+    "macos-aarch64" => "%(a)s",
+    "linux-x86_64-musl" => "%(b)s",
+  }.freeze
+
+  url "https://github.com/#{GITHUB_REPO}/archive/refs/tags/#{VERSION}.tar.gz"
+  sha256 "%(c)s"
+
+  resource "helper" do
+    url "https://files.example/helper-1.0.tar.gz"
+    sha256 "%(c)s"
+  end
+
+  on_macos do
+    on_arm do
+      resource "binary" do
+        url "https://github.com/#{GITHUB_REPO}/releases/download/#{VERSION}/tool-macos-aarch64-v#{VERSION}.zip"
+        sha256 BINARIES["macos-aarch64"]
+      end
+    end
+  end
+
+  on_linux do
+    resource "binary" do
+      url "https://github.com/#{GITHUB_REPO}/releases/download/#{VERSION}/tool-linux-x86_64-musl-v#{VERSION}.zip"
+      sha256 BINARIES["linux-x86_64-musl"]
+    end
+  end
+end
+''' % {"a": "a" * 64, "b": "b" * 64, "c": "c" * 64}
+
+# databricks/tap/databricks: local variables, the architecture chosen by the condition around the url
+LOCALS_FORMULA = '''
+class Tool < Formula
+  version "1.21.0"
+
+  download_prefix = "https://github.com/example/tool/releases/download"
+  arch_string = Hardware::CPU.intel? ? "amd64" : "arm64"
+  darwin_url = "#{download_prefix}/v#{version}/tool_#{version}_darwin_#{arch_string}.zip"
+  darwin_amd64_sha = "%(a)s"
+  darwin_arm64_sha = "%(b)s"
+
+  if OS.mac? && Hardware::CPU.intel?
+    url darwin_url
+    sha256 darwin_amd64_sha
+  end
+
+  if OS.mac? && Hardware::CPU.arm?
+    url darwin_url
+    sha256 darwin_arm64_sha
+  end
+
+  def post_install
+    system "codesign", "--force", "--sign", "-", libexec/"tool"
+  end
+end
+''' % {"a": "a" * 64, "b": "b" * 64}
+
+
 class TapTestCase(SimpleTestCase):
     def test_downloads_per_platform(self):
         found = parse_tap_file(HASHICORP_FORMULA)
@@ -314,6 +378,29 @@ class TapTestCase(SimpleTestCase):
                                       "example/tap/tool", cask=True)
         self.assertEqual([(asset.name, asset.sha256) for asset in release.assets],
                          [("tool-3.1.0-arm64.dmg", "a" * 64), ("tool-3.1.0-x64.dmg", "b" * 64)])
+
+    def tap_release(self, text):
+        session = fake_session({"https://raw.githubusercontent.com/example/homebrew-tap/HEAD/Formula/tool.rb":
+                                FakeResponse(content=text.encode())})
+        return latest_homebrew_tap(session, ReleaseSource(kind=ReleaseSource.Kind.HOMEBREW_FORMULA),
+                                   "example/tap/tool", cask=False)
+
+    def test_constants_and_the_program_in_a_resource(self):
+        release = self.tap_release(CONSTANTS_FORMULA)
+        self.assertEqual(release.version, "1.0.3")
+        # not the source code of the tag, nor a resource to build with, nor Linux
+        self.assertEqual([(asset.url, asset.sha256) for asset in release.assets], [
+            ("https://github.com/example/tool/releases/download/1.0.3/tool-macos-aarch64-v1.0.3.zip", "a" * 64)])
+        self.assertEqual(release.warnings, ())
+
+    def test_local_variables_and_the_architecture_of_the_condition(self):
+        release = self.tap_release(LOCALS_FORMULA)
+        base = "https://github.com/example/tool/releases/download/v1.21.0"
+        self.assertEqual([(asset.url, asset.sha256) for asset in release.assets], [
+            (f"{base}/tool_1.21.0_darwin_amd64.zip", "a" * 64), (f"{base}/tool_1.21.0_darwin_arm64.zip", "b" * 64)])
+        # it signs the program again: the hash of the download is not the one the Macs see
+        [warning] = release.warnings
+        self.assertIn("signs its program again", warning)
 
     def test_not_in_the_tap(self):
         base = "https://raw.githubusercontent.com/example/homebrew-tap/HEAD"

@@ -32,7 +32,7 @@ from django.utils.http import urlencode
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
 
-from . import archives, macho, notifications, semver
+from . import archives, bottles, macho, notifications, semver
 from .models import (
     DEPENDENCY_KINDS,
     HISTORY_KINDS,
@@ -94,6 +94,8 @@ class Asset:
     # what the asset pattern is matched against: the name (GitHub), the bottle tags the bottle serves, the URL
     # (cask), the target platform (VS Code), the compatible products (JetBrains). Empty: the name.
     match: tuple = ()
+    # a Homebrew bottle: its executables are changed as Homebrew installs them on the Macs of the tag
+    bottle_tag: str = ""
 
 
 @dataclass
@@ -105,6 +107,8 @@ class Release:
     # [(name, version), …] (the versions the bottles were built with; a name can come in several versions);
     # None: not known
     dependencies: object = None
+    # noted with the version (a Homebrew tap formula that signs its program again when it installs it)
+    warnings: tuple = ()
 
 
 @dataclass
@@ -186,9 +190,11 @@ def download(session, asset):
 class _UnpackBudget:
     """The bytes an archive may still unpack: a small download must not fill the disk (decompression bomb)"""
 
-    def __init__(self, name):
+    def __init__(self, name, skipped=None):
         self.name = name
         self.remaining = settings.RELEASE_MAX_UNPACKED_BYTES
+        # the executables left out for their size: named in the errors, else the release looks empty
+        self.skipped = skipped if skipped is not None else []
 
     def consume(self, size):
         self.remaining -= size
@@ -234,9 +240,17 @@ def binary_path_matches(path, pattern):
                for index, part in enumerate(parts[:-1]) if part.lower().endswith(NESTED_SUFFIXES))
 
 
-def _inspect_candidate(fileobj, path, pattern):
+def _inspect_candidate(fileobj, path, pattern, bottle_tag=""):
     if not _matches(path, pattern):
         return None
+    warning = ""
+    if bottle_tag:
+        try:
+            bottles.relocate(fileobj, bottle_tag)
+        except bottles.Unpredictable as e:
+            # unchanged: the hash of the bottle
+            warning = (f"{path}: Homebrew changes it on install in a way the server can't reproduce ({e}), "
+                       "its rule has the hash of the bottle: allow the blocked event instead")
     try:
         info = macho.inspect(fileobj)
     except macho.NotMachO:
@@ -244,6 +258,7 @@ def _inspect_candidate(fileobj, path, pattern):
     # the dylibs and bundles are never executed on their own, Santa does not check them
     if not info.is_executable:
         return None
+    info.warning = warning
     return info
 
 
@@ -251,16 +266,19 @@ def _is_nested(path, size):
     return path.lower().endswith(NESTED_SUFFIXES) and size <= settings.RELEASE_MAX_FILE_BYTES
 
 
-def find_binaries(fileobj, name, pattern=""):
+def find_binaries(fileobj, name, pattern="", bottle_tag="", skipped=None):
     """Yield (path, MachOInfo) for the Mach-O executables in a raw binary, a zip or tar archive, a flat package
-    (.pkg) or a disk image (.dmg). An archive inside one (the .pkg in a .dmg) is read too, one level deep."""
+    (.pkg) or a disk image (.dmg). An archive inside one (the .pkg in a .dmg) is read too, one level deep.
+    bottle_tag: a Homebrew bottle, its executables as Homebrew installs them (santa/bottles.py).
+    skipped: a list that gets the executables bigger than RELEASE_MAX_FILE_BYTES, not checked."""
     try:
-        yield from _find_binaries(fileobj, name, pattern, _UnpackBudget(name), nested=False)
+        yield from _find_binaries(fileobj, name, pattern, _UnpackBudget(name, skipped), nested=False,
+                                  bottle_tag=bottle_tag)
     except archives.ArchiveError as e:
         raise ReleaseError(f"{name}: {e}") from e
 
 
-def _find_binaries(fileobj, name, pattern, budget, nested):
+def _find_binaries(fileobj, name, pattern, budget, nested, bottle_tag=""):
     fileobj.seek(0)
     header = fileobj.read(8)
     fileobj.seek(0)
@@ -270,9 +288,12 @@ def _find_binaries(fileobj, name, pattern, budget, nested):
             yield name, info
         return
 
+    # a bottle is installed as it is: an archive in it is data (the test files of go), never executed
+    descend = not nested and not bottle_tag
+
     def wanted(path, size, executable):
         # packages and disk images keep the x bit: only executables are worth unpacking there
-        return ((not nested and _is_nested(path, size))
+        return ((descend and _is_nested(path, size))
                 or (executable is not False and _worth_unpacking(path, size, pattern)))
 
     if archives.is_pkg(header):
@@ -291,9 +312,14 @@ def _find_binaries(fileobj, name, pattern, budget, nested):
             raise ReleaseError(f"{name}: not a Mach-O binary, zip or tar archive, package or disk image") from None
     for path, size, executable, open_member in members:
         if not wanted(path, size, executable):
+            if size > settings.RELEASE_MAX_FILE_BYTES and executable is not False and _matches(path, pattern):
+                with open_member() as member_fileobj:
+                    if macho.may_be_executable(member_fileobj.read(16)):
+                        budget.skipped.append(f"{path}: {size} bytes, bigger than RELEASE_MAX_FILE_BYTES "
+                                              f"({settings.RELEASE_MAX_FILE_BYTES}), not checked")
             continue
         with open_member() as member_fileobj:
-            archive = not nested and _is_nested(path, size)
+            archive = descend and _is_nested(path, size)
             # only executables are unpacked: the libraries, headers and data of a package (the gigabytes of a
             # compiler) neither use up the budget nor the time
             start = member_fileobj.read(16)
@@ -305,7 +331,7 @@ def _find_binaries(fileobj, name, pattern, budget, nested):
                 for inner_path, info in _find_binaries(spooled, path, pattern, budget, nested=True):
                     yield f"{path}/{inner_path}", info
                 continue
-            info = _inspect_candidate(spooled, path, pattern)
+            info = _inspect_candidate(spooled, path, pattern, bottle_tag)
             if info:
                 yield path, info
 
@@ -415,7 +441,7 @@ def _bottle_assets(source, name, version, bottles):
     """The assets of the bottles a source takes. bottles: {tag: (url, sha256, headers)}"""
     taken = _taken_bottles(source, bottles)
     return [Asset(name=f"{name}-{version}.{tag}.bottle.tar.gz", url=url, sha256=sha256, headers=headers,
-                  match=tuple(taken[tag]))
+                  match=tuple(taken[tag]), bottle_tag=tag)
             for tag, (url, sha256, headers) in sorted(bottles.items()) if tag in taken]
 
 
@@ -684,7 +710,10 @@ def latest_homebrew_cask(session, source, identifier):
 # owner/homebrew-tap is read with regexes. It covers the usual forms (url + sha256, per OS and architecture,
 # bottle blocks), not every Ruby expression; a download it can't read is left out and named in the error.
 TAP_FILE_MAX_BYTES = 512 * 1024
-_TAP_SKIPPED_BLOCKS = ("resource", "patch", "head", "livecheck", "test", "service", "caveats")
+_TAP_SKIPPED_BLOCKS = ("patch", "head", "livecheck", "test", "service", "caveats")
+# a resource is mostly something to build with (a Python package); one for a platform is the program built for it
+# (rustfs/tap/rustfs: on_macos do on_arm do resource "binary" do url …)
+_TAP_PLATFORM_WORDS = ("on_macos", "on_arm", "on_intel", "os.mac?", "hardware::cpu")
 _RB_END = re.compile(r"^\s*end\b")
 _RB_CONDITION = re.compile(r"^\s*(?:if|unless)\s+(.+)$")
 _RB_BLOCK = re.compile(r"^\s*(\w+)\b.*\bdo\b(?:\s*\|[^|]*\|)?\s*$")
@@ -698,6 +727,18 @@ _RB_ARCH = re.compile(r'^\s*arch\s+(.+)$')
 _RB_ARCH_VALUE = re.compile(r'\b(arm|intel):\s*"([^"]*)"')
 _RB_BOTTLE_SHA = re.compile(r'\b(\w+):\s*"([0-9a-f]{64})"')
 _RB_DEPENDS = re.compile(r'^\s*depends_on\s+"([^"]+)"\s*(=>.*)?$')
+# constants of the formula: VERSION = "1.0.3".freeze, used as #{VERSION}; BINARIES = { "macos-aarch64" => "…" }
+# with sha256 BINARIES["macos-aarch64"]
+_RB_CONSTANT = re.compile(r"""^\s*([A-Z][A-Z0-9_]*)\s*=\s*["']([^"'#]*)["'](?:\.freeze)?\s*$""")
+_RB_CONSTANT_HASH = re.compile(r"^\s*([A-Z][A-Z0-9_]*)\s*=\s*\{\s*$")
+_RB_HASH_ENTRY = re.compile(r"""^\s*["']([^"']+)["']\s*=>\s*["']([^"']*)["']\s*,?\s*$""")
+_RB_SHA256_CONSTANT = re.compile(r"""^\s*sha256\s+([A-Za-z_]\w*)(?:\[["']([^"']+)["']\])?\s*$""")
+# local variables: download_prefix = "…", url darwin_url; arch_string = Hardware::CPU.intel? ? "amd64" : "arm64"
+_RB_LOCAL = re.compile(r'^\s*([a-z_]\w*)\s*=\s*"([^"]*)"\s*$')
+_RB_LOCAL_ARCH = re.compile(r'^\s*([a-z_]\w*)\s*=\s*Hardware::CPU\.(intel|arm)\?\s*\?\s*"([^"]*)"\s*:\s*"([^"]*)"\s*$')
+_RB_URL_VARIABLE = re.compile(r"^\s*url\s+([a-z_]\w*)\s*$")
+# the formula signs its program again when it installs it (post_install): another hash than the download's
+_RB_CODESIGN = re.compile(r"""["']codesign["']""")
 
 
 def is_tap_identifier(identifier):
@@ -738,10 +779,37 @@ def parse_tap_file(text):
     pending = None
     # a sha256 written before its url (some casks)
     loose_sha = None
+    constants, hashes, arch_variables = {}, {}, {}
+    found["codesigns"] = False
+    # the constant hash being read
+    in_hash = None
     for line in text.splitlines():
         if line.lstrip().startswith("#"):
             continue
         line = _RB_COMMENT.sub("", line)
+        if in_hash is not None:
+            if entry := _RB_HASH_ENTRY.match(line):
+                hashes[in_hash][entry[1]] = entry[2]
+            elif line.strip().startswith("}"):
+                in_hash = None
+            continue
+        if constant := _RB_CONSTANT_HASH.match(line):
+            in_hash = constant[1]
+            hashes[in_hash] = {}
+            continue
+        if constant := _RB_CONSTANT.match(line):
+            constants[constant[1]] = constant[2]
+            continue
+        if _RB_CODESIGN.search(line):
+            found["codesigns"] = True
+        if not stack or all(kind == "root" for kind, _condition in stack):
+            if local := _RB_LOCAL_ARCH.match(line):
+                first, other = ("intel", "arm") if local[2] == "intel" else ("arm", "intel")
+                arch_variables[local[1]] = {first: local[3], other: local[4]}
+                continue
+            if local := _RB_LOCAL.match(line):
+                constants[local[1]] = local[2]
+                continue
         if _RB_END.match(line):
             if stack:
                 stack.pop()
@@ -762,6 +830,8 @@ def parse_tap_file(text):
                 stack.append(("root", ""))
             elif word == "bottle":
                 stack.append(("bottle", ""))
+            elif word == "resource":
+                stack.append(("resource", ""))
             elif word in _TAP_SKIPPED_BLOCKS:
                 stack.append(("skip", ""))
             else:
@@ -775,6 +845,8 @@ def parse_tap_file(text):
         if "skip" in kinds:
             continue
         context = " ".join(condition for _kind, condition in stack)
+        if "resource" in kinds and not any(word in context for word in _TAP_PLATFORM_WORDS):
+            continue
         top_level = all(kind == "root" for kind in kinds)
         if "bottle" in kinds:
             if root := re.match(r'^\s*root_url\s+"([^"]+)"', line):
@@ -790,21 +862,41 @@ def parse_tap_file(text):
             found["revision"] = int(revision[1])
         elif arch := _RB_ARCH.match(line):
             found["arch"] = dict(_RB_ARCH_VALUE.findall(arch[1]))
-        elif url := _RB_URL.match(line):
-            pending = [url[1], loose_sha or "", context]
+        elif (url := _RB_URL.match(line)) or ((named_url := _RB_URL_VARIABLE.match(line))
+                                               and named_url[1] in constants):
+            pending = [url[1] if url else constants[named_url[1]], loose_sha or "", context]
             loose_sha = None
             found["downloads"].append(pending)
-        elif sha := _RB_SHA256.match(line):
+        elif (sha := _RB_SHA256.match(line)) or (named := _RB_SHA256_CONSTANT.match(line)):
+            digest = (sha[1] or "") if sha else (hashes.get(named[1], {}).get(named[2]) if named[2]
+                                                  else constants.get(named[1])) or ""
+            if not re.fullmatch(r"[0-9a-f]{64}", digest):
+                digest = ""
             if pending is not None and not pending[1]:
-                pending[1] = sha[1] or ""
+                pending[1] = digest
             else:
-                loose_sha = sha[1] or ""
+                loose_sha = digest
         elif re.match(r"^\s*(?:sha256\s+)?(?:arm|intel):", line):
             # sha256 arm: "…", intel: "…" (a cask with #{arch}), also over two lines
             found["arch_sha256"].update(_RB_SHA256_ARCH.findall(line))
         elif (depends := _RB_DEPENDS.match(line)) and not re.search(r":(?:build|test)\b", depends[2] or "") \
                 and "linux" not in context:
             found["dependencies"].append(depends[1])
+    for download in found["downloads"]:
+        # a variable made of others ("#{download_prefix}/v#{version}/…"): filled in until nothing changes
+        for _round in range(5):
+            before = download[0]
+            for name, value in constants.items():
+                download[0] = download[0].replace(f"#{{{name}}}", value)
+            for name, values in arch_variables.items():
+                # the architecture the url is for: the condition around it
+                arch = "arm" if "cpu.arm?" in download[2] else "intel" if "cpu.intel?" in download[2] else ""
+                if arch:
+                    download[0] = download[0].replace(f"#{{{name}}}", values[arch])
+            if download[0] == before:
+                break
+    if not found["version"] and constants.get("VERSION"):
+        found["version"] = constants["VERSION"]
     found["downloads"] = [tuple(download) for download in found["downloads"]]
     return found
 
@@ -815,6 +907,9 @@ def _tap_assets(found, version):
     unreadable = []
     for url, sha256, context in found["downloads"]:
         if "linux" in context or re.search(r"linux|windows|win64|\.exe\b|\.msi\b", url, re.I):
+            continue
+        # the source code GitHub packs for a tag: nothing to run, only to build from
+        if re.match(r"https://github\.com/[^/]+/[^/]+/archive/", url):
             continue
         variants = [(url, sha256)]
         if "#{arch}" in url and found["arch"]:
@@ -860,7 +955,11 @@ def latest_homebrew_tap(session, source, identifier, cask):
         assets = [asset for asset in assets if asset_matches(patterns, asset.match)]
         if not assets and unreadable:
             raise ReleaseError(f"{identifier}: no download the server can read, e.g. {unreadable[0]}")
-    return Release(version=package_version, assets=assets, dependencies=found["dependencies"])
+    warnings = ()
+    if found["codesigns"] and not cask:
+        warnings = (f"{identifier}: the formula signs its program again when it installs it (codesign), the Macs see "
+                    "another hash than the download's: allow the blocked event instead",)
+    return Release(version=package_version, assets=assets, dependencies=found["dependencies"], warnings=warnings)
 
 
 def latest_url(session, source, identifier):
@@ -1181,11 +1280,14 @@ def dependency_releases(session, source, release, errors):
 DOWNLOAD_WORKERS = 4
 
 
-def _inspect(session, asset, pattern):
+def _inspect(session, asset, pattern, progress=None, label=""):
     # in a thread of the pool: only the network, hashing and unpacking, never the database
+    if progress and label:
+        progress.show(label)
+    skipped = []
     with download(session, asset) as fileobj:
         try:
-            return list(find_binaries(fileobj, asset.name, pattern))
+            return list(find_binaries(fileobj, asset.name, pattern, asset.bottle_tag, skipped)), skipped
         except ReleaseError:
             raise
         except (EOFError, ValueError, zlib.error, lzma.LZMAError, zipfile.BadZipFile, tarfile.TarError) as e:
@@ -1193,10 +1295,12 @@ def _inspect(session, asset, pattern):
             raise ReleaseError(f"{asset.name}: broken archive ({type(e).__name__}: {e})") from e
 
 
-def collect_many(session, source, releases):
+def collect_many(session, source, releases, progress=None, labels=None):
     """[(binaries, errors)] for the releases [(release, dependency label)], their assets downloaded and inspected at
-    once (DOWNLOAD_WORKERS). The same file (its hash, or else its URL) is downloaded once."""
+    once (DOWNLOAD_WORKERS). The same file (its hash, or else its URL) is downloaded once.
+    labels: what the progress shows for each release while its files download ("colima 0.9.1 · lima@2.0.3")."""
     jobs = []
+    labels = labels or [""] * len(releases)
     for index, (release, dependency) in enumerate(releases):
         # the binary pattern is for the package itself, the dependencies have their own paths
         pattern = "" if dependency else source.binary_pattern
@@ -1204,15 +1308,16 @@ def collect_many(session, source, releases):
     # inspected before in this check (a dependency of several versions or packages): not downloaded again
     scanned = run_cache(session, "scans")
     files = {}
-    for _index, asset, pattern, _dependency in jobs:
+    for index, asset, pattern, _dependency in jobs:
         key = (asset.sha256 or asset.sha512 or asset.url, pattern)
         if key not in scanned:
-            files.setdefault(key, asset)
+            files.setdefault(key, (asset, labels[index]))
     futures = {}
     if files:
         with ThreadPoolExecutor(max_workers=min(DOWNLOAD_WORKERS, len(files)), thread_name_prefix="santa-download") \
                 as pool:
-            futures = {key: pool.submit(_inspect, session, asset, key[1]) for key, asset in files.items()}
+            futures = {key: pool.submit(_inspect, session, asset, key[1], progress, label)
+                       for key, (asset, label) in files.items()}
         for key, future in futures.items():
             if not future.exception():
                 scanned[key] = future.result()
@@ -1221,7 +1326,7 @@ def collect_many(session, source, releases):
         errors = results[index][1]
         key = (asset.sha256 or asset.sha512 or asset.url, pattern)
         try:
-            found = scanned[key] if key in scanned else futures[key].result()
+            found, skipped = scanned[key] if key in scanned else futures[key].result()
         except ReleaseError as e:
             errors.append(str(e))
             continue
@@ -1237,6 +1342,8 @@ def collect_many(session, source, releases):
             continue
         results[index][0].extend(FoundBinary(asset=asset.name, path=path, info=info, dependency=dependency,
                                              asset_match=asset.match) for path, info in found)
+        errors.extend(f"{asset.name}: {info.warning}" for _path, info in found if info.warning)
+        errors.extend(f"{asset.name}: {line}" for line in skipped)
     return results
 
 
@@ -1244,22 +1351,33 @@ def collect_binaries(session, source, release, dependency=""):
     return collect_many(session, source, [(release, dependency)])[0]
 
 
-def _collect_releases(session, source, releases):
+def progress_label(identifier, release, dependency=""):
+    """What the progress of a check shows: the package, its version and the dependency it works on"""
+    return " · ".join(filter(None, [f"{identifier} {release.version}".strip(), dependency]))
+
+
+def _collect_releases(session, source, releases, progress=None, identifier=""):
     """{id(release): (binaries, errors, the dependency labels)} for the releases, with the binaries of their
     dependencies: every file of all of them downloaded at once"""
-    batch, owners, resolve_errors = [], [], {}
+    batch, owners, resolve_errors, labels = [], [], {}, []
     for release in releases:
-        errors = Errors()
+        if progress:
+            # only the label: a cancel stops between the versions recorded, after their files are downloaded
+            progress.show(progress_label(identifier, release))
+        errors = Errors(release.warnings)
         dependencies = dependency_releases(session, source, release, errors)
         resolve_errors[id(release)] = errors
         batch.append((release, ""))
         owners.append((release, ""))
+        labels.append(progress_label(identifier, release))
         for label, dependency in dependencies.items():
             batch.append((dependency, label))
             owners.append((release, label))
+            labels.append(progress_label(identifier, release, label))
     collected = {id(release): ([], Errors(), []) for release in releases}
     own_errors = {}
-    for (release, label), (found, errors) in zip(owners, collect_many(session, source, batch), strict=True):
+    for (release, label), (found, errors) in zip(owners, collect_many(session, source, batch, progress, labels),
+                                                 strict=True):
         binaries, dependency_errors, included = collected[id(release)]
         binaries += found
         if label:
@@ -1530,6 +1648,19 @@ def _delete_stale_rules(items):
     return count
 
 
+def forget_versions(source):
+    """Delete the recorded versions of a package rule and their rules: the next check records them again. For the
+    Homebrew formulae recorded before their executables were hashed as Homebrew installs them (santa/bottles.py),
+    whose rules have the hashes of the bottles. Returns (versions, rules) deleted."""
+    versions = list(source.versions.values_list("pk", flat=True))
+    rule_count = 0
+    for chunk in chunked(versions):
+        rule_count += Rule.objects.filter(release_version__in=chunk).delete()[1].get("santa.Rule", 0)
+    for chunk in chunked(versions):
+        ReleaseVersion.objects.filter(pk__in=chunk).delete()
+    return len(versions), rule_count
+
+
 def cleanup_release_source(source):
     """Delete the versions and rules the package rule no longer covers. Returns (versions, rules) deleted."""
     versions, rule_count, _count = cleanup_preview(source)
@@ -1550,7 +1681,7 @@ def cleanup_release_source(source):
     return len(versions), rule_count + other_count
 
 
-def _record_release(session, source, identifier, release, collected=None):
+def _record_release(session, source, identifier, release, collected=None, progress=None):
     """Download a release and create its version and rules. Return (the new ReleaseVersion or None, errors).
 
     collected: its (binaries, errors, dependency labels) of _collect_releases(), downloaded with others before.
@@ -1564,7 +1695,8 @@ def _record_release(session, source, identifier, release, collected=None):
         logger.info("Release source %s: %s version %s skipped by the version pattern",
                     source.name, identifier, release.version)
         return None, []
-    binaries, errors, included = collected or _collect_releases(session, source, [release])[id(release)]
+    binaries, errors, included = collected or _collect_releases(session, source, [release], progress,
+                                                                identifier)[id(release)]
     if getattr(errors, "retry", False):
         raise RetryLater(f"Tried again at the next check: {'; '.join(errors)}"[:2000])
     if not binaries and (errors or source.kind not in KINDS_OFTEN_WITHOUT_EXECUTABLES) and not included:
@@ -1635,7 +1767,8 @@ def _add_dependencies(session, source, identifier, latest, errors, progress=None
         binaries, included = [], list(dependencies)
         for label, (found, dependency_errors) in zip(
                 included, collect_many(session, source, [(dependency, label)
-                                                         for label, dependency in dependencies.items()]),
+                                                         for label, dependency in dependencies.items()],
+                                       progress, [progress_label(identifier, release, label) for label in included]),
                 strict=True):
             binaries += found
             warnings += [f"{label}: {error}" for error in dependency_errors]
@@ -1724,7 +1857,8 @@ def _sync_kept_versions(session, source, identifier, errors, latest, progress=No
     # all their files at once, recorded one after the other
     if progress and missing:
         progress.note(f"{identifier}: {len(missing)}")
-    collected = _collect_releases(session, source, [release for release in missing if release.assets])
+    collected = _collect_releases(session, source, [release for release in missing if release.assets], progress,
+                                  identifier)
     for release in missing:
         if progress:
             progress.note(f"{identifier} {release.version}")
@@ -1749,7 +1883,7 @@ def _sync_kept_versions(session, source, identifier, errors, latest, progress=No
 def _sync_identifier(session, source, identifier, progress=None):
     """Check one identifier of the source. Return (the new ReleaseVersions, the non-fatal errors)."""
     release = PROVIDERS[source.kind](session, source, identifier)
-    release_version, errors = _record_release(session, source, identifier, release)
+    release_version, errors = _record_release(session, source, identifier, release, progress=progress)
     new_versions = [release_version] if release_version else []
     if source.approve_kept_versions and source.keep_versions and source.kind in HISTORY:
         try:

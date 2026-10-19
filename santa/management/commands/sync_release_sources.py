@@ -7,7 +7,7 @@ from django.core.management.base import BaseCommand
 
 from santa.models import ReleaseSource
 from santa.progress import SHUTDOWN, SHUTTING_DOWN, AlreadyRunning, run_source_check
-from santa.releases import ReleaseError, enable_due_releases, http_session, sync_release_source
+from santa.releases import ReleaseError, enable_due_releases, forget_versions, http_session, sync_release_source
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +27,9 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("--source", type=int, action="append", help="Only this release source ID")
+        parser.add_argument("--rerecord-homebrew", action="store_true",
+                            help="Delete the versions of the Homebrew formulae and their rules first, to record them "
+                                 "again with the hashes of the installed executables (once after the update)")
 
     def handle(self, *args, **options):
         # the cronjob may overlap with a manual run, the lock lives in the shared Redis cache
@@ -45,6 +48,11 @@ class Command(BaseCommand):
                 sources = sources.filter(pk__in=options["source"])
             session = http_session()
             failures = 0
+            if options["rerecord_homebrew"]:
+                for source in sources.filter(kind=ReleaseSource.Kind.HOMEBREW_FORMULA):
+                    version_count, rule_count = forget_versions(source)
+                    self.stdout.write(f"{source}: {version_count} versions and {rule_count} rules deleted, "
+                                      "recorded again")
             for source in sources:
                 if SHUTTING_DOWN.is_set():
                     self.stderr.write("Stopped: the process is shutting down")

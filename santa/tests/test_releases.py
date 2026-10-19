@@ -106,6 +106,16 @@ class FindBinariesTestCase(TestCase):
             self.assertEqual([path for path, _ in found], ["bin/tool"])
 
 
+    def test_an_executable_too_big_is_named(self):
+        binary = build_macho(identifier="tool", team_id="", adhoc=True)
+        big = binary + b"\0" * 60_000
+        data = zip_file({"tool": big, "LICENSE": b"x" * 5000})
+        skipped = []
+        with self.settings(RELEASE_MAX_FILE_BYTES=50_000):
+            self.assertEqual(list(find_binaries(io.BytesIO(data), "tool.zip", skipped=skipped)), [])
+        self.assertEqual(skipped, [f"tool: {len(big)} bytes, bigger than RELEASE_MAX_FILE_BYTES (50000), not checked"])
+
+
 class ReleaseSourceBase(TestCase):
     @classmethod
     def setUpTestData(cls):
