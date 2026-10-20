@@ -342,6 +342,24 @@ class DependenciesTestCase(ReleaseSourceBase):
         self.assertEqual(version.binary_count, 2)
         self.assertIn("Dependencies: dep-a@1.4.0, @esbuild/darwin-arm64@0.20.0, dep-b@2.1.5", version.notes)
 
+    def test_the_progress_names_the_version_and_the_dependency(self):
+        source = ReleaseSource.objects.create(name="tool", kind=ReleaseSource.Kind.NPM_PACKAGE, is_global=True,
+                                              identifier="@example/tool", include_dependencies=True)
+        labels = []
+
+        class Recording(Progress):
+            def note(self, label):
+                labels.append(label)
+                super().note(label)
+
+            def show(self, label):
+                labels.append(label)
+                super().show(label)
+        sync_release_source(source, fake_session(self.npm_routes()), progress=Recording())
+        self.assertIn("@example/tool 1.0.0", labels)
+        self.assertIn("@example/tool 1.0.0 · dep-a@1.4.0", labels)
+        self.assertIn("@example/tool 1.0.0 · @esbuild/darwin-arm64@0.20.0", labels)
+
     def test_versions_recorded_before_get_their_dependencies(self):
         routes = self.npm_routes()
         source = ReleaseSource.objects.create(name="tool", kind=ReleaseSource.Kind.NPM_PACKAGE, is_global=True,

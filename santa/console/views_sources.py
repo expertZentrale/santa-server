@@ -62,11 +62,18 @@ from .utils import (
 
 
 def latest_versions(source):
-    """The newest version of every identifier, in the order of the identifiers"""
+    """The newest version of every identifier, in the order of the identifiers: by its release date, not by when it
+    was recorded (the older versions a package rule allows are recorded after the current one)"""
     latest = {}
-    for version in source.versions.order_by("-created_at"):
-        latest.setdefault(version.identifier, version)
+    for version in source.versions.all():
+        current = latest.get(version.identifier)
+        if current is None or _released(version) > _released(current):
+            latest[version.identifier] = version
     return [(identifier, latest.get(identifier)) for identifier in source.identifiers]
+
+
+def _released(version):
+    return version.published_at or version.created_at
 
 
 @staff_required
@@ -142,7 +149,8 @@ def _versions_context(source):
     enabled = set(source.rules.filter(is_enabled=True).order_by().values_list("release_version_id", flat=True)
                   .distinct())
     # the notes (the files found, up to 10,000 characters each) are not in the table
-    for version in source.versions.defer("notes").order_by("-created_at"):
+    # newest first by release date: the older versions a package rule allows are recorded after the current one
+    for version in sorted(source.versions.defer("notes"), key=_released, reverse=True):
         version.rules_enabled = version.pk in enabled
         version.dependency_rows = [(label, label in with_rules.get(version.pk, ())) for label in version.dependencies]
         versions.setdefault(version.identifier, []).append(version)

@@ -60,6 +60,8 @@ class MachOInfo:
     sha256: str
     size: int
     slices: list = field(default_factory=list)
+    # why the hash may not be the one of the installed file (a Homebrew bottle, santa/bottles.py)
+    warning: str = ""
 
     @property
     def is_executable(self):
@@ -132,17 +134,22 @@ def inspect(fileobj):
         raise NotMachO("Not a Mach-O file")
     sha256, size = file_sha256(fileobj)
     info = MachOInfo(sha256=sha256, size=size)
-    magic = struct.unpack(">I", header[:4])[0]
-    if magic in (FAT_MAGIC, FAT_MAGIC_64):
-        nfat_arch = struct.unpack(">I", header[4:8])[0]
-        entry_format, entry_size = (">iiQQI4x", 32) if magic == FAT_MAGIC_64 else (">iiIII", 20)
-        fileobj.seek(8)
-        entries = [struct.unpack(entry_format, fileobj.read(entry_size)) for _ in range(nfat_arch)]
-        for _, _, offset, _, _ in entries:
-            info.slices.append(_inspect_slice(fileobj, offset))
-    else:
-        info.slices.append(_inspect_slice(fileobj, 0))
+    for offset in slice_offsets(fileobj):
+        info.slices.append(_inspect_slice(fileobj, offset))
     return info
+
+
+def slice_offsets(fileobj):
+    """The offsets of the architectures in a Mach-O file: [0] for a thin one"""
+    fileobj.seek(0)
+    header = fileobj.read(8)
+    magic = struct.unpack(">I", header[:4])[0]
+    if magic not in (FAT_MAGIC, FAT_MAGIC_64):
+        return [0]
+    nfat_arch = struct.unpack(">I", header[4:8])[0]
+    entry_format, entry_size = (">iiQQI4x", 32) if magic == FAT_MAGIC_64 else (">iiIII", 20)
+    entries = [struct.unpack(entry_format, fileobj.read(entry_size)) for _ in range(nfat_arch)]
+    return [offset for _, _, offset, _, _ in entries]
 
 
 def _inspect_slice(fileobj, offset):
