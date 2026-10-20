@@ -26,6 +26,8 @@ from santa.releases import (
     cleanup_release_source,
     collect_many,
     find_binaries,
+    homebrew_formula_at,
+    homebrew_formula_releases,
     latest_homebrew_formula,
     latest_homebrew_tap,
     parse_tap_file,
@@ -404,6 +406,47 @@ class TapTestCase(SimpleTestCase):
         # it signs the program again: the hash of the download is not the one the Macs see
         [warning] = release.warnings
         self.assertIn("signs its program again", warning)
+
+    def tap_history_session(self, commits, files):
+        """commits: [(sha, date, message)] newest first; files: {sha: version} of Formula/tool.rb"""
+        base = "https://raw.githubusercontent.com/example/homebrew-tap"
+
+        def formula(version):
+            return (f'class Tool < Formula\n  version "{version}"\n  url "https://dl.example/tool-{version}-darwin.zip"'
+                    f'\n  sha256 "{"a" * 64}"\nend\n')
+        routes = {f"{base}/HEAD/Formula/tool.rb": FakeResponse(content=formula(files[commits[0][0]]).encode()),
+                  "https://api.github.com/repos/example/homebrew-tap/commits": FakeResponse(
+                      [{"sha": sha, "commit": {"message": message, "committer": {"date": date}}}
+                       for sha, date, message in commits])}
+        for sha, version in files.items():
+            routes[f"{base}/{sha}/Formula/tool.rb"] = FakeResponse(content=formula(version).encode())
+        return fake_session(routes)
+
+    def test_older_versions_from_the_history_of_the_tap(self):
+        session = self.tap_history_session(
+            [("c3", "2026-10-10T10:00:00Z", "tool 1.2.0"), ("c2", "2026-10-01T10:00:00Z", "tool: new bottles"),
+             ("c1", "2026-09-30T10:00:00Z", "tool 1.1.0"), ("c0", "2026-09-01T10:00:00Z", "tool 1.0.0")],
+            {"c3": "1.2.0", "c2": "1.1.0", "c1": "1.1.0", "c0": "1.0.0"})
+        source = ReleaseSource(kind=ReleaseSource.Kind.HOMEBREW_FORMULA, keep_versions=2)
+        releases = homebrew_formula_releases(session, source, "example/tap/tool", 2)
+        # the date of a version: the commit that brought it, not a later one of the same version
+        self.assertEqual([(release.version, release.published_at.date().isoformat()) for release in releases],
+                         [("1.2.0", "2026-10-10"), ("1.1.0", "2026-09-30")])
+        self.assertEqual([asset.url for asset in releases[1].assets], ["https://dl.example/tool-1.1.0-darwin.zip"])
+        # one version of the history
+        self.assertEqual(homebrew_formula_at(session, source, "example/tap/tool", version="1.0.0").version, "1.0.0")
+        with self.assertRaisesMessage(ReleaseError, "no version 0.9 in the history of the tap"):
+            homebrew_formula_at(session, source, "example/tap/tool", version="0.9")
+
+    def test_a_known_version_named_by_its_commit_is_not_read_again(self):
+        session = self.tap_history_session(
+            [("c3", "2026-10-10T10:00:00Z", "tool 1.2.0"), ("c1", "2026-09-30T10:00:00Z", "tool 1.1.0")],
+            {"c3": "1.2.0", "c1": "1.1.0"})
+        source = ReleaseSource(kind=ReleaseSource.Kind.HOMEBREW_FORMULA, keep_versions=2)
+        releases = homebrew_formula_releases(session, source, "example/tap/tool", 2, known={"1.1.0": None})
+        self.assertEqual([release.version for release in releases], ["1.2.0", "1.1.0"])
+        urls = [call.args[0] for call in session.get.call_args_list]
+        self.assertNotIn("https://raw.githubusercontent.com/example/homebrew-tap/c1/Formula/tool.rb", urls)
 
     def test_the_warning_of_a_dependency_is_kept(self):
         session = fake_session({"https://example/tool": FakeResponse(content=unsigned("tool")),

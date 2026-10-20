@@ -408,7 +408,11 @@ das spätere Ende; eine Regel ohne Ende bleibt ohne. Die optionale Spalte *Läuf
 Such-API: der Server lädt die Liste der Formeln bzw. Casks einmal am Tag. URLs werden eingetippt und mit Enter
 hinzugefügt. Pakete aus einem **Homebrew-Tap** geben Sie mit vollem Namen an, wie bei `brew install`
 (`hashicorp/tap/terraform`); der Server liest die Formel- bzw. Cask-Datei aus dem GitHub-Repository
-`owner/homebrew-tap` (Version, Downloads mit SHA-256, Bottles). Taps haben nur ihre aktuelle Version. Gelesen werden
+`owner/homebrew-tap` (Version, Downloads mit SHA-256, Bottles). Ältere Versionen einer Tap-Formel kommen aus der
+Git-Historie dieser Datei (Datum: der Commit, der die Version brachte): eine Anfrage an die GitHub-API je Prüfung, die
+Dateien selbst über raw.githubusercontent.com. Ohne `GITHUB_TOKEN` erlaubt GitHub 60 API-Anfragen pro Stunde und
+Server-IP. Ältere Downloads, die der Hersteller entfernt hat, enden als Fehler der Version. Casks aus Taps haben nur
+ihre aktuelle Version. Gelesen werden
 auch Konstanten und Variablen (`VERSION = "1.0.3"`, `url darwin_url`, `sha256 BINARIES["macos-aarch64"]`), die
 Architektur über `Hardware::CPU.intel? ? … : …` und das fertige Programm in einer `resource` für eine Plattform
 (`on_macos`, `on_arm`, …). Signiert eine Formel ihr Programm beim Installieren neu (`codesign`), nennt die Version das:
@@ -443,7 +447,8 @@ wird für sich geprüft und behält seine eigenen Versionen. Eine Paketregel leg
 - **Behalten**: die letzten *n* Versionen, oder die Versionen der letzten *n* Wochen bzw. Monate; die Regeln älterer
   Versionen werden gelöscht, die neueste Version bleibt immer. `0` behält alle.
 - **Auch die älteren behaltenen Versionen erlauben** (alle Kataloge außer Homebrew-Cask und URL, die nur auf den
-  aktuellen Download zeigen; Homebrew-Formulae aus der Bottle-Registry `ghcr.io`): legt die Regeln für die älteren
+  aktuellen Download zeigen; Homebrew-Formulae aus der Bottle-Registry `ghcr.io`, Tap-Formeln aus der Git-Historie des
+  Taps): legt die Regeln für die älteren
   Versionen im behaltenen Bereich an, nicht nur für neue (höchstens 10 je Prüfung, der Rest bei den nächsten).
   Nicht mit `0`, das würde jede je veröffentlichte Version erlauben.
 - **Abhängigkeiten erlauben** (npm, Homebrew-Formula): erlaubt auch die ausführbaren Dateien der Abhängigkeiten jeder
@@ -1038,7 +1043,10 @@ stays without one. The optional column *Expires* and the filter *Expiry* show th
 the server loads the list of formulae or casks once a day. URLs are typed and added with Enter. Packages from a
 **Homebrew tap** are given with their full name, like for `brew install` (`hashicorp/tap/terraform`); the server reads
 the formula or cask file from the GitHub repository `owner/homebrew-tap` (version, downloads with SHA-256, bottles).
-Taps have only their current version. Constants and variables are read too (`VERSION = "1.0.3"`, `url darwin_url`,
+Older versions of a tap formula come from the Git history of that file (date: the commit that brought the version):
+one request to the GitHub API per check, the files themselves through raw.githubusercontent.com. Without
+`GITHUB_TOKEN`, GitHub allows 60 API requests per hour and server IP. Older downloads the vendor removed end as an
+error of the version. Casks from taps have only their current version. Constants and variables are read too (`VERSION = "1.0.3"`, `url darwin_url`,
 `sha256 BINARIES["macos-aarch64"]`), the architecture through `Hardware::CPU.intel? ? … : …`, and the ready-made
 program in a `resource` for one platform (`on_macos`, `on_arm`, …). When a formula signs its program again while
 installing it (`codesign`), the version says so: the Macs then see another hash than the download's.
@@ -1071,7 +1079,8 @@ on its own and keeps its own versions. A package rule also chooses what the rule
 - **Keep**: the last *n* versions, or the versions of the last *n* weeks or months; the rules of older versions are
   deleted, the newest version always stays. `0` keeps all.
 - **Also allow the older kept versions** (every catalog except Homebrew casks and URLs, which only point to the
-  current download; Homebrew formulae from the bottle registry `ghcr.io`): adds the rules of the older versions
+  current download; Homebrew formulae from the bottle registry `ghcr.io`, tap formulae from the Git history of the
+  tap): adds the rules of the older versions
   inside the kept range, not only of new ones (at most 10 per check, the rest at the next ones). Not with `0`: that
   would allow every version ever published.
 - **Allow the dependencies** (npm, Homebrew formula): also allows the executables of the dependencies of every new
