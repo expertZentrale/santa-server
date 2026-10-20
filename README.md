@@ -416,7 +416,9 @@ hinzugefügt. Pakete aus einem **Homebrew-Tap** geben Sie mit vollem Namen an, w
 `owner/homebrew-tap` (Version, Downloads mit SHA-256, Bottles). Ältere Versionen einer Tap-Formel kommen aus der
 Git-Historie dieser Datei (Datum: der Commit, der die Version brachte): eine Anfrage an die GitHub-API je Prüfung, die
 Dateien selbst über raw.githubusercontent.com. Nur mit `GITHUB_TOKEN`: ohne erlaubt GitHub 60 API-Anfragen pro Stunde
-und Server-IP, dann haben Taps nur ihre aktuelle Version. Ältere Downloads, die der Hersteller entfernt hat, enden als Fehler der Version. Casks aus Taps haben nur
+und Server-IP, dann haben Taps nur ihre aktuelle Version. Vorabversionen eines Taps (z. B. `1.0.2-preview.2`) zählen
+nur mit *Vorabversionen einbeziehen*; ist die aktuelle eine, nimmt der Server die neueste andere aus der Historie, und
+*Aufräumen* löscht schon erfasste Vorabversionen. Ältere Downloads, die der Hersteller entfernt hat, enden als Fehler der Version. Casks aus Taps haben nur
 ihre aktuelle Version. Gelesen werden
 auch Konstanten und Variablen (`VERSION = "1.0.3"`, `url darwin_url`, `sha256 BINARIES["macos-aarch64"]`), die
 Architektur über `Hardware::CPU.intel? ? … : …` und das fertige Programm in einer `resource` für eine Plattform
@@ -1055,7 +1057,9 @@ the formula or cask file from the GitHub repository `owner/homebrew-tap` (versio
 Older versions of a tap formula come from the Git history of that file (date: the commit that brought the version):
 one request to the GitHub API per check, the files themselves through raw.githubusercontent.com. Only with
 `GITHUB_TOKEN`: without it GitHub allows 60 API requests per hour and server IP, taps then have only their current
-version. Older downloads the vendor removed end as an
+version. Prereleases of a tap (e.g. `1.0.2-preview.2`) count only with *Include prereleases*; when the current
+version is one, the server takes the newest other one from the history, and *Clean up* deletes prereleases recorded
+already. Older downloads the vendor removed end as an
 error of the version. Casks from taps have only their current version. Constants and variables are read too (`VERSION = "1.0.3"`, `url darwin_url`,
 `sha256 BINARIES["macos-aarch64"]`), the architecture through `Hardware::CPU.intel? ? … : …`, and the ready-made
 program in a `resource` for one platform (`on_macos`, `on_arm`, …). When a formula signs its program again while

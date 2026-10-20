@@ -37,6 +37,7 @@ from ..releases import (
     stale_versions,
     sync_release_source,
     unchecked_identifiers,
+    unwanted_prerelease,
 )
 from ..services import groups_prefetch, set_rules_enabled
 from .filters import Facet, any_of, chosen, filter_bar, remember_filters
@@ -429,6 +430,8 @@ def source_cleanup(request, pk):
             reason = gettext("older than the versions to keep")
         elif version.pk in outside_files:
             reason = gettext("no file inside the asset or binary pattern")
+        elif unwanted_prerelease(source, version):
+            reason = gettext("prerelease, prereleases are not allowed")
         else:
             reason = gettext("outside the version pattern")
         rows.append((version, reason))

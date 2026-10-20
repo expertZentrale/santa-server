@@ -554,7 +554,8 @@ class ReleaseSource(models.Model):
         help_text=_("Homebrew formula: a bottle for an older macOS counts for the newer ones it runs on, like in "
                   "Homebrew (portable-ruby has only arm64_big_sur, which serves arm64_sequoia too)."),
     )
-    include_prereleases = models.BooleanField(default=False, help_text=_("GitHub, VS Code, JetBrains (EAP)"))
+    include_prereleases = models.BooleanField(default=False,
+                                              help_text=_("GitHub, npm, VS Code, JetBrains (EAP), Homebrew taps"))
 
     rule_type = models.CharField(
         _("preferred rule type"), max_length=16, choices=RuleType.choices, default=RuleType.BINARY,

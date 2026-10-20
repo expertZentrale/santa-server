@@ -534,7 +534,15 @@ def homebrew_linux_only(data):
 
 def latest_homebrew_formula(session, source, identifier):
     if is_tap_identifier(identifier):
-        return latest_homebrew_tap(session, source, identifier, cask=False)
+        release = latest_homebrew_tap(session, source, identifier, cask=False)
+        if semver.is_prerelease(release.version) and not source.include_prereleases:
+            # the newest release that isn't one, from the history of the tap (like "latest" of GitHub)
+            stable = homebrew_tap_releases(session, source, identifier, 1) if settings.GITHUB_TOKEN else []
+            if not stable:
+                raise ReleaseError(f"{identifier}: the current version {release.version} is a prerelease; "
+                                   "allow prereleases, or wait for a release (older releases need GITHUB_TOKEN)")
+            return stable[0]
+        return release
     response = session.get(f"https://formulae.brew.sh/api/formula/{identifier}.json",
                            timeout=settings.RELEASE_HTTP_TIMEOUT)
     response.raise_for_status()
@@ -768,6 +776,10 @@ _RB_SHA256_CONSTANT = re.compile(r"""^\s*sha256\s+([A-Za-z_]\w*)(?:\[["']([^"']+
 _RB_LOCAL = re.compile(r'^\s*([a-z_]\w*)\s*=\s*"([^"]*)"\s*$')
 _RB_LOCAL_ARCH = re.compile(r'^\s*([a-z_]\w*)\s*=\s*Hardware::CPU\.(intel|arm)\?\s*\?\s*"([^"]*)"\s*:\s*"([^"]*)"\s*$')
 _RB_URL_VARIABLE = re.compile(r"^\s*url\s+([a-z_]\w*)\s*$")
+# a URL put together in a method from a key of a hash constant (rustfs/tap/rc before it declared its resources):
+# url = "…/rustfs-cli-#{target}-v#{VERSION}.tar.gz" with sha256 = BINARIES[target]
+_RB_URL_TEMPLATE = re.compile(r'^\s*[a-z_]\w*\s*=\s*"(https?://[^"]*#\{([a-z_]\w*)\}[^"]*)"\s*$', re.M)
+_RB_HASH_LOOKUP = re.compile(r"=\s*([A-Z][A-Z0-9_]*)\[\s*([a-z_]\w*)\s*\]")
 # the formula signs its program again when it installs it (post_install): another hash than the download's
 _RB_CODESIGN = re.compile(r"""["']codesign["']""")
 
@@ -925,6 +937,16 @@ def parse_tap_file(text):
         elif (depends := _RB_DEPENDS.match(line)) and not re.search(r":(?:build|test)\b", depends[2] or "") \
                 and "linux" not in context:
             found["dependencies"].append(depends[1])
+    lookups = dict((variable, constant) for constant, variable in _RB_HASH_LOOKUP.findall(text))
+    known = {download[0] for download in found["downloads"]}
+    for template, variable in _RB_URL_TEMPLATE.findall(text):
+        if variable in constants or lookups.get(variable) not in hashes:
+            continue
+        # one download per key (macos-arm64, linux-amd64, …): the ones for other systems drop out by their URL
+        for key, sha in hashes[lookups[variable]].items():
+            url = template.replace(f"#{{{variable}}}", key)
+            if url not in known:
+                found["downloads"].append([url, sha if re.fullmatch(r"[0-9a-f]{64}", sha) else "", ""])
     for download in found["downloads"]:
         # a variable made of others ("#{download_prefix}/v#{version}/…"): filled in until nothing changes
         for _round in range(5):
@@ -1027,7 +1049,8 @@ def homebrew_tap_releases(session, source, identifier, limit, known=None):
     if not settings.GITHUB_TOKEN:
         # without a token GitHub allows 60 API requests an hour for the whole server (the catalog search too): only
         # the current version, as before the history was read
-        return [latest_homebrew_tap(session, source, identifier, cask=False)]
+        current = latest_homebrew_tap(session, source, identifier, cask=False)
+        return [] if semver.is_prerelease(current.version) and not source.include_prereleases else [current]
     cache = run_cache(session, "tap-history")
     key = (identifier, limit)
     if key in cache:
@@ -1050,7 +1073,7 @@ def homebrew_tap_releases(session, source, identifier, limit, known=None):
         else:
             found = parse_tap_file(_raw_tap_file(session, identifier, commit["sha"], path) or "")
             release = _tap_release(source, identifier, found, cask=False, published_at=date)
-        if not release.version:
+        if not release.version or (semver.is_prerelease(release.version) and not source.include_prereleases):
             continue
         if release.version in releases:
             # an older commit of the same version (a new bottle, a fix): the version came with the oldest one
@@ -1661,12 +1684,18 @@ def pattern_stale_versions(source):
     return _pattern_stale(source)[1]
 
 
+def unwanted_prerelease(source, version):
+    """A prerelease of a tap recorded before they were left out (taps have no flag of their own, the version says)"""
+    return (source.kind == ReleaseSource.Kind.HOMEBREW_FORMULA and not source.include_prereleases
+            and is_tap_identifier(version.identifier) and semver.is_prerelease(version.version))
+
+
 def stale_versions(source, now=None, check_filters=False):
     """The versions to delete: of identifiers removed from the source, and outside the range to keep.
 
-    check_filters: also the versions the version pattern no longer matches, and those whose files the asset or
-    binary pattern no longer covers (the "clean up" of the console; the sync leaves them, the patterns only decide
-    about new versions there).
+    check_filters: also the versions the version pattern no longer matches, the prereleases of taps when they aren't
+    allowed, and those whose files the asset or binary pattern no longer covers (the "clean up" of the console; the
+    sync leaves them, the patterns only decide about new versions there).
     """
     identifiers = set(source.identifiers)
     check_versions = check_filters and source.kind != ReleaseSource.Kind.URL
@@ -1676,7 +1705,7 @@ def stale_versions(source, now=None, check_filters=False):
     by_identifier = {}
     for version in source.versions.all():
         if (version.identifier not in identifiers or (check_versions and not version_matches(source, version.version))
-                or version.pk in outside_files):
+                or version.pk in outside_files or (check_filters and unwanted_prerelease(source, version))):
             stale.append(version)
         else:
             by_identifier.setdefault(version.identifier, []).append(version)
