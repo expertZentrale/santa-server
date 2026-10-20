@@ -1,14 +1,23 @@
 import hashlib
 import io
 import struct
+from datetime import timedelta
 from unittest.mock import patch
 
 from django.core.management import call_command
 from django.test import SimpleTestCase, TestCase
+from django.utils import timezone
 
 from santa import bottles, macho
-from santa.models import ReleaseSource, Rule
-from santa.releases import find_binaries, sync_release_source
+from santa.console.views_sources import latest_versions
+from santa.models import ReleaseSource, ReleaseVersion, Rule, RuleType
+from santa.releases import (
+    ReleaseError,
+    _ghcr_base,
+    find_binaries,
+    latest_homebrew_formula,
+    sync_release_source,
+)
 
 from .test_releases import FakeResponse, fake_session, tar_gz
 from .utils import X86_64, build_bottle_macho, build_fat
@@ -154,15 +163,63 @@ class HomebrewFormulaTestCase(TestCase):
         self.assertIn("tool/1.0/bin/helper: Homebrew changes it on install", version.notes)
 
     def test_versions_recorded_before_are_recorded_again(self):
-        # recorded with the hash of the bottle, before the change
+        # recorded with the hash of the bottle, before the change: the current version, approved by hand, and an
+        # older one the registry no longer has
         with patch("santa.releases.bottles.relocate", return_value=False):
-            sync_release_source(self.source, fake_session(self.routes))
+            [current] = sync_release_source(self.source, fake_session(self.routes))
         bottle_hash = hashlib.sha256(self.executable).hexdigest()
-        self.assertEqual(list(Rule.objects.values_list("identifier", flat=True)), [bottle_hash])
-        output = io.StringIO()
+        current.rules.update(is_enabled=False)
+        older = ReleaseVersion.objects.create(source=self.source, identifier="tool", version="0.9", notes="old",
+                                              binary_count=1)
+        Rule.objects.create(rule_type=RuleType.BINARY, identifier="9" * 64, release_source=self.source,
+                            release_version=older)
+
+        def formula_at(session, source, name, version=None, before=None):
+            if version != "1.0":
+                raise ReleaseError(f"{name}: no version {version} in the Homebrew registry")
+            return latest_homebrew_formula(session, source, name)
+        output, errors = io.StringIO(), io.StringIO()
         with patch("santa.management.commands.sync_release_sources.http_session",
-                   return_value=fake_session(self.routes)):
-            call_command("sync_release_sources", "--rerecord-homebrew", stdout=output)
-        self.assertIn("tool: 1 versions and 1 rules deleted", output.getvalue())
-        self.assertEqual(list(Rule.objects.values_list("identifier", flat=True)), [self.installed])
-        self.assertEqual(self.source.versions.count(), 1)
+                   return_value=fake_session(self.routes)), \
+                patch("santa.releases.homebrew_formula_at", side_effect=formula_at):
+            call_command("sync_release_sources", "--rerecord-homebrew", stdout=output, stderr=errors)
+        self.assertIn("tool: 1 versions recorded again", output.getvalue())
+        self.assertIn("0.9: kept as it is (tool: no version 0.9 in the Homebrew registry)", errors.getvalue())
+        # the new hash, still waiting for approval like the rule it replaces
+        rule = current.rules.get()
+        self.assertEqual((rule.identifier, rule.is_enabled), (self.installed, False))
+        self.assertNotIn(bottle_hash, current.rules.values_list("identifier", flat=True))
+        self.assertIn(self.installed, ReleaseVersion.objects.get(pk=current.pk).notes)
+        # the older version keeps its rule
+        self.assertEqual(list(older.rules.values_list("identifier", flat=True)), ["9" * 64])
+
+
+class VersionDatesTestCase(TestCase):
+    def test_the_current_version_gets_the_day_of_its_bottles(self):
+        source = ReleaseSource.objects.create(name="tool", kind=ReleaseSource.Kind.HOMEBREW_FORMULA, identifier="tool",
+                                              asset_pattern="^arm64_", is_global=True)
+        bottle = tar_gz({"tool/1.0/bin/tool": build_bottle_macho()})
+        formula = {"versions": {"stable": "1.0"}, "revision": 0, "bottle": {"stable": {"files": {
+            "arm64_sequoia": {"url": "https://ghcr.example/arm64_sequoia",
+                              "sha256": hashlib.sha256(bottle).hexdigest()}}}}}
+        routes = {"https://formulae.brew.sh/api/formula/tool.json": FakeResponse(formula),
+                  "https://ghcr.example/arm64_sequoia": FakeResponse(content=bottle)}
+        # recorded before the day was asked: it gets it at the next check
+        ReleaseVersion.objects.create(source=source, identifier="tool", version="1.0")
+        routes[f"{_ghcr_base('tool')}/manifests/1.0"] = FakeResponse(
+            {"annotations": {"org.opencontainers.image.created": "2026-10-01T10:00:00Z"}})
+        sync_release_source(source, fake_session(routes))
+        self.assertEqual(source.versions.get().published_at.isoformat(), "2026-10-01T10:00:00+00:00")
+        # asked once: not again at the next check
+        session = fake_session(routes)
+        sync_release_source(source, session)
+        self.assertNotIn(f"{_ghcr_base('tool')}/manifests/1.0", [call.args[0] for call in session.get.call_args_list])
+
+    def test_the_latest_version_is_the_newest_release_not_the_last_recorded(self):
+        source = ReleaseSource.objects.create(name="go", kind=ReleaseSource.Kind.HOMEBREW_FORMULA, identifier="go")
+        current = ReleaseVersion.objects.create(source=source, identifier="go", version="1.27.2",
+                                                published_at=timezone.now() - timedelta(days=3))
+        # the older versions the package rule allows, recorded after it
+        ReleaseVersion.objects.create(source=source, identifier="go", version="1.26.9",
+                                      published_at=timezone.now() - timedelta(days=60))
+        self.assertEqual(latest_versions(source), [("go", current)])

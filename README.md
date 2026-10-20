@@ -468,8 +468,9 @@ Hinweise:
   Version nennt die Datei und den Grund; erlauben Sie dann das blockierte Ereignis. Homebrew muss im Standardpfad
   installiert sein.
 - Versionen von Homebrew-Formeln, die vor dieser Umstellung erfasst wurden, haben noch die Hashes der Bottles:
-  `python manage.py sync_release_sources --rerecord-homebrew` löscht sie einmalig mit ihren Regeln und erfasst sie neu
-  (Versionen, die auf manuelle Freigabe warten, müssen wieder freigegeben werden).
+  `python manage.py sync_release_sources --rerecord-homebrew` lädt sie einmalig neu und ersetzt die Regeln ihrer
+  Binaries; die Freigabe einer Version bleibt, wie sie war. Eine Version, die sich nicht mehr laden lässt, bleibt
+  unverändert und wird genannt.
 - Abgleich mit einem Test-Mac: `scripts/homebrew_installed_hashes.py` läuft auf dem Mac selbst (im Terminal, als der
   Benutzer, dem Homebrew gehört, Santa im Monitor-Modus). Es installiert Formeln und schreibt die Hashes der
   installierten Binaries in eine JSON-Datei; `--from-export <datei>` nimmt die Formeln aus dem Konfigurationsexport
@@ -1081,8 +1082,9 @@ Notes:
   binary signed by the linker), the rule keeps the hash of the bottle and the version names the file and the reason;
   allow the blocked event then. Homebrew must be installed in its default prefix.
 - Versions of Homebrew formulae recorded before this change still have the hashes of the bottles:
-  `python manage.py sync_release_sources --rerecord-homebrew` deletes them once with their rules and records them
-  again (versions waiting for manual approval have to be approved again).
+  `python manage.py sync_release_sources --rerecord-homebrew` downloads them again once and replaces the rules of
+  their binaries; the approval of a version stays as it was. A version that can't be downloaded any more stays
+  unchanged and is named.
 - Comparing with a test Mac: `scripts/homebrew_installed_hashes.py` runs on the Mac itself (in the Terminal, as the
   user who owns Homebrew, Santa in Monitor mode). It installs formulae and writes the hashes of the installed binaries
   to a JSON file; `--from-export <file>` adds the formulae of the configuration export.

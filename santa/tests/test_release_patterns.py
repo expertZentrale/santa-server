@@ -19,9 +19,12 @@ from santa.log_redaction import RedactSyncTokens, redact_sync_path
 from santa.models import Policy, ReleaseSource, ReleaseVersion, Rule, RuleType
 from santa.progress import Progress, progress_for, read_progress
 from santa.releases import (
+    Asset,
+    Release,
     ReleaseError,
     bottle_coverage,
     cleanup_release_source,
+    collect_many,
     find_binaries,
     latest_homebrew_formula,
     latest_homebrew_tap,
@@ -401,6 +404,17 @@ class TapTestCase(SimpleTestCase):
         # it signs the program again: the hash of the download is not the one the Macs see
         [warning] = release.warnings
         self.assertIn("signs its program again", warning)
+
+    def test_the_warning_of_a_dependency_is_kept(self):
+        session = fake_session({"https://example/tool": FakeResponse(content=unsigned("tool")),
+                                "https://example/helper": FakeResponse(content=unsigned("helper"))})
+        tool = Release(version="1.0", assets=[Asset(name="tool", url="https://example/tool")])
+        helper = Release(version="2.0", assets=[Asset(name="helper", url="https://example/helper")],
+                         warnings=("example/tap/helper: the formula signs its program again",))
+        results = collect_many(session, ReleaseSource(kind=ReleaseSource.Kind.HOMEBREW_FORMULA),
+                               [(tool, ""), (helper, "example/tap/helper@2.0")])
+        self.assertEqual([list(errors) for _binaries, errors in results],
+                         [[], ["example/tap/helper: the formula signs its program again"]])
 
     def test_not_in_the_tap(self):
         base = "https://raw.githubusercontent.com/example/homebrew-tap/HEAD"

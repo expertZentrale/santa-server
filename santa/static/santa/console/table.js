@@ -213,6 +213,11 @@
       .map((column) => `${selector} tr:not(.empty) > :nth-child(${column.index + 1}) { display: none; }`).join("\n");
     table.dataset.shown = tableColumns(table).filter((column) => !hidden.has(column.key))
       .map((column) => column.key).join(" ");
+    // the row "nothing found" spans the columns shown: spanning the hidden ones too made the table wider than its
+    // header
+    const shown = table.tHead.rows[0].cells.length
+      - tableColumns(table).filter((column) => hidden.has(column.key)).length;
+    table.querySelectorAll(":scope > tbody > tr.empty > td").forEach((td) => { td.colSpan = shown; });
     return hidden;
   }
 

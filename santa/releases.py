@@ -296,10 +296,19 @@ def _find_binaries(fileobj, name, pattern, budget, nested, bottle_tag=""):
         return ((descend and _is_nested(path, size))
                 or (executable is not False and _worth_unpacking(path, size, pattern)))
 
+    def wanted_in_image(path, size, executable):
+        # a disk image only unpacks what is wanted: a too big executable is named from the listing (its x bit),
+        # its first bytes can't be read without unpacking it
+        if wanted(path, size, executable):
+            return True
+        if executable and size > settings.RELEASE_MAX_FILE_BYTES and _matches(path, pattern):
+            budget.skipped.append(_too_big(path, size))
+        return False
+
     if archives.is_pkg(header):
         members = archives.pkg_members(fileobj, budget.consume, MAX_ARCHIVE_MEMBERS)
     elif archives.is_dmg(fileobj):
-        members = archives.dmg_members(fileobj, wanted, budget.consume, MAX_ARCHIVE_MEMBERS,
+        members = archives.dmg_members(fileobj, wanted_in_image, budget.consume, MAX_ARCHIVE_MEMBERS,
                                        settings.RELEASE_UNPACK_TIMEOUT)
     elif zipfile.is_zipfile(fileobj):
         members = _zip_members(fileobj)
@@ -315,8 +324,7 @@ def _find_binaries(fileobj, name, pattern, budget, nested, bottle_tag=""):
             if size > settings.RELEASE_MAX_FILE_BYTES and executable is not False and _matches(path, pattern):
                 with open_member() as member_fileobj:
                     if macho.may_be_executable(member_fileobj.read(16)):
-                        budget.skipped.append(f"{path}: {size} bytes, bigger than RELEASE_MAX_FILE_BYTES "
-                                              f"({settings.RELEASE_MAX_FILE_BYTES}), not checked")
+                        budget.skipped.append(_too_big(path, size))
             continue
         with open_member() as member_fileobj:
             archive = descend and _is_nested(path, size)
@@ -334,6 +342,10 @@ def _find_binaries(fileobj, name, pattern, budget, nested, bottle_tag=""):
             info = _inspect_candidate(spooled, path, pattern, bottle_tag)
             if info:
                 yield path, info
+
+
+def _too_big(path, size):
+    return f"{path}: {size} bytes, bigger than RELEASE_MAX_FILE_BYTES ({settings.RELEASE_MAX_FILE_BYTES}), not checked"
 
 
 def _zip_members(fileobj):
@@ -1321,7 +1333,8 @@ def collect_many(session, source, releases, progress=None, labels=None):
         for key, future in futures.items():
             if not future.exception():
                 scanned[key] = future.result()
-    results = [([], Errors()) for _release in releases]
+    # a release's own warnings (a tap formula that signs its program again), also those of a dependency
+    results = [([], Errors(release.warnings)) for release, _dependency in releases]
     for index, asset, pattern, dependency in jobs:
         errors = results[index][1]
         key = (asset.sha256 or asset.sha512 or asset.url, pattern)
@@ -1364,7 +1377,7 @@ def _collect_releases(session, source, releases, progress=None, identifier=""):
         if progress:
             # only the label: a cancel stops between the versions recorded, after their files are downloaded
             progress.show(progress_label(identifier, release))
-        errors = Errors(release.warnings)
+        errors = Errors()
         dependencies = dependency_releases(session, source, release, errors)
         resolve_errors[id(release)] = errors
         batch.append((release, ""))
@@ -1648,17 +1661,72 @@ def _delete_stale_rules(items):
     return count
 
 
-def forget_versions(source):
-    """Delete the recorded versions of a package rule and their rules: the next check records them again. For the
-    Homebrew formulae recorded before their executables were hashed as Homebrew installs them (santa/bottles.py),
-    whose rules have the hashes of the bottles. Returns (versions, rules) deleted."""
-    versions = list(source.versions.values_list("pk", flat=True))
-    rule_count = 0
-    for chunk in chunked(versions):
-        rule_count += Rule.objects.filter(release_version__in=chunk).delete()[1].get("santa.Rule", 0)
-    for chunk in chunked(versions):
-        ReleaseVersion.objects.filter(pk__in=chunk).delete()
-    return len(versions), rule_count
+def rerecord_homebrew_versions(session, source, progress=None):
+    """Download the recorded versions of a Homebrew formula again and replace the rules of their own executables:
+    recorded before the executables were hashed as Homebrew installs them (santa/bottles.py), their rules have the
+    hashes of the bottles. Every version is done on its own and keeps what it has until its replacement is there: a
+    version the registry no longer has, or a failed download, stays as it is. A rule of an unchanged executable
+    stays, the new ones are enabled when the version's rules were. The dependencies are looked up again at the next
+    check (they are bottles too). Returns (the versions renewed, the error lines)."""
+    renewed, errors = 0, []
+    latest = {}
+    for version in source.versions.order_by("identifier", "-created_at"):
+        if progress:
+            try:
+                progress.note(f"{version.identifier} {version.version}")
+            except Cancelled:
+                # stopped in the console or by a shutdown: the versions done so far are kept
+                break
+        label = f"{version.identifier} {version.version}" if source.has_several_identifiers else version.version
+        try:
+            if is_tap_identifier(version.identifier):
+                # a tap has only its current version
+                if version.identifier not in latest:
+                    latest[version.identifier] = latest_homebrew_tap(session, source, version.identifier, cask=False)
+                release = latest[version.identifier]
+                if release.version != version.version:
+                    errors.append(f"{label}: the tap no longer has this version, kept as it is")
+                    continue
+            else:
+                release = homebrew_formula_at(session, source, version.identifier, version=version.version)
+        except (ReleaseError, requests.RequestException, KeyError, ValueError) as e:
+            errors.append(f"{label}: kept as it is ({e})")
+            continue
+        [(binaries, warnings)] = collect_many(session, source, [(release, "")], progress,
+                                              [progress_label(version.identifier, release)])
+        if warnings.retry or (warnings and not binaries):
+            errors.append(f"{label}: kept as it is ({'; '.join(warnings)})"[:2000])
+            continue
+        _replace_own_rules(source, version, binaries, warnings)
+        renewed += 1
+    return renewed, errors
+
+
+def _replace_own_rules(source, version, binaries, warnings):
+    own = version.rules.filter(release_dependency="")
+    enabled = own.filter(is_enabled=True).exists() if own.exists() else None
+    keys = {key for binary in binaries for key in rule_identifiers(source.rule_type, binary.info)}
+    with transaction.atomic():
+        kept = set()
+        obsolete = []
+        for rule in own.only("pk", "rule_type", "identifier"):
+            if (rule.rule_type, rule.identifier) in keys:
+                kept.add((rule.rule_type, rule.identifier))
+            else:
+                obsolete.append(rule.pk)
+        for chunk in chunked(obsolete):
+            Rule.objects.filter(pk__in=chunk).delete()
+        create_release_rules(source, version, binaries, enabled=enabled, existing=kept)
+        labels = version.dependencies or []
+        old_lines = (version.notes or "").splitlines()
+        own_lines = set(_without_dependency_notes(version.notes, labels).splitlines())
+        version.notes = "\n".join(
+            [f"{b.asset}: {b.path} {b.info.sha256}" for b in binaries] + list(warnings)
+            + [line for line in old_lines if line not in own_lines])[:10000] or NO_EXECUTABLES_NOTE
+        version.binary_count = len({b.info.sha256 for b in binaries}) + version.dependency_binary_count
+        # the bottles of the dependencies: looked up again at the next check, which replaces their rules
+        version.dependencies_resolved = False
+        version.save(update_fields=["notes", "binary_count", "dependencies_resolved"])
 
 
 def cleanup_release_source(source):
@@ -1880,10 +1948,28 @@ def _sync_kept_versions(session, source, identifier, errors, latest, progress=No
     return new_versions
 
 
+def _date_homebrew_version(session, source, identifier, release):
+    """The day of the recorded current version of a formula: formulae.brew.sh doesn't give it, the index of its
+    bottles in the registry does. Asked once, while the version has none. Only the recorded version gets it, not the
+    release: its dependencies are the current ones, not those of its day (homebrew_dependencies)."""
+    if source.kind != ReleaseSource.Kind.HOMEBREW_FORMULA or is_tap_identifier(identifier) or release.published_at:
+        return
+    undated = source.versions.filter(identifier=identifier, version=release.version, published_at__isnull=True)
+    if not release.version or not undated.exists():
+        return
+    try:
+        index = _ghcr_index(session, identifier, release.version)
+    except (requests.RequestException, ValueError, KeyError):
+        return
+    if published_at := _published((index.get("annotations") or {}).get("org.opencontainers.image.created")):
+        undated.update(published_at=published_at)
+
+
 def _sync_identifier(session, source, identifier, progress=None):
     """Check one identifier of the source. Return (the new ReleaseVersions, the non-fatal errors)."""
     release = PROVIDERS[source.kind](session, source, identifier)
     release_version, errors = _record_release(session, source, identifier, release, progress=progress)
+    _date_homebrew_version(session, source, identifier, release)
     new_versions = [release_version] if release_version else []
     if source.approve_kept_versions and source.keep_versions and source.kind in HISTORY:
         try:
