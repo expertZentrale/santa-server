@@ -252,7 +252,7 @@ class RuleAdmin(admin.ModelAdmin):
     change_list_template = "admin/santa/rule/change_list.html"
     list_display = ("identifier_short", "rule_type", "policy", "scope", "is_enabled", "description", "tag_list",
                     "release_source", "created_at")
-    list_filter = ("is_enabled", "tags", "policy", "rule_type", "is_global", "groups", "release_source")
+    list_filter = ("is_enabled", "expires_at", "tags", "policy", "rule_type", "is_global", "groups", "release_source")
     search_fields = ("identifier", "description", "tags__name")
     filter_horizontal = ("groups", "tags")
     autocomplete_fields = ("machines",)
@@ -260,7 +260,7 @@ class RuleAdmin(admin.ModelAdmin):
     actions = ["enable_rules", "disable_rules", "add_groups", "add_tag", "remove_tag"]
     fieldsets = (
         (None, {"fields": ("rule_type", "identifier", "policy", "description", "tags")}),
-        ("Scope", {"fields": ("is_global", "groups", "machines", "is_enabled")}),
+        ("Scope", {"fields": ("is_global", "groups", "machines", "is_enabled", "expires_at")}),
         ("Block message / CEL", {"classes": ("collapse",), "fields": ("custom_msg", "custom_url", "cel_expr")}),
         ("Info", {"fields": ("release_source", "release_version", "created_by", "created_at", "updated_at")}),
     )

@@ -99,6 +99,58 @@ class TagsMixin(forms.Form):
         return list(self.cleaned_data.get("tags") or []) + parse_new_tags(self.cleaned_data.get("new_tags"))
 
 
+class LocalDateTimeInput(forms.DateTimeInput):
+    """A date and time in the browser's picker, in the time zone of the user (TimezoneMiddleware)"""
+    input_type = "datetime-local"
+
+    def __init__(self, attrs=None):
+        super().__init__(attrs, format="%Y-%m-%dT%H:%M")
+
+
+UNTIL_DURATIONS = {"1h": timedelta(hours=1), "1d": timedelta(days=1), "7d": timedelta(days=7),
+                   "30d": timedelta(days=30)}
+
+
+class UntilWidget(forms.MultiWidget):
+    """How long: a choice, and the date when "Until a date" is chosen (forms.js shows it then)"""
+    template_name = "console/widgets/until.html"
+
+    def __init__(self, choices):
+        super().__init__([forms.Select(choices=choices), LocalDateTimeInput()])
+
+    def decompress(self, value):
+        return ["date", value] if value else ["", None]
+
+    def get_context(self, name, value, attrs):
+        context = super().get_context(name, value, attrs)
+        date = context["widget"]["subwidgets"][1]["attrs"]
+        date["data-show-when"] = f"{name}_0=date"
+        date["aria-label"] = gettext("Date")
+        return context
+
+
+class UntilField(forms.MultiValueField):
+    """An end in time: none, in an hour, a day, a week, a month, or a date. Cleaned to an aware datetime or None."""
+
+    def __init__(self, none_label, **kwargs):
+        choices = [("", none_label), ("1h", _("For 1 hour")), ("1d", _("For 1 day")), ("7d", _("For 7 days")),
+                   ("30d", _("For 30 days")), ("date", _("Until a date"))]
+        super().__init__((forms.ChoiceField(choices=choices, required=False), forms.DateTimeField(required=False)),
+                         require_all_fields=False, required=False, widget=UntilWidget(choices), **kwargs)
+
+    def compress(self, data_list):
+        choice, date = (list(data_list) + ["", None])[:2]
+        if not choice:
+            return None
+        if choice in UNTIL_DURATIONS:
+            return timezone.now() + UNTIL_DURATIONS[choice]
+        if not date:
+            raise ValidationError(_("Enter the date."))
+        if date <= timezone.now():
+            raise ValidationError(_("The date must be in the future."))
+        return date
+
+
 class MachinesField(forms.CharField):
     """Macs by serial number or hostname, one per line or comma separated"""
 
@@ -229,11 +281,13 @@ def clean_cel_policy(form, cleaned_data, policy="policy", cel_expr="cel_expr", r
 class RuleForm(TagsMixin, forms.ModelForm):
     machines = MachinesField(label=_("Macs"))
     signing_prefixes = signing_prefixes_field()
+    expires_at = UntilField(_("Never"), label=_("Expires"),
+                            help_text=_("Then the rule is removed from the Macs and deleted."))
 
     class Meta:
         model = Rule
         fields = ("rule_type", "identifier", "policy", "cel_expr", "custom_msg", "custom_url", "is_global", "groups",
-                  "machines", "tags", "description", "is_enabled")
+                  "machines", "expires_at", "tags", "description", "is_enabled")
         widgets = {
             "groups": forms.CheckboxSelectMultiple,
             "cel_expr": forms.Textarea(attrs={"rows": 3, "class": "mono"}),
@@ -276,7 +330,7 @@ class RuleForm(TagsMixin, forms.ModelForm):
 class RuleBulkForm(forms.Form):
     ACTIONS = [("enable", _("Enable / approve")), ("disable", _("Disable")), ("add_tag", _("Add tag")),
                ("remove_tag", _("Remove tag")), ("set_policy", _("Set policy")), ("add_groups", _("Add groups")),
-               ("delete", _("Delete"))]
+               ("set_expiry", _("Set expiry")), ("clear_expiry", _("Remove expiry")), ("delete", _("Delete"))]
     # CEL needs an expression per rule, not a bulk change
     POLICIES = [(value, label) for value, label in Policy.choices if value != Policy.CEL]
 
@@ -285,10 +339,13 @@ class RuleBulkForm(forms.Form):
     tag = forms.CharField(required=False, max_length=100)
     groups = forms.ModelMultipleChoiceField(queryset=Group.objects.all(), required=False)
     policy = forms.ChoiceField(choices=POLICIES, required=False)
+    expires = UntilField(_("Never"))
 
     def clean(self):
         cleaned_data = super().clean()
         action = cleaned_data.get("action")
+        if action == "set_expiry" and not cleaned_data.get("expires") and "expires" not in self.errors:
+            self.add_error("expires", gettext("Choose how long."))
         if action == "set_policy" and not cleaned_data.get("policy"):
             self.add_error("policy", gettext("Choose a policy."))
         if action in ("add_tag", "remove_tag") and not (cleaned_data.get("tag") or "").strip():
@@ -296,58 +353,6 @@ class RuleBulkForm(forms.Form):
         if action == "add_groups" and not cleaned_data.get("groups"):
             self.add_error("groups", gettext("Choose at least one group."))
         return cleaned_data
-
-
-class LocalDateTimeInput(forms.DateTimeInput):
-    """A date and time in the browser's picker, in the time zone of the user (TimezoneMiddleware)"""
-    input_type = "datetime-local"
-
-    def __init__(self, attrs=None):
-        super().__init__(attrs, format="%Y-%m-%dT%H:%M")
-
-
-UNTIL_DURATIONS = {"1h": timedelta(hours=1), "1d": timedelta(days=1), "7d": timedelta(days=7),
-                   "30d": timedelta(days=30)}
-
-
-class UntilWidget(forms.MultiWidget):
-    """How long: a choice, and the date when "Until a date" is chosen (forms.js shows it then)"""
-    template_name = "console/widgets/until.html"
-
-    def __init__(self, choices):
-        super().__init__([forms.Select(choices=choices), LocalDateTimeInput()])
-
-    def decompress(self, value):
-        return ["date", value] if value else ["", None]
-
-    def get_context(self, name, value, attrs):
-        context = super().get_context(name, value, attrs)
-        date = context["widget"]["subwidgets"][1]["attrs"]
-        date["data-show-when"] = f"{name}_0=date"
-        date["aria-label"] = gettext("Date")
-        return context
-
-
-class UntilField(forms.MultiValueField):
-    """An end in time: none, in an hour, a day, a week, a month, or a date. Cleaned to an aware datetime or None."""
-
-    def __init__(self, none_label, **kwargs):
-        choices = [("", none_label), ("1h", _("For 1 hour")), ("1d", _("For 1 day")), ("7d", _("For 7 days")),
-                   ("30d", _("For 30 days")), ("date", _("Until a date"))]
-        super().__init__((forms.ChoiceField(choices=choices, required=False), forms.DateTimeField(required=False)),
-                         require_all_fields=False, required=False, widget=UntilWidget(choices), **kwargs)
-
-    def compress(self, data_list):
-        choice, date = (list(data_list) + ["", None])[:2]
-        if not choice:
-            return None
-        if choice in UNTIL_DURATIONS:
-            return timezone.now() + UNTIL_DURATIONS[choice]
-        if not date:
-            raise ValidationError(_("Enter the date."))
-        if date <= timezone.now():
-            raise ValidationError(_("The date must be in the future."))
-        return date
 
 
 class MachineModeForm(forms.ModelForm):
@@ -697,6 +702,10 @@ class CelPolicyMixin:
         return prefix_expression(identifier, prefixes) if prefixes else self.cleaned_data.get("cel_expr", "")
 
 
+APPROVAL_UNTIL_HELP = _("Then the rule is removed from the Macs and deleted. A rule that exists already keeps the "
+                        "later end; one without an end stays so.")
+
+
 class ApproveEventForm(CelPolicyMixin, TagsMixin):
     """Approve a blocked binary: a new rule, a rule that already allows it (as it is, or with the scope of the form
     added), or no rule
@@ -706,7 +715,7 @@ class ApproveEventForm(CelPolicyMixin, TagsMixin):
     RULE, EXISTING, EXTEND, SIGNING_ID, NONE = "rule", "existing", "extend", "signing", "none"
 
     field_order = ["result", "existing_rule", "rule_type", "policy", "signing_prefixes", "cel_expr", "scope",
-                   "groups", "tags", "new_tags", "note"]
+                   "groups", "expires_at", "tags", "new_tags", "note"]
 
     result = forms.ChoiceField(
         choices=[(RULE, _("New rule")), (EXISTING, _("Existing rule")),
@@ -725,6 +734,7 @@ class ApproveEventForm(CelPolicyMixin, TagsMixin):
                               initial=SCOPE_GROUPS, required=False, widget=forms.RadioSelect, label=_("Scope"))
     groups = forms.ModelMultipleChoiceField(queryset=Group.objects.all(), required=False, label=_("Groups"),
                                             widget=forms.CheckboxSelectMultiple)
+    expires_at = UntilField(_("For good"), label=_("Allowed"), help_text=APPROVAL_UNTIL_HELP)
     note = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 2}), label=_("Note"),
                            help_text=_("Shown to the user"))
 
@@ -1034,6 +1044,7 @@ class ApproveOtherForm(CelPolicyMixin, TagsMixin):
                               initial=SCOPE_GROUPS, widget=forms.RadioSelect, label=_("Scope"))
     groups = forms.ModelMultipleChoiceField(queryset=Group.objects.all(), required=False, label=_("Groups"),
                                             widget=forms.CheckboxSelectMultiple)
+    expires_at = UntilField(_("For good"), label=_("Allowed"), help_text=APPROVAL_UNTIL_HELP)
 
     # a package rule: a new one, or more identifiers for an existing one
     package_target = forms.ChoiceField(label=_("Package rule"))

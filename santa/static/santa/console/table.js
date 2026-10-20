@@ -189,7 +189,7 @@
   }
 
   // optional columns added after a browser stored its choice (it knew the others): hidden there too, as by default
-  const LATER_OPTIONAL = new Set(["path", "group", "teamid"]);
+  const LATER_OPTIONAL = new Set(["path", "group", "teamid", "expires"]);
 
   function hiddenColumns(table, settings) {
     const optional = (table.dataset.optional || "").split(" ").filter(Boolean);

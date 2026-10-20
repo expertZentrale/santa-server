@@ -12,6 +12,7 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.formats import date_format
 from django.utils.translation import gettext, ngettext
 from django.views.decorators.http import require_POST
 
@@ -97,6 +98,9 @@ def filter_rules(request, rules):
     origin = chosen(params, "origin", ["manual", "package"])
     if len(origin) == 1:
         rules = rules.filter(release_source__isnull=origin[0] == "manual")
+    expiry = {"expires": Q(expires_at__gt=timezone.now()), "expired": Q(expires_at__lte=timezone.now())}
+    if (expiry_filter := any_of([expiry[value] for value in chosen(params, "expiry", expiry)])) is not None:
+        rules = rules.filter(expiry_filter)
     start, end = date_range(params, "created", TIME_DAYS, "", "created_from", "created_to")
     rules = in_range(rules, "created_at", start, end)
     if params.get("version", "").isdigit():
@@ -159,6 +163,8 @@ def rules(request):
                                                     ("package", gettext("From package rules"))]),
         Facet("enabled", gettext("Status"), choices=[("yes", gettext("Enabled")),
                                                       ("no", gettext("Disabled / waiting"))]),
+        Facet("expiry", gettext("Expiry"), choices=[("expires", gettext("Expires")),
+                                                     ("expired", gettext("Expired, deleted soon"))]),
         Facet("machine", gettext("Mac"), kind="lookup", choices=machine_choices(request.GET, RULE_LOOKUP_VALUES),
               lookup_url=reverse("console:filter_macs"), max_values=RULE_LOOKUP_VALUES),
         Facet("user", gettext("User"), kind="lookup",
@@ -302,6 +308,25 @@ def rules_bulk(request):
         log_change(request.user, changed, f"Groups added: {', '.join(g.name for g in groups)}")
         message = ngettext("%(groups)s added to %(count)s rule.", "%(groups)s added to %(count)s rules.", len(changed))
         messages.success(request, message % {"groups": ", ".join(g.name for g in groups), "count": len(changed)})
+    elif action in ("set_expiry", "clear_expiry"):
+        # the rules of package rules come and go with their versions
+        manual = [rule for rule in rules_list if rule.release_source_id is None]
+        expires_at = form.cleaned_data["expires"] if action == "set_expiry" else None
+        Rule.objects.filter(pk__in=[rule.pk for rule in manual]).update(expires_at=expires_at,
+                                                                        updated_at=timezone.now())
+        if expires_at:
+            log_change(request.user, manual, f"Expires at {expires_at.isoformat()}")
+            message = ngettext("%(count)s rule expires on %(date)s.", "%(count)s rules expire on %(date)s.",
+                               len(manual)) % {"count": len(manual),
+                                               "date": date_format(timezone.localtime(expires_at), "d.m.Y H:i")}
+        else:
+            log_change(request.user, manual, "Expiry removed")
+            message = ngettext("%(count)s rule no longer expires.", "%(count)s rules no longer expire.",
+                               len(manual)) % {"count": len(manual)}
+        messages.success(request, message)
+        if len(manual) < len(rules_list):
+            messages.warning(request, gettext("The rules of package rules are managed by their package rule, "
+                                              "they don't expire."))
     elif action == "delete":
         require_perms(request, "delete_rule")
         manual = [rule for rule in rules_list if rule.release_source_id is None]

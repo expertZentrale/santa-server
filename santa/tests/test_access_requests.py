@@ -230,12 +230,16 @@ class UserRequestTestCase(ConsoleBase):
         self.assertEqual(access_request.status, AccessRequest.Status.CANCELLED)
 
 
-class AdminRequestTestCase(ConsoleBase):
+class AdminRequestBase(ConsoleBase):
+    """A request for a blocked binary, without tests of its own (a subclass elsewhere would run them again)"""
+
     def event_request(self):
         event = self.make_event(signing_id="ABCDE12345:com.example.tool", team_id="ABCDE12345")
         return AccessRequest.objects.create(requester=self.user, kind="EVENT", event=event, machine=self.machine,
                                             file_sha256=SHA_A, title="tool", justification="x")
 
+
+class AdminRequestTestCase(AdminRequestBase):
     def test_detail_page(self):
         access_request = self.event_request()
         response = self.client.get(reverse("console:request", args=(access_request.pk,)))

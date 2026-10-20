@@ -8,10 +8,10 @@ from django.utils import timezone
 from santa.models import Group, Machine
 
 from .test_console import ConsoleBase
-from .test_sync import SyncTestCase
+from .test_sync import SyncBase
 
 
-class PreflightModeTestCase(SyncTestCase):
+class PreflightModeTestCase(SyncBase):
     def machine(self):
         return Machine.objects.get(machine_id=self.machine_id)
 

@@ -126,6 +126,9 @@ a.badge:hover { text-decoration: none; filter: brightness(.95); outline: 1px sol
 }
 .bulkbar:not(.visible) { transform: translate(-50%, calc(100% + 1.5rem)); opacity: 0; visibility: hidden; pointer-events: none; }
 .bulkbar .count { font-weight: 600; white-space: nowrap; }
+/* how long (set expiry): the choice, and the date when one is chosen */
+.bulkbar-until { display: flex; gap: .4rem; align-items: center; }
+.bulkbar-until > * { min-width: 0; flex: 1 1 auto; }
 /* the box of the tag suggestions (tags.js) goes with its field, else it takes room while the field is hidden */
 .bulkbar > .combobox:not(:has(> input:not([hidden]))) { display: none; }
 .bulkbar-clear { border: 0; background: none; color: var(--muted); font-size: 1.2rem; line-height: 1; padding: .3rem .5rem; border-radius: var(--radius-sm); cursor: pointer; min-height: var(--control-h); }

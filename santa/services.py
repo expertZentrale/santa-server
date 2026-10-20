@@ -57,9 +57,9 @@ def machines_prefetch(lookup="machines"):
 
 
 def allow_identifier(rule_type, identifier, policy, is_global, groups, user, description="", tags=(), machines=(),
-                     cel_expr=""):
+                     cel_expr="", expires_at=None):
     """Create the rule (of any policy, allow or block), or widen the scope of the manual rule that already exists
-    for this identifier and policy (and, for CEL, the same expression).
+    for this identifier and policy (and, for CEL, the same expression). expires_at: see widen_rule.
 
     Returns (rule, created).
     """
@@ -73,18 +73,26 @@ def allow_identifier(rule_type, identifier, policy, is_global, groups, user, des
         rule = Rule(rule_type=rule_type, identifier=identifier, policy=policy, created_by=user,
                     description=description[:500], cel_expr=cel_expr if policy == Policy.CEL else "")
         rule.full_clean(exclude=["groups", "machines"])
-    widen_rule(rule, is_global, groups, machines, user, tags)
+    widen_rule(rule, is_global, groups, machines, user, tags, expires_at=expires_at)
     return rule, created
 
 
-def widen_rule(rule, is_global, groups, machines, user, tags=()):
+def widen_rule(rule, is_global, groups, machines, user, tags=(), expires_at=None):
     """Enable the rule and add the scope (all Macs, or the groups and Macs); the open events it covers now are
-    resolved"""
+    resolved.
+
+    expires_at: the end of this approval, None for good. A new rule gets it. A rule that already exists keeps the
+    later end: one without an end stays so (it applies to others already), an approval for good takes its end away.
+    """
+    if not rule.pk:
+        rule.expires_at = expires_at
+    elif rule.expires_at is not None:
+        rule.expires_at = None if expires_at is None else max(rule.expires_at, expires_at)
     rule.is_global = rule.is_global or is_global
     rule.is_enabled = True
     # only what it changes: a whole save would write back an expression another request changed meanwhile (a new
     # rule is saved as a whole)
-    rule.save(update_fields=["is_global", "is_enabled", "updated_at"] if rule.pk else None)
+    rule.save(update_fields=["is_global", "is_enabled", "expires_at", "updated_at"] if rule.pk else None)
     if not is_global:
         rule.groups.add(*groups)
         rule.machines.add(*machines)
@@ -205,7 +213,7 @@ def existing_rules(events, machines=None):
             rule_groups[group_ids] = with_parent_groups(group_ids, "inherit_rules")
         groups = rule_groups[group_ids]
         signing_id = next((event.signing_id for event in events_of[sha] if event.signing_id), "")
-        result[sha] = [{"rule": rule, "applies": rule.is_enabled and (
+        result[sha] = [{"rule": rule, "applies": rule.is_active and (
             rule.is_global or any(group.pk in groups for group in rule.groups.all())
             or any(machine.pk in machine_ids for machine in rule.machines.all())),
             "cel": prefix_decision(rule, signing_id)}
@@ -222,7 +230,7 @@ def existing_rules_for_binaries(binaries):
                                              for rule_type in EVENT_IDENTIFIER_FIELDS}
                              for binary in binaries})
     signing_ids = {binary.sha256: binary.signing_id for binary in binaries}
-    return {sha: [{"rule": rule, "applies": rule.is_enabled, "cel": prefix_decision(rule, signing_ids[sha])}
+    return {sha: [{"rule": rule, "applies": rule.is_active, "cel": prefix_decision(rule, signing_ids[sha])}
                   for rule in rules] for sha, rules in found.items()}
 
 
@@ -247,7 +255,7 @@ def _allowed_on(machine, group, rules, signing_id=""):
     includes it; another CEL expression is not known to allow."""
     chosen = {}
     for rule in rules:
-        if not rule.is_enabled:
+        if not rule.is_active:
             continue
         rule_groups = {rule_group.pk for rule_group in rule.groups.all()}
         levels = [level for level, applies in (

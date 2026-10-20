@@ -433,6 +433,11 @@ class Machine(models.Model):
 RULE_COUNT_PREFIXES = ("binary", "certificate", "teamid", "signingid", "cdhash", "compiler", "transitive")
 
 
+def unexpired(now=None):
+    """The rules without an end, or whose end hasn't come yet"""
+    return models.Q(expires_at__isnull=True) | models.Q(expires_at__gt=now or timezone.now())
+
+
 class RuleType(models.TextChoices):
     SIGNINGID = "SIGNINGID", _("Signing ID")
     BINARY = "BINARY", _("Binary (SHA-256)")
@@ -748,6 +753,11 @@ class Rule(models.Model):
     machines = models.ManyToManyField(Machine, blank=True, related_name="rules",
                                       help_text=_("Apply to these individual Macs"))
     is_enabled = models.BooleanField(default=True, help_text=_("Disabled rules are removed from the Macs"))
+    # a rule for a time (a request allowed for a week): from then on not sent, the Macs drop it at their next sync;
+    # the clean up deletes it (cleanup_expired_rules)
+    expires_at = models.DateTimeField(
+        _("expires"), null=True, blank=True, db_index=True,
+        help_text=_("Then the rule is removed from the Macs and deleted. Empty = never."))
 
     release_source = models.ForeignKey(ReleaseSource, on_delete=models.CASCADE, null=True, blank=True,
                                        related_name="rules", editable=False)
@@ -785,6 +795,15 @@ class Rule(models.Model):
     @property
     def santa_key(self):
         return f"{self.rule_type}:{self.identifier}"
+
+    @property
+    def is_expired(self):
+        return self.expires_at is not None and self.expires_at <= timezone.now()
+
+    @property
+    def is_active(self):
+        """Sent to the Macs: enabled and not expired"""
+        return self.is_enabled and not self.is_expired
 
     def to_santa(self):
         return self.santa_payload(self.rule_type, self.identifier, self.policy, self.custom_msg, self.custom_url,

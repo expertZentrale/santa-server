@@ -108,6 +108,8 @@ Benutzer ohne Rechte; SQL Server und Redis laufen separat.
 - **Geplante Jobs**, dasselbe Image mit einem anderen Befehl (sie warten nicht auf `WAIT_FOR_URL`, außer mit
   `WAIT_FOR_URL_JOBS=1`):
   - stündlich: `python manage.py sync_release_sources` (neue Releases der Paketregeln, verzögerte Freigaben)
+  - stündlich: `python manage.py cleanup_expired_rules` (löscht die abgelaufenen Regeln; die Macs haben sie schon
+    entfernt)
   - täglich: `python manage.py cleanup_events --days 90` (löscht auch die Benachrichtigungen der Glocke nach 30 Tagen,
     `--notification-days`)
   - täglich (mit E-Mail): `python manage.py send_notification_digest` (die tägliche Zusammenfassung)
@@ -395,6 +397,11 @@ Löschen unter *Administration* → *Tags*.
 **Ausführungsregeln**: Reiter je Regeltyp, Filter für Richtlinie, Geltungsbereich, Tag, Herkunft (manuell oder
 Paketregel) und Zustand. Regeln, die Paketregeln angelegt haben, können nur aktiviert oder deaktiviert werden; ändern
 Sie stattdessen ihre Paketregel.
+Eine manuelle Regel kann ein **Ablaufdatum** haben (*Läuft ab*: 1 Tag, 7 Tage, 30 Tage oder ein Datum; Standard: nie),
+im Regelformular, als Sammelaktion (*Ablauf setzen* / *Ablauf entfernen*) und beim Freigeben einer Anfrage (*Erlaubt*:
+z. B. für 7 Tage). Ab dann bekommen die Macs sie nicht mehr und entfernen sie bei ihrer nächsten Synchronisierung;
+`cleanup_expired_rules` löscht sie (mit Eintrag im Verlauf). Erweitert eine Freigabe eine vorhandene Regel, behält diese
+das spätere Ende; eine Regel ohne Ende bleibt ohne. Die optionale Spalte *Läuft ab* und der Filter *Ablauf* zeigen sie.
 
 **Paketregeln**: *Paketregeln* → *Neue Paketregel*. Für GitHub, Homebrew, npm, VS Code und JetBrains tippen Sie unter
 *Pakete*, um den Katalog zu durchsuchen; `owner/teil` durchsucht die Repositories eines GitHub-Owners. Homebrew hat keine
@@ -632,7 +639,8 @@ santa/
   console/             die Konsole und das Anfrageformular (Views, Forms, URLs)
   templates/, static/  Templates; htmx, console/*.js und *.css (eine Datei je Aufgabe)
   admin.py, forms.py   der Django-Admin
-  management/commands  sync_release_sources, cleanup_events, send_notification_digest, export_config, import_config
+  management/commands  sync_release_sources, cleanup_events, cleanup_expired_rules, send_notification_digest,
+                       export_config, import_config
   locale/              deutsche Übersetzung
   tests/
 scripts/               create_database.py (Devcontainer und CI), Abgleich der Homebrew-Hashes mit einem Test-Mac
@@ -752,6 +760,7 @@ separately.
 - **Scheduled jobs**, the same image with another command (they don't wait for `WAIT_FOR_URL`, unless
   `WAIT_FOR_URL_JOBS=1`):
   - hourly: `python manage.py sync_release_sources` (new releases of the package rules, delayed approvals)
+  - hourly: `python manage.py cleanup_expired_rules` (deletes the expired rules; the Macs removed them already)
   - daily: `python manage.py cleanup_events --days 90` (also deletes the notifications of the bell after 30 days,
     `--notification-days`)
   - daily (with e-mail): `python manage.py send_notification_digest` (the daily summary)
@@ -1018,6 +1027,11 @@ uploaded again.
 
 **Execution rules**: tabs per rule type, filters for policy, scope, tag, origin (manual or package rule) and state.
 Rules created by package rules can only be enabled or disabled; change their package rule instead.
+A manual rule can have an **expiry date** (*Expires*: 1 day, 7 days, 30 days or a date; default: never), in the rule
+form, as a bulk action (*Set expiry* / *Remove expiry*) and when approving a request (*Allowed*: e.g. for 7 days).
+From then on the Macs no longer get it and remove it at their next sync; `cleanup_expired_rules` deletes it (with an
+entry in its history). When an approval widens an existing rule, the rule keeps the later end; a rule without an end
+stays without one. The optional column *Expires* and the filter *Expiry* show them.
 
 **Package rules**: *Package rules* → *New package rule*. For GitHub, Homebrew, npm, VS Code and JetBrains, type in
 *Packages* to search the catalog; `owner/part` searches the repositories of a GitHub owner. Homebrew has no search API:
@@ -1245,7 +1259,8 @@ santa/
   console/             the console and the request form (views, forms, urls)
   templates/, static/  templates; htmx, console/*.js and *.css (one file per task)
   admin.py, forms.py   the Django admin
-  management/commands  sync_release_sources, cleanup_events, send_notification_digest, export_config, import_config
+  management/commands  sync_release_sources, cleanup_events, cleanup_expired_rules, send_notification_digest,
+                       export_config, import_config
   locale/              German translation
   tests/
 scripts/               create_database.py (devcontainer and CI), comparing the Homebrew hashes with a test Mac
