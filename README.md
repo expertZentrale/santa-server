@@ -62,7 +62,7 @@ Das Image (`santa_server/settings.py`) wird über Umgebungsvariablen konfigurier
 | `GITHUB_TOKEN` | empfohlen | für Paketregeln und die Katalogsuche; ohne erlaubt GitHub 60 Anfragen pro Stunde |
 | `RELEASE_MAX_DEPENDENCIES` | | Standard `200`: so viele Abhängigkeiten (direkte und indirekte) löst eine Paketregel mit *Abhängigkeiten erlauben* je Version höchstens auf |
 | `RELEASE_MAX_DOWNLOAD_BYTES` | | Standard `524288000` (500 MB): größere Dateien eines Releases werden nicht heruntergeladen (z. B. die Bottles von `agda`); vier Downloads laufen parallel, belegen also bis zum Vierfachen davon an temporärem Speicher |
-| `RELEASE_MAX_FILE_BYTES` | | Standard `536870912` (512 MB): größere ausführbare Dateien in einem Archiv werden übersprungen |
+| `RELEASE_MAX_FILE_BYTES` | | Standard `536870912` (512 MB): größere ausführbare Dateien in einem Archiv werden übersprungen und im Fehler der Version genannt (z. B. `vault` mit 543 MB) |
 | `RELEASE_MAX_UNPACKED_BYTES` | | Standard `2147483648` (2 GB): so viel darf ein Archiv insgesamt entpacken; es zählen nur die ausführbaren Dateien, Bibliotheken und Daten werden nicht entpackt |
 | `RELEASE_UNPACK_TIMEOUT` | | Standard `120`: so viele Sekunden darf 7-Zip zum Auflisten oder Entpacken eines Disk-Images (`.dmg`) brauchen |
 | `SANTA_SERVER_NAME` | | Name in Fenstertitel, Kopfzeile und Django-Admin, Standard `Santa Server` |
@@ -397,7 +397,11 @@ Sie stattdessen ihre Paketregel.
 Such-API: der Server lädt die Liste der Formeln bzw. Casks einmal am Tag. URLs werden eingetippt und mit Enter
 hinzugefügt. Pakete aus einem **Homebrew-Tap** geben Sie mit vollem Namen an, wie bei `brew install`
 (`hashicorp/tap/terraform`); der Server liest die Formel- bzw. Cask-Datei aus dem GitHub-Repository
-`owner/homebrew-tap` (Version, Downloads mit SHA-256, Bottles). Taps haben nur ihre aktuelle Version.
+`owner/homebrew-tap` (Version, Downloads mit SHA-256, Bottles). Taps haben nur ihre aktuelle Version. Gelesen werden
+auch Konstanten und Variablen (`VERSION = "1.0.3"`, `url darwin_url`, `sha256 BINARIES["macos-aarch64"]`), die
+Architektur über `Hardware::CPU.intel? ? … : …` und das fertige Programm in einer `resource` für eine Plattform
+(`on_macos`, `on_arm`, …). Signiert eine Formel ihr Programm beim Installieren neu (`codesign`), nennt die Version das:
+die Macs sehen dann einen anderen Hash als den des Downloads.
 
 | Katalog | Kennung | Asset-Muster | Binary-Muster |
 |---|---|---|---|
@@ -452,12 +456,26 @@ bleiben unter der Glocke neben dem Profil. Dort entfernt × eine einzelne, *Alle
 alle mit Filter nach Art.
 
 Lange Aktionen (*Jetzt prüfen*, das Freigeben einer Anfrage mit Paketen, das Hochladen einer Datei, das Anlegen
-vieler Regeln) zeigen unter der Leiste, wie weit sie sind: „3 von 12 · podman“.
+vieler Regeln) zeigen unter der Leiste, wie weit sie sind: „3 von 12 · podman“. Eine Prüfung nennt auch die Version
+und die Abhängigkeit, an der sie gerade ist: „3 von 12 · colima 0.9.1 · lima@2.0.3“.
 
 Hinweise:
-- Homebrew-Bottles werden je macOS-Version gehasht. Homebrew kann ein Binary beim Installieren umschreiben
-  (Relocation); blockieren die Macs es trotzdem, vergleichen Sie mit dem blockierten Ereignis und nehmen Sie lieber
-  das GitHub-Release.
+- Homebrew-Bottles werden je macOS-Version gehasht, und zwar so, wie Homebrew sie installiert: Homebrew ersetzt
+  beim Installieren die Platzhalter (`@@HOMEBREW_CELLAR@@`, …) in den Ladebefehlen der Binaries durch die
+  Installationspfade (`/opt/homebrew`, Intel `/usr/local`) und signiert sie auf Apple Silicon neu (ad hoc). Der Server
+  macht dasselbe mit dem geprüften Bottle, die Regeln haben also den Hash, den Santa auf den Macs sieht. Kann er das
+  Ergebnis nicht vorhersagen (z. B. ein vom Linker signiertes Binary), behält die Regel den Hash des Bottles und die
+  Version nennt die Datei und den Grund; erlauben Sie dann das blockierte Ereignis. Homebrew muss im Standardpfad
+  installiert sein.
+- Versionen von Homebrew-Formeln, die vor dieser Umstellung erfasst wurden, haben noch die Hashes der Bottles:
+  `python manage.py sync_release_sources --rerecord-homebrew` lädt sie einmalig neu und ersetzt die Regeln ihrer
+  Binaries; die Freigabe einer Version bleibt, wie sie war. Eine Version, die sich nicht mehr laden lässt, bleibt
+  unverändert und wird genannt.
+- Abgleich mit einem Test-Mac: `scripts/homebrew_installed_hashes.py` läuft auf dem Mac selbst (im Terminal, als der
+  Benutzer, dem Homebrew gehört, Santa im Monitor-Modus). Es installiert Formeln und schreibt die Hashes der
+  installierten Binaries in eine JSON-Datei; `--from-export <datei>` nimmt die Formeln aus dem Konfigurationsexport
+  dazu. `scripts/check_homebrew_hashes.py` vergleicht diese Datei im Devcontainer mit der Vorhersage des Servers
+  (`--probe <formel>` zeigt sie auch ohne Mac).
 - npm-Tarballs werden gegen den veröffentlichten SHA-512 geprüft, Homebrew-Bottles gegen ihren SHA-256.
 - Releases ohne ausführbare Dateien (die meisten npm-Pakete, VS-Code-Erweiterungen und JetBrains-Plugins sind
   Skripte, viele Homebrew-Formeln nur Bibliotheken) werden mit 0 Binaries erfasst: Santa hat darin nichts zu
@@ -599,6 +617,7 @@ santa/
   events.py            Speichern der hochgeladenen Ereignisse
   macho.py             liest Hashes und Kennungen der Codesignatur aus Mach-O-Dateien
   archives.py          liest Installationspakete (.pkg) und, mit 7-Zip, Disk-Images (.dmg)
+  bottles.py           die Binaries eines Homebrew-Bottles so, wie Homebrew sie installiert
   releases.py          Paketregeln (GitHub, Homebrew, npm, VS Code, JetBrains, URL)
   catalog.py           Suche in den Paketkatalogen (Vorschläge und Icons)
   notifications.py     E-Mail-Benachrichtigungen: wer welche E-Mail bekommt
@@ -612,7 +631,7 @@ santa/
   management/commands  sync_release_sources, cleanup_events, send_notification_digest, export_config, import_config
   locale/              deutsche Übersetzung
   tests/
-scripts/               create_database.py (Devcontainer und CI)
+scripts/               create_database.py (Devcontainer und CI), Abgleich der Homebrew-Hashes mit einem Test-Mac
 entrypoint.sh          Entrypoint des Images
 .devcontainer/         Devcontainer (SQL Server + Redis)
 .github/               CI (Tests gegen SQL Server) und der Image-Build
@@ -683,7 +702,7 @@ The image (`santa_server/settings.py`) is configured with environment variables:
 | `GITHUB_TOKEN` | recommended | for package rules and the catalog search; without it GitHub allows 60 requests per hour |
 | `RELEASE_MAX_DEPENDENCIES` | | default `200`: at most this many dependencies (direct and indirect) a package rule with *Allow the dependencies* resolves per version |
 | `RELEASE_MAX_DOWNLOAD_BYTES` | | default `524288000` (500 MB): bigger files of a release are not downloaded (e.g. the bottles of `agda`); four downloads run in parallel, so up to four times that much temporary disk |
-| `RELEASE_MAX_FILE_BYTES` | | default `536870912` (512 MB): bigger executables inside an archive are skipped |
+| `RELEASE_MAX_FILE_BYTES` | | default `536870912` (512 MB): bigger executables inside an archive are skipped and named in the error of the version (e.g. `vault` with 543 MB) |
 | `RELEASE_MAX_UNPACKED_BYTES` | | default `2147483648` (2 GB): at most this much an archive unpacks in total; only the executables count, libraries and data are not unpacked |
 | `RELEASE_UNPACK_TIMEOUT` | | default `120`: the seconds 7-Zip may take to list or unpack a disk image (`.dmg`) |
 | `SANTA_SERVER_NAME` | | name in the window title, the header and the Django admin, default `Santa Server` |
@@ -997,7 +1016,10 @@ Rules created by package rules can only be enabled or disabled; change their pac
 the server loads the list of formulae or casks once a day. URLs are typed and added with Enter. Packages from a
 **Homebrew tap** are given with their full name, like for `brew install` (`hashicorp/tap/terraform`); the server reads
 the formula or cask file from the GitHub repository `owner/homebrew-tap` (version, downloads with SHA-256, bottles).
-Taps have only their current version.
+Taps have only their current version. Constants and variables are read too (`VERSION = "1.0.3"`, `url darwin_url`,
+`sha256 BINARIES["macos-aarch64"]`), the architecture through `Hardware::CPU.intel? ? … : …`, and the ready-made
+program in a `resource` for one platform (`on_macos`, `on_arm`, …). When a formula signs its program again while
+installing it (`codesign`), the version says so: the Macs then see another hash than the download's.
 
 | Catalog | Identifier | Asset pattern | Binary pattern |
 |---|---|---|---|
@@ -1049,11 +1071,25 @@ under the bell next to the profile. There × removes one, *Remove all* all of th
 filter by level.
 
 Long actions (*Check now*, approving a request with packages, uploading a file, creating many rules) show how far
-they are under the bar: "3 of 12 · podman".
+they are under the bar: "3 of 12 · podman". A check also names the version and the dependency it is on:
+"3 of 12 · colima 0.9.1 · lima@2.0.3".
 
 Notes:
-- Homebrew bottles are hashed per macOS version. Homebrew can rewrite a binary when it installs it (relocation); if
-  the Macs still block it, compare with the blocked event and prefer the GitHub release.
+- Homebrew bottles are hashed per macOS version, as Homebrew installs them: when installing, Homebrew replaces the
+  placeholders (`@@HOMEBREW_CELLAR@@`, …) in the load commands of the binaries with the install paths
+  (`/opt/homebrew`, Intel `/usr/local`) and signs them again on Apple silicon (ad hoc). The server does the same with
+  the verified bottle, so the rules have the hash Santa sees on the Macs. When it can't predict the result (e.g. a
+  binary signed by the linker), the rule keeps the hash of the bottle and the version names the file and the reason;
+  allow the blocked event then. Homebrew must be installed in its default prefix.
+- Versions of Homebrew formulae recorded before this change still have the hashes of the bottles:
+  `python manage.py sync_release_sources --rerecord-homebrew` downloads them again once and replaces the rules of
+  their binaries; the approval of a version stays as it was. A version that can't be downloaded any more stays
+  unchanged and is named.
+- Comparing with a test Mac: `scripts/homebrew_installed_hashes.py` runs on the Mac itself (in the Terminal, as the
+  user who owns Homebrew, Santa in Monitor mode). It installs formulae and writes the hashes of the installed binaries
+  to a JSON file; `--from-export <file>` adds the formulae of the configuration export.
+  `scripts/check_homebrew_hashes.py` compares that file with the server's prediction in the devcontainer
+  (`--probe <formula>` shows it without a Mac too).
 - npm tarballs are checked against the published SHA-512, Homebrew bottles against their SHA-256.
 - Releases without executables (most npm packages, VS Code extensions and JetBrains plugins are scripts, many
   Homebrew formulae only libraries) are recorded with 0 binaries: Santa has nothing to allow in them. Formulae only
@@ -1190,6 +1226,7 @@ santa/
   events.py            storage of the uploaded events
   macho.py             reads hashes and code signature identifiers from Mach-O files
   archives.py          reads installer packages (.pkg) and, with 7-Zip, disk images (.dmg)
+  bottles.py           the binaries of a Homebrew bottle as Homebrew installs them
   releases.py          package rules (GitHub, Homebrew, npm, VS Code, JetBrains, URL)
   catalog.py           search the package catalogs (suggestions and icons)
   notifications.py     e-mail notifications: who gets which e-mail
@@ -1203,7 +1240,7 @@ santa/
   management/commands  sync_release_sources, cleanup_events, send_notification_digest, export_config, import_config
   locale/              German translation
   tests/
-scripts/               create_database.py (devcontainer and CI)
+scripts/               create_database.py (devcontainer and CI), comparing the Homebrew hashes with a test Mac
 entrypoint.sh          entrypoint of the image
 .devcontainer/         devcontainer (SQL Server + Redis)
 .github/               CI (tests against SQL Server) and the image build

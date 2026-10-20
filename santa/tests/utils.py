@@ -135,3 +135,34 @@ class FakeSevenZip:
                 with open(os.path.join(target, path), "wb") as out:
                     out.write(self.files[path][0])
         return subprocess.CompletedProcess(args, 0, b"", b"")
+
+
+def _string_command(cmd, fixed, string, fields=b""):
+    payload = string + b"\0"
+    payload += b"\0" * (-(fixed + len(payload)) % 8)
+    return struct.pack("<III", cmd, fixed + len(payload), fixed) + fields + payload
+
+
+def build_bottle_macho(dylib=b"@@HOMEBREW_CELLAR@@/tool/1.0/lib/libtool.dylib", rpaths=(), cputype=ARM64,
+                       cd_flags=0x2, text_offset=4096, code=b"\x1f\x20\x03\xd5" * 4):
+    """An executable of a Homebrew bottle: a __TEXT section at text_offset (the load commands may grow up to it), a
+    dylib and run paths with placeholders, an ad-hoc signature with the hashes of its 4 KiB pages"""
+    section = struct.pack("<16s16sQQIIIIIIII", b"__text", b"__TEXT", 0x100000000 + text_offset, len(code),
+                          text_offset, 2, 0, 0, 0x80000400, 0, 0, 0)
+    segment = struct.pack("<II16sQQQQiiII", 0x19, 72 + len(section), b"__TEXT", 0x100000000, 8192, 0, 8192, 5, 5,
+                          1, 0) + section
+    commands = segment + _string_command(0xC, 24, dylib, struct.pack("<III", 2, 0x10000, 0x10000))
+    commands += b"".join(_string_command(0x8000001C, 12, rpath) for rpath in rpaths)
+    ncmds = 3 + len(rpaths)
+    code_limit = 8192
+    ident = b"tool-55554944\0"
+    cd_length = 52 + len(ident) + 2 * 32
+    signature_length = 20 + cd_length
+    commands += struct.pack("<IIII", LC_CODE_SIGNATURE, 16, code_limit, signature_length)
+    body = struct.pack("<IiiIIIII", MH_MAGIC_64, cputype, 0, 2, ncmds, len(commands), 0x200085, 0) + commands
+    body += b"\0" * (text_offset - len(body)) + code
+    body += b"\0" * (code_limit - len(body))
+    hashes = b"".join(hashlib.sha256(body[start:start + 4096]).digest() for start in range(0, code_limit, 4096))
+    cd = struct.pack(">IIIIIIIIIBBBBIII", CSMAGIC_CODEDIRECTORY, cd_length, 0x20200, cd_flags, 52 + len(ident), 52,
+                     0, 2, code_limit, 32, 2, 0, 12, 0, 0, 0) + ident + hashes
+    return body + build_signature(cd)

@@ -116,6 +116,20 @@ class DiskImageTestCase(TestCase):
                              pattern="*/MacOS/Tool")
         self.assertEqual(paths(found), ["Tool/Tool.app/Contents/MacOS/Tool"])
 
+    def test_a_too_big_executable_is_named_without_unpacking_it(self, which):
+        tool = build_macho(identifier="com.example.tool")
+        big = build_macho(identifier="com.example.big") + b"x" * 60_000
+        seven_zip = FakeSevenZip({"Tool/Tool.app/Contents/MacOS/Tool": (tool, "-rwxr-xr-x"),
+                                  "Tool/Tool.app/Contents/MacOS/big": (big, "-rwxr-xr-x"),
+                                  "Tool/Tool.app/Contents/Resources/data.bin": (b"x" * 60_000, "-rw-r--r--")})
+        skipped = []
+        with self.settings(RELEASE_MAX_FILE_BYTES=50_000), \
+                patch("santa.archives.subprocess.run", side_effect=seven_zip):
+            found = list(find_binaries(io.BytesIO(build_dmg(b"image")), "Tool.dmg", skipped=skipped))
+        self.assertEqual(paths(found), ["Tool/Tool.app/Contents/MacOS/Tool"])
+        self.assertEqual(skipped, [f"Tool/Tool.app/Contents/MacOS/big: {len(big)} bytes, bigger than "
+                                   "RELEASE_MAX_FILE_BYTES (50000), not checked"])
+
     def test_nothing_to_unpack(self, which):
         found, seven_zip = self.find({"Tool/README": (b"x" * 5000, "-rw-r--r--")})
         self.assertEqual((found, len(seven_zip.calls)), ([], 1))

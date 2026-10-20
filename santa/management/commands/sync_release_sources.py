@@ -7,7 +7,13 @@ from django.core.management.base import BaseCommand
 
 from santa.models import ReleaseSource
 from santa.progress import SHUTDOWN, SHUTTING_DOWN, AlreadyRunning, run_source_check
-from santa.releases import ReleaseError, enable_due_releases, http_session, sync_release_source
+from santa.releases import (
+    ReleaseError,
+    enable_due_releases,
+    http_session,
+    rerecord_homebrew_versions,
+    sync_release_source,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +33,9 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("--source", type=int, action="append", help="Only this release source ID")
+        parser.add_argument("--rerecord-homebrew", action="store_true",
+                            help="Download the recorded versions of the Homebrew formulae again and replace their "
+                                 "rules with the hashes of the installed executables (once after the update)")
 
     def handle(self, *args, **options):
         # the cronjob may overlap with a manual run, the lock lives in the shared Redis cache
@@ -52,6 +61,12 @@ class Command(BaseCommand):
                 try:
                     # seen in the console like a check started there, and stopped there too
                     with run_source_check(source) as progress:
+                        # under the lock of the source: not while a check of the console works on its versions
+                        if options["rerecord_homebrew"] and source.kind == ReleaseSource.Kind.HOMEBREW_FORMULA:
+                            renewed, errors = rerecord_homebrew_versions(session, source, progress)
+                            self.stdout.write(f"{source}: {renewed} versions recorded again")
+                            for error in errors:
+                                self.stderr.write(f"{source}: {error}")
                         release_versions = sync_release_source(source, session, progress=progress)
                 except AlreadyRunning:
                     self.stdout.write(f"{source}: checked in the console right now, skipped")

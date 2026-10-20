@@ -111,6 +111,11 @@ class Progress:
         self.label = str(label)[:200]
         self._save()
 
+    def show(self, label):
+        """What it works on, from a download thread: never raises Cancelled (the caller checks between steps)"""
+        self.label = str(label)[:200]
+        self._save()
+
     def _check_cancelled(self):
         if self.cancelled:
             raise Cancelled

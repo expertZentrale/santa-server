@@ -213,6 +213,11 @@
       .map((column) => `${selector} tr:not(.empty) > :nth-child(${column.index + 1}) { display: none; }`).join("\n");
     table.dataset.shown = tableColumns(table).filter((column) => !hidden.has(column.key))
       .map((column) => column.key).join(" ");
+    // the row "nothing found" spans the columns shown: spanning the hidden ones too made the table wider than its
+    // header
+    const shown = table.tHead.rows[0].cells.length
+      - tableColumns(table).filter((column) => hidden.has(column.key)).length;
+    table.querySelectorAll(":scope > tbody > tr.empty > td").forEach((td) => { td.colSpan = shown; });
     return hidden;
   }
 
@@ -221,9 +226,21 @@
     if (!box) return;
     box.classList.remove("fits");
     box.classList.toggle("fits", box.scrollWidth <= box.clientWidth + 1);
+    // the width of the pages first: their height (--pages-h) follows from it
+    alignPages(table, box);
     measurePages();
     updateScrollbar(box);
     moveHeader(table);
+  }
+
+  // the pages are as wide as a table that grows out of the page, like its scrollbar (not the cards on phones)
+  function alignPages(table, box) {
+    const pages = table.closest("[data-list-rows]")?.querySelector(".pagination");
+    if (!pages) return;
+    const wide = !cardLayout.matches && box.offsetWidth > pages.parentElement.clientWidth + 1;
+    pages.classList.toggle("wide", wide);
+    if (wide) pages.style.setProperty("--table-w", `${box.offsetWidth / rem()}rem`);
+    else pages.style.removeProperty("--table-w");
   }
 
   // A table wider than the page scrolls sideways in its box, the page alone scrolls down: the box's scrollbar is at
