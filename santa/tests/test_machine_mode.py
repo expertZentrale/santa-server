@@ -72,3 +72,24 @@ class MachineModeViewTestCase(ConsoleBase):
         viewer = User.objects.create_user("viewer", is_staff=True)
         self.client.force_login(viewer)
         self.assertEqual(self.client.get(self.url()).status_code, 403)
+
+    def test_back_to_the_group_with_an_old_end_in_the_hidden_field(self):
+        self.machine.client_mode_override = "LOCKDOWN"
+        self.machine.client_mode_override_until = timezone.now() - timedelta(minutes=5)
+        self.machine.save()
+        response = self.client.post(self.url(), {
+            "client_mode_override": "", "client_mode_override_until_0": "date",
+            "client_mode_override_until_1": timezone.localtime(self.machine.client_mode_override_until)
+            .strftime("%Y-%m-%dT%H:%M")})
+        self.assertEqual(response.status_code, 302)
+        self.machine.refresh_from_db()
+        self.assertEqual(self.machine.client_mode_override, "")
+
+    def test_the_date_is_shown_in_the_time_zone_of_the_user(self):
+        until = timezone.now().replace(second=0, microsecond=0) + timedelta(days=2)
+        Machine.objects.filter(pk=self.machine.pk).update(client_mode_override="MONITOR",
+                                                          client_mode_override_until=until)
+        with timezone.override("Europe/Berlin"):
+            page = self.client.get(self.url()).content.decode()
+            shown = timezone.localtime(until, timezone.get_current_timezone()).strftime("%Y-%m-%dT%H:%M")
+        self.assertIn(f'value="{shown}"', page)

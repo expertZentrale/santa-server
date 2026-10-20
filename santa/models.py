@@ -1134,6 +1134,15 @@ class UserProfile(models.Model):
     email_override = models.CharField(max_length=8, choices=EmailOverride.choices, blank=True, default="",
                                       editable=False)
 
+    class RolesOverride(models.TextChoices):
+        DEFAULT = "", _("As the sign-in groups say")
+        MANUAL = "manual", _("Set by hand")
+
+    # set by the administrators (Administration → Users): the sign-in no longer changes the roles and the console
+    # access of this user, except the admin role of the token (OIDC_ADMIN_ROLE), so that nobody is locked out
+    roles_override = models.CharField(max_length=8, choices=RolesOverride.choices, blank=True, default="",
+                                      editable=False)
+
     def __str__(self):
         return f"Profile of {self.user}"
 

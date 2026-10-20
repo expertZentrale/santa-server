@@ -8,9 +8,10 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db.models import ProtectedError
 from django.urls import reverse
 
-from santa.auth import ADMIN_GROUP_NAME, REQUESTERS_GROUP_NAME
+from santa.auth import ADMIN_GROUP_NAME, REQUESTERS_GROUP_NAME, apply_sign_in_roles
 from santa.config_io import export_config
 from santa.models import AccessRequest, Group, Rule, RuleType, SignInGroup, Tag
+from santa.users import profile_for
 
 from .test_console import SHA_A, SHA_B, ConsoleBase
 
@@ -250,3 +251,59 @@ class AdministrationTestCase(ConsoleBase):
         viewer.user_permissions.add(*Permission.objects.filter(codename__in=codenames))
         upload = SimpleUploadedFile("config.json", b"{}", content_type="application/json")
         self.assertEqual(self.client.post(reverse("console:admin_config_import"), {"file": upload}).status_code, 403)
+
+
+class RolesByHandTestCase(ConsoleBase):
+    def setUp(self):
+        super().setUp()
+        self.it = AuthGroup.objects.create(name="IT support")
+        self.sign_in_group = SignInGroup.objects.create(claim_value="it", name="IT", console_access=True)
+        self.sign_in_group.roles.add(self.it)
+        self.member = User.objects.create_user("jane@example.com")
+        self.member.sign_in_groups.add(self.sign_in_group)
+        apply_sign_in_roles(self.member)
+
+    def url(self):
+        return reverse("console:admin_user", args=(self.member.pk,))
+
+    def test_by_hand_the_sign_in_changes_nothing_but_the_admin_role(self):
+        self.assertTrue(self.member.is_staff)
+        self.client.post(self.url(), {"is_active": "on", "roles_override": "manual", "managed_roles": [],
+                                      "console_access": ""})
+        self.member.refresh_from_db()
+        self.assertEqual((list(self.member.groups.all()), self.member.is_staff), ([], False))
+        # the next sign-in keeps it so (a new user object, as a sign-in has: the profile is cached on it)
+        self.member = User.objects.get(pk=self.member.pk)
+        apply_sign_in_roles(self.member)
+        self.member.refresh_from_db()
+        self.assertEqual((list(self.member.groups.all()), self.member.is_staff), ([], False))
+        # except the admin role of the token: nobody is locked out
+        profile = profile_for(self.member)
+        profile.has_admin_role = True
+        profile.save()
+        apply_sign_in_roles(self.member)
+        self.member.refresh_from_db()
+        self.assertTrue(self.member.is_staff)
+        self.assertIn(ADMIN_GROUP_NAME, self.member.groups.values_list("name", flat=True))
+        page = self.client.get(reverse("console:admin_users")).content.decode()
+        self.assertIn("roles by hand", page)
+
+    def test_back_to_the_sign_in_groups_applies_them_at_once(self):
+        profile = profile_for(self.member)
+        profile.roles_override = "manual"
+        profile.save()
+        self.member.groups.clear()
+        self.member.is_staff = False
+        self.member.save()
+        self.client.post(self.url(), {"is_active": "on", "roles_override": ""})
+        self.member.refresh_from_db()
+        self.assertEqual((list(self.member.groups.all()), self.member.is_staff), ([self.it], True))
+
+    def test_own_console_access_stays(self):
+        self.client.force_login(self.member)
+        self.member.user_permissions.set(Permission.objects.filter(codename__in=["view_user", "change_user"]))
+        response = self.client.post(self.url(), {"is_active": "on", "roles_override": "manual",
+                                                 "managed_roles": [self.it.pk], "console_access": ""})
+        self.assertContains(response, "You can&#x27;t take away your own console access.")
+        self.member.refresh_from_db()
+        self.assertTrue(self.member.is_staff)

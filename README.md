@@ -174,7 +174,12 @@ Eine **Anmeldegruppe** ist eine Gruppe Ihres Anbieters, die Rollen vergibt, und 
 die Konsole* ankreuzen. Legen Sie nur die Gruppen an, auf die es ankommt: Der Server vergleicht den Gruppen-Claim des
 ID-Tokens (`OIDC_GROUPS_CLAIM`) mit ihnen und ignoriert die anderen, ohne sie zu speichern. Die Rollen gelten ab der
 nächsten Anmeldung; eine geänderte oder gelöschte Anmeldegruppe gilt sofort für ihre Mitglieder. Rollen, die auf der
-Benutzerseite von Hand vergeben wurden, bleiben erhalten.
+Benutzerseite von Hand vergeben wurden, bleiben erhalten. Soll eine Person ganz von den Anmeldegruppen abweichen, stellen
+Sie auf ihrer Benutzerseite *Rollen und Zugriff auf die Konsole* auf *Von Hand*: Dann setzen Sie dort alle Rollen und
+den Zugriff auf die Konsole, und die Anmeldung ändert sie nicht mehr. Nur die Admin-Rolle aus dem Token
+(`OIDC_ADMIN_ROLE`) gilt weiter, damit sich niemand aussperrt. Zurück auf *Wie die Anmeldegruppen es vorgeben* gelten
+deren Rollen sofort wieder.
+Die Benutzerliste zeigt solche Personen mit *Rollen von Hand*.
 
 Die Anmeldegruppe `*` („Everyone“) umfasst alle, die sich anmelden. Sie vergibt die Rolle „Santa requesters“, die
 blockierte Apps, Pakete und andere Software anfragen darf. Entfernen Sie eine Berechtigung aus dieser Rolle und geben
@@ -824,7 +829,11 @@ page, and what users may request), the sign-in groups, the tags and the configur
 A **sign-in group** is a group of your provider that gives roles, and the console if you tick *Console access*.
 Add only the groups that matter: the server compares the groups claim of the ID token (`OIDC_GROUPS_CLAIM`) with
 them and ignores and never stores the others. The roles apply at the next sign-in; a changed or deleted sign-in
-group applies to its members right away. Roles assigned by hand on the user page stay.
+group applies to its members right away. Roles assigned by hand on the user page stay. For a person who should
+differ from the sign-in groups altogether, set *Roles and console access* on their user page to *Set by hand*: then
+you set all roles and the console access there, and the sign-in no longer changes them. Only the admin role of the
+token (`OIDC_ADMIN_ROLE`) still counts, so that nobody is locked out. Back to *As the sign-in groups say*, their roles
+apply again right away. The user list shows such people with *roles by hand*.
 
 The sign-in group `*` ("Everyone") is everyone who signs in. It gives the role "Santa requesters", which may request
 blocked apps, packages and other software. Remove a permission from that role, and give it to other roles, to limit

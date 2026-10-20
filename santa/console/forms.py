@@ -119,6 +119,9 @@ class UntilWidget(forms.MultiWidget):
         super().__init__([forms.Select(choices=choices), LocalDateTimeInput()])
 
     def decompress(self, value):
+        # shown in the time zone it is read back in (a DateTimeField converts it itself, a subwidget doesn't)
+        if value and timezone.is_aware(value):
+            value = timezone.localtime(value)
         return ["date", value] if value else ["", None]
 
     def get_context(self, name, value, attrs):
@@ -376,8 +379,9 @@ class MachineModeForm(forms.ModelForm):
     def clean(self):
         cleaned_data = super().clean()
         if not cleaned_data.get("client_mode_override"):
-            # as the group: no end to keep
+            # as the group: no end to keep, and none to check (the field is hidden then, an old end in it is past)
             cleaned_data["client_mode_override_until"] = None
+            self._errors.pop("client_mode_override_until", None)
         return cleaned_data
 
 
@@ -1510,6 +1514,9 @@ class UserForm(forms.ModelForm):
             "is_staff": _("Can open the console, with the permissions of the roles."),
         }
 
+    # in the card "Roles", not in "Account"
+    ROLE_FIELDS = ("roles_override", "managed_roles", "console_access", "roles")
+
     def __init__(self, *args, managed_roles=(), **kwargs):
         super().__init__(*args, **kwargs)
         self.managed_roles = set(managed_roles)
@@ -1517,9 +1524,26 @@ class UserForm(forms.ModelForm):
         self.is_local = user.pk is None or user.has_usable_password()
         self.fields["roles"].queryset = AuthGroup.objects.exclude(
             pk__in=[role.pk for role in self.managed_roles]).order_by("name")
+        if not self.is_local:
+            # the roles and the console access of the sign-in, or set by hand for this user
+            self.fields["roles_override"] = forms.ChoiceField(
+                choices=UserProfile.RolesOverride.choices, required=False, widget=forms.RadioSelect,
+                label=_("Roles and console access"),
+                help_text=_("By hand: the sign-in no longer changes them. The admin role of the sign-in (the token) "
+                            "still counts."))
+            self.fields["managed_roles"] = RolesField(label=_("Roles of the sign-in groups"))
+            self.fields["managed_roles"].queryset = AuthGroup.objects.filter(
+                pk__in=[role.pk for role in self.managed_roles]).order_by("name")
+            self.fields["console_access"] = forms.BooleanField(
+                required=False, label=_("Console access"), help_text=_("Can open the console, with the permissions "
+                                                                       "of the roles."))
         if user.pk:
             self.initial["roles"] = [role for role in user.groups.all() if role not in self.managed_roles]
             self.initial["email_override"] = profile_for(user).email_override
+            if not self.is_local:
+                self.initial["roles_override"] = profile_for(user).roles_override
+                self.initial["managed_roles"] = [role for role in user.groups.all() if role in self.managed_roles]
+                self.initial["console_access"] = user.is_staff
             self.fields["username"].disabled = True
             self.fields["password1"].help_text = _("Leave empty to keep the password.")
         else:
@@ -1528,6 +1552,13 @@ class UserForm(forms.ModelForm):
             # the sign-in sets them at every sign-in
             for name in ("first_name", "last_name", "email", "is_staff", "password1", "password2"):
                 del self.fields[name]
+
+    def account_fields(self):
+        return [self[name] for name in self.fields if name not in self.ROLE_FIELDS]
+
+    @property
+    def manual_roles(self):
+        return self.cleaned_data.get("roles_override") == UserProfile.RolesOverride.MANUAL
 
     def clean(self):
         cleaned_data = super().clean()
@@ -1546,13 +1577,22 @@ class UserForm(forms.ModelForm):
         user = super().save(commit=False)
         if self.cleaned_data.get("password1"):
             user.set_password(self.cleaned_data["password1"])
+        if not self.is_local and self.manual_roles:
+            user.is_staff = self.cleaned_data["console_access"]
         user.save()
-        kept = [role for role in user.groups.all() if role in self.managed_roles]
+        if not self.is_local and self.manual_roles:
+            kept = list(self.cleaned_data["managed_roles"])
+        else:
+            kept = [role for role in user.groups.all() if role in self.managed_roles]
         user.groups.set([*kept, *self.cleaned_data["roles"]])
         profile = profile_for(user)
-        if profile.email_override != self.cleaned_data["email_override"]:
-            profile.email_override = self.cleaned_data["email_override"]
-            profile.save(update_fields=["email_override"])
+        changed = []
+        for field in ("email_override", "roles_override"):
+            if field in self.cleaned_data and getattr(profile, field) != self.cleaned_data[field]:
+                setattr(profile, field, self.cleaned_data[field])
+                changed.append(field)
+        if changed:
+            profile.save(update_fields=changed)
         return user
 
 

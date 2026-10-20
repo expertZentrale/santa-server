@@ -14,7 +14,7 @@ from django.contrib.auth.models import Permission
 from django.db.models import Q
 from mozilla_django_oidc.auth import OIDCAuthenticationBackend
 
-from .models import SignInGroup
+from .models import SignInGroup, UserProfile
 from .users import profile_for
 
 logger = logging.getLogger(__name__)
@@ -91,8 +91,17 @@ def apply_sign_in_roles(user, also_managed=()):
 
     also_managed: roles a sign-in group just stopped granting.
     """
+    profile = profile_for(user)
+    has_admin_role = profile.has_admin_role
+    if profile.roles_override == UserProfile.RolesOverride.MANUAL:
+        # set by hand: only the admin role of the token still counts, nobody is locked out
+        if has_admin_role:
+            user.groups.add(admin_group())
+            if not user.is_staff:
+                user.is_staff = True
+                user.save(update_fields=["is_staff"])
+        return
     groups = list(user.sign_in_groups.prefetch_related("roles"))
-    has_admin_role = profile_for(user).has_admin_role
     granted = {role for group in groups for role in group.roles.all()}
     if has_admin_role:
         granted.add(admin_group())

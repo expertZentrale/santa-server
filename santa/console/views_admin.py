@@ -20,6 +20,7 @@ from django.views.decorators.http import require_POST
 from ..auth import (
     ADMIN_GROUP_NAME,
     admin_permissions,
+    apply_sign_in_roles,
     delete_sign_in_group,
     roles_managed_by_sign_in,
     sign_in_group_changed,
@@ -35,8 +36,9 @@ from ..config_io import (
     import_config,
     item_token,
 )
-from ..models import ReleaseSource, Rule, SignInGroup, Tag
+from ..models import ReleaseSource, Rule, SignInGroup, Tag, UserProfile
 from ..services import related_count
+from ..users import profile_for
 from .filters import Facet, any_of, chosen, filter_bar, remember_filters
 from .forms import ConfigImportForm, ConfigPreviewForm, RoleForm, SignInGroupForm, TagForm, UserForm
 from .utils import (
@@ -143,8 +145,11 @@ def users(request):
     queryset, sort = sort_by(request, queryset, {"user": "username", "name": ["last_name", "first_name"],
                                                  "login": "last_login"}, "user")
     page = paginate(request, queryset)
+    by_hand = set(UserProfile.objects.filter(user__in=[user.pk for user in page], roles_override="manual")
+                  .values_list("user_id", flat=True))
     for user in page:
         user.from_sign_in = is_sign_in_user(user)
+        user.roles_by_hand = user.pk in by_hand
     return render_section(request, "console/administration/users.html", "users", {
         "page": page, "sort": sort, "params": request.GET,
         **filter_bar(request, "users", [
@@ -166,9 +171,15 @@ def user_form(request, pk=None):
     if request.method == "POST" and form.is_valid():
         if user == request.user and not form.cleaned_data["is_active"]:
             form.add_error("is_active", gettext("You can't deactivate your own account."))
+        elif (user == request.user and "console_access" in form.cleaned_data and form.manual_roles
+              and not form.cleaned_data["console_access"] and not profile_for(user).has_admin_role):
+            form.add_error("console_access", gettext("You can't take away your own console access."))
         else:
             created = user is None
             user = form.save()
+            if "roles_override" in form.changed_data:
+                # back to the sign-in groups: their roles now, not at the next sign-in; by hand: the admin role
+                apply_sign_in_roles(user)
             if created:
                 log_addition(request.user, user)
             else:
@@ -187,6 +198,7 @@ def user_form(request, pk=None):
         "form": form, "edited_user": user, "sign_in_roles": sign_in_roles,
         "sign_in_groups": user.sign_in_groups.all() if user else [],
         "from_sign_in": bool(user and is_sign_in_user(user)),
+        "roles_by_hand": bool(user and profile_for(user).roles_override),
         "can_delete": bool(user and user != request.user and request.user.has_perm("auth.delete_user")),
     })
 
