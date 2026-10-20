@@ -204,6 +204,15 @@
   // removes binaries. They show at once (the name of the row, "loading…"); the drawer form is then posted with
   // ?refresh, which never saves and keeps what was entered, and fills in the rest.
   let syncFrame = 0;
+  // A save of the drawer form ("Create rules") is never aborted by a refresh: the refresh waits for its answer
+  let refreshing = false;
+  document.addEventListener("htmx:beforeRequest", (event) => {
+    const form = event.detail.elt;
+    if (form.matches?.("[data-create-rules]") && !refreshing) form.dataset.saving = "1";
+  });
+  document.addEventListener("htmx:afterRequest", (event) => {
+    if (event.detail.elt.matches?.("[data-create-rules]")) delete event.detail.elt.dataset.saving;
+  });
 
   function selectedBinaries(listForm) {
     const binaries = new Map();
@@ -249,6 +258,10 @@
     // a Shift-click selects a range in one go: one request for the frame
     cancelAnimationFrame(syncFrame);
     syncFrame = requestAnimationFrame(() => {
+      if (drawerForm.dataset.saving) {
+        drawerForm.addEventListener("htmx:afterRequest", () => syncCreateRules(listForm), { once: true });
+        return;
+      }
       drawerForm.querySelectorAll('input[type="hidden"][name="ids"], input[type="hidden"][name="shas"]')
                 .forEach((input) => input.remove());
       SantaConsole.table.rowBoxes(listForm).filter((box) => box.checked).forEach((box) => {
@@ -262,11 +275,19 @@
       const drawerResolved = drawerForm.querySelector('[name="resolved"]');
       if (resolved && drawerResolved) drawerResolved.value = resolved.value;
       const scroll = drawer.scrollTop;
-      // an older answer must not replace a newer selection
+      // an older answer must not replace a newer selection (only refreshes run now, see above)
       htmx.trigger(drawerForm, "htmx:abort");
-      htmx.ajax("POST", drawerForm.getAttribute("action"), {
-        source: drawerForm, target: "#drawer", values: { refresh: "1" },
-      }).then(() => {
+      // htmx.ajax sends right away (htmx:beforeRequest in this call): it is a refresh, not a save
+      refreshing = true;
+      let request;
+      try {
+        request = htmx.ajax("POST", drawerForm.getAttribute("action"), {
+          source: drawerForm, target: "#drawer", values: { refresh: "1" },
+        });
+      } finally {
+        refreshing = false;
+      }
+      request.then(() => {
         drawer.scrollTop = scroll;
       }, () => {
         // aborted by a newer selection: its answer follows
