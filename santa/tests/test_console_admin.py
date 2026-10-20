@@ -241,6 +241,9 @@ class AdministrationTestCase(ConsoleBase):
         # the file has the file access rules too: exporting needs their view permission
         self.assertEqual(self.client.get(reverse("console:admin_config_export")).status_code, 403)
         viewer.user_permissions.add(Permission.objects.get(codename="view_fileaccessrule"))
+        # and the ignored apps
+        self.assertEqual(self.client.get(reverse("console:admin_config_export")).status_code, 403)
+        viewer.user_permissions.add(Permission.objects.get(codename="view_ignoredapp"))
         self.assertEqual(self.client.get(reverse("console:admin_config_export")).status_code, 200)
         self.assertEqual(self.client.get(reverse("console:admin_config")).status_code, 200)
         upload = SimpleUploadedFile("config.json", b"{}", content_type="application/json")

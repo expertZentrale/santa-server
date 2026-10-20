@@ -10,6 +10,7 @@ from django.utils.text import slugify
 from django.utils.translation import gettext, ngettext
 from django.views.decorators.http import require_POST
 
+from ..ignores import without_ignored
 from ..models import NEEDS_RULE, AccessRequest, ClientMode, Event, Group, Machine, Rule, generate_sync_token
 from ..profiles import base_profile, file_access_rules, group_profile
 from ..rules import GLOBAL, GROUP, LIST_FIELDS, MACHINE, PARENT, effective_rule_values
@@ -125,7 +126,9 @@ def group_form(request, pk=None):
             "rule_count": group.rules.count(),
             "children": group.children.order_by("name"),
             "file_access_count": file_access_rules(group).count(),
-            "open_blocks": Event.objects.filter(NEEDS_RULE, group=group, resolved_at__isnull=True).count(),
+            # as the list of events shows them: without the ignored apps
+            "open_blocks": without_ignored(Event.objects.filter(NEEDS_RULE, group=group,
+                                                                resolved_at__isnull=True)).count(),
         })
     return render_drawer(request, "console/groups/form.html", "console/groups/drawer_form.html", context)
 
@@ -279,7 +282,8 @@ def machine_detail(request, pk):
         "params": request.GET,
         "levels": {"machine": MACHINE, "group": GROUP, "parent": PARENT, "global": GLOBAL},
         "events": (Event.objects.filter(machine=machine).order_by("-execution_time")[:15]),
-        "open_blocks": Event.objects.filter(NEEDS_RULE, machine=machine, resolved_at__isnull=True).count(),
+        "open_blocks": without_ignored(Event.objects.filter(NEEDS_RULE, machine=machine,
+                                                            resolved_at__isnull=True)).count(),
         "requests": AccessRequest.objects.filter(machine=machine).select_related("requester")[:10],
     }
     return render_drawer(request, "console/machines/detail.html", "console/machines/drawer_detail.html", context)

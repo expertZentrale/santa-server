@@ -358,3 +358,8 @@ details.dependencies code { overflow-wrap: anywhere; }
 .field .binaries li.pending { display: flex; flex-wrap: wrap; gap: .3rem .6rem; align-items: baseline;
                               padding: .5rem .6rem; border: 1px dashed var(--border); border-radius: var(--radius-sm);
                               opacity: .75; }
+
+/* "Add signing ID" of a rule that leaves the binary out: the prefix to add, shortened if wished, and the button */
+.add-signing-prefix { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; width: 100%; margin: .5rem 0 0; }
+.add-signing-prefix input { flex: 1 1 14rem; min-width: 0; }
+.binaries .add-signing-prefix { width: auto; margin: .25rem 0 0 2.2rem; }

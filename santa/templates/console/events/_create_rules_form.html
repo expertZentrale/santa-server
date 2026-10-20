@@ -24,8 +24,9 @@
       </label>
       {% if binary.signing_rule %}<label class="add-signing">
         <input type="checkbox" name="add_signing" value="{{ sha }}"{% if sha in form.add_signing.value %} checked{% endif %}>
-        <span>{% blocktranslate with team=binary.signing_rule.identifier signing_id=binary.event.signing_id %}Instead: add <code>{{ signing_id }}</code> to the Team ID rule {{ team }}, with the scope above{% endblocktranslate %}</span>
-      </label>{% endif %}</li>
+        <span>{% blocktranslate with team=binary.signing_rule.identifier %}Instead: add the prefix below to the Team ID rule {{ team }}, with the scope above{% endblocktranslate %}</span>
+      </label>
+      <div class="add-signing-prefix"><code>{{ binary.signing_rule.identifier }}:</code><input name="signing_prefix_{{ sha }}" value="{{ binary.signing_prefix }}" class="mono small" aria-label="{% translate 'Signing ID prefix' %}" title="{% translate 'Only the start: it allows every signing ID beginning with it, and replaces the prefixes of the rule it covers.' %}"></div>{% endif %}</li>
       {% endwith %}{% endfor %}
     </ul>
     {% for error in form.include.errors %}<small class="error">{{ error }}</small>{% endfor %}

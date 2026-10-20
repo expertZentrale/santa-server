@@ -4,8 +4,14 @@
   <input type="hidden" name="resolved" value="{{ resolved }}">
   <div class="bulkbar" data-bulkbar hidden>
     <span class="count" title="{% translate 'Click selects a row, Ctrl-click adds or removes one, Shift-click selects a range.' %}">{% blocktranslate %}<span data-selected-count>0</span> selected{% endblocktranslate %}</span>
-    {% url 'console:events_create_rules' as create_rules_url %}<button class="button primary" formaction="{{ create_rules_url }}" hx-post="{{ create_rules_url }}" hx-target="#drawer">{% translate "Create rules…" %}</button>
-    <button class="button" formaction="{% url 'console:events_resolve' %}">{% translate "Mark resolved" %}</button>
+    {# the button: the customizable select can shorten the chosen action ("…") and keep its arrow on a phone #}
+    <select name="action" aria-label="{% translate 'Action' %}"><button><selectedcontent></selectedcontent></button>
+      <option value="create_rules">{% translate "Create rules…" %}</option>
+      <option value="resolve">{% translate "Mark resolved" %}</option>
+      {% if perms.santa.add_ignoredapp and perms.santa.change_ignoredapp %}<option value="ignore">{% translate "Ignore…" %}</option>{% endif %}
+      {% if perms.santa.delete_ignoredapp and "ignored" in resolved or perms.santa.delete_ignoredapp and resolved == "all" %}<option value="unignore">{% translate "Stop ignoring" %}</option>{% endif %}
+    </select>
+    {% url 'console:events_bulk' as bulk_url %}<button class="button primary" formaction="{{ bulk_url }}" hx-post="{{ bulk_url }}" hx-target="#drawer">{% translate "Apply" %}</button>
     <button type="button" class="bulkbar-clear" data-clear-selection aria-label="{% translate 'Clear selection' %}" title="{% translate 'Clear selection (Esc)' %}">×</button>
   </div>
   {% if view == "all" %}

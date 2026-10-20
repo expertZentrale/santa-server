@@ -8,7 +8,7 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
 
-from ..models import FileAccessRule, Group, Machine, ReleaseSource, Rule, SignInGroup, Tag
+from ..models import FileAccessRule, Group, IgnoredApp, Machine, ReleaseSource, Rule, SignInGroup, Tag
 from .utils import PAGE_SIZE, paginate, render_drawer, staff_required
 
 # URL name: (model, permission to view it, URL name of its page, whether the page opens in the drawer too)
@@ -20,6 +20,7 @@ HISTORY_MODELS = {
     "machine": (Machine, "santa.view_machine", "console:machine", True),
     "signingroup": (SignInGroup, "santa.view_signingroup", "console:admin_sign_in_group", True),
     "tag": (Tag, "santa.view_tag", "console:admin_tag", True),
+    "ignoredapp": (IgnoredApp, "santa.view_ignoredapp", "console:admin_ignored_app", True),
     "role": (AuthGroup, "auth.view_group", "console:admin_role", True),
     "user": (User, "auth.view_user", "console:admin_user", True),
 }

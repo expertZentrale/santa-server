@@ -22,6 +22,7 @@
   <p class="help small" data-show-when="result=existing">{% translate "The rule stays as it is. The open events of the binary on the Macs of the requester are marked as resolved." %}</p>
   <p class="help small" data-show-when="result=extend">{% translate "The rule is enabled and gets the scope below." %}</p>
   <p class="help small" data-show-when="result=signing">{% translate "The signing ID of the binary is added to the prefixes of the rule (“Only signing IDs starting with”), the rule is enabled and gets the scope below." %}</p>
+  <div data-show-when="result=signing">{% include "console/_field.html" with field=form.signing_prefix %}</div>
 </div>
 {% endif %}
 <div data-show-when="result=rule">

@@ -725,8 +725,10 @@ class ConsoleEventsTestCase(ConsoleBase):
         self.assertEqual([event.file_name for event in response.context["page"]], ["colima"])
         self.assertEqual(names(resolved="open"), (["colima"], "open"))
         self.assertEqual(names(resolved="resolved"), (["docker"], "resolved"))
-        # both, none (the × of the chip), and the old "all" of saved views
-        for params in ({"resolved": ["open", "resolved"]}, {"resolved": ""}, {"resolved": "all"}):
+        # open and resolved: all but the ignored apps
+        self.assertEqual(names(resolved=["open", "resolved"]), (["colima", "docker"], "open resolved"))
+        # all three, none (the × of the chip), and the old "all" of saved views
+        for params in ({"resolved": ["open", "resolved", "ignored"]}, {"resolved": ""}, {"resolved": "all"}):
             self.assertEqual(names(**params), (["colima", "docker"], "all"), params)
 
     def test_mark_resolved(self):

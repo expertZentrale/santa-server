@@ -16,7 +16,7 @@ from django.utils.translation import gettext_lazy as _
 
 from .. import notifications
 from ..catalog import update_identifier_icons
-from ..cel import SIGNING_PREFIX_RE, parse_prefix_expression, prefix_expression, signing_prefix
+from ..cel import SIGNING_PREFIX_RE, parse_prefix_expression, prefix_expression, signing_prefix, suggested_prefix
 from ..config_io import PREVIEW_LISTS, RENAMABLE_LISTS, item_token
 from ..models import (
     BRANDING_LOGO_MAX_BYTES,
@@ -30,6 +30,7 @@ from ..models import (
     FileAccessRule,
     FileAccessRuleType,
     Group,
+    IgnoredApp,
     Machine,
     OnStartUSBOption,
     Policy,
@@ -601,6 +602,58 @@ class EventRuleForm(TagsMixin):
                 if row[0].file_sha256 in chosen]
 
 
+class IgnoreForm(forms.Form):
+    """Ignore the blocked apps of the selected events: per binary by what (signing ID, Team ID, the file, a path)"""
+    expires_at = UntilField(_("For good"), label=_("How long"),
+                            help_text=_("Then the app is listed again. An app ignored already keeps the later end."))
+    note = forms.CharField(max_length=500, required=False, label=_("Comment"),
+                           help_text=_("Why, e.g. an installer of the IT"))
+
+    def __init__(self, *args, rows, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.rows = rows
+        for row in rows:
+            event = row[0]
+            choices = []
+            if event.signing_id:
+                choices.append((IgnoredApp.Kind.SIGNINGID, format_lazy("{label}: {value}", label=_("Signing ID"),
+                                                                       value=event.signing_id)))
+            if event.team_id:
+                choices.append((IgnoredApp.Kind.TEAMID, format_lazy("{label}: {value}", label=_("Team ID"),
+                                                                    value=event.team_id)))
+            choices += [(IgnoredApp.Kind.SHA256, _("This file (SHA-256)")),
+                        (IgnoredApp.Kind.PATH, _("Everything below the path"))]
+            self.fields[f"kind_{event.file_sha256}"] = forms.ChoiceField(
+                choices=choices, initial=choices[0][0], widget=forms.RadioSelect,
+                label=event.file_name or event.file_sha256)
+            self.fields[f"path_{event.file_sha256}"] = forms.CharField(
+                max_length=450, required=False, label=_("Path"),
+                initial=event.file_path.rsplit("/", 1)[0] + "/" if "/" in event.file_path else event.file_path)
+
+    def binaries(self):
+        """[(event, the bound field of the kind, of the path)] for the template"""
+        return [(row[0], self[f"kind_{row[0].file_sha256}"], self[f"path_{row[0].file_sha256}"]) for row in self.rows]
+
+    def clean(self):
+        cleaned_data = super().clean()
+        self.ignores = []
+        for row in self.rows:
+            event = row[0]
+            kind = cleaned_data.get(f"kind_{event.file_sha256}")
+            value = {IgnoredApp.Kind.SIGNINGID: event.signing_id, IgnoredApp.Kind.TEAMID: event.team_id,
+                     IgnoredApp.Kind.SHA256: event.file_sha256,
+                     IgnoredApp.Kind.PATH: (cleaned_data.get(f"path_{event.file_sha256}") or "").strip()}.get(kind)
+            candidate = IgnoredApp(kind=kind, value=value or "", name=(event.file_name or "")[:255])
+            try:
+                candidate.clean()
+            except ValidationError as e:
+                field = f"path_{event.file_sha256}" if kind == IgnoredApp.Kind.PATH else f"kind_{event.file_sha256}"
+                self.add_error(field, e.message_dict.get("value", e.messages))
+                continue
+            self.ignores.append(candidate)
+        return cleaned_data
+
+
 class UploadRulesForm(EventRuleForm):
     """The rules for the executables of an uploaded file: the form of the events with the binaries of the upload
     (services.UploadedBinary), which have no Mac"""
@@ -743,6 +796,11 @@ class ApproveEventForm(CelPolicyMixin, TagsMixin):
     groups = forms.ModelMultipleChoiceField(queryset=Group.objects.all(), required=False, label=_("Groups"),
                                             widget=forms.CheckboxSelectMultiple)
     expires_at = UntilField(_("For good"), label=_("Allowed"), help_text=APPROVAL_UNTIL_HELP)
+    signing_prefix = forms.CharField(
+        required=False, max_length=255, label=_("Signing ID prefix"),
+        widget=forms.TextInput(attrs={"class": "mono", "autocomplete": "off"}),
+        help_text=_("Only the start: it allows every signing ID beginning with it, and replaces the prefixes of the "
+                    "rule it covers."))
     note = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 2}), label=_("Note"),
                            help_text=_("Shown to the user"))
 
@@ -768,6 +826,8 @@ class ApproveEventForm(CelPolicyMixin, TagsMixin):
             hidden |= {self.EXISTING, self.EXTEND}
         if not self.signing_missing:
             hidden.add(self.SIGNING_ID)
+        else:
+            self.initial.setdefault("signing_prefix", suggested_prefix(self.signing_missing[0]["rule"], signing_id))
         self.fields["result"].choices = [choice for choice in self.fields["result"].choices
                                          if choice[0] not in hidden]
         if self.allowing and not self.is_bound:
@@ -1659,6 +1719,19 @@ class SignInGroupForm(forms.ModelForm):
             group.save()
             self.save_m2m()
         return group
+
+
+class IgnoredAppForm(forms.ModelForm):
+    expires_at = UntilField(_("For good"), label=_("How long"), help_text=_("Then the app is listed again."))
+
+    class Meta:
+        model = IgnoredApp
+        fields = ("kind", "value", "name", "note", "expires_at")
+        labels = {"kind": _("Ignore by"), "value": _("Value"), "name": _("Name"), "note": _("Comment")}
+        widgets = {"kind": forms.RadioSelect, "value": forms.TextInput(attrs={"class": "mono", "autocomplete": "off"})}
+        help_texts = {"value": _("The signing ID (TEAMID:com.example.app), the Team ID, the SHA-256 of the file, or a "
+                                 "path: every app in it and below it."),
+                      "name": _("The app, to recognize it")}
 
 
 class TagForm(forms.ModelForm):

@@ -1,0 +1,23 @@
+{% load i18n %}{% url 'console:events_ignore' as action %}
+<form method="post" action="{{ action }}" class="stack"{% if in_drawer %} hx-post="{{ action }}" hx-target="#drawer"{% endif %}>
+  {% csrf_token %}
+  {% for event in events %}<input type="hidden" name="ids" value="{{ event.pk }}">{% endfor %}
+  <input type="hidden" name="resolved" value="{{ resolved }}">
+  <p class="help">{% translate "The lists of the console no longer show these apps, also with the events that come later. Rules, the Macs and the requests of the users stay as they are." %}</p>
+  {% for event, kind, path in form.binaries %}
+  <section class="card ignore-binary">
+    <h2>{{ event.file_name|default:_("(no name)") }}</h2>
+    <p class="muted mono small cell-path" title="{{ event.file_path }}">{{ event.file_path }}</p>
+    <div class="field{% if kind.errors %} has-error{% endif %}"><span class="field-label">{% translate "Ignore by" %}</span>{{ kind }}
+      {% for error in kind.errors %}<small class="error">{{ error }}</small>{% endfor %}</div>
+    <div data-show-when="{{ kind.html_name }}=PATH">{% include "console/_field.html" with field=path %}
+      <small class="help">{% translate "Every app in this folder and below it, e.g. the installers of a download folder." %}</small></div>
+  </section>
+  {% endfor %}
+  <section class="card">
+    {% include "console/_field.html" with field=form.expires_at %}
+    {% include "console/_field.html" with field=form.note %}
+  </section>
+  <div class="actions"><button class="button primary" name="apply" value="1">{% translate "Ignore" %}</button>
+    {% if in_drawer %}<button type="button" class="button" data-drawer-close>{% translate "Cancel" %}</button>{% else %}<a class="button" href="{% url 'console:events' %}">{% translate "Cancel" %}</a>{% endif %}</div>
+</form>

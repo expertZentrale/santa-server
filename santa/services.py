@@ -6,7 +6,15 @@ from django.db.models.functions import Coalesce
 from django.utils import timezone
 from django.utils.translation import gettext
 
-from .cel import prefix_decision, prefix_expression, rule_prefixes, signing_prefix
+from .cel import (
+    SIGNING_PREFIX_RE,
+    merged_prefixes,
+    prefix_decision,
+    prefix_expression,
+    rule_prefixes,
+    signing_prefix,
+    suggested_prefix,
+)
 from .models import (
     POLICY_PRECEDENCE,
     AccessRequest,
@@ -129,9 +137,10 @@ class SigningIdError(ValueError):
     """The signing ID can't be added to the rule (the message says why)"""
 
 
-def add_signing_prefix(rule, signing_id, user):
+def add_signing_prefix(rule, signing_id, user, prefix=None):
     """Add the signing ID to a Team ID rule of signing ID prefixes ("only signing IDs starting with"); the open
-    events it allows now are resolved. Returns the prefix added (None: it was in the rule already)."""
+    events it allows now are resolved. prefix: a shorter start of it to add instead (cel.suggested_prefix), the
+    prefixes it covers go. Returns the prefix added (None: it was in the rule already)."""
     with transaction.atomic():
         # read, changed and saved under a lock: two additions at the same time (several binaries of a selection,
         # two administrators) don't overwrite each other
@@ -145,13 +154,17 @@ def add_signing_prefix(rule, signing_id, user):
         if rule.release_source_id:
             raise SigningIdError(gettext("This rule comes from the package rule %(source)s: change it there.")
                                  % {"source": rule.release_source})
-        prefix = signing_prefix(rule, signing_id)
-        if prefix is None:
+        own = signing_prefix(rule, signing_id)
+        if own is None:
             raise SigningIdError(gettext("The signing ID %(signing_id)s doesn't belong to the team %(team_id)s.")
                                  % {"signing_id": signing_id or "–", "team_id": rule.identifier})
-        if prefix_decision(rule, signing_id):
+        prefix = (prefix or "").strip() or own
+        if not own.startswith(prefix) or not SIGNING_PREFIX_RE.match(prefix):
+            raise SigningIdError(gettext("The prefix %(prefix)s is not the start of the signing ID %(signing_id)s.")
+                                 % {"prefix": prefix, "signing_id": signing_id})
+        if prefix_decision(rule, signing_id) and prefix == own:
             return None
-        rule.cel_expr = prefix_expression(rule.identifier, [*prefixes, prefix])
+        rule.cel_expr = prefix_expression(rule.identifier, merged_prefixes(prefixes, prefix))
         rule.save(update_fields=["cel_expr", "updated_at"])
     # a disabled rule doesn't reach the Macs: its events stay open (enabling it, widen_rule resolves them)
     if rule.is_enabled:
@@ -222,7 +235,9 @@ def existing_rules(events, machines=None):
         result[sha] = [{"rule": rule, "applies": rule.is_active and (
             rule.is_global or any(group.pk in groups for group in rule.groups.all())
             or any(machine.pk in machine_ids for machine in rule.machines.all())),
-            "cel": prefix_decision(rule, signing_id)}
+            "cel": prefix_decision(rule, signing_id),
+            # the prefix "Add signing ID" proposes (cel.suggested_prefix), when the rule leaves it out
+            "prefix": suggested_prefix(rule, signing_id) if prefix_decision(rule, signing_id) is False else None}
             for rule in rules]
     return result
 

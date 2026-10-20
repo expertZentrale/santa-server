@@ -16,11 +16,11 @@ from django.db import transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
-from .models import FileAccessProcess, FileAccessRule, Group, Machine, ReleaseSource, Rule, Tag
+from .models import FileAccessProcess, FileAccessRule, Group, IgnoredApp, Machine, ReleaseSource, Rule, Tag
 
 FORMAT = "santa-server-config"
 # the models in the file: exporting needs their view permission, importing add / change / delete
-CONFIG_MODELS = ("group", "rule", "releasesource", "fileaccessrule")
+CONFIG_MODELS = ("group", "rule", "releasesource", "fileaccessrule", "ignoredapp")
 EXPORT_PERMS = [f"santa.view_{model}" for model in CONFIG_MODELS]
 IMPORT_PERMS = [f"santa.{action}_{model}" for action in ("add", "change", "delete") for model in CONFIG_MODELS]
 VERSION = 1
@@ -60,7 +60,7 @@ def legacy_usb(item):
 
 
 # The import preview (console): every item of the file by its list and index, e.g. "rules:3"
-PREVIEW_LISTS = ("groups", "release_sources", "rules", "file_access_rules")
+PREVIEW_LISTS = ("groups", "release_sources", "rules", "file_access_rules", "ignored_apps")
 RENAMABLE_LISTS = ("groups", "release_sources", "file_access_rules")
 SWITCHABLE_LISTS = ("release_sources", "rules", "file_access_rules")
 
@@ -168,6 +168,9 @@ def export_config():
                **{f: getattr(g, f) for f in GROUP_FIELDS}}
               for g in Group.objects.select_related("parent").order_by("name")]
     tags = [{"name": t.name, "description": t.description} for t in Tag.objects.order_by("name")]
+    ignored_apps = [{"kind": i.kind, "value": i.value, "name": i.name, "note": i.note,
+                     "expires_at": i.expires_at.isoformat() if i.expires_at else None}
+                    for i in IgnoredApp.objects.order_by("kind", "value")]
     release_sources = [
         {"name": s.name, **{f: getattr(s, f) for f in RELEASE_SOURCE_FIELDS},
          "groups": sorted(g.name for g in s.groups.all()),
@@ -192,7 +195,7 @@ def export_config():
     ]
     return {"format": FORMAT, "version": VERSION, "exported_at": timezone.now().isoformat(),
             "groups": groups, "tags": tags, "release_sources": release_sources, "rules": rules,
-            "file_access_rules": file_access_rules}
+            "file_access_rules": file_access_rules, "ignored_apps": ignored_apps}
 
 
 class _Importer:
@@ -264,6 +267,30 @@ class _Importer:
             self.tags[name] = tag
             tags.append(tag)
         return tags
+
+    def import_ignored_apps(self):
+        """By (kind, value); an expired one is skipped. Not deleted when missing from the file: they only hide apps."""
+        for index, item in enumerate(self.data.get("ignored_apps", [])):
+            label = f"Ignored app {item.get('kind')} {item.get('value')}"
+            expires_at = None
+            if item.get("expires_at"):
+                expires_at = parse_expiry(item["expires_at"])
+                if expires_at is None:
+                    self.errors.append(f"{label}: expires_at is not a date: {item['expires_at']!r}")
+                    continue
+                if expires_at <= timezone.now():
+                    self.warnings.append(f"{label}: expired on {expires_at:%Y-%m-%d %H:%M}, skipped")
+                    continue
+            ignore = IgnoredApp.objects.filter(kind=item.get("kind"), value=item.get("value")).first()
+            created = ignore is None
+            if created:
+                ignore = IgnoredApp(kind=item.get("kind") or "", value=item.get("value") or "")
+            changed = self._apply(ignore, {**item, "expires_at": expires_at}, ("name", "note", "expires_at"))
+            if (changed or created) and not self.save(ignore, label):
+                continue
+            if changed or created:
+                self.record("created" if created else "updated", ignore)
+            self.status("ignored_apps", index, item, created, changed)
 
     def import_tags(self):
         for item in self.data.get("tags", []):
@@ -460,6 +487,7 @@ class _Importer:
             raise ConfigImportError([f"Unsupported version {self.data.get('version')}, expected {VERSION}"])
         self.import_groups()
         self.import_tags()
+        self.import_ignored_apps()
         self.import_release_sources()
         self.import_rules()
         self.import_file_access_rules()

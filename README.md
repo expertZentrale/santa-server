@@ -108,8 +108,8 @@ Benutzer ohne Rechte; SQL Server und Redis laufen separat.
 - **Geplante Jobs**, dasselbe Image mit einem anderen Befehl (sie warten nicht auf `WAIT_FOR_URL`, außer mit
   `WAIT_FOR_URL_JOBS=1`):
   - stündlich: `python manage.py sync_release_sources` (neue Releases der Paketregeln, verzögerte Freigaben)
-  - stündlich: `python manage.py cleanup_expired_rules` (löscht die abgelaufenen Regeln; die Macs haben sie schon
-    entfernt)
+  - stündlich: `python manage.py cleanup_expired_rules` (löscht die abgelaufenen Regeln, die Macs haben sie schon
+    entfernt, und die abgelaufenen ignorierten Apps)
   - täglich: `python manage.py cleanup_events --days 90` (löscht auch die Benachrichtigungen der Glocke nach 30 Tagen,
     `--notification-days`)
   - täglich (mit E-Mail): `python manage.py send_notification_digest` (die tägliche Zusammenfassung)
@@ -167,8 +167,8 @@ Registrieren Sie eine Webanwendung mit der Redirect-URI `https://<host>/oidc/cal
 #### Anmeldegruppen und Rollen
 
 In der Konsole enthält *Administration* die Benutzer, die Rollen (Sammlungen von Berechtigungen: Ansehen /
-Hinzufügen / Ändern / Löschen je Seite und was Benutzer anfragen dürfen), die Anmeldegruppen, die Tags und den Export
-und Import der Konfiguration.
+Hinzufügen / Ändern / Löschen je Seite und was Benutzer anfragen dürfen), die Anmeldegruppen, die Tags, die ignorierten
+Apps und den Export und Import der Konfiguration.
 
 Eine **Anmeldegruppe** ist eine Gruppe Ihres Anbieters, die Rollen vergibt, und die Konsole, wenn Sie *Zugriff auf
 die Konsole* ankreuzen. Legen Sie nur die Gruppen an, auf die es ankommt: Der Server vergleicht den Gruppen-Claim des
@@ -372,6 +372,15 @@ sie im Drawer, mit den Filtern der Liste (Zeitraum, Status, Gruppe, …); Reiter
 Ereignisse hinzu. Klicken Sie auf einen Dateinamen für die Details und *Regel anlegen*, mit einer Vorschau der
 Kennung, die die Regel verwenden wird.
 
+**Ignorieren**: *Ignorieren…* (Sammelleiste, Zeilenmenü, Drawer eines Ereignisses) blendet blockierte Apps aus den
+Listen der Konsole aus, auch mit den Ereignissen, die danach kommen. Je App wählen Sie, woran: Signing ID (alle
+Versionen der App, Standard bei signierten), Team ID (alles des Herstellers), diese Datei (SHA-256) oder einen Pfad
+(alles darin und darunter, z. B. `/private/var/folders/` für Installer). Dazu „Wie lange“ (Standard dauerhaft) und ein
+Kommentar. Der Status *Ignoriert* der Liste zeigt sie wieder, mit *Nicht mehr ignorieren*; alle stehen unter
+*Administration → Ignorierte Apps*. Ignorieren ändert keine Regeln und nichts auf den Macs, und Benutzer können die App
+weiter anfragen (die Anfrage zeigt, dass sie ignoriert ist). Abgelaufene Einträge löscht `cleanup_expired_rules`; sie
+gehören zum Export der Konfiguration.
+
 **Als Paket erlauben**: Apps oder Ereignisse auswählen → *Als Paket erlauben…* (oder im Ereignis der Hinweis
 „Stammt wahrscheinlich aus …“). Die Konsole schlägt je Paket vor, woher die Binaries stammen, die zuverlässigste Quelle
 zuerst: dieselbe Datei in einem schon erfassten Release, die Bundle-ID oder der App-Name in den Homebrew-Casks, der
@@ -389,6 +398,13 @@ Macs), Tags und Beschreibung. *Auf alle Zeilen anwenden* setzt eine Spalte für 
 
 Gibt es für die Kennung schon eine manuelle Regel, wird deren Geltungsbereich erweitert, statt eine zweite Regel
 anzulegen. Die Ereignisse werden als erledigt markiert.
+
+Lässt eine Team-ID-Regel *Nur Signing IDs, die beginnen mit* die Signing ID eines Binarys aus (*Signing ID nicht
+enthalten*), fügen Sie sie stattdessen der Regel hinzu, im Drawer des Ereignisses, beim Anlegen der Regeln oder beim
+Genehmigen einer Anfrage. Vorgeschlagen wird der gemeinsame Anfang mit einem Präfix der Regel bis zu einem Punkt, wenn
+er mindestens drei Punkte hat (`com.microsoft.teams2.` für `com.microsoft.teams2.installer_telemetry` neben
+`com.microsoft.teams2.teamsswitcher`), sonst die ganze Signing ID. Das Präfix lässt sich ändern, muss aber der Anfang
+der Signing ID sein; es ersetzt die Präfixe der Regel, die es abdeckt.
 
 **Ein Binary hochladen**: *Ausführungsregeln* → *Binary hochladen*. Akzeptiert eine Mach-O-Datei, ein Zip-/Tar-Archiv,
 ein Installationspaket (`.pkg`) oder ein Disk-Image (`.dmg`), auch ein Paket in einem Disk-Image oder Archiv. *Datei
@@ -643,6 +659,7 @@ santa/
   macho.py             liest Hashes und Kennungen der Codesignatur aus Mach-O-Dateien
   archives.py          liest Installationspakete (.pkg) und, mit 7-Zip, Disk-Images (.dmg)
   bottles.py           die Binaries eines Homebrew-Bottles so, wie Homebrew sie installiert
+  ignores.py           die ignorierten Apps: welche Ereignisse die Listen der Konsole ausblenden
   releases.py          Paketregeln (GitHub, Homebrew, npm, VS Code, JetBrains, URL)
   catalog.py           Suche in den Paketkatalogen (Vorschläge und Icons)
   notifications.py     E-Mail-Benachrichtigungen: wer welche E-Mail bekommt
@@ -774,7 +791,8 @@ separately.
 - **Scheduled jobs**, the same image with another command (they don't wait for `WAIT_FOR_URL`, unless
   `WAIT_FOR_URL_JOBS=1`):
   - hourly: `python manage.py sync_release_sources` (new releases of the package rules, delayed approvals)
-  - hourly: `python manage.py cleanup_expired_rules` (deletes the expired rules; the Macs removed them already)
+  - hourly: `python manage.py cleanup_expired_rules` (deletes the expired rules, the Macs removed them already, and
+    the expired ignored apps)
   - daily: `python manage.py cleanup_events --days 90` (also deletes the notifications of the bell after 30 days,
     `--notification-days`)
   - daily (with e-mail): `python manage.py send_notification_digest` (the daily summary)
@@ -828,7 +846,8 @@ Register a web application with the redirect URI `https://<host>/oidc/callback/`
 #### Sign-in groups and roles
 
 In the console, *Administration* holds the users, the roles (sets of permissions: view / add / change / delete per
-page, and what users may request), the sign-in groups, the tags and the configuration export / import.
+page, and what users may request), the sign-in groups, the tags, the ignored apps and the configuration export /
+import.
 
 A **sign-in group** is a group of your provider that gives roles, and the console if you tick *Console access*.
 Add only the groups that matter: the server compares the groups claim of the ID token (`OIDC_GROUPS_CLAIM`) with
@@ -1017,6 +1036,14 @@ range, status, group, …); tabs switch between the three.
 *All events* is the flat list; its first page adds new events every 5 seconds. Click a file name for the details
 and *Create rule*, with a preview of the identifier the rule will use.
 
+**Ignore**: *Ignore…* (bulk bar, row menu, drawer of an event) hides blocked apps from the lists of the console, also
+with the events that come later. Per app you choose by what: signing ID (all versions of the app, the default for
+signed ones), Team ID (everything of the developer), this file (SHA-256) or a path (everything in and below it, e.g.
+`/private/var/folders/` for installers). Plus "How long" (default for good) and a comment. The status *Ignored* of the
+list shows them again, with *Stop ignoring*; all of them are under *Administration → Ignored apps*. Ignoring changes no
+rules and nothing on the Macs, and users can still request the app (the request shows that it is ignored). Expired
+entries are deleted by `cleanup_expired_rules`; they are part of the configuration export.
+
 **Allow as package**: select apps or events → *Allow as package…* (or the hint "Probably from …" in an event). The
 console suggests per package where the binaries come from, the most reliable source first: the same file in a release
 recorded already, the bundle ID or the app name in the Homebrew casks, the install path (`…/Cellar/redis/8.10.1/…` →
@@ -1033,6 +1060,13 @@ policy, scope (the groups chosen at the top, only the Macs of its events, or all
 
 If a manual rule for the identifier already exists, its scope is widened instead of creating a second rule. The events
 are marked resolved.
+
+When a Team ID rule *Only signing IDs starting with* leaves out the signing ID of a binary (*signing ID not included*),
+add it to the rule instead, in the drawer of the event, when creating the rules or when approving a request. The
+suggestion is the start it shares with a prefix of the rule, up to a dot, when that has at least three dots
+(`com.microsoft.teams2.` for `com.microsoft.teams2.installer_telemetry` next to `com.microsoft.teams2.teamsswitcher`),
+else the whole signing ID. The prefix can be changed but must be the start of the signing ID; it replaces the
+prefixes of the rule it covers.
 
 **Upload a binary**: *Execution rules* → *Upload binary*. Accepts a Mach-O file, a zip / tar archive, an installer
 package (`.pkg`) or a disk image (`.dmg`), also a package inside a disk image or an archive. *Check file* lists every
@@ -1277,6 +1311,7 @@ santa/
   macho.py             reads hashes and code signature identifiers from Mach-O files
   archives.py          reads installer packages (.pkg) and, with 7-Zip, disk images (.dmg)
   bottles.py           the binaries of a Homebrew bottle as Homebrew installs them
+  ignores.py           the ignored apps: which events the lists of the console leave out
   releases.py          package rules (GitHub, Homebrew, npm, VS Code, JetBrains, URL)
   catalog.py           search the package catalogs (suggestions and icons)
   notifications.py     e-mail notifications: who gets which e-mail

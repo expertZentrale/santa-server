@@ -109,6 +109,12 @@ class SavedAndLastFiltersTestCase(ConsoleBase):
         self.assertFalse(SavedFilter.objects.filter(pk=saved.pk).exists())
         self.assertNotContains(self.client.get(url, {"q": ""}), "Theirs")
 
+    def test_save_a_filter_of_the_ignored_apps(self):
+        url = reverse("console:admin_ignored")
+        self.client.post(reverse("save_filter"), {"page": "ignored", "name": "Paths", "query": "kind=PATH",
+                                                  "next": url})
+        self.assertEqual(SavedFilter.objects.get(page="ignored").query, "kind=PATH")
+
     def test_requesters_save_filters_of_their_list(self):
         self.client.force_login(self.user)
         self.client.post(reverse("save_filter"), {"page": "my-requests", "name": "Open", "query": "status=PENDING"})
