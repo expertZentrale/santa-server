@@ -16,7 +16,7 @@ from django.utils.translation import gettext_lazy as _
 
 from .. import notifications
 from ..catalog import update_identifier_icons
-from ..cel import SIGNING_PREFIX_RE, parse_prefix_expression, prefix_expression, signing_prefix
+from ..cel import SIGNING_PREFIX_RE, parse_prefix_expression, prefix_expression, signing_prefix, suggested_prefix
 from ..config_io import PREVIEW_LISTS, RENAMABLE_LISTS, item_token
 from ..models import (
     BRANDING_LOGO_MAX_BYTES,
@@ -793,6 +793,11 @@ class ApproveEventForm(CelPolicyMixin, TagsMixin):
     groups = forms.ModelMultipleChoiceField(queryset=Group.objects.all(), required=False, label=_("Groups"),
                                             widget=forms.CheckboxSelectMultiple)
     expires_at = UntilField(_("For good"), label=_("Allowed"), help_text=APPROVAL_UNTIL_HELP)
+    signing_prefix = forms.CharField(
+        required=False, max_length=255, label=_("Signing ID prefix"),
+        widget=forms.TextInput(attrs={"class": "mono", "autocomplete": "off"}),
+        help_text=_("Only the start: it allows every signing ID beginning with it, and replaces the prefixes of the "
+                    "rule it covers."))
     note = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 2}), label=_("Note"),
                            help_text=_("Shown to the user"))
 
@@ -818,6 +823,8 @@ class ApproveEventForm(CelPolicyMixin, TagsMixin):
             hidden |= {self.EXISTING, self.EXTEND}
         if not self.signing_missing:
             hidden.add(self.SIGNING_ID)
+        else:
+            self.initial.setdefault("signing_prefix", suggested_prefix(self.signing_missing[0]["rule"], signing_id))
         self.fields["result"].choices = [choice for choice in self.fields["result"].choices
                                          if choice[0] not in hidden]
         if self.allowing and not self.is_bound:

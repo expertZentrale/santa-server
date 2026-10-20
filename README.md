@@ -399,6 +399,13 @@ Macs), Tags und Beschreibung. *Auf alle Zeilen anwenden* setzt eine Spalte für 
 Gibt es für die Kennung schon eine manuelle Regel, wird deren Geltungsbereich erweitert, statt eine zweite Regel
 anzulegen. Die Ereignisse werden als erledigt markiert.
 
+Lässt eine Team-ID-Regel *Nur Signing IDs, die beginnen mit* die Signing ID eines Binarys aus (*Signing ID nicht
+enthalten*), fügen Sie sie stattdessen der Regel hinzu, im Drawer des Ereignisses, beim Anlegen der Regeln oder beim
+Genehmigen einer Anfrage. Vorgeschlagen wird der gemeinsame Anfang mit einem Präfix der Regel bis zu einem Punkt, wenn
+er mindestens drei Punkte hat (`com.microsoft.teams2.` für `com.microsoft.teams2.installer_telemetry` neben
+`com.microsoft.teams2.teamsswitcher`), sonst die ganze Signing ID. Das Präfix lässt sich ändern, muss aber der Anfang
+der Signing ID sein; es ersetzt die Präfixe der Regel, die es abdeckt.
+
 **Ein Binary hochladen**: *Ausführungsregeln* → *Binary hochladen*. Akzeptiert eine Mach-O-Datei, ein Zip-/Tar-Archiv,
 ein Installationspaket (`.pkg`) oder ein Disk-Image (`.dmg`), auch ein Paket in einem Disk-Image oder Archiv. *Datei
 prüfen* listet jede ausführbare Datei darin (oder die, die zum Glob-Muster passen) mit Signatur, Signing ID, Team ID,
@@ -1053,6 +1060,13 @@ policy, scope (the groups chosen at the top, only the Macs of its events, or all
 
 If a manual rule for the identifier already exists, its scope is widened instead of creating a second rule. The events
 are marked resolved.
+
+When a Team ID rule *Only signing IDs starting with* leaves out the signing ID of a binary (*signing ID not included*),
+add it to the rule instead, in the drawer of the event, when creating the rules or when approving a request. The
+suggestion is the start it shares with a prefix of the rule, up to a dot, when that has at least three dots
+(`com.microsoft.teams2.` for `com.microsoft.teams2.installer_telemetry` next to `com.microsoft.teams2.teamsswitcher`),
+else the whole signing ID. The prefix can be changed but must be the start of the signing ID; it replaces the
+prefixes of the rule it covers.
 
 **Upload a binary**: *Execution rules* → *Upload binary*. Accepts a Mach-O file, a zip / tar archive, an installer
 package (`.pkg`) or a disk image (`.dmg`), also a package inside a disk image or an archive. *Check file* lists every

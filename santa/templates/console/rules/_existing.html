@@ -15,7 +15,8 @@
       {% if match.rule.is_global %}<span class="chip small">{% translate "All Macs" %}</span>{% else %}{% for group in match.rule.groups.all %}<span class="chip small">{{ group.name }}</span>{% endfor %}{% for machine in match.rule.machines.all %}<span class="chip small mac">{{ machine.hostname|default:machine.serial_number }}</span>{% endfor %}{% endif %}
       {% if not match.rule.is_enabled %}<span class="badge">{% translate "disabled" %}</span>{% elif not match.applies %}<small>{% translate "not for these Macs" %}</small>{% endif %}
       {% if match.cel is True %}<small>{% translate "includes this signing ID" %}</small>{% elif match.cel is False %}<span class="badge warn">{% translate "signing ID not included" %}</span>
-        {% if add_signing_url and perms.santa.change_rule and not match.rule.release_source_id %}<form method="post" action="{{ add_signing_url }}" hx-post="{{ add_signing_url }}" hx-target="#drawer" class="inline">{% csrf_token %}<input type="hidden" name="rule" value="{{ match.rule.pk }}"><button class="button small">{% translate "Add signing ID" %}</button></form>{% endif %}{% endif %}
+        {% if add_signing_url and perms.santa.change_rule and not match.rule.release_source_id %}<form method="post" action="{{ add_signing_url }}" hx-post="{{ add_signing_url }}" hx-target="#drawer" class="add-signing-prefix">{% csrf_token %}<input type="hidden" name="rule" value="{{ match.rule.pk }}">
+          <input name="prefix" value="{{ match.prefix }}" class="mono small" aria-label="{% translate 'Signing ID prefix' %}" title="{% translate 'Only the start: it allows every signing ID beginning with it, and replaces the prefixes of the rule it covers.' %}"><button class="button small">{% translate "Add signing ID" %}</button></form>{% endif %}{% endif %}
     </li>{% endfor %}
   </ul>
 </div>

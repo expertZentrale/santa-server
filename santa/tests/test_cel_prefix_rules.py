@@ -5,9 +5,16 @@ from django.contrib.auth.models import Permission, User
 from django.test import SimpleTestCase
 from django.urls import reverse
 
-from santa.cel import parse_prefix_expression, prefix_decision, prefix_expression, signing_prefix
+from santa.cel import (
+    merged_prefixes,
+    parse_prefix_expression,
+    prefix_decision,
+    prefix_expression,
+    signing_prefix,
+    suggested_prefix,
+)
 from santa.models import AccessRequest, Event, Policy, ReleaseSource, Rule, RuleType
-from santa.services import add_signing_prefix, decisions_on, existing_rules, is_allowed, widen_rule
+from santa.services import SigningIdError, add_signing_prefix, decisions_on, existing_rules, is_allowed, widen_rule
 
 from .test_console import SHA_A, SHA_B, ConsoleBase
 
@@ -39,6 +46,20 @@ class PrefixExpressionTestCase(SimpleTestCase):
         self.assertEqual(signing_prefix(rule, f"{TEAM}:com.b"), "com.b")
         self.assertIsNone(signing_prefix(rule, "OTHER12345:com.b"))
         self.assertIsNone(signing_prefix(rule, f"{TEAM}:com b"))
+
+    def test_suggested_prefix(self):
+        rule = self.rule(["com.microsoft.teams2.teamsswitcher", "com.a"])
+        # the part shared with a prefix, up to a dot
+        self.assertEqual(suggested_prefix(rule, f"{TEAM}:com.microsoft.teams2.installer_telemetry"),
+                         "com.microsoft.teams2.")
+        # too short a shared part (com.microsoft.): the whole signing ID
+        self.assertEqual(suggested_prefix(rule, f"{TEAM}:com.microsoft.edge"), "com.microsoft.edge")
+        self.assertEqual(suggested_prefix(rule, f"{TEAM}:org.other"), "org.other")
+        self.assertIsNone(suggested_prefix(rule, "OTHER12345:com.microsoft.teams2.x"))
+
+    def test_merged_prefixes(self):
+        self.assertEqual(merged_prefixes(["com.a.one", "com.b", "com.a.two"], "com.a."), ["com.b", "com.a."])
+        self.assertEqual(merged_prefixes(["com.b"], "com.a"), ["com.b", "com.a"])
 
 
 class PrefixRulesTestCase(ConsoleBase):
@@ -209,3 +230,73 @@ class PrefixRulesTestCase(ConsoleBase):
         self.assertEqual(list(response.context["form"].signing_rules), [SHA_A])
         response = self.client.get(reverse("console:event", args=(no_signing_id.pk,)), HTTP_HX_REQUEST="true")
         self.assertNotContains(response, "Add signing ID")
+
+
+class SharedPrefixTestCase(ConsoleBase):
+    """Adding a signing ID with the part it shares with a prefix of the rule (com.microsoft.teams2.)"""
+
+    def setUp(self):
+        super().setUp()
+        self.rule = Rule.objects.create(
+            rule_type=RuleType.TEAMID, identifier=TEAM, policy=Policy.CEL, is_global=True,
+            cel_expr=prefix_expression(TEAM, ["com.microsoft.teams2.teamsswitcher", "org.other"]))
+        self.event = self.make_event(signing_id=f"{TEAM}:com.microsoft.teams2.installer_telemetry", team_id=TEAM)
+
+    def test_the_console_suggests_the_shared_part(self):
+        response = self.client.get(reverse("console:event", args=(self.event.pk,)), HTTP_HX_REQUEST="true")
+        self.assertContains(response, 'value="com.microsoft.teams2."')
+        response = self.client.post(reverse("console:events_create_rules"), {"ids": [self.event.pk]},
+                                    headers={"HX-Request": "true"})
+        self.assertContains(response, f'name="signing_prefix_{SHA_A}"')
+        self.assertContains(response, 'value="com.microsoft.teams2."')
+
+    def test_the_shared_prefix_replaces_the_ones_it_covers(self):
+        response = self.client.post(reverse("console:event_add_signing_id", args=(self.event.pk,)),
+                                    {"rule": self.rule.pk, "prefix": "com.microsoft.teams2."},
+                                    headers={"HX-Request": "true"})
+        self.assertEqual(response.status_code, 204)
+        self.rule.refresh_from_db()
+        self.assertEqual(parse_prefix_expression(self.rule.cel_expr), ["org.other", "com.microsoft.teams2."])
+        self.event.refresh_from_db()
+        self.assertEqual(self.event.resolution_rule, self.rule)
+
+    def test_the_whole_signing_id_on_request(self):
+        self.client.post(reverse("console:event_add_signing_id", args=(self.event.pk,)),
+                         {"rule": self.rule.pk, "prefix": "com.microsoft.teams2.installer_telemetry"})
+        self.rule.refresh_from_db()
+        self.assertEqual(parse_prefix_expression(self.rule.cel_expr),
+                         ["com.microsoft.teams2.teamsswitcher", "org.other",
+                          "com.microsoft.teams2.installer_telemetry"])
+
+    def test_a_prefix_that_is_not_the_start_is_refused(self):
+        expression = self.rule.cel_expr
+        for prefix in ("com.microsoft.teams3.", "com.microsoft teams2"):
+            with self.assertRaises(SigningIdError):
+                add_signing_prefix(self.rule, self.event.signing_id, self.user, prefix=prefix)
+        self.client.post(reverse("console:event_add_signing_id", args=(self.event.pk,)),
+                         {"rule": self.rule.pk, "prefix": "org."})
+        self.rule.refresh_from_db()
+        self.assertEqual(self.rule.cel_expr, expression)
+
+    def test_the_create_rules_drawer_takes_the_prefix(self):
+        response = self.client.post(reverse("console:events_create_rules"), {
+            "ids": [self.event.pk], "apply": "1", "add_signing": [SHA_A], "rule_type": RuleType.BINARY,
+            "policy": Policy.ALLOWLIST, "scope": "global", f"signing_prefix_{SHA_A}": "com.microsoft.teams2."},
+            headers={"HX-Request": "true"})
+        self.assertEqual(response.status_code, 204)
+        self.rule.refresh_from_db()
+        self.assertEqual(parse_prefix_expression(self.rule.cel_expr), ["org.other", "com.microsoft.teams2."])
+
+    def test_approve_with_the_prefix(self):
+        access_request = AccessRequest.objects.create(requester=self.user, kind="EVENT", event=self.event,
+                                                      machine=self.machine, file_sha256=SHA_A, title="a",
+                                                      justification="x")
+        response = self.client.get(reverse("console:request", args=(access_request.pk,)))
+        self.assertEqual(response.context["approve_form"]["signing_prefix"].value(), "com.microsoft.teams2.")
+        self.client.post(reverse("console:request_approve", args=(access_request.pk,)), {
+            "result": "signing", "existing_rule": self.rule.pk, "scope": "global",
+            "signing_prefix": "com.microsoft.teams2."})
+        access_request.refresh_from_db()
+        self.rule.refresh_from_db()
+        self.assertEqual(access_request.status, AccessRequest.Status.APPROVED)
+        self.assertEqual(parse_prefix_expression(self.rule.cel_expr), ["org.other", "com.microsoft.teams2."])

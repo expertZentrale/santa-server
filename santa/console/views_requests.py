@@ -468,7 +468,8 @@ def _approve_event(request, access_request, form):
         if data["result"] == ApproveEventForm.SIGNING_ID:
             event = _event_of(access_request)
             try:
-                prefix = add_signing_prefix(rule, event.signing_id if event else "", request.user)
+                prefix = add_signing_prefix(rule, event.signing_id if event else "", request.user,
+                                            data.get("signing_prefix"))
             except SigningIdError as e:
                 raise ValidationError(str(e)) from e
             added = f"Signing ID prefix {prefix} added, " if prefix else ""

@@ -9,7 +9,7 @@ from django.utils import timezone
 from django.utils.translation import gettext, ngettext
 from django.views.decorators.http import require_POST
 
-from ..cel import signing_prefix
+from ..cel import signing_prefix, suggested_prefix
 from ..ignores import active_ignores, ignored_q, ignores_of, matching
 from ..models import NEEDS_RULE, AccessRequest, Event, Group, IgnoredApp, Machine, Rule, RuleType
 from ..package_detection import package_hints
@@ -368,14 +368,14 @@ def event_add_signing_id(request, pk):
     event = get_object_or_404(Event, pk=pk)
     rule = get_object_or_404(Rule, pk=request.POST.get("rule"), rule_type=RuleType.TEAMID, identifier=event.team_id)
     try:
-        prefix = add_signing_prefix(rule, event.signing_id, request.user)
+        prefix = add_signing_prefix(rule, event.signing_id, request.user, request.POST.get("prefix"))
     except SigningIdError as e:
         messages.error(request, str(e))
     else:
         if prefix:
             log_change(request.user, rule, f"Signing ID prefix {prefix} added from event {event.pk}")
-            messages.success(request, gettext("%(signing_id)s added to the rule of the team %(team_id)s.")
-                             % {"signing_id": event.signing_id, "team_id": rule.identifier})
+            messages.success(request, gettext("%(prefix)s added to the rule of the team %(team_id)s.")
+                             % {"prefix": f"{rule.identifier}:{prefix}", "team_id": rule.identifier})
     return drawer_done(request, reverse("console:event", args=(event.pk,)), open_in_drawer=True)
 
 
@@ -462,7 +462,8 @@ def save_event_rules(user, form, progress=None):
         progress.start(row[0].bundle_name or row[0].file_name or row[0].file_path)
         machines = list({event.machine for event in row})
         try:
-            prefix = add_signing_prefix(rule, row[0].signing_id, user)
+            prefix = add_signing_prefix(rule, row[0].signing_id, user,
+                                        form.data.get(f"signing_prefix_{row[0].file_sha256}"))
         except SigningIdError as e:
             failed.append((row, str(e)))
             continue
@@ -509,16 +510,29 @@ def _rows_for(events):
     return list(rows.values())
 
 
-def _binaries(rows, matches):
-    """The binaries of the form with what their rule would use for every rule type (forms.js shows the chosen one)"""
-    return [{
+def _binaries(rows, matches, data=None):
+    """The binaries of the form with what their rule would use for every rule type (forms.js shows the chosen one).
+    data: the POST of the drawer, it keeps a prefix entered"""
+    data = data or {}
+    binaries = []
+    for row in rows:
+        binary = _binary(row, matches)
+        if binary["signing_rule"]:
+            binary["signing_prefix"] = (data.get(f"signing_prefix_{row[0].file_sha256}")
+                                        or suggested_prefix(binary["signing_rule"], row[0].signing_id))
+        binaries.append(binary)
+    return binaries
+
+
+def _binary(row, matches):
+    return {
         "matches": matches.get(row[0].file_sha256, []),
         "signing_rule": signing_rules_of(matches, [row]).get(row[0].file_sha256),
         "event": row[0], "events": len(row), "macs": len({event.machine_id for event in row}),
         "identifiers": json.dumps({rule_type: row[0].identifier_for(rule_type)
                                    for rule_type in available_rule_types(row[0])}),
         "suggested": default_rule_type(row[0]),
-    } for row in rows]
+    }
 
 
 # the fields of the rule form kept when the selection changes while the drawer is open
@@ -592,7 +606,7 @@ def events_create_rules(request):
                                         "%(count)s binaries left: choose their rule, or close.", len(rest))
                       % {"count": len(rest)})
     return render_drawer(request, "console/events/create_rules.html", "console/events/create_rules_drawer.html", {
-        "form": form, "binaries": _binaries(rows, matches), "events": events,
+        "form": form, "binaries": _binaries(rows, matches, request.POST), "events": events,
         "rule_types": json.dumps({value: str(label) for value, label in RuleType.choices}), "saved": saved_before,
         "saved_shas": " ".join(saved_shas), "resolved": request.POST.get("resolved", "open"),
         "tab": "rules", "package_count": len({s.key for s in package_hints(events).values()}),

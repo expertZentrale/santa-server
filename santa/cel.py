@@ -1,5 +1,6 @@
 """The CEL expression of "Only signing IDs starting with": a Team ID rule that allows only some binaries of the team
 (Santa has no wildcards). Written by the console, read back to show and extend it, and evaluated like Santa does."""
+import os
 import re
 
 from .models import Policy, RuleType
@@ -40,6 +41,32 @@ def prefix_decision(rule, signing_id):
     if prefixes is None:
         return None
     return any((signing_id or "").startswith(f"{rule.identifier}:{prefix}") for prefix in prefixes)
+
+
+# a prefix shared with the rule needs at least this many dots: com.microsoft.teams2. covers the helpers of an app,
+# com.microsoft. would allow everything of the developer
+SHARED_PREFIX_DOTS = 3
+
+
+def suggested_prefix(rule, signing_id):
+    """The prefix to add the signing ID with: the part it shares with a prefix of the rule, up to a dot, when that is
+    specific enough (com.microsoft.teams2. for …teams2.installer_telemetry next to …teams2.teamsswitcher); else the
+    whole signing ID. None if it can't be added."""
+    own = signing_prefix(rule, signing_id)
+    if own is None:
+        return None
+    best = ""
+    for prefix in rule_prefixes(rule) or []:
+        common = os.path.commonprefix([own, prefix])
+        shared = common[:common.rfind(".") + 1]
+        if shared.count(".") >= SHARED_PREFIX_DOTS and len(shared) > len(best):
+            best = shared
+    return best or own
+
+
+def merged_prefixes(prefixes, prefix):
+    """The prefixes with one added: the ones it covers (that start with it) go"""
+    return [*(other for other in prefixes if not other.startswith(prefix)), prefix]
 
 
 def signing_prefix(rule, signing_id):
