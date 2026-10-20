@@ -1,6 +1,7 @@
 import base64
 import json
 from dataclasses import dataclass
+from datetime import timedelta
 
 from django import forms
 from django.conf import settings
@@ -24,6 +25,7 @@ from ..models import (
     HISTORY_KINDS,
     IDENTIFIER_MAX_LENGTH,
     AccessRequest,
+    ClientMode,
     FileAccessProcess,
     FileAccessRule,
     FileAccessRuleType,
@@ -293,6 +295,84 @@ class RuleBulkForm(forms.Form):
             self.add_error("tag", gettext("Enter a tag."))
         if action == "add_groups" and not cleaned_data.get("groups"):
             self.add_error("groups", gettext("Choose at least one group."))
+        return cleaned_data
+
+
+class LocalDateTimeInput(forms.DateTimeInput):
+    """A date and time in the browser's picker, in the time zone of the user (TimezoneMiddleware)"""
+    input_type = "datetime-local"
+
+    def __init__(self, attrs=None):
+        super().__init__(attrs, format="%Y-%m-%dT%H:%M")
+
+
+UNTIL_DURATIONS = {"1h": timedelta(hours=1), "1d": timedelta(days=1), "7d": timedelta(days=7),
+                   "30d": timedelta(days=30)}
+
+
+class UntilWidget(forms.MultiWidget):
+    """How long: a choice, and the date when "Until a date" is chosen (forms.js shows it then)"""
+    template_name = "console/widgets/until.html"
+
+    def __init__(self, choices):
+        super().__init__([forms.Select(choices=choices), LocalDateTimeInput()])
+
+    def decompress(self, value):
+        return ["date", value] if value else ["", None]
+
+    def get_context(self, name, value, attrs):
+        context = super().get_context(name, value, attrs)
+        date = context["widget"]["subwidgets"][1]["attrs"]
+        date["data-show-when"] = f"{name}_0=date"
+        date["aria-label"] = gettext("Date")
+        return context
+
+
+class UntilField(forms.MultiValueField):
+    """An end in time: none, in an hour, a day, a week, a month, or a date. Cleaned to an aware datetime or None."""
+
+    def __init__(self, none_label, **kwargs):
+        choices = [("", none_label), ("1h", _("For 1 hour")), ("1d", _("For 1 day")), ("7d", _("For 7 days")),
+                   ("30d", _("For 30 days")), ("date", _("Until a date"))]
+        super().__init__((forms.ChoiceField(choices=choices, required=False), forms.DateTimeField(required=False)),
+                         require_all_fields=False, required=False, widget=UntilWidget(choices), **kwargs)
+
+    def compress(self, data_list):
+        choice, date = (list(data_list) + ["", None])[:2]
+        if not choice:
+            return None
+        if choice in UNTIL_DURATIONS:
+            return timezone.now() + UNTIL_DURATIONS[choice]
+        if not date:
+            raise ValidationError(_("Enter the date."))
+        if date <= timezone.now():
+            raise ValidationError(_("The date must be in the future."))
+        return date
+
+
+class MachineModeForm(forms.ModelForm):
+    """The mode of one Mac instead of its group's, for good or until a date"""
+    client_mode_override_until = UntilField(_("Until it is reset"), label=_("How long"))
+
+    class Meta:
+        model = Machine
+        fields = ("client_mode_override", "client_mode_override_until")
+        labels = {"client_mode_override": _("Mode of this Mac")}
+        widgets = {"client_mode_override": forms.RadioSelect}
+
+    def __init__(self, *args, group_mode="", **kwargs):
+        super().__init__(*args, **kwargs)
+        field = self.fields["client_mode_override"]
+        field.choices = [("", format_lazy(_("As the group ({mode})"), mode=group_mode)),
+                         *ClientMode.choices]
+        field.help_text = _("Sent to the Mac at its next sync. The configuration profile stays as it is.")
+        self.fields["client_mode_override_until"].help_text = _("Then the Mac gets the mode of its group again.")
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if not cleaned_data.get("client_mode_override"):
+            # as the group: no end to keep
+            cleaned_data["client_mode_override_until"] = None
         return cleaned_data
 
 

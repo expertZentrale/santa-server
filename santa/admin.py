@@ -219,13 +219,17 @@ class GroupAdmin(admin.ModelAdmin):
                                    "Download the profiles again and replace them in your MDM.", messages.WARNING)
 
 
+# what can be set on a Mac: the rest is reported by it
+MACHINE_SETTINGS = ("clean_sync_requested", "client_mode_override", "client_mode_override_until")
+
+
 @admin.register(Machine)
 class MachineAdmin(admin.ModelAdmin):
     list_display = ("serial_number", "hostname", "group", "primary_user", "client_mode", "santa_version",
                     "os_version", "reported_rule_count", "last_postflight_at")
-    list_filter = ("group", "client_mode", "santa_version")
+    list_filter = ("group", "client_mode", "client_mode_override", "santa_version")
     search_fields = ("serial_number", "hostname", "primary_user", "machine_id")
-    readonly_fields = [f.name for f in Machine._meta.fields if f.name != "clean_sync_requested"]
+    readonly_fields = [f.name for f in Machine._meta.fields if f.name not in MACHINE_SETTINGS]
     actions = ["request_clean_sync"]
 
     def has_add_permission(self, request):

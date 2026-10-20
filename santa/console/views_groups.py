@@ -22,7 +22,7 @@ from ..services import (
     rules_only_for,
 )
 from .filters import Facet, any_of, chosen, filter_bar, remember_filters
-from .forms import GroupForm
+from .forms import GroupForm, MachineModeForm
 from .utils import (
     changed_message,
     defer_rows,
@@ -268,6 +268,8 @@ def machine_detail(request, pk):
         rule.in_group = any(group.pk == machine.group_id for group in rule.groups.all())
     context = {
         "machine": machine,
+        # inherited from a parent group too
+        "group_mode": machine.group.effective().get_client_mode_display(),
         "expected_count": len(effective),
         "synced_count": len(synced),
         "missing_count": len(set(effective) - set(synced)),
@@ -317,6 +319,27 @@ def machine_rules_remove(request, pk):
                                            "%(count)s rules that only applied to this Mac deleted.",
                                            len(orphans)) % {"count": len(orphans)})
     return redirect(safe_next(request, reverse("console:machine", args=[machine.pk])))
+
+
+@staff_required
+def machine_mode(request, pk):
+    """The mode of one Mac instead of its group's (Monitor / Lockdown), for good or until a date"""
+    require_perms(request, "change_machine")
+    machine = get_object_or_404(Machine.objects.select_related("group__parent"), pk=pk)
+    group_mode = machine.group.effective().get_client_mode_display()
+    form = MachineModeForm(request.POST or None, instance=machine, group_mode=group_mode)
+    if request.method == "POST" and form.is_valid():
+        machine = form.save()
+        log_change(request.user, machine, changed_message(form))
+        if machine.client_mode_override:
+            text = gettext("%(machine)s: %(mode)s from its next sync on") % {
+                "machine": machine, "mode": machine.get_client_mode_override_display()}
+        else:
+            text = gettext("%(machine)s: the mode of its group from its next sync on") % {"machine": machine}
+        messages.success(request, text)
+        return drawer_done(request, reverse("console:machine", args=[machine.pk]))
+    return render_drawer(request, "console/machines/mode_form.html", "console/machines/drawer_mode_form.html",
+                         {"machine": machine, "form": form})
 
 
 @staff_required

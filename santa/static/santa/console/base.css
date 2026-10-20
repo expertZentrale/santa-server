@@ -473,6 +473,9 @@ form.stack { margin-bottom: 1rem; }
 .field.check > input + label, .field.check > input ~ .help, .field.check > input ~ .error { grid-column: 2; }
 .field input:not([type="checkbox"]):not([type="radio"]), .field select, .field textarea { width: 100%; }
 .field select[multiple] { min-height: 5rem; }
+/* how long (UntilField): the choice, and next to it the date when one is chosen; one under the other on phones */
+.field .until { display: flex; flex-wrap: wrap; gap: .5rem; }
+.field .until > * { flex: 1 1 12rem; width: auto; }
 /* short fields side by side, e.g. "keep 3 | versions" */
 .field-row { display: grid; grid-template-columns: minmax(0, 8rem) minmax(0, 12rem); column-gap: .75rem; align-items: start; }
 .is-disabled { opacity: .6; }

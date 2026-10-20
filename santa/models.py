@@ -376,6 +376,13 @@ class Machine(models.Model):
     primary_user = models.CharField(max_length=255, blank=True)
     client_mode = models.CharField(max_length=16, choices=ClientMode.choices, blank=True,
                                    help_text=_("Mode reported by the client"))
+    # the mode this Mac gets instead of its group's (testing in Monitor mode, one Mac in Lockdown early); until a
+    # date or for good
+    client_mode_override = models.CharField(
+        _("mode of this Mac"), max_length=16, choices=ClientMode.choices, blank=True,
+        help_text=_("Instead of the mode of its group. Empty = as the group."))
+    client_mode_override_until = models.DateTimeField(
+        _("until"), null=True, blank=True, help_text=_("Then the mode of the group again. Empty = until it is reset."))
     group = models.ForeignKey(Group, on_delete=models.PROTECT, related_name="machines")
 
     binary_rule_count = models.PositiveIntegerField(default=0)
@@ -408,6 +415,19 @@ class Machine(models.Model):
 
     def reported_rule_count(self):
         return sum(getattr(self, f"{prefix}_rule_count") for prefix in RULE_COUNT_PREFIXES)
+
+    def override_active(self, now=None):
+        return bool(self.client_mode_override) and (
+            self.client_mode_override_until is None or self.client_mode_override_until > (now or timezone.now()))
+
+    def override_expired(self, now=None):
+        return bool(self.client_mode_override) and not self.override_active(now)
+
+    def effective_client_mode(self, group=None):
+        """The mode the Mac gets: its own while it lasts, else its group's (inherited from a parent group too)"""
+        if self.override_active():
+            return self.client_mode_override
+        return (group or self.group).effective().client_mode
 
 
 RULE_COUNT_PREFIXES = ("binary", "certificate", "teamid", "signingid", "cdhash", "compiler", "transitive")

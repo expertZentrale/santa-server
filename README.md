@@ -353,6 +353,10 @@ Hardware, die letzte Synchronisierung, ob der Mac alle seine Regeln hat, alle Re
 über diesen Mac, seine Gruppe oder alle Macs kommen), seine letzten Ereignisse und Anfragen und *Clean Sync*.
 Ausgewählte Regeln können den Mac aus ihrem Geltungsbereich entfernen (*Diesen Mac entfernen*); die Gruppen- und
 globalen Geltungsbereiche bleiben, eine Regel nur für diesen Mac wird gelöscht.
+*Modus* → *Ändern* stellt einen einzelnen Mac unabhängig von seiner Gruppe auf Monitor oder Lockdown, dauerhaft oder
+für eine Zeit (1 Stunde, 1 Tag, 7 Tage, 30 Tage, bis zu einem Datum); danach gilt wieder der Modus der Gruppe. Der Mac
+bekommt ihn bei der nächsten Synchronisierung, das Konfigurationsprofil bleibt gleich. Die Liste zeigt solche Macs mit
+*eigener Modus*. Der Modus eines Macs wird nicht exportiert (Macs gehören nicht zur Konfiguration).
 
 **Ereignisse**: *Blockierte Apps* listet die offenen Blockierungen nach Binary gruppiert (Macs, Benutzer, zuletzt
 gesehen, offene Anfragen). *Alle Ereignisse* ist die flache Liste; ihre erste Seite fügt alle 5 Sekunden neue
@@ -975,6 +979,10 @@ profile, *Regenerate the sync URL*, and the base profile on the list.
 sync, whether the Mac has all its rules, every rule that applies to it (and whether it comes through this Mac, its
 group or all Macs), its recent events and requests, and *Clean sync*. Selected rules can drop the Mac from their
 scope (*Remove this Mac*); the group and global scopes stay, a rule only for this Mac is deleted.
+*Mode* → *Change* sets a single Mac to Monitor or Lockdown independently of its group, for good or for a time (1 hour,
+1 day, 7 days, 30 days, until a date); then the mode of the group applies again. The Mac gets it at its next sync, the
+configuration profile stays the same. The list shows such Macs with *own mode*. The mode of a Mac is not exported
+(Macs are not part of the configuration).
 
 **Events**: *Blocked apps* lists the open blocks grouped by binary (Macs, users, last seen, open requests).
 *All events* is the flat list; its first page adds new events every 5 seconds. Click a file name for the details
