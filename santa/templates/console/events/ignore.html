@@ -1,0 +1,8 @@
+{% extends "console/base.html" %}{% load i18n %}
+{% block title %}{% translate "Ignore" %}{% endblock %}
+{% block main_class %}narrow{% endblock %}
+{% block content %}
+{% url 'console:events' as back_url %}{% include "console/_back.html" with url=back_url label=_("Events") %}
+<div class="page-head"><h1>{% blocktranslate count count=form.rows|length %}Ignore {{ count }} app{% plural %}Ignore {{ count }} apps{% endblocktranslate %}</h1></div>
+{% include "console/events/_ignore_form.html" %}
+{% endblock %}

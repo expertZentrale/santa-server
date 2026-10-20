@@ -478,6 +478,51 @@ class Tag(models.Model):
         return self.name
 
 
+class IgnoredApp(models.Model):
+    """A blocked app the console no longer lists, also with its new events (santa/ignores.py). Only the console:
+    it has no effect on the rules or the Macs, and the users can still request it."""
+
+    class Kind(models.TextChoices):
+        SIGNINGID = "SIGNINGID", _("Signing ID (all versions of the app)")
+        TEAMID = "TEAMID", _("Team ID (everything of the developer)")
+        SHA256 = "SHA256", _("This file (SHA-256)")
+        PATH = "PATH", _("Path (everything below it)")
+
+    kind = models.CharField(_("ignore by"), max_length=16, choices=Kind.choices)
+    # 450: the limit of an index key on SQL Server
+    value = models.CharField(_("value"), max_length=450)
+    name = models.CharField(_("name"), max_length=255, blank=True, help_text=_("The app, to recognize it"))
+    note = models.CharField(_("comment"), max_length=500, blank=True)
+    expires_at = models.DateTimeField(_("until"), null=True, blank=True, db_index=True,
+                                      help_text=_("Then the app is listed again. Empty = for good."))
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+                                   related_name="+", editable=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["kind", "value"]
+        unique_together = (("kind", "value"),)
+
+    def __str__(self):
+        return f"{self.get_kind_display()}: {self.value}"
+
+    @property
+    def is_expired(self):
+        return self.expires_at is not None and self.expires_at <= timezone.now()
+
+    def clean(self):
+        self.value = (self.value or "").strip()
+        try:
+            if self.kind == self.Kind.SHA256:
+                self.value = validate_identifier("BINARY", self.value)
+            elif self.kind in (self.Kind.SIGNINGID, self.Kind.TEAMID):
+                self.value = validate_identifier(self.kind, self.value)
+            elif self.kind == self.Kind.PATH and not self.value.startswith("/"):
+                raise ValidationError(gettext("Must be an absolute path, e.g. /private/var/folders/."))
+        except ValidationError as e:
+            raise ValidationError({"value": e.messages})
+
+
 # ReleaseVersion.identifier is part of a unique index
 IDENTIFIER_MAX_LENGTH = 450
 

@@ -4,13 +4,14 @@ from django.contrib.admin.models import DELETION, LogEntry
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from santa.models import Rule
+from santa.models import IgnoredApp, Rule
 
 logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
-    help = "Delete the rules whose end has come (Rule.expires_at). The Macs dropped them already: they are not sent."
+    help = ("Delete the rules whose end has come (Rule.expires_at; the Macs dropped them already: they are not sent), "
+            "and the ignored apps whose end has come")
 
     def handle(self, *args, **options):
         expired = Rule.objects.filter(expires_at__lte=timezone.now()).order_by("pk")
@@ -31,3 +32,7 @@ class Command(BaseCommand):
                                              change_message="Expired", single_object=len(pks) == 1)
             total += Rule.objects.filter(pk__in=[rule.pk for rule in rules]).delete()[1].get("santa.Rule", 0)
         self.stdout.write(f"{total} expired rule(s) deleted")
+        # the ignored apps whose end has come: they hide nothing any more (santa/ignores.py), only the list is kept
+        # tidy
+        ignored = IgnoredApp.objects.filter(expires_at__lte=timezone.now()).delete()[1].get("santa.IgnoredApp", 0)
+        self.stdout.write(f"{ignored} expired ignored app(s) deleted")

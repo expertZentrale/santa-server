@@ -3,6 +3,8 @@
 /* a long status (e.g. "3 to add, 1 to remove at the next sync") wraps inside the card instead of running out of it */
 .facts .badge { white-space: normal; max-width: 100%; }
 .facts dt { color: var(--muted); }
+/* a button right below the facts (ignore an event): the room of a heading above it */
+.facts + .facts-actions { margin-top: 1.25rem; }
 .facts dd { margin: 0; overflow-wrap: anywhere; }
 .facts.inline { grid-template-columns: repeat(auto-fill, minmax(8rem, max-content) minmax(10rem, 1fr)); }
 

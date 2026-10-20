@@ -1,0 +1,3 @@
+{% extends "console/_drawer.html" %}{% load i18n %}
+{% block drawer_title %}{% blocktranslate count count=form.rows|length %}Ignore {{ count }} app{% plural %}Ignore {{ count }} apps{% endblocktranslate %}{% endblock %}
+{% block drawer_body %}{% include "console/events/_ignore_form.html" with in_drawer=True %}{% endblock %}

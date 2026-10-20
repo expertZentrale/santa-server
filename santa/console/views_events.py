@@ -10,7 +10,8 @@ from django.utils.translation import gettext, ngettext
 from django.views.decorators.http import require_POST
 
 from ..cel import signing_prefix
-from ..models import NEEDS_RULE, AccessRequest, Event, Group, Machine, Rule, RuleType
+from ..ignores import active_ignores, ignored_q, ignores_of, matching
+from ..models import NEEDS_RULE, AccessRequest, Event, Group, IgnoredApp, Machine, Rule, RuleType
 from ..package_detection import package_hints
 from ..progress import Progress, progress_for
 from ..services import SigningIdError, add_signing_prefix, allow_identifier, existing_rules, is_allowed, widen_rule
@@ -25,13 +26,14 @@ from .filters import (
     lookup_values,
     remember_filters,
 )
-from .forms import SCOPE_GLOBAL, SCOPE_GROUPS, SCOPE_MACHINES, EventRuleForm
+from .forms import SCOPE_GLOBAL, SCOPE_GROUPS, SCOPE_MACHINES, EventRuleForm, IgnoreForm
 from .utils import (
     defer_rows,
     drawer_done,
     is_htmx,
     log_addition,
     log_change,
+    log_deletion,
     paginate,
     render_drawer,
     render_list,
@@ -64,18 +66,15 @@ def events_by_ids(ids):
     return sorted(events, key=lambda e: e.execution_time, reverse=True)
 
 
-def selected_events(request):
+def selected_events(request, data=None):
     """The events chosen in a list: by id ("All events"), or all open blocks of a binary ("Blocked apps", with the
-    unknown ones of monitor mode)"""
-    events = {event.pk: event for event in events_by_ids(request.POST.getlist("ids"))}
-    shas = [sha.lower() for sha in request.POST.getlist("shas") if len(sha) == 64]
-    blocks = Event.objects.select_related("machine", "group").filter(NEEDS_RULE)
-    # the same events as the list: its "resolved" filter
-    resolved = request.POST.get("resolved", "open")
-    if resolved == "open":
-        blocks = blocks.filter(resolved_at__isnull=True)
-    elif resolved == "resolved":
-        blocks = blocks.filter(resolved_at__isnull=False)
+    unknown ones of monitor mode). data: the POST of the list, or the GET of a link (the menu of a row)."""
+    data = request.POST if data is None else data
+    events = {event.pk: event for event in events_by_ids(data.getlist("ids"))}
+    shas = [sha.lower() for sha in data.getlist("shas") if len(sha) == 64]
+    # the same events as the list: its status filter
+    blocks = with_status(Event.objects.select_related("machine", "group").filter(NEEDS_RULE),
+                         data.get("resolved", "open"))
     for chunk in chunked(shas):
         for event in blocks.filter(file_sha256__in=chunk):
             events[event.pk] = event
@@ -123,26 +122,45 @@ def filter_events(request, events):
         events = events.filter(file_sha256=params["sha256"].lower())
     start, end = date_range(params, "days", TIME_DAYS, "7")
     events = in_range(events, "execution_time", start, end)
-    resolved = resolved_status(params)
-    if resolved == "open":
-        events = events.filter(resolved_at__isnull=True)
-    elif resolved == "resolved":
-        events = events.filter(resolved_at__isnull=False)
-    return events
+    return with_status(events, resolved_status(params))
 
 
-RESOLVED_VALUES = ("open", "resolved")
+RESOLVED_VALUES = ("open", "resolved", "ignored")
 
 
 def resolved_status(params):
-    """The status filter as one value: "open", "resolved" or "all" (both or none ticked; also an old ?resolved=all).
+    """The status filter as one string, for the hidden field of the selection too: the values ticked ("open",
+    "resolved ignored"), or "all" (all or none ticked; also an old ?resolved=all).
 
     Open before the filter form was sent, like the other default filters.
     """
     if "resolved" not in params and "q" not in params:
         return "open"
     values = chosen(params, "resolved", RESOLVED_VALUES)
-    return values[0] if len(values) == 1 else "all"
+    return " ".join(values) if 0 < len(values) < len(RESOLVED_VALUES) else "all"
+
+
+def with_status(events, status):
+    """The events of a status of resolved_status(): open and resolved leave the ignored apps out, ignored are only
+    those (santa/ignores.py)"""
+    values = set(status.split()) & set(RESOLVED_VALUES)
+    if not values or values == set(RESOLVED_VALUES):
+        return events
+    ignored = ignored_q()
+    shown = Q() if ignored is None else ~ignored
+    conditions = []
+    if "open" in values:
+        conditions.append(Q(resolved_at__isnull=True) & shown)
+    if "resolved" in values:
+        conditions.append(Q(resolved_at__isnull=False) & shown)
+    if "ignored" in values and ignored is not None:
+        conditions.append(ignored)
+    if not conditions:
+        return events.none()
+    combined = conditions[0]
+    for condition in conditions[1:]:
+        combined |= condition
+    return events.filter(combined)
 
 
 def event_facets(request, view):
@@ -155,8 +173,8 @@ def event_facets(request, view):
         facets.append(Facet("decision", gettext("Decision"), choices=[(d, d) for d in decisions]))
     facets += [
         Facet("days", gettext("Time range"), kind="time", choices=TIME_PRESETS, default="7"),
-        Facet("resolved", gettext("Status"), choices=[("open", gettext("Open")), ("resolved", gettext("Resolved"))],
-              default=["open"]),
+        Facet("resolved", gettext("Status"), choices=[("open", gettext("Open")), ("resolved", gettext("Resolved")),
+                                                      ("ignored", gettext("Ignored"))], default=["open"]),
     ]
     if sha256 := params.get("sha256", ""):
         facets.append(Facet("sha256", gettext("Binary"), kind="fixed", text=f"{sha256[:12]}…"))
@@ -174,7 +192,7 @@ def event_facets(request, view):
 
 def filter_context(request):
     return {
-        # the hidden field of the selection: "open", "resolved" or "all", like the filter
+        # the hidden field of the selection: the status of the filter (resolved_status)
         "resolved": resolved_status(request.GET),
         "params": request.GET,
         "app_filters": app_filters(request),
@@ -244,9 +262,11 @@ def annotate_app_rows(rows):
     matches = existing_rules(events)
     packages = package_hints(events)
     last = {event.pk: event for event in events}
+    ignores = list(active_ignores())
     for row in rows:
         # who ran it last: the user and the Mac of the newest event
         row["last_event"] = last.get(row["last_pk"])
+        row["ignores"] = matching(row["last_event"], ignores) if row["last_event"] else []
         row["has_request"] = row["file_sha256"] in pending
         row["rules"] = matches.get(row["file_sha256"], [])
         # only Team ID rules of signing ID prefixes that leave this one out: they block it, no "rule exists"
@@ -330,6 +350,7 @@ def event_detail(request, pk):
     template = "console/events/_detail.html" if is_htmx(request) else "console/events/detail.html"
     matches = existing_rules([event]).get(event.file_sha256, [])
     return render(request, template, {"event": event, "same_binary": same_binary, "form": event_rule_form([[event]]),
+                                      "ignores": ignores_of(event),
                                       "requests": event.access_requests.select_related("requester"),
                                       "matches": matches,
                                       # without a signing ID there is nothing to add
@@ -578,6 +599,65 @@ def events_create_rules(request):
     })
 
 
+def save_ignores(user, ignores, expires_at, note):
+    """The ignores of the form (IgnoredApp, not saved): new ones, or the ones that exist already with the later end
+    (one for good stays so). Returns how many."""
+    for candidate in ignores:
+        existing = IgnoredApp.objects.filter(kind=candidate.kind, value=candidate.value).first()
+        if existing is None:
+            candidate.expires_at, candidate.note, candidate.created_by = expires_at, note, user
+            candidate.save()
+            log_addition(user, candidate, "Ignored in the console")
+            continue
+        if existing.expires_at is not None:
+            existing.expires_at = None if expires_at is None else max(existing.expires_at, expires_at)
+        existing.note = note or existing.note
+        existing.name = existing.name or candidate.name
+        existing.save()
+        log_change(user, existing, "Ignored again in the console")
+    return len(ignores)
+
+
+@staff_required
+def events_ignore(request):
+    """Ignore the blocked apps of the selected events, in the drawer: the lists no longer show them, also with new
+    events (santa/ignores.py). From the selection of a list (POST) or the menu of a row (GET)."""
+    require_perms(request, "view_event", "add_ignoredapp")
+    data = request.POST if request.method == "POST" else request.GET
+    events = selected_events(request, data)
+    if not events:
+        messages.warning(request, gettext("Select at least one event."))
+        return redirect("console:events")
+    rows = _rows_for(events)
+    form = IgnoreForm(request.POST if "apply" in request.POST else None, rows=rows)
+    if form.is_bound and form.is_valid():
+        count = save_ignores(request.user, form.ignores, form.cleaned_data["expires_at"], form.cleaned_data["note"])
+        messages.success(request, ngettext(
+            "%(count)s app ignored: the lists no longer show it, also with new events.",
+            "%(count)s apps ignored: the lists no longer show them, also with new events.", count)
+            % {"count": count})
+        return drawer_done(request, reverse("console:events"))
+    return render_drawer(request, "console/events/ignore.html", "console/events/ignore_drawer.html", {
+        "form": form, "events": events, "resolved": data.get("resolved", "open")})
+
+
+@staff_required
+@require_POST
+def events_unignore(request):
+    """No longer ignore the apps of the selected events: the ignores that take them are deleted"""
+    require_perms(request, "view_event", "delete_ignoredapp")
+    removed = {}
+    for event in {event.file_sha256: event for event in selected_events(request)}.values():
+        for ignore in ignores_of(event):
+            removed[ignore.pk] = ignore
+    for ignore in removed.values():
+        log_deletion(request.user, ignore, "No longer ignored")
+        ignore.delete()
+    messages.success(request, ngettext("%(count)s app is listed again.", "%(count)s apps are listed again.",
+                                       len(removed)) % {"count": len(removed)})
+    return _list_done(request)
+
+
 @staff_required
 @require_POST
 def events_resolve(request):
@@ -588,4 +668,27 @@ def events_resolve(request):
             resolved_at=timezone.now(), resolved_by=request.user)
     messages.success(request, ngettext("%(count)s event marked as resolved.", "%(count)s events marked as resolved.",
                                        count) % {"count": count})
+    return _list_done(request)
+
+
+def _list_done(request):
+    """After an action on the selection of the list: the list again. From the bar of the list (htmx, events_bulk):
+    drawer.js reloads the page behind the drawer, with the message."""
+    if is_htmx(request):
+        return drawer_done(request, safe_next(request, "console:events"))
     return redirect(safe_next(request, "console:events"))
+
+
+BULK_ACTIONS = {"create_rules": events_create_rules, "resolve": events_resolve, "ignore": events_ignore,
+                "unignore": events_unignore}
+
+
+@staff_required
+@require_POST
+def events_bulk(request):
+    """The action chosen in the bar of the list, on its selection: the views check their permissions"""
+    view = BULK_ACTIONS.get(request.POST.get("action", ""))
+    if view is None:
+        messages.error(request, gettext("Choose an action."))
+        return _list_done(request)
+    return view(request)

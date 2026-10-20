@@ -21,6 +21,7 @@
     <dt>{% translate "Team ID" %}</dt><dd class="mono">{{ event.team_id|default:"–" }}</dd>
     <dt>{% translate "Certificate" %}</dt><dd>{{ event.cert_cn|default:"–" }}</dd>
     <dt>SHA-256</dt><dd class="mono">{{ event.file_sha256 }} {% include "console/_copy.html" with value=event.file_sha256 %}</dd>
+    {% if ignores %}<dt>{% translate "Ignored" %}</dt><dd>{% for ignore in ignores %}<span class="badge">{{ ignore }}</span> {% endfor %}<small class="muted">{% translate "The lists of the console don't show it." %}</small></dd>{% endif %}
   </dl>
   <a href="{% url 'console:events' %}?view=all&amp;sha256={{ event.file_sha256 }}&amp;days=&amp;resolved=all">{% translate "All events of this binary" %}</a>
 </section>

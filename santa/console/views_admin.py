@@ -36,11 +36,19 @@ from ..config_io import (
     import_config,
     item_token,
 )
-from ..models import ReleaseSource, Rule, SignInGroup, Tag, UserProfile
+from ..models import IgnoredApp, ReleaseSource, Rule, SignInGroup, Tag, UserProfile, unexpired
 from ..services import related_count
 from ..users import profile_for
 from .filters import Facet, any_of, chosen, filter_bar, remember_filters
-from .forms import ConfigImportForm, ConfigPreviewForm, RoleForm, SignInGroupForm, TagForm, UserForm
+from .forms import (
+    ConfigImportForm,
+    ConfigPreviewForm,
+    IgnoredAppForm,
+    RoleForm,
+    SignInGroupForm,
+    TagForm,
+    UserForm,
+)
 from .utils import (
     changed_message,
     drawer_done,
@@ -63,6 +71,7 @@ SECTIONS = [
     ("roles", _("Roles"), "console:admin_roles", ["auth.view_group"]),
     ("sign_in_groups", _("Sign-in groups"), "console:admin_sign_in_groups", ["view_signingroup"]),
     ("tags", _("Tags"), "console:admin_tags", ["view_tag"]),
+    ("ignored", _("Ignored apps"), "console:admin_ignored", ["view_ignoredapp"]),
     ("config", _("Export / import"), "console:admin_config", EXPORT_PERMS),
 ]
 
@@ -77,6 +86,7 @@ PERMISSION_ROWS = [
     ("santa", "machine", _("Macs")),
     ("santa", "group", _("Groups")),
     ("santa", "tag", _("Tags")),
+    ("santa", "ignoredapp", _("Ignored apps")),
     ("santa", "signingroup", _("Sign-in groups")),
     ("auth", "user", _("Users")),
     ("auth", "group", _("Roles")),
@@ -414,6 +424,64 @@ def tag_delete(request, pk):
     messages.success(request, gettext("Tag %(tag)s deleted. The rules stay, only the label is gone.")
                      % {"tag": tag})
     return redirect("console:admin_tags")
+
+
+@staff_required
+def ignored_apps(request):
+    require_perms(request, "view_ignoredapp")
+    if remembered := remember_filters(request, "ignored"):
+        return remembered
+    queryset = IgnoredApp.objects.select_related("created_by")
+    q = request.GET.get("q", "").strip()
+    if q:
+        queryset = queryset.filter(Q(value__icontains=q) | Q(name__icontains=q) | Q(note__icontains=q))
+    if kinds := chosen(request.GET, "kind", IgnoredApp.Kind.values):
+        queryset = queryset.filter(kind__in=kinds)
+    states = {"active": unexpired(), "expired": Q(expires_at__lte=timezone.now())}
+    state = any_of([states[value] for value in chosen(request.GET, "state", states)])
+    if state is not None:
+        queryset = queryset.filter(state)
+    queryset, sort = sort_by(request, queryset, {"value": "value", "name": "name", "created": "created_at",
+                                                 "until": "expires_at"}, "-created")
+    return render_section(request, "console/administration/ignored.html", "ignored", {
+        "page": paginate(request, queryset), "sort": sort, "params": request.GET,
+        **filter_bar(request, "ignored", [
+            Facet("kind", gettext("Ignore by"), choices=IgnoredApp.Kind.choices),
+            Facet("state", gettext("Status"), choices=[("active", gettext("Active")),
+                                                       ("expired", gettext("Expired"))]),
+        ], hidden=("sort",), placeholder=gettext("Value, name, comment…")),
+    })
+
+
+@staff_required
+def ignored_app_form(request, pk=None):
+    ignore = get_object_or_404(IgnoredApp, pk=pk) if pk else None
+    require_perms(request, "view_ignoredapp", "change_ignoredapp" if ignore else "add_ignoredapp")
+    form = IgnoredAppForm(request.POST or None, instance=ignore)
+    if request.method == "POST" and form.is_valid():
+        created = ignore is None
+        ignore = form.save(commit=False)
+        if created:
+            ignore.created_by = request.user
+        ignore.save()
+        if created:
+            log_addition(request.user, ignore)
+        else:
+            log_change(request.user, ignore, changed_message(form))
+        messages.success(request, gettext("%(ignore)s saved.") % {"ignore": ignore})
+        return drawer_done(request, reverse("console:admin_ignored"))
+    return render_form(request, "ignored_form", "ignored", {"form": form, "ignore": ignore})
+
+
+@staff_required
+@require_POST
+def ignored_app_delete(request, pk):
+    require_perms(request, "delete_ignoredapp")
+    ignore = get_object_or_404(IgnoredApp, pk=pk)
+    log_deletion(request.user, ignore)
+    ignore.delete()
+    messages.success(request, gettext("%(ignore)s deleted: the app is listed again.") % {"ignore": ignore})
+    return redirect("console:admin_ignored")
 
 
 # Export / import

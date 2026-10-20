@@ -11,6 +11,7 @@ from django.utils.translation import gettext
 from django.views.decorators.http import require_POST
 
 from .. import catalog, notifications
+from ..ignores import ignores_of
 from ..models import AccessRequest, AccessRequestPackage, Event, ReleaseSource, RuleType
 from ..progress import progress_for
 from ..releases import ReleaseError, find_binaries, sync_release_source, unchecked_identifiers
@@ -363,6 +364,8 @@ def admin_request_detail(request, pk, approve_form=None, deny_form=None):
     matches = _matches_of(access_request, event)
     return render_drawer(request, "console/requests/detail.html", "console/requests/drawer_detail.html", {
         "access_request": access_request, "event": event, "others": others.select_related("requester")[:20],
+        # the app is ignored in the lists of the console: it can still be requested
+        "ignores": ignores_of(event) if event else [],
         "matches": matches,
         "approve_form": approve_form or _approve_forms(access_request, matches=matches),
         "deny_form": deny_form or DenyForm(),

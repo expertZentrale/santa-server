@@ -24,6 +24,7 @@ from .models import (
     FileAccessProcess,
     FileAccessRule,
     Group,
+    IgnoredApp,
     Machine,
     ReleaseSource,
     ReleaseVersion,
@@ -637,6 +638,19 @@ class FileAccessRuleAdmin(admin.ModelAdmin):
         ("Scope", {"fields": ("is_global", "groups")}),
         ("Info", {"fields": ("created_at", "updated_at")}),
     )
+
+
+@admin.register(IgnoredApp)
+class IgnoredAppAdmin(admin.ModelAdmin):
+    list_display = ("value", "kind", "name", "expires_at", "created_by", "created_at")
+    list_filter = ("kind", "expires_at")
+    search_fields = ("value", "name", "note")
+    readonly_fields = ("created_by", "created_at")
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            obj.created_by = request.user
+        super().save_model(request, obj, form, change)
 
 
 @admin.register(Tag)

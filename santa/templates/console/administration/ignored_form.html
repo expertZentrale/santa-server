@@ -1,0 +1,8 @@
+{% extends "console/base.html" %}{% load i18n %}
+{% block title %}{% if ignore %}{{ ignore.name|default:ignore.value }}{% else %}{% translate "Ignore an app" %}{% endif %}{% endblock %}
+{% block main_class %}narrow{% endblock %}
+{% block content %}
+{% url 'console:admin_ignored' as back_url %}{% include "console/_back.html" with url=back_url label=_("Ignored apps") %}
+<div class="page-head"><h1>{% if ignore %}{{ ignore.name|default:ignore.value }}{% else %}{% translate "Ignore an app" %}{% endif %}</h1></div>
+{% include "console/administration/_ignored_form.html" %}
+{% endblock %}

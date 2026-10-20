@@ -1,0 +1,16 @@
+{% load i18n %}<form method="post" class="stack"{% if in_drawer %} action="{{ request.get_full_path }}" hx-post="{{ request.get_full_path }}" hx-target="#drawer"{% endif %}>
+  {% csrf_token %}
+  {% if form.non_field_errors %}<div class="error">{{ form.non_field_errors }}</div>{% endif %}
+  <fieldset class="plain"{% if ignore and not perms.santa.change_ignoredapp %} disabled{% endif %}>
+  <section class="card">{% for field in form %}{% include "console/_field.html" %}{% endfor %}</section>
+  </fieldset>
+  {% if not ignore or perms.santa.change_ignoredapp %}
+  <div class="actions"><button class="button primary">{% if ignore %}{% translate "Save" %}{% else %}{% translate "Ignore" %}{% endif %}</button>
+    {% if in_drawer %}<button type="button" class="button" data-drawer-close>{% translate "Cancel" %}</button>{% else %}<a class="button" href="{% url 'console:admin_ignored' %}">{% translate "Cancel" %}</a>{% endif %}
+    {% if ignore %}{% url 'console:history' 'ignoredapp' ignore.pk as history_url %}<a class="button right" href="{{ history_url }}" hx-get="{{ history_url }}" hx-target="#drawer">{% translate "History" %}</a>{% endif %}
+    {% if ignore and perms.santa.delete_ignoredapp %}<button class="button danger" form="delete-form">{% translate "Stop ignoring" %}</button>{% endif %}</div>
+  {% endif %}
+</form>
+{% if ignore and perms.santa.delete_ignoredapp %}
+<form id="delete-form" method="post" action="{% url 'console:admin_ignored_delete' ignore.pk %}" data-confirm="{% blocktranslate with value=ignore.value %}No longer ignore {{ value }}? The app is listed again.{% endblocktranslate %}">{% csrf_token %}</form>
+{% endif %}

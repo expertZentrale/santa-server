@@ -1,0 +1,27 @@
+{% extends "console/base.html" %}{% load console i18n %}
+{% block title %}{% translate "Ignored apps" %}{% endblock %}
+{% block content %}
+{% if perms.santa.add_ignoredapp %}{% url 'console:admin_ignored_add' as add_url %}{% endif %}{% translate "Ignore an app" as add_label %}
+{% translate "Blocked apps the lists of the console no longer show, also with new events. No effect on the rules, the Macs or the requests of the users." as help %}
+{% include "console/administration/_tabs.html" with help=help action_url=add_url action_label=add_label %}
+{% include "console/widgets/_filter_bar.html" %}
+<table class="table" data-table="ignored-apps">
+  <thead><tr>{% sort_th _("Value") "value" %}{% sort_th _("Name") "name" %}<th>{% translate "Comment" %}</th>{% sort_th _("Until") "until" %}{% sort_th _("Created") "created" %}<th class="row-actions" aria-label="{% translate 'Actions' %}"></th></tr></thead>
+  <tbody>
+  {% for ignore in page %}{% url 'console:admin_ignored_app' ignore.pk as ignore_url %}
+    <tr{% if ignore.is_expired %} class="disabled"{% endif %}>
+      <td><div class="cell-stack"><a class="strong mono" href="{{ ignore_url }}" hx-get="{{ ignore_url }}" hx-target="#drawer">{{ ignore.value }}</a><small class="muted">{{ ignore.get_kind_display }}</small></div></td>
+      <td>{{ ignore.name|default:"–" }}</td>
+      <td>{{ ignore.note|default:"–" }}</td>
+      <td class="nowrap">{% if ignore.is_expired %}<span class="badge">{% translate "expired" %}</span>{% else %}{{ ignore.expires_at|date:"d.m.Y H:i"|default:_("for good") }}{% endif %}</td>
+      <td class="nowrap">{{ ignore.created_at|date:"d.m.Y H:i" }}{% if ignore.created_by %}<small class="muted">{{ ignore.created_by.get_full_name|default:ignore.created_by.get_username }}</small>{% endif %}</td>
+      <td class="row-actions"><button type="button" class="icon-button row-menu-button" popovertarget="row-menu-ignore-{{ ignore.pk }}" aria-haspopup="menu" title="{% translate 'Actions' %}" aria-label="{% translate 'Actions' %}: {{ ignore.value }}">{% include "console/icons/more.svg" %}</button>
+        <div id="row-menu-ignore-{{ ignore.pk }}" class="row-menu" popover role="menu"><a class="menu-item" role="menuitem" href="{{ ignore_url }}" hx-get="{{ ignore_url }}" hx-target="#drawer">{% translate "Edit" %}</a>{% if perms.santa.delete_ignoredapp %}<form method="post" action="{% url 'console:admin_ignored_delete' ignore.pk %}" data-confirm="{% blocktranslate with value=ignore.value %}No longer ignore {{ value }}? The app is listed again.{% endblocktranslate %}">{% csrf_token %}<button class="menu-item danger" role="menuitem">{% translate "Stop ignoring" %}</button></form>{% endif %}</div></td>
+    </tr>
+  {% empty %}
+    <tr class="empty"><td colspan="6">{% translate "No ignored apps for these filters." %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% include "console/_pagination.html" %}
+{% endblock %}
