@@ -1,6 +1,7 @@
 import json
 
 from django.contrib import messages
+from django.db import IntegrityError, transaction
 from django.db.models import Count, Max, Q
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -631,18 +632,27 @@ def save_ignores(user, ignores, expires_at, note):
     """The ignores of the form (IgnoredApp, not saved): new ones, or the ones that exist already with the later end
     (one for good stays so). Returns how many."""
     for candidate in ignores:
-        existing = IgnoredApp.objects.filter(kind=candidate.kind, value=candidate.value).first()
-        if existing is None:
-            candidate.expires_at, candidate.note, candidate.created_by = expires_at, note, user
-            candidate.save()
-            log_addition(user, candidate, "Ignored in the console")
-            continue
-        if existing.expires_at is not None:
-            existing.expires_at = None if expires_at is None else max(existing.expires_at, expires_at)
-        existing.note = note or existing.note
-        existing.name = existing.name or candidate.name
-        existing.save()
-        log_change(user, existing, "Ignored again in the console")
+        # locked: two at once must not shorten each other's end
+        with transaction.atomic():
+            same = IgnoredApp.objects.select_for_update().filter(kind=candidate.kind, value=candidate.value)
+            existing = same.first()
+            if existing is None:
+                candidate.expires_at, candidate.note, candidate.created_by = expires_at, note, user
+                try:
+                    with transaction.atomic():
+                        candidate.save()
+                except IntegrityError:
+                    # another request created it just now: this one goes into it
+                    existing = same.get()
+                else:
+                    log_addition(user, candidate, "Ignored in the console")
+                    continue
+            if existing.expires_at is not None:
+                existing.expires_at = None if expires_at is None else max(existing.expires_at, expires_at)
+            existing.note = note or existing.note
+            existing.name = existing.name or candidate.name
+            existing.save()
+            log_change(user, existing, "Ignored again in the console")
     return len(ignores)
 
 
@@ -650,7 +660,8 @@ def save_ignores(user, ignores, expires_at, note):
 def events_ignore(request):
     """Ignore the blocked apps of the selected events, in the drawer: the lists no longer show them, also with new
     events (santa/ignores.py). From the selection of a list (POST) or the menu of a row (GET)."""
-    require_perms(request, "view_event", "add_ignoredapp")
+    # an app ignored already gets the later end: a change
+    require_perms(request, "view_event", "add_ignoredapp", "change_ignoredapp")
     data = request.POST if request.method == "POST" else request.GET
     events = selected_events(request, data)
     if not events:
@@ -674,10 +685,9 @@ def events_ignore(request):
 def events_unignore(request):
     """No longer ignore the apps of the selected events: the ignores that take them are deleted"""
     require_perms(request, "view_event", "delete_ignoredapp")
-    removed = {}
-    for event in {event.file_sha256: event for event in selected_events(request)}.values():
-        for ignore in ignores_of(event):
-            removed[ignore.pk] = ignore
+    # every event: the same binary at two paths can be taken by two path ignores
+    ignores = list(active_ignores())
+    removed = {ignore.pk: ignore for event in selected_events(request) for ignore in matching(event, ignores)}
     for ignore in removed.values():
         log_deletion(request.user, ignore, "No longer ignored")
         ignore.delete()

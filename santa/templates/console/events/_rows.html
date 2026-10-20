@@ -8,7 +8,7 @@
     <select name="action" aria-label="{% translate 'Action' %}"><button><selectedcontent></selectedcontent></button>
       <option value="create_rules">{% translate "Create rules…" %}</option>
       <option value="resolve">{% translate "Mark resolved" %}</option>
-      {% if perms.santa.add_ignoredapp %}<option value="ignore">{% translate "Ignore…" %}</option>{% endif %}
+      {% if perms.santa.add_ignoredapp and perms.santa.change_ignoredapp %}<option value="ignore">{% translate "Ignore…" %}</option>{% endif %}
       {% if perms.santa.delete_ignoredapp and "ignored" in resolved or perms.santa.delete_ignoredapp and resolved == "all" %}<option value="unignore">{% translate "Stop ignoring" %}</option>{% endif %}
     </select>
     {% url 'console:events_bulk' as bulk_url %}<button class="button primary" formaction="{{ bulk_url }}" hx-post="{{ bulk_url }}" hx-target="#drawer">{% translate "Apply" %}</button>

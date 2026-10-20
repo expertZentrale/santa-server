@@ -1,10 +1,13 @@
 import io
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta
+from unittest.mock import patch
 
 from django.contrib.admin.models import ADDITION, DELETION, LogEntry
 from django.contrib.auth.models import Permission, User
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
+from django.db.models import QuerySet
 from django.urls import reverse
 from django.utils import timezone
 
@@ -134,6 +137,34 @@ class IgnoredInTheConsoleTestCase(ConsoleBase):
         self.assertTrue(LogEntry.objects.filter(action_flag=DELETION).exists())
         self.assertEqual(self.apps(), ["other", "tool"])
 
+    def test_stop_ignoring_takes_every_path_of_the_binary(self):
+        IgnoredApp.objects.all().delete()
+        Event.objects.filter(file_sha256=SHA_A).update(file_path="/Users/a/Downloads/tool")
+        self.make_event(file_name="tool", **SIGNED)
+        Event.objects.filter(file_sha256=SHA_A, file_path="/opt/bin/tool").update(file_path="/private/var/x/tool")
+        IgnoredApp.objects.create(kind=IgnoredApp.Kind.PATH, value="/Users/a/Downloads/")
+        IgnoredApp.objects.create(kind=IgnoredApp.Kind.PATH, value="/private/var/")
+        self.client.post(reverse("console:events_unignore"), {"shas": [SHA_A], "resolved": "ignored"})
+        self.assertFalse(IgnoredApp.objects.exists())
+
+    def test_ignoring_an_app_another_request_just_ignored(self):
+        IgnoredApp.objects.all().delete()
+        other = IgnoredApp(kind=IgnoredApp.Kind.SIGNINGID, value=SIGNED["signing_id"])
+        real_first = QuerySet.first
+
+        def first(queryset):
+            # the other request saves between the look-up and the insert
+            found = real_first(queryset)
+            if found is None and queryset.model is IgnoredApp and other.pk is None:
+                other.save()
+            return found
+        with patch.object(QuerySet, "first", first):
+            response = self.client.post(reverse("console:events_ignore"), {
+                "shas": [SHA_A], "apply": "1", f"kind_{SHA_A}": "SIGNINGID", "expires_at_0": "", "note": "noise"},
+                headers={"HX-Request": "true"})
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(list(IgnoredApp.objects.values_list("pk", "note")), [(other.pk, "noise")])
+
     def test_the_event_drawer_and_the_badge(self):
         event = Event.objects.get(file_sha256=SHA_A)
         response = self.client.get(reverse("console:event", args=[event.pk]), headers={"HX-Request": "true"})
@@ -187,6 +218,24 @@ class IgnoredAdministrationTestCase(ConsoleBase):
         call_command("cleanup_expired_rules", stdout=output)
         self.assertIn("1 expired ignored app(s) deleted", output.getvalue())
         self.assertEqual(IgnoredApp.objects.count(), 1)
+
+    def test_import_without_offset_and_in_the_preview(self):
+        IgnoredApp.objects.create(kind="PATH", value="/private/var/folders/", name="Installers")
+        data = json.loads(json.dumps(export_config()))
+        IgnoredApp.objects.all().delete()
+        data["ignored_apps"][0]["expires_at"] = "2099-12-01T12:00:00"
+        upload = SimpleUploadedFile("config.json", json.dumps(data).encode(), content_type="application/json")
+        response = self.client.post(reverse("console:admin_config_import"), {"file": upload})
+        [section] = [s for s in response.context["preview_sections"] if s["name"] == "ignored_apps"]
+        self.assertEqual([(row["token"], row["label"], row["status"]) for row in section["rows"]],
+                         [("ignored_apps:0", "/private/var/folders/", "created")])
+        self.assertIn("Installers", section["rows"][0]["detail"])
+        # skipped in the preview: not imported
+        post = {"payload": response.context["payload"], "edited": "on", "skip": ["ignored_apps:0"]}
+        self.client.post(reverse("console:admin_config_import"), {**post, "action": "import"})
+        self.assertFalse(IgnoredApp.objects.exists())
+        import_config(data)
+        self.assertEqual(IgnoredApp.objects.get().expires_at, timezone.make_aware(datetime(2099, 12, 1, 12)))
 
     def test_ignores_of_an_event(self):
         event = self.make_event(**SIGNED)

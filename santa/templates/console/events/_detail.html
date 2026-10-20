@@ -26,7 +26,7 @@
     <input type="hidden" name="ids" value="{{ event.pk }}"><input type="hidden" name="resolved" value="all">
     <input type="hidden" name="next" value="{{ request.META.HTTP_HX_CURRENT_URL|default:request.get_full_path }}">
     <button class="button">{% translate "Stop ignoring" %}</button></form>
-  {% elif not ignores and perms.santa.add_ignoredapp %}{% url 'console:events_ignore' as ignore_url %}<div class="actions facts-actions"><a class="button" href="{{ ignore_url }}?ids={{ event.pk }}" hx-get="{{ ignore_url }}?ids={{ event.pk }}" hx-target="#drawer">{% translate "Ignore…" %}</a></div>{% endif %}
+  {% elif not ignores and perms.santa.add_ignoredapp and perms.santa.change_ignoredapp %}{% url 'console:events_ignore' as ignore_url %}<div class="actions facts-actions"><a class="button" href="{{ ignore_url }}?ids={{ event.pk }}" hx-get="{{ ignore_url }}?ids={{ event.pk }}" hx-target="#drawer">{% translate "Ignore…" %}</a></div>{% endif %}
   {% if requests %}<h3>{% translate "Requests" %}</h3><ul class="plain">{% for r in requests %}<li>{% url 'console:request' r.pk as request_url %}<a href="{{ request_url }}" hx-get="{{ request_url }}" hx-target="#drawer">{{ r.requester }}</a> · <span class="badge">{{ r.get_status_display }}</span></li>{% endfor %}</ul>{% endif %}
   {% if package %}{% include "console/events/_package_hint.html" %}{% endif %}
   {% if perms.santa.add_rule %}

@@ -20,7 +20,7 @@ from .models import FileAccessProcess, FileAccessRule, Group, IgnoredApp, Machin
 
 FORMAT = "santa-server-config"
 # the models in the file: exporting needs their view permission, importing add / change / delete
-CONFIG_MODELS = ("group", "rule", "releasesource", "fileaccessrule")
+CONFIG_MODELS = ("group", "rule", "releasesource", "fileaccessrule", "ignoredapp")
 EXPORT_PERMS = [f"santa.view_{model}" for model in CONFIG_MODELS]
 IMPORT_PERMS = [f"santa.{action}_{model}" for action in ("add", "change", "delete") for model in CONFIG_MODELS]
 VERSION = 1
@@ -60,7 +60,7 @@ def legacy_usb(item):
 
 
 # The import preview (console): every item of the file by its list and index, e.g. "rules:3"
-PREVIEW_LISTS = ("groups", "release_sources", "rules", "file_access_rules")
+PREVIEW_LISTS = ("groups", "release_sources", "rules", "file_access_rules", "ignored_apps")
 RENAMABLE_LISTS = ("groups", "release_sources", "file_access_rules")
 SWITCHABLE_LISTS = ("release_sources", "rules", "file_access_rules")
 
@@ -270,11 +270,11 @@ class _Importer:
 
     def import_ignored_apps(self):
         """By (kind, value); an expired one is skipped. Not deleted when missing from the file: they only hide apps."""
-        for item in self.data.get("ignored_apps", []):
+        for index, item in enumerate(self.data.get("ignored_apps", [])):
             label = f"Ignored app {item.get('kind')} {item.get('value')}"
             expires_at = None
             if item.get("expires_at"):
-                expires_at = parse_datetime(str(item["expires_at"]))
+                expires_at = parse_expiry(item["expires_at"])
                 if expires_at is None:
                     self.errors.append(f"{label}: expires_at is not a date: {item['expires_at']!r}")
                     continue
@@ -286,8 +286,11 @@ class _Importer:
             if created:
                 ignore = IgnoredApp(kind=item.get("kind") or "", value=item.get("value") or "")
             changed = self._apply(ignore, {**item, "expires_at": expires_at}, ("name", "note", "expires_at"))
-            if (changed or created) and self.save(ignore, label):
+            if (changed or created) and not self.save(ignore, label):
+                continue
+            if changed or created:
                 self.record("created" if created else "updated", ignore)
+            self.status("ignored_apps", index, item, created, changed)
 
     def import_tags(self):
         for item in self.data.get("tags", []):

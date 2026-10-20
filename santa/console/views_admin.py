@@ -505,7 +505,7 @@ def config(request):
 
 # the lists of the file in the preview: (list, heading)
 PREVIEW_SECTIONS = [("groups", _("Groups")), ("release_sources", _("Package rules")), ("rules", _("Rules")),
-                    ("file_access_rules", _("File access rules"))]
+                    ("file_access_rules", _("File access rules")), ("ignored_apps", _("Ignored apps"))]
 
 
 def _preview_sections(data, report, choices):
@@ -519,6 +519,11 @@ def _preview_sections(data, report, choices):
             if list_name == "rules":
                 label = item.get("identifier", "")
                 detail = f"{item.get('rule_type', '')} · {item.get('policy', '')}"
+            elif list_name == "ignored_apps":
+                label = item.get("value", "")
+                detail = str(dict(IgnoredApp.Kind.choices).get(item.get("kind"), item.get("kind", "")))
+                if item.get("name"):
+                    detail = f"{item['name']} · {detail}"
             else:
                 label, detail = item.get("name", ""), ""
             enabled = item.get("is_enabled", True) if disabled is None else token not in disabled
