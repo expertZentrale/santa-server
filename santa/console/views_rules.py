@@ -495,7 +495,8 @@ def rule_upload(request):
                 [(binary, binary.rule_type_for(data["rule_type"])) for binary in included], data["policy"],
                 data["scope"] == SCOPE_GLOBAL, data["groups"] if data["scope"] == SCOPE_GROUPS else [],
                 request.user, data["description"] or (lambda binary: f"Upload {name}: {binary.path}"),
-                form.all_tags(), cel_expr_for=form.cel_expr_for, progress=progress)
+                form.all_tags(), cel_expr_for=form.cel_expr_for, progress=progress,
+                expires_at=data.get("expires_at"))
             for rule, created in results:
                 if created:
                     log_addition(request.user, rule, "Created from an uploaded file")

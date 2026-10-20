@@ -112,3 +112,28 @@ class ApprovalExpiryTestCase(AdminRequestBase):
         widen_rule(rule, False, [], [], self.admin)
         rule.refresh_from_db()
         self.assertIsNone(rule.expires_at)
+
+
+class EventRuleExpiryTestCase(ConsoleBase):
+    def test_the_rule_of_one_event_for_a_week(self):
+        event = self.make_event()
+        self.client.post(reverse("console:event_create_rule", args=(event.pk,)), {
+            "rule_type": RuleType.BINARY, "policy": Policy.ALLOWLIST, "scope": "machines", "include": SHA_A,
+            "expires_at_0": "7d"})
+        rule = Rule.objects.get()
+        self.assertGreater(rule.expires_at, timezone.now() + timedelta(days=6))
+
+    def test_the_rules_of_several_events_until_a_date(self):
+        a, b = self.make_event(), self.make_event(sha256=SHA_B, file_name="other")
+        date = (timezone.localtime() + timedelta(days=3)).replace(second=0, microsecond=0)
+        response = self.client.post(reverse("console:events_create_rules"), {
+            "ids": [a.pk, b.pk], "apply": "1", "policy": Policy.ALLOWLIST, "scope": "groups",
+            "groups": [self.dev.pk], "rule_type": "", "include": [SHA_A, SHA_B], "expires_at_0": "date",
+            "expires_at_1": date.strftime("%Y-%m-%dT%H:%M")}, headers={"HX-Request": "true"})
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual({rule.expires_at for rule in Rule.objects.all()}, {date})
+        # the drawer shows the field
+        response = self.client.post(reverse("console:events_create_rules"), {"ids": [a.pk]},
+                                    headers={"HX-Request": "true"})
+        self.assertContains(response, 'name="expires_at_0"')
+        self.assertContains(response, 'data-pending-label="Loading…"')

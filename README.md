@@ -405,8 +405,8 @@ Löschen unter *Administration* → *Tags*.
 Paketregel) und Zustand. Regeln, die Paketregeln angelegt haben, können nur aktiviert oder deaktiviert werden; ändern
 Sie stattdessen ihre Paketregel.
 Eine manuelle Regel kann ein **Ablaufdatum** haben (*Läuft ab*: 1 Tag, 7 Tage, 30 Tage oder ein Datum; Standard: nie),
-im Regelformular, als Sammelaktion (*Ablauf setzen* / *Ablauf entfernen*) und beim Freigeben einer Anfrage (*Erlaubt*:
-z. B. für 7 Tage). Ab dann bekommen die Macs sie nicht mehr und entfernen sie bei ihrer nächsten Synchronisierung;
+im Regelformular, als Sammelaktion (*Ablauf setzen* / *Ablauf entfernen*), beim Anlegen aus Ereignissen (einzeln und
+für mehrere) und aus einer hochgeladenen Datei und beim Freigeben einer Anfrage (*Erlaubt*: z. B. für 7 Tage). Ab dann bekommen die Macs sie nicht mehr und entfernen sie bei ihrer nächsten Synchronisierung;
 `cleanup_expired_rules` löscht sie (mit Eintrag im Verlauf). Erweitert eine Freigabe eine vorhandene Regel, behält diese
 das spätere Ende; eine Regel ohne Ende bleibt ohne. Die optionale Spalte *Läuft ab* und der Filter *Ablauf* zeigen sie.
 
@@ -1048,7 +1048,8 @@ uploaded again.
 **Execution rules**: tabs per rule type, filters for policy, scope, tag, origin (manual or package rule) and state.
 Rules created by package rules can only be enabled or disabled; change their package rule instead.
 A manual rule can have an **expiry date** (*Expires*: 1 day, 7 days, 30 days or a date; default: never), in the rule
-form, as a bulk action (*Set expiry* / *Remove expiry*) and when approving a request (*Allowed*: e.g. for 7 days).
+form, as a bulk action (*Set expiry* / *Remove expiry*), when creating rules from events (one or several) and from an
+uploaded file, and when approving a request (*Allowed*: e.g. for 7 days).
 From then on the Macs no longer get it and remove it at their next sync; `cleanup_expired_rules` deletes it (with an
 entry in its history). When an approval widens an existing rule, the rule keeps the later end; a rule without an end
 stays without one. The optional column *Expires* and the filter *Expiry* show them.

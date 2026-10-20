@@ -6,6 +6,7 @@
   {% include "console/_field.html" with field=form.cel_expr %}{% include "console/rules/_cel_help.html" %}</div>
 {% include "console/_field.html" with field=form.scope %}
 <div data-show-when="scope=groups">{% include "console/_field.html" with field=form.groups %}</div>
+{% include "console/_field.html" with field=form.expires_at %}
 {% include "console/_field.html" with field=form.tags %}
 {% include "console/_field.html" with field=form.new_tags %}
 {% include "console/_field.html" with field=form.description %}
