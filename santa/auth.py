@@ -85,11 +85,12 @@ def roles_managed_by_sign_in():
     return set(AuthGroup.objects.filter(Q(name=ADMIN_GROUP_NAME) | Q(sign_in_groups__isnull=False)).distinct())
 
 
-def apply_sign_in_roles(user, also_managed=()):
+def apply_sign_in_roles(user, also_managed=(), lost_admin_role=False):
     """Set the staff flag and the roles that come from the sign-in: OIDC_ADMIN_ROLE and the sign-in groups the user
     had at the last sign-in. Roles no sign-in group grants are assigned by hand, they are left alone.
 
     also_managed: roles a sign-in group just stopped granting.
+    lost_admin_role: the token of this sign-in no longer has OIDC_ADMIN_ROLE, the one before had it.
     """
     profile = profile_for(user)
     has_admin_role = profile.has_admin_role
@@ -99,6 +100,13 @@ def apply_sign_in_roles(user, also_managed=()):
             user.groups.add(admin_group())
             if not user.is_staff:
                 user.is_staff = True
+                user.save(update_fields=["is_staff"])
+        elif lost_admin_role:
+            # withdrawn in the provider: so are the rights it gave, the roles set by hand stay
+            logger.info("User %s: admin role withdrawn by the sign-in", user.username)
+            user.groups.remove(admin_group())
+            if user.is_staff and not user.groups.exists():
+                user.is_staff = False
                 user.save(update_fields=["is_staff"])
         return
     groups = list(user.sign_in_groups.prefetch_related("roles"))
@@ -159,8 +167,9 @@ class OIDCBackend(OIDCAuthenticationBackend):
         user.save()
         profile = profile_for(user)
         admin_role = settings.OIDC_ADMIN_ROLE
+        had_admin_role = profile.has_admin_role
         profile.has_admin_role = bool(admin_role) and admin_role in roles_from_claims(claims)
         profile.save(update_fields=["has_admin_role"])
         user.sign_in_groups.set(matching_sign_in_groups(groups_from_claims(claims)))
-        apply_sign_in_roles(user)
+        apply_sign_in_roles(user, lost_admin_role=had_admin_role and not profile.has_admin_role)
         return user

@@ -1,7 +1,7 @@
 import io
 import json
 import tempfile
-from datetime import timedelta
+from datetime import datetime, timedelta
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
@@ -111,6 +111,19 @@ class ConfigIOTestCase(TestCase):
         self.assertTrue(any("EQHXZ8M8AV" in w and "expired" in w for w in report["warnings"]))
         # again: nothing to change
         self.assertFalse(import_config(data)["changes"])
+
+    def test_an_expiry_without_offset_or_no_such_day(self):
+        data = json.loads(json.dumps(export_config()))
+        self.wipe()
+        rule_a = next(item for item in data["rules"] if item["identifier"] == SHA_A)
+        rule_a["expires_at"] = "2099-12-01T12:00:00"
+        import_config(data)
+        self.assertEqual(Rule.objects.get(identifier=SHA_A).expires_at,
+                         timezone.make_aware(datetime(2099, 12, 1, 12)))
+        rule_a["expires_at"] = "2099-13-01T00:00:00"
+        with self.assertRaises(ConfigImportError) as raised:
+            import_config(data)
+        self.assertIn("expires_at is not a date", str(raised.exception))
 
     def test_choices_of_the_preview(self):
         data = json.loads(json.dumps(export_config()))

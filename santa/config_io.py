@@ -65,6 +65,18 @@ RENAMABLE_LISTS = ("groups", "release_sources", "file_access_rules")
 SWITCHABLE_LISTS = ("release_sources", "rules", "file_access_rules")
 
 
+def parse_expiry(value):
+    """The `expires_at` of an import, time-zone aware, or None if it isn't a date."""
+    try:
+        expires_at = parse_datetime(str(value))
+    except ValueError:  # matches the format, but no such day or time
+        return None
+    if expires_at is not None and timezone.is_naive(expires_at):
+        # a hand-edited file without an offset: the server's time zone, like the console
+        expires_at = timezone.make_aware(expires_at)
+    return expires_at
+
+
 def item_token(list_name, index):
     return f"{list_name}:{index}"
 
@@ -372,7 +384,7 @@ class _Importer:
                 self.errors.append(f"{label}: rule_type, identifier and policy are required")
                 continue
             if item.get("expires_at"):
-                expires_at = parse_datetime(str(item["expires_at"]))
+                expires_at = parse_expiry(item["expires_at"])
                 if expires_at is None:
                     self.errors.append(f"{label}: expires_at is not a date: {item['expires_at']!r}")
                     continue

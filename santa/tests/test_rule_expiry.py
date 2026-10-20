@@ -77,6 +77,14 @@ class RuleExpiryConsoleTestCase(ConsoleBase):
         rule.refresh_from_db()
         self.assertIsNone(rule.expires_at)
 
+    def test_another_bulk_action_ignores_the_hidden_expiry(self):
+        rule = Rule.objects.create(rule_type=RuleType.BINARY, identifier=SHA_A, is_global=True)
+        # "until a date" chosen, but no date, then another action
+        self.client.post(reverse("console:rules_bulk"), {"action": "disable", "rules": [rule.pk],
+                                                         "expires_0": "date", "expires_1": ""})
+        rule.refresh_from_db()
+        self.assertFalse(rule.is_enabled)
+
 
 class ApprovalExpiryTestCase(AdminRequestBase):
     def test_a_new_rule_for_a_week(self):
@@ -129,3 +137,12 @@ class EventRuleExpiryTestCase(ConsoleBase):
                                     headers={"HX-Request": "true"})
         self.assertContains(response, 'name="expires_at_0"')
         self.assertContains(response, 'data-pending-label="Loading…"')
+
+    def test_a_change_of_the_selection_keeps_the_expiry(self):
+        a, b = self.make_event(), self.make_event(sha256=SHA_B, file_name="other")
+        response = self.client.post(reverse("console:events_create_rules"), {
+            "ids": [a.pk, b.pk], "refresh": "1", "known": [SHA_A], "include": [SHA_A], "expires_at_0": "date",
+            "expires_at_1": "2099-12-01T12:00"}, headers={"HX-Request": "true"})
+        self.assertFalse(Rule.objects.exists())
+        self.assertEqual(response.context["form"]["expires_at"].value(), ["date", "2099-12-01T12:00"])
+        self.assertContains(response, 'value="2099-12-01T12:00"')

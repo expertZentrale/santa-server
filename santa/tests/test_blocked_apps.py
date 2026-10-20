@@ -46,6 +46,12 @@ class BlockedAppDrawersTestCase(ConsoleBase):
         row = row[:row.index("</tr>")]
         self.assertIn("someone", row)
         self.assertIn(self.other_machine.hostname, row)
+        # all days: the older event of "old", uploaded last (the highest id), is not the last one
+        page = self.client.get(reverse("console:events") + "?rows=now&days=").content.decode()
+        row = page[page.index(f'data-key="{SHA_A}"'):]
+        row = row[:row.index("</tr>")]
+        self.assertIn("someone", row)
+        self.assertNotIn(">old<", row)
 
     def test_unknown_parts_and_binaries_and_the_permission(self):
         self.assertEqual(self.client.get(self.url("rules")).status_code, 404)

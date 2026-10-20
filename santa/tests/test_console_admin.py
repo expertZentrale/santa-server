@@ -288,6 +288,58 @@ class RolesByHandTestCase(ConsoleBase):
         page = self.client.get(reverse("console:admin_users")).content.decode()
         self.assertIn("roles by hand", page)
 
+    def test_by_hand_a_withdrawn_admin_role_takes_its_rights(self):
+        profile = profile_for(self.member)
+        profile.roles_override = "manual"
+        profile.has_admin_role = True
+        profile.save()
+        self.member.groups.set([self.it])
+        apply_sign_in_roles(self.member)
+        self.assertIn(ADMIN_GROUP_NAME, self.member.groups.values_list("name", flat=True))
+        profile.has_admin_role = False
+        profile.save()
+        apply_sign_in_roles(self.member, lost_admin_role=True)
+        self.member.refresh_from_db()
+        # the role set by hand and its console access stay
+        self.assertEqual((list(self.member.groups.all()), self.member.is_staff), ([self.it], True))
+        # without any role left: no console access either
+        profile.has_admin_role = True
+        profile.save()
+        self.member.groups.clear()
+        apply_sign_in_roles(self.member)
+        profile.has_admin_role = False
+        profile.save()
+        apply_sign_in_roles(self.member, lost_admin_role=True)
+        self.member.refresh_from_db()
+        self.assertEqual((list(self.member.groups.all()), self.member.is_staff), ([], False))
+
+    def test_by_hand_the_form_keeps_the_admin_role_of_the_token(self):
+        profile = profile_for(self.member)
+        profile.roles_override = "manual"
+        profile.has_admin_role = True
+        profile.save()
+        apply_sign_in_roles(self.member)
+        self.client.force_login(self.member)
+        # the admin role unticked in the form: the token still has it
+        self.client.post(self.url(), {"is_active": "on", "roles_override": "manual", "managed_roles": [],
+                                      "console_access": ""})
+        self.member.refresh_from_db()
+        self.assertTrue(self.member.is_staff)
+        self.assertIn(ADMIN_GROUP_NAME, self.member.groups.values_list("name", flat=True))
+
+    def test_own_console_access_stays_back_to_the_sign_in_groups(self):
+        profile = profile_for(self.member)
+        profile.roles_override = "manual"
+        profile.save()
+        self.member.sign_in_groups.clear()
+        self.member.user_permissions.set(Permission.objects.filter(codename__in=["view_user", "change_user"]))
+        self.client.force_login(self.member)
+        response = self.client.post(self.url(), {"is_active": "on", "roles_override": ""})
+        self.assertContains(response, "You can&#x27;t take away your own console access.")
+        self.member.refresh_from_db()
+        self.assertTrue(self.member.is_staff)
+        self.assertEqual(profile_for(User.objects.get(pk=self.member.pk)).roles_override, "manual")
+
     def test_back_to_the_sign_in_groups_applies_them_at_once(self):
         profile = profile_for(self.member)
         profile.roles_override = "manual"

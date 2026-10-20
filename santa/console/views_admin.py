@@ -184,11 +184,17 @@ def user_form(request, pk=None):
         elif (user == request.user and "console_access" in form.cleaned_data and form.manual_roles
               and not form.cleaned_data["console_access"] and not profile_for(user).has_admin_role):
             form.add_error("console_access", gettext("You can't take away your own console access."))
+        elif (user == request.user and "roles_override" in form.cleaned_data and not form.manual_roles
+              and not profile_for(user).has_admin_role
+              and not user.sign_in_groups.filter(console_access=True).exists()):
+            # back to the sign-in groups, but none of them opens the console
+            form.add_error("roles_override", gettext("You can't take away your own console access."))
         else:
             created = user is None
             user = form.save()
-            if "roles_override" in form.changed_data:
-                # back to the sign-in groups: their roles now, not at the next sign-in; by hand: the admin role
+            if "roles_override" in form.changed_data or form.manual_roles:
+                # back to the sign-in groups: their roles now, not at the next sign-in; by hand: the admin role,
+                # also if the form just took it away
                 apply_sign_in_roles(user)
             if created:
                 log_addition(request.user, user)
