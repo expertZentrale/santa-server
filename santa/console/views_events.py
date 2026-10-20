@@ -240,13 +240,24 @@ def annotate_app_rows(rows):
     for chunk in chunked(shas):
         pending.update(AccessRequest.objects.filter(status=AccessRequest.Status.PENDING, file_sha256__in=chunk)
                                             .values_list("file_sha256", flat=True))
-    events = events_by_ids([row["last_pk"] for row in rows])
+    # the newest event of each binary: the one of last_seen, not the highest id (a Mac uploads the events of its
+    # offline time later); pairs of SHA-256 and time, 2 parameters each, in chunks for SQL Server
+    last = {}
+    for chunk in chunked(rows, 500):
+        pairs = Q()
+        for row in chunk:
+            pairs |= Q(file_sha256=row["file_sha256"], execution_time=row["last_seen"])
+        for event in Event.objects.select_related("machine", "group").filter(NEEDS_RULE).filter(pairs):
+            if event.file_sha256 not in last or event.pk > last[event.file_sha256].pk:
+                last[event.file_sha256] = event
+    events = list(last.values())
     matches = existing_rules(events)
     packages = package_hints(events)
-    last = {event.pk: event for event in events}
     for row in rows:
         # who ran it last: the user and the Mac of the newest event
-        row["last_event"] = last.get(row["last_pk"])
+        row["last_event"] = last.get(row["file_sha256"])
+        if row["last_event"]:
+            row["last_pk"] = row["last_event"].pk
         row["has_request"] = row["file_sha256"] in pending
         row["rules"] = matches.get(row["file_sha256"], [])
         # only Team ID rules of signing ID prefixes that leave this one out: they block it, no "rule exists"
@@ -537,6 +548,9 @@ def events_create_rules(request):
         add_signing = [sha for sha in signing_rules if sha in adding or (sha not in known and sha in wanted)]
         initial = {name: request.POST[name] for name in KEPT_FIELDS if name in request.POST}
         initial.update({name: request.POST.getlist(name) for name in KEPT_LISTS if name in request.POST})
+        if "expires_at_0" in request.POST:
+            # the two controls of the expiry, as posted (a list: the widget takes it as is)
+            initial["expires_at"] = [request.POST["expires_at_0"], request.POST.get("expires_at_1", "")]
         form = event_rule_form(rows, preview=False, initial=initial, include=include, signing_rules=signing_rules,
                                add_signing=add_signing)
     else:
