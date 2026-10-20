@@ -1,0 +1,7 @@
+{% extends "console/base.html" %}{% load i18n %}
+{% block title %}{{ newest.file_name|default:_("(no name)") }}{% endblock %}
+{% block content %}
+{% url 'console:events' as back_url %}{% include "console/_back.html" with url=back_url label=_("Events") %}
+<div class="page-head"><h1>{{ newest.file_name|default:_("(no name)") }}</h1></div>
+{% include "console/events/_app_part.html" %}
+{% endblock %}

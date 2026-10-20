@@ -1,0 +1,5 @@
+{% extends "console/_drawer.html" %}{% load i18n %}
+{% block drawer_class %} wide{% endblock %}
+{% block drawer_title %}{{ newest.file_name|default:_("(no name)") }}{% endblock %}
+{% block drawer_subtitle %}<span class="muted mono small">{{ newest.file_path }}</span>{% endblock %}
+{% block drawer_body %}{% include "console/events/_app_part.html" with in_drawer=True %}{% endblock %}

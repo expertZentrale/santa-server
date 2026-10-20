@@ -366,7 +366,9 @@ bekommt ihn bei der nächsten Synchronisierung, das Konfigurationsprofil bleibt 
 *eigener Modus*. Der Modus eines Macs wird nicht exportiert (Macs gehören nicht zur Konfiguration).
 
 **Ereignisse**: *Blockierte Apps* listet die offenen Blockierungen nach Binary gruppiert (Macs, Benutzer, zuletzt
-gesehen, offene Anfragen). *Alle Ereignisse* ist die flache Liste; ihre erste Seite fügt alle 5 Sekunden neue
+gesehen, zuletzt bei welchem Benutzer und Mac, offene Anfragen). Die Zahlen der Blockierungen, Macs und Benutzer öffnen
+sie im Drawer, mit den Filtern der Liste (Zeitraum, Status, Gruppe, …); Reiter wechseln zwischen den dreien.
+*Alle Ereignisse* ist die flache Liste; ihre erste Seite fügt alle 5 Sekunden neue
 Ereignisse hinzu. Klicken Sie auf einen Dateinamen für die Details und *Regel anlegen*, mit einer Vorschau der
 Kennung, die die Regel verwenden wird.
 
@@ -1009,7 +1011,9 @@ scope (*Remove this Mac*); the group and global scopes stay, a rule only for thi
 configuration profile stays the same. The list shows such Macs with *own mode*. The mode of a Mac is not exported
 (Macs are not part of the configuration).
 
-**Events**: *Blocked apps* lists the open blocks grouped by binary (Macs, users, last seen, open requests).
+**Events**: *Blocked apps* lists the open blocks grouped by binary (Macs, users, last seen, last at which user and
+Mac, open requests). The counts of blocks, Macs and users open them in the drawer, with the filters of the list (time
+range, status, group, …); tabs switch between the three.
 *All events* is the flat list; its first page adds new events every 5 seconds. Click a file name for the details
 and *Create rule*, with a preview of the identifier the rule will use.
 
