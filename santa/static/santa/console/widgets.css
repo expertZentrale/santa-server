@@ -353,3 +353,8 @@ details.dependencies code { overflow-wrap: anywhere; }
 /* the same catalog and package rule for every checked package (events/_packages_form.html) */
 .package-bulk { display: grid; gap: .3rem; margin: 0 0 .75rem; padding: .75rem; border-radius: var(--radius); background: var(--surface-2); }
 .package-bulk .button { width: 100%; justify-content: center; }
+
+/* a binary just selected in the list, until the drawer has its details (forms.js) */
+.field .binaries li.pending { display: flex; flex-wrap: wrap; gap: .3rem .6rem; align-items: baseline;
+                              padding: .5rem .6rem; border: 1px dashed var(--border); border-radius: var(--radius-sm);
+                              opacity: .75; }

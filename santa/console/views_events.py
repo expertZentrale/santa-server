@@ -2,7 +2,7 @@ import json
 
 from django.contrib import messages
 from django.db.models import Count, Max, Q
-from django.http import HttpResponse
+from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -10,7 +10,7 @@ from django.utils.translation import gettext, ngettext
 from django.views.decorators.http import require_POST
 
 from ..cel import signing_prefix
-from ..models import NEEDS_RULE, AccessRequest, Event, Group, Rule, RuleType
+from ..models import NEEDS_RULE, AccessRequest, Event, Group, Machine, Rule, RuleType
 from ..package_detection import package_hints
 from ..progress import Progress, progress_for
 from ..services import SigningIdError, add_signing_prefix, allow_identifier, existing_rules, is_allowed, widen_rule
@@ -177,7 +177,16 @@ def filter_context(request):
         # the hidden field of the selection: "open", "resolved" or "all", like the filter
         "resolved": resolved_status(request.GET),
         "params": request.GET,
+        "app_filters": app_filters(request),
     }
+
+
+def app_filters(request):
+    """The filters of the list for the drawers of a blocked app (its counts): not the page, order or live update"""
+    params = request.GET.copy()
+    for key in ("page", "sort", "after", "rows"):
+        params.pop(key, None)
+    return params.urlencode()
 
 
 @staff_required
@@ -231,15 +240,67 @@ def annotate_app_rows(rows):
     for chunk in chunked(shas):
         pending.update(AccessRequest.objects.filter(status=AccessRequest.Status.PENDING, file_sha256__in=chunk)
                                             .values_list("file_sha256", flat=True))
-    events = events_by_ids([row["last_pk"] for row in rows])
+    # the newest event of each binary: the one of last_seen, not the highest id (a Mac uploads the events of its
+    # offline time later); pairs of SHA-256 and time, 2 parameters each, in chunks for SQL Server
+    last = {}
+    for chunk in chunked(rows, 500):
+        pairs = Q()
+        for row in chunk:
+            pairs |= Q(file_sha256=row["file_sha256"], execution_time=row["last_seen"])
+        for event in Event.objects.select_related("machine", "group").filter(NEEDS_RULE).filter(pairs):
+            if event.file_sha256 not in last or event.pk > last[event.file_sha256].pk:
+                last[event.file_sha256] = event
+    events = list(last.values())
     matches = existing_rules(events)
     packages = package_hints(events)
     for row in rows:
+        # who ran it last: the user and the Mac of the newest event
+        row["last_event"] = last.get(row["file_sha256"])
+        if row["last_event"]:
+            row["last_pk"] = row["last_event"].pk
         row["has_request"] = row["file_sha256"] in pending
         row["rules"] = matches.get(row["file_sha256"], [])
         # only Team ID rules of signing ID prefixes that leave this one out: they block it, no "rule exists"
         row["signing_id_missing"] = bool(row["rules"]) and all(match["cel"] is False for match in row["rules"])
         row["package"] = packages.get(row["file_sha256"])
+
+
+# the rows a drawer of a blocked app shows: the newest ones, the list behind it has them all
+APP_PART_ROWS = 100
+
+
+@staff_required
+def blocked_app(request, sha256, part):
+    """The events, Macs or users of a blocked app, with the filters of the list (the counts of its row)"""
+    require_perms(request, "view_event")
+    if part not in ("events", "macs", "users"):
+        raise Http404
+    events = filter_events(request, Event.objects.filter(NEEDS_RULE, file_sha256=sha256.lower()))
+    newest = events.order_by("-execution_time").only("file_name", "file_path").first()
+    if newest is None:
+        raise Http404
+    context = {"sha256": sha256.lower(), "part": part, "newest": newest, "limit": APP_PART_ROWS,
+               "app_parts": [("events", gettext("Blocks")), ("macs", gettext("Macs")), ("users", gettext("Users"))],
+               # the filters of the list, for the tabs of the drawer and the link to the whole list
+               "query": request.GET.urlencode()}
+    if part == "events":
+        context["total"] = events.count()
+        context["rows"] = events.select_related("machine", "group").order_by("-execution_time")[:APP_PART_ROWS]
+    elif part == "macs":
+        rows = list(events.values("machine").annotate(count=Count("id"), last_seen=Max("execution_time"))
+                    .order_by("-last_seen")[:APP_PART_ROWS])
+        machines = Machine.objects.select_related("group").in_bulk([row["machine"] for row in rows])
+        for row in rows:
+            row["machine"] = machines.get(row["machine"])
+        context["total"] = events.values("machine").distinct().count()
+        context["rows"] = rows
+    else:
+        context["total"] = events.values("executing_user").distinct().count()
+        context["rows"] = (events.values("executing_user")
+                                 .annotate(count=Count("id"), machine_count=Count("machine", distinct=True),
+                                           last_seen=Max("execution_time"))
+                                 .order_by("-last_seen")[:APP_PART_ROWS])
+    return render_drawer(request, "console/events/app_part.html", "console/events/drawer_app_part.html", context)
 
 
 @staff_required
@@ -255,7 +316,8 @@ def event_updates(request):
     if max_pk <= after:
         return HttpResponse(status=204)
     new = filter_events(request, Event.objects.filter(pk__gt=after, pk__lte=max_pk))
-    context = {"max_pk": max_pk, "view": request.GET.get("view", "blocked"), "params": request.GET}
+    context = {"max_pk": max_pk, "view": request.GET.get("view", "blocked"), "params": request.GET,
+               "app_filters": app_filters(request)}
     if context["view"] == "all":
         context["events"] = list(new.select_related("machine", "group").order_by("-pk")[:UPDATE_ROWS_LIMIT])
     else:
@@ -354,7 +416,8 @@ def rule_type_for(event, rule_type):
     return rule_type if rule_type in available_rule_types(event) else default_rule_type(event)
 
 
-def rule_from_event(user, event, rule_type, policy, scope, groups, tags, description, machines=None, cel_expr=""):
+def rule_from_event(user, event, rule_type, policy, scope, groups, tags, description, machines=None, cel_expr="",
+                    expires_at=None):
     """Create (or widen) the rule of any policy for the binary of an event.
 
     Returns (rule, created), or None without identifier.
@@ -366,7 +429,7 @@ def rule_from_event(user, event, rule_type, policy, scope, groups, tags, descrip
     rule, created = allow_identifier(
         rule_type, identifier, policy, scope == SCOPE_GLOBAL, groups if scope == SCOPE_GROUPS else [], user,
         description or f"{event.file_name} ({event.file_path})", tags,
-        machines=machines if scope == SCOPE_MACHINES else [], cel_expr=cel_expr,
+        machines=machines if scope == SCOPE_MACHINES else [], cel_expr=cel_expr, expires_at=expires_at,
     )
     if created:
         log_addition(user, rule, f"Created from event {event.pk}")
@@ -394,7 +457,7 @@ def save_event_rules(user, form, progress=None):
             failed.append((row, str(e)))
             continue
         widen_rule(rule, data["scope"] == SCOPE_GLOBAL, data["groups"] if data["scope"] == SCOPE_GROUPS else [],
-                   machines if data["scope"] == SCOPE_MACHINES else [], user)
+                   machines if data["scope"] == SCOPE_MACHINES else [], user, expires_at=data.get("expires_at"))
         log_change(user, rule, f"{f'Signing ID prefix {prefix} added, s' if prefix else 'S'}cope extended from "
                                f"event {row[0].pk}")
         saved += 1
@@ -402,7 +465,8 @@ def save_event_rules(user, form, progress=None):
         progress.start(row[0].bundle_name or row[0].file_name or row[0].file_path)
         result = rule_from_event(user, row[0], rule_type_for(row[0], data["rule_type"]), data["policy"],
                                  data["scope"], data["groups"], form.all_tags(), data["description"],
-                                 machines=list({event.machine for event in row}), cel_expr=form.cel_expr_for(row[0]))
+                                 machines=list({event.machine for event in row}), cel_expr=form.cel_expr_for(row[0]),
+                                 expires_at=data.get("expires_at"))
         if result:
             saved += 1
             created += result[1]
@@ -421,7 +485,7 @@ def event_create_rule(request, pk):
         data = form.cleaned_data
         rule, created = rule_from_event(request.user, event, data["rule_type"], data["policy"], data["scope"],
                                         data["groups"], form.all_tags(), data["description"],
-                                        cel_expr=form.cel_expr_for(event))
+                                        cel_expr=form.cel_expr_for(event), expires_at=data.get("expires_at"))
         message = gettext("Rule created: %(rule)s.") if created else gettext("Rule updated: %(rule)s.")
         messages.success(request, (message % {"rule": rule}) + " " + gettext("The Macs get it at their next sync."))
     return redirect(safe_next(request, "console:events"))
@@ -484,6 +548,9 @@ def events_create_rules(request):
         add_signing = [sha for sha in signing_rules if sha in adding or (sha not in known and sha in wanted)]
         initial = {name: request.POST[name] for name in KEPT_FIELDS if name in request.POST}
         initial.update({name: request.POST.getlist(name) for name in KEPT_LISTS if name in request.POST})
+        if "expires_at_0" in request.POST:
+            # the two controls of the expiry, as posted (a list: the widget takes it as is)
+            initial["expires_at"] = [request.POST["expires_at_0"], request.POST.get("expires_at_1", "")]
         form = event_rule_form(rows, preview=False, initial=initial, include=include, signing_rules=signing_rules,
                                add_signing=add_signing)
     else:

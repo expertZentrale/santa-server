@@ -49,6 +49,10 @@ body:has(main .table-hscroll:not([hidden])) .bulkbar { bottom: calc(1rem + .75re
 /* the buttons of a row: last column, right-aligned, the same place in every row. No percentage widths in these
    tables: the box around them is as wide as its content, and a percentage would stretch it to the window */
 .table td.row-actions { width: 1px; white-space: nowrap; text-align: right; }
+/* a count that opens its rows in the drawer (blocked apps: blocks, Macs, users): a larger target than the digits */
+.table a.count-link { display: inline-block; min-width: 2rem; padding: .15rem .4rem; border-radius: var(--radius-sm);
+                      text-align: right; font-variant-numeric: tabular-nums; }
+.table a.count-link:hover { background: var(--surface-2); text-decoration: none; }
 /* the values of one cell, one under the other (name, path, package; Signing ID, Team ID): one block, also in the
    cards on phones */
 .table .cell-stack { display: grid; gap: .15rem; justify-items: start; min-width: 0; }

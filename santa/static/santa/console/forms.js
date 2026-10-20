@@ -201,15 +201,67 @@
   }
 
   // The drawer "create rules" follows the selection of the list behind it: a click, Ctrl- or Shift-click adds or
-  // removes binaries. The drawer form is posted with ?refresh, which never saves and keeps what was entered.
-  let syncTimer = null;
+  // removes binaries. They show at once (the name of the row, "loading…"); the drawer form is then posted with
+  // ?refresh, which never saves and keeps what was entered, and fills in the rest.
+  let syncFrame = 0;
+  // A save of the drawer form ("Create rules") is never aborted by a refresh: the refresh waits for its answer
+  let refreshing = false;
+  document.addEventListener("htmx:beforeRequest", (event) => {
+    const form = event.detail.elt;
+    if (form.matches?.("[data-create-rules]") && !refreshing) form.dataset.saving = "1";
+  });
+  document.addEventListener("htmx:afterRequest", (event) => {
+    if (event.detail.elt.matches?.("[data-create-rules]")) delete event.detail.elt.dataset.saving;
+  });
+
+  function selectedBinaries(listForm) {
+    const binaries = new Map();
+    SantaConsole.table.rowBoxes(listForm).filter((box) => box.checked).forEach((box) => {
+      const sha = box.dataset.sha || box.value;
+      if (!binaries.has(sha)) {
+        binaries.set(sha, box.closest("tr")?.querySelector("a.strong")?.textContent.trim() || sha.slice(0, 12));
+      }
+    });
+    return binaries;
+  }
+
+  // the list of the drawer as it will be: the new binaries as placeholders, the ones no longer selected hidden
+  function showSelection(drawerForm, binaries) {
+    const list = drawerForm.querySelector("[data-binaries]");
+    if (!list) return;
+    list.querySelectorAll("li").forEach((item) => {
+      const sha = item.dataset.pendingSha || item.querySelector('input[name="include"]')?.value;
+      if (sha) item.hidden = !binaries.has(sha);
+    });
+    const shown = new Set([...list.querySelectorAll('input[name="include"]')].map((box) => box.value));
+    list.querySelectorAll("[data-pending-sha]").forEach((item) => shown.add(item.dataset.pendingSha));
+    binaries.forEach((name, sha) => {
+      if (shown.has(sha)) return;
+      const item = document.createElement("li");
+      item.className = "pending";
+      item.dataset.pendingSha = sha;
+      const strong = document.createElement("strong");
+      strong.textContent = name;
+      const note = document.createElement("small");
+      note.className = "muted";
+      note.textContent = list.dataset.pendingLabel || "…";
+      item.append(strong, " ", note);
+      list.append(item);
+    });
+  }
 
   function syncCreateRules(listForm) {
     const drawer = document.getElementById("drawer");
     const drawerForm = drawer.querySelector("[data-create-rules]");
     if (!drawerForm || !drawer.classList.contains("open") || drawer.contains(listForm)) return;
-    clearTimeout(syncTimer);
-    syncTimer = setTimeout(() => {
+    showSelection(drawerForm, selectedBinaries(listForm));
+    // a Shift-click selects a range in one go: one request for the frame
+    cancelAnimationFrame(syncFrame);
+    syncFrame = requestAnimationFrame(() => {
+      if (drawerForm.dataset.saving) {
+        drawerForm.addEventListener("htmx:afterRequest", () => syncCreateRules(listForm), { once: true });
+        return;
+      }
       drawerForm.querySelectorAll('input[type="hidden"][name="ids"], input[type="hidden"][name="shas"]')
                 .forEach((input) => input.remove());
       SantaConsole.table.rowBoxes(listForm).filter((box) => box.checked).forEach((box) => {
@@ -223,12 +275,24 @@
       const drawerResolved = drawerForm.querySelector('[name="resolved"]');
       if (resolved && drawerResolved) drawerResolved.value = resolved.value;
       const scroll = drawer.scrollTop;
-      htmx.ajax("POST", drawerForm.getAttribute("action"), {
-        source: drawerForm, target: "#drawer", values: { refresh: "1" },
-      }).then(() => {
+      // an older answer must not replace a newer selection (only refreshes run now, see above)
+      htmx.trigger(drawerForm, "htmx:abort");
+      // htmx.ajax sends right away (htmx:beforeRequest in this call): it is a refresh, not a save
+      refreshing = true;
+      let request;
+      try {
+        request = htmx.ajax("POST", drawerForm.getAttribute("action"), {
+          source: drawerForm, target: "#drawer", values: { refresh: "1" },
+        });
+      } finally {
+        refreshing = false;
+      }
+      request.then(() => {
         drawer.scrollTop = scroll;
+      }, () => {
+        // aborted by a newer selection: its answer follows
       });
-    }, 250);
+    });
   }
 
   // after saving with binaries left: the saved ones are no longer selected in the list

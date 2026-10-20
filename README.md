@@ -366,7 +366,9 @@ bekommt ihn bei der nächsten Synchronisierung, das Konfigurationsprofil bleibt 
 *eigener Modus*. Der Modus eines Macs wird nicht exportiert (Macs gehören nicht zur Konfiguration).
 
 **Ereignisse**: *Blockierte Apps* listet die offenen Blockierungen nach Binary gruppiert (Macs, Benutzer, zuletzt
-gesehen, offene Anfragen). *Alle Ereignisse* ist die flache Liste; ihre erste Seite fügt alle 5 Sekunden neue
+gesehen, zuletzt bei welchem Benutzer und Mac, offene Anfragen). Die Zahlen der Blockierungen, Macs und Benutzer öffnen
+sie im Drawer, mit den Filtern der Liste (Zeitraum, Status, Gruppe, …); Reiter wechseln zwischen den dreien.
+*Alle Ereignisse* ist die flache Liste; ihre erste Seite fügt alle 5 Sekunden neue
 Ereignisse hinzu. Klicken Sie auf einen Dateinamen für die Details und *Regel anlegen*, mit einer Vorschau der
 Kennung, die die Regel verwenden wird.
 
@@ -403,8 +405,8 @@ Löschen unter *Administration* → *Tags*.
 Paketregel) und Zustand. Regeln, die Paketregeln angelegt haben, können nur aktiviert oder deaktiviert werden; ändern
 Sie stattdessen ihre Paketregel.
 Eine manuelle Regel kann ein **Ablaufdatum** haben (*Läuft ab*: 1 Tag, 7 Tage, 30 Tage oder ein Datum; Standard: nie),
-im Regelformular, als Sammelaktion (*Ablauf setzen* / *Ablauf entfernen*) und beim Freigeben einer Anfrage (*Erlaubt*:
-z. B. für 7 Tage). Ab dann bekommen die Macs sie nicht mehr und entfernen sie bei ihrer nächsten Synchronisierung;
+im Regelformular, als Sammelaktion (*Ablauf setzen* / *Ablauf entfernen*), beim Anlegen aus Ereignissen (einzeln und
+für mehrere) und aus einer hochgeladenen Datei und beim Freigeben einer Anfrage (*Erlaubt*: z. B. für 7 Tage). Ab dann bekommen die Macs sie nicht mehr und entfernen sie bei ihrer nächsten Synchronisierung;
 `cleanup_expired_rules` löscht sie (mit Eintrag im Verlauf). Erweitert eine Freigabe eine vorhandene Regel, behält diese
 das spätere Ende; eine Regel ohne Ende bleibt ohne. Die optionale Spalte *Läuft ab* und der Filter *Ablauf* zeigen sie.
 
@@ -1009,7 +1011,9 @@ scope (*Remove this Mac*); the group and global scopes stay, a rule only for thi
 configuration profile stays the same. The list shows such Macs with *own mode*. The mode of a Mac is not exported
 (Macs are not part of the configuration).
 
-**Events**: *Blocked apps* lists the open blocks grouped by binary (Macs, users, last seen, open requests).
+**Events**: *Blocked apps* lists the open blocks grouped by binary (Macs, users, last seen, last at which user and
+Mac, open requests). The counts of blocks, Macs and users open them in the drawer, with the filters of the list (time
+range, status, group, …); tabs switch between the three.
 *All events* is the flat list; its first page adds new events every 5 seconds. Click a file name for the details
 and *Create rule*, with a preview of the identifier the rule will use.
 
@@ -1044,7 +1048,8 @@ uploaded again.
 **Execution rules**: tabs per rule type, filters for policy, scope, tag, origin (manual or package rule) and state.
 Rules created by package rules can only be enabled or disabled; change their package rule instead.
 A manual rule can have an **expiry date** (*Expires*: 1 day, 7 days, 30 days or a date; default: never), in the rule
-form, as a bulk action (*Set expiry* / *Remove expiry*) and when approving a request (*Allowed*: e.g. for 7 days).
+form, as a bulk action (*Set expiry* / *Remove expiry*), when creating rules from events (one or several) and from an
+uploaded file, and when approving a request (*Allowed*: e.g. for 7 days).
 From then on the Macs no longer get it and remove it at their next sync; `cleanup_expired_rules` deletes it (with an
 entry in its history). When an approval widens an existing rule, the rule keeps the later end; a rule without an end
 stays without one. The optional column *Expires* and the filter *Expiry* show them.
