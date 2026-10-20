@@ -27,6 +27,7 @@ urlpatterns = [
     path("events/create-rules/", views_events.events_create_rules, name="events_create_rules"),
     path("events/resolve/", views_events.events_resolve, name="events_resolve"),
     path("events/packages/", views_event_packages.events_packages, name="events_packages"),
+    path("events/apps/<str:sha256>/<str:part>/", views_events.blocked_app, name="blocked_app"),
     path("events/<int:pk>/", views_events.event_detail, name="event"),
     path("events/<int:pk>/create-rule/", views_events.event_create_rule, name="event_create_rule"),
     path("events/<int:pk>/add-signing-id/", views_events.event_add_signing_id, name="event_add_signing_id"),

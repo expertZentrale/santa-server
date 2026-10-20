@@ -72,3 +72,6 @@
 @media (prefers-reduced-motion: reduce) {
   .drawer, .drawer.open { transition: none; }
 }
+
+/* the parts of a blocked app (blocks, Macs, users) above their table */
+.app-part-tabs { margin-bottom: .5rem; }

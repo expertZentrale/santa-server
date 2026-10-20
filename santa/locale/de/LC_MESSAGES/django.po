@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: santa-server\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-20 10:58+0200\n"
+"POT-Creation-Date: 2026-10-20 15:51+0200\n"
 "Language: de\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -370,7 +370,8 @@ msgid "Required for the CEL policy."
 msgstr "Für die CEL-Richtlinie erforderlich."
 
 #: santa/console/forms.py:285 santa/console/views_admin.py:77
-#: santa/templates/console/base.html:47
+#: santa/console/views_events.py:272 santa/templates/console/base.html:47
+#: santa/templates/console/events/_app_part.html:31
 #: santa/templates/console/events/_rows.html:25
 #: santa/templates/console/groups/_form.html:4
 #: santa/templates/console/groups/list.html:15
@@ -1096,6 +1097,7 @@ msgstr "Firmenlogo im dunklen Modus"
 
 #: santa/console/forms.py:1240 santa/console/views_events.py:152
 #: santa/console/views_file_access.py:68 santa/console/views_groups.py:217
+#: santa/templates/console/events/_app_part.html:22
 #: santa/templates/console/events/_rows.html:15
 #: santa/templates/console/groups/list.html:15
 #: santa/templates/console/machines/_rows.html:2
@@ -1481,6 +1483,7 @@ msgid "Not a JSON file: %(error)s"
 msgstr "Keine JSON-Datei: %(error)s"
 
 #: santa/console/views_admin.py:62 santa/console/views_admin.py:81
+#: santa/console/views_events.py:272
 #: santa/templates/console/administration/_role_form.html:34
 #: santa/templates/console/administration/roles.html:8
 #: santa/templates/console/administration/user_form.html:5
@@ -1536,6 +1539,7 @@ msgid "File access rules"
 msgstr "Dateizugriffsregeln"
 
 #: santa/console/views_admin.py:75 santa/templates/console/base.html:41
+#: santa/templates/console/events/app_part.html:4
 #: santa/templates/console/events/create_rules.html:4
 #: santa/templates/console/events/detail.html:4
 #: santa/templates/console/events/list.html:2
@@ -1743,6 +1747,7 @@ msgid "The rule uses"
 msgstr "Die Regel verwendet"
 
 #: santa/console/views_events.py:155
+#: santa/templates/console/events/_app_part.html:11
 #: santa/templates/console/events/_rows.html:14
 #: santa/templates/console/machines/_activity.html:6
 #: santa/templates/console/requests/_detail.html:19
@@ -1779,6 +1784,8 @@ msgid "Binary"
 msgstr "Binary"
 
 #: santa/console/views_events.py:164 santa/console/views_rules.py:168
+#: santa/templates/console/events/_app_part.html:11
+#: santa/templates/console/events/_app_part.html:22
 #: santa/templates/console/events/_detail.html:13
 #: santa/templates/console/events/_rows.html:15
 #: santa/templates/console/machines/_rows.html:2
@@ -1789,6 +1796,9 @@ msgstr "Mac"
 
 #: santa/console/views_events.py:166 santa/console/views_rules.py:170
 #: santa/templates/console/administration/users.html:9
+#: santa/templates/console/events/_app_part.html:11
+#: santa/templates/console/events/_app_part.html:22
+#: santa/templates/console/events/_app_part.html:31
 #: santa/templates/console/events/_detail.html:14
 #: santa/templates/console/events/_rows.html:15
 #: santa/templates/console/machines/_activity.html:6
@@ -1798,34 +1808,41 @@ msgstr "Mac"
 msgid "User"
 msgstr "Benutzer"
 
-#: santa/console/views_events.py:193
+#: santa/console/views_events.py:202
 msgid "File, signing ID, SHA-256, Mac, user…"
 msgstr "Datei, Signing ID, SHA-256, Mac, Benutzer…"
 
-#: santa/console/views_events.py:305
+#: santa/console/views_events.py:272 santa/console/views_file_access.py:70
+#: santa/templates/console/events/_app_part.html:22
+#: santa/templates/console/events/_app_part.html:31
+#: santa/templates/console/events/_rows.html:24
+msgid "Blocks"
+msgstr "Blockierungen"
+
+#: santa/console/views_events.py:356
 #, python-format
 msgid "%(signing_id)s added to the rule of the team %(team_id)s."
 msgstr "%(signing_id)s zur Regel des Teams %(team_id)s hinzugefügt."
 
-#: santa/console/views_events.py:425
+#: santa/console/views_events.py:476
 #, python-format
 msgid "Rule created: %(rule)s."
 msgstr "Regel angelegt: %(rule)s."
 
-#: santa/console/views_events.py:425
+#: santa/console/views_events.py:476
 #, python-format
 msgid "Rule updated: %(rule)s."
 msgstr "Regel aktualisiert: %(rule)s."
 
-#: santa/console/views_events.py:426
+#: santa/console/views_events.py:477
 msgid "The Macs get it at their next sync."
 msgstr "Die Macs erhalten sie bei ihrer nächsten Synchronisierung."
 
-#: santa/console/views_events.py:468
+#: santa/console/views_events.py:519
 msgid "Select at least one event."
 msgstr "Bitte mindestens ein Ereignis auswählen."
 
-#: santa/console/views_events.py:497 santa/console/views_rules.py:505
+#: santa/console/views_events.py:548 santa/console/views_rules.py:505
 #, python-format
 msgid "%(count)s rule saved (%(new)s new). The Macs get it at their next sync."
 msgid_plural ""
@@ -1837,7 +1854,7 @@ msgstr[1] ""
 "%(count)s Regeln gespeichert (%(new)s neu). Die Macs erhalten sie bei ihrer "
 "nächsten Synchronisierung."
 
-#: santa/console/views_events.py:517 santa/console/views_rules.py:511
+#: santa/console/views_events.py:568 santa/console/views_rules.py:511
 #, python-format
 msgid "%(count)s binary left: choose its rule, or close."
 msgid_plural "%(count)s binaries left: choose their rule, or close."
@@ -1845,7 +1862,7 @@ msgstr[0] "%(count)s Binary übrig: Wählen Sie seine Regel, oder schließen Sie
 msgstr[1] ""
 "%(count)s Binaries übrig: Wählen Sie ihre Regel, oder schließen Sie."
 
-#: santa/console/views_events.py:536
+#: santa/console/views_events.py:587
 #: santa/templates/console/events/_packages_form.html:12
 #, python-format
 msgid "%(count)s event marked as resolved."
@@ -1875,11 +1892,6 @@ msgstr ""
 #: santa/templates/console/machines/mode_form.html:2
 msgid "Mode"
 msgstr "Modus"
-
-#: santa/console/views_file_access.py:70
-#: santa/templates/console/events/_rows.html:24
-msgid "Blocks"
-msgstr "Blockierungen"
 
 #: santa/console/views_file_access.py:71
 msgid "Name, path…"
@@ -4223,7 +4235,7 @@ msgstr ""
 #: santa/templates/console/administration/tags.html:17
 #: santa/templates/console/administration/users.html:9
 #: santa/templates/console/administration/users.html:20
-#: santa/templates/console/events/_app_row.html:13
+#: santa/templates/console/events/_app_row.html:17
 #: santa/templates/console/events/_row.html:13
 #: santa/templates/console/events/_rows.html:15
 #: santa/templates/console/events/_rows.html:25
@@ -4486,6 +4498,51 @@ msgstr "Wie erlauben"
 msgid "As package"
 msgstr "Als Paket"
 
+#: santa/templates/console/events/_app_part.html:3
+msgid "Blocked app"
+msgstr "Blockierte App"
+
+#: santa/templates/console/events/_app_part.html:7
+#, python-format
+msgid "%(count)s for the filters of the list."
+msgid_plural "%(count)s for the filters of the list."
+msgstr[0] "%(count)s mit den Filtern der Liste."
+msgstr[1] "%(count)s mit den Filtern der Liste."
+
+#: santa/templates/console/events/_app_part.html:7
+#, python-format
+msgid "The newest %(limit)s are shown."
+msgstr "Gezeigt werden die neuesten %(limit)s."
+
+#: santa/templates/console/events/_app_part.html:11
+#: santa/templates/console/events/_rows.html:14
+#: santa/templates/console/machines/_activity.html:6
+msgid "Time"
+msgstr "Zeit"
+
+#: santa/templates/console/events/_app_part.html:11
+#: santa/templates/console/events/_detail.html:12
+#: santa/templates/console/events/_rows.html:14
+msgid "Path"
+msgstr "Pfad"
+
+#: santa/templates/console/events/_app_part.html:22
+#: santa/templates/console/events/_app_part.html:31
+#: santa/templates/console/events/_rows.html:25
+msgid "Last seen"
+msgstr "Zuletzt gesehen"
+
+#: santa/templates/console/events/_app_part.html:33
+msgid "(unknown)"
+msgstr "(unbekannt)"
+
+#: santa/templates/console/events/_app_part.html:39
+#: santa/templates/console/events/_app_row.html:18
+#: santa/templates/console/events/_row.html:14
+#: santa/templates/console/requests/_detail.html:25
+msgid "All events of this binary"
+msgstr "Alle Ereignisse dieses Binarys"
+
 #: santa/templates/console/events/_app_row.html:2
 msgid "Select"
 msgstr "Auswählen"
@@ -4495,6 +4552,9 @@ msgstr "Auswählen"
 #: santa/templates/console/events/_detail.html:3
 #: santa/templates/console/events/_packages_form.html:8
 #: santa/templates/console/events/_row.html:5
+#: santa/templates/console/events/app_part.html:2
+#: santa/templates/console/events/app_part.html:5
+#: santa/templates/console/events/drawer_app_part.html:3
 #: santa/templates/console/machines/_activity.html:10
 msgid "(no name)"
 msgstr "(ohne Namen)"
@@ -4519,32 +4579,44 @@ msgstr "Monitor: im Lockdown blockiert"
 msgid "unsigned"
 msgstr "unsigniert"
 
+#: santa/templates/console/events/_app_row.html:10
+msgid "Show the blocks"
+msgstr "Blockierungen zeigen"
+
 #: santa/templates/console/events/_app_row.html:11
+msgid "Show the Macs"
+msgstr "Macs zeigen"
+
+#: santa/templates/console/events/_app_row.html:12
+msgid "Show the users"
+msgstr "Benutzer zeigen"
+
+#: santa/templates/console/events/_app_row.html:15
 msgid ""
 "The Team ID rule allows only some signing IDs of the team, not this one."
 msgstr ""
 "Die Team-ID-Regel erlaubt nur einige Signing IDs des Teams, diese nicht."
 
-#: santa/templates/console/events/_app_row.html:11
+#: santa/templates/console/events/_app_row.html:15
 msgid "Team ID rule without this signing ID"
 msgstr "Team-ID-Regel ohne diese Signing ID"
 
-#: santa/templates/console/events/_app_row.html:11
+#: santa/templates/console/events/_app_row.html:15
 #: santa/templates/console/requests/_approve_event.html:14
 #: santa/templates/console/rules/_existing.html:7
 #: santa/templates/console/rules/_existing.html:17
 msgid "not for these Macs"
 msgstr "gilt nicht für diese Macs"
 
-#: santa/templates/console/events/_app_row.html:11
+#: santa/templates/console/events/_app_row.html:15
 msgid "Rule exists"
 msgstr "Regel vorhanden"
 
-#: santa/templates/console/events/_app_row.html:12
+#: santa/templates/console/events/_app_row.html:16
 msgid "requested"
 msgstr "angefragt"
 
-#: santa/templates/console/events/_app_row.html:14
+#: santa/templates/console/events/_app_row.html:18
 #: santa/templates/console/events/_row.html:14
 #: santa/templates/console/file_access/list.html:25
 #: santa/templates/console/groups/list.html:27
@@ -4553,12 +4625,6 @@ msgstr "angefragt"
 msgctxt "action"
 msgid "Open"
 msgstr "Öffnen"
-
-#: santa/templates/console/events/_app_row.html:14
-#: santa/templates/console/events/_row.html:14
-#: santa/templates/console/requests/_detail.html:25
-msgid "All events of this binary"
-msgstr "Alle Ereignisse dieses Binarys"
 
 #: santa/templates/console/events/_create_rules_form.html:2
 #: santa/templates/console/events/_packages_form.html:16
@@ -4606,11 +4672,6 @@ msgstr "Regel anlegen"
 #: santa/templates/console/rules/_upload_rules.html:37
 msgid "Create rules"
 msgstr "Regeln anlegen"
-
-#: santa/templates/console/events/_detail.html:12
-#: santa/templates/console/events/_rows.html:14
-msgid "Path"
-msgstr "Pfad"
 
 #: santa/templates/console/events/_detail.html:14
 #, python-format
@@ -4825,11 +4886,6 @@ msgstr "Auswahl aufheben"
 msgid "Clear selection (Esc)"
 msgstr "Auswahl aufheben (Esc)"
 
-#: santa/templates/console/events/_rows.html:14
-#: santa/templates/console/machines/_activity.html:6
-msgid "Time"
-msgstr "Zeit"
-
 #: santa/templates/console/events/_rows.html:18
 msgid "No events for these filters."
 msgstr "Keine Ereignisse für diese Filter."
@@ -4839,8 +4895,8 @@ msgid "Program"
 msgstr "Programm"
 
 #: santa/templates/console/events/_rows.html:25
-msgid "Last seen"
-msgstr "Zuletzt gesehen"
+msgid "Last at"
+msgstr "Zuletzt bei"
 
 #: santa/templates/console/events/_rows.html:25
 msgid "Rules / requests"
@@ -6585,6 +6641,9 @@ msgstr "Unbekannter Regeltyp %(rule_type)s."
 #, python-format
 msgid "Line %(number)s (%(pattern)s): %(error)s"
 msgstr "Zeile %(number)s (%(pattern)s): %(error)s"
+
+#~ msgid "GitHub, VS Code, JetBrains (EAP)"
+#~ msgstr "GitHub, VS Code, JetBrains (EAP)"
 
 #~ msgid "Signing ID / Team ID"
 #~ msgstr "Signing ID / Team ID"
