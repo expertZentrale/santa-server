@@ -5,6 +5,7 @@ import io
 import logging
 import time
 import uuid
+from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -14,6 +15,7 @@ from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
 from santa.log_redaction import RedactSyncTokens, redact_sync_path
 from santa.models import Policy, ReleaseSource, ReleaseVersion, Rule, RuleType
@@ -465,6 +467,30 @@ class TapTestCase(SimpleTestCase):
         self.assertEqual([release.version for release in releases], ["1.2.0", "1.1.0"])
         urls = [call.args[0] for call in session.get.call_args_list]
         self.assertNotIn("https://raw.githubusercontent.com/example/homebrew-tap/c1/Formula/tool.rb", urls)
+
+    @override_settings(GITHUB_TOKEN="token")
+    def test_a_dependency_older_than_the_range_to_keep(self):
+        recent = (timezone.now() - timedelta(days=5)).isoformat()
+        old = (timezone.now() - timedelta(days=400)).isoformat()
+        session = self.tap_history_session([("c2", recent, "tool 1.2.0"), ("c1", old, "tool 1.0.0")],
+                                           {"c2": "1.2.0", "c1": "1.0.0"})
+        source = ReleaseSource(kind=ReleaseSource.Kind.HOMEBREW_FORMULA, keep_versions=1,
+                               keep_unit=ReleaseSource.KeepUnit.MONTHS)
+        self.assertEqual([r.version for r in homebrew_formula_releases(session, source, "example/tap/tool", 5)],
+                         ["1.2.0"])
+        # the version a kept release needs, from the same session: not cut by the range
+        self.assertEqual(homebrew_formula_at(session, source, "example/tap/tool", version="1.0.0").version, "1.0.0")
+
+    @override_settings(GITHUB_TOKEN="token")
+    def test_the_history_of_one_lookup_is_not_given_to_another(self):
+        session = self.tap_history_session(
+            [("c3", "2026-10-10T10:00:00Z", "tool 1.2.0"), ("c1", "2026-09-30T10:00:00Z", "tool 1.1.0")],
+            {"c3": "1.2.0", "c1": "1.1.0"})
+        source = ReleaseSource(kind=ReleaseSource.Kind.HOMEBREW_FORMULA, keep_versions=2)
+        homebrew_formula_releases(session, source, "example/tap/tool", 2, known={"1.1.0": None})
+        # without the versions recorded by the first one: with their files, not the placeholders
+        releases = homebrew_formula_releases(session, source, "example/tap/tool", 2)
+        self.assertEqual([asset.url for asset in releases[1].assets], ["https://dl.example/tool-1.1.0-darwin.zip"])
 
     def test_a_url_put_together_from_a_key_of_a_hash(self):
         # rustfs/tap/rc before it declared its resources: the URL in a method, the key of BINARIES in it

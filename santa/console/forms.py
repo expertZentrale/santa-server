@@ -347,7 +347,10 @@ class RuleBulkForm(forms.Form):
     def clean(self):
         cleaned_data = super().clean()
         action = cleaned_data.get("action")
-        if action == "set_expiry" and not cleaned_data.get("expires") and "expires" not in self.errors:
+        if action != "set_expiry":
+            # the hidden expiry controls are posted with every action
+            self.errors.pop("expires", None)
+        elif not cleaned_data.get("expires") and "expires" not in self.errors:
             self.add_error("expires", gettext("Choose how long."))
         if action == "set_policy" and not cleaned_data.get("policy"):
             self.add_error("policy", gettext("Choose a policy."))
