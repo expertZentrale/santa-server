@@ -1,6 +1,7 @@
 import base64
 import json
 from dataclasses import dataclass
+from datetime import timedelta
 
 from django import forms
 from django.conf import settings
@@ -24,6 +25,7 @@ from ..models import (
     HISTORY_KINDS,
     IDENTIFIER_MAX_LENGTH,
     AccessRequest,
+    ClientMode,
     FileAccessProcess,
     FileAccessRule,
     FileAccessRuleType,
@@ -95,6 +97,61 @@ class TagsMixin(forms.Form):
 
     def all_tags(self):
         return list(self.cleaned_data.get("tags") or []) + parse_new_tags(self.cleaned_data.get("new_tags"))
+
+
+class LocalDateTimeInput(forms.DateTimeInput):
+    """A date and time in the browser's picker, in the time zone of the user (TimezoneMiddleware)"""
+    input_type = "datetime-local"
+
+    def __init__(self, attrs=None):
+        super().__init__(attrs, format="%Y-%m-%dT%H:%M")
+
+
+UNTIL_DURATIONS = {"1h": timedelta(hours=1), "1d": timedelta(days=1), "7d": timedelta(days=7),
+                   "30d": timedelta(days=30)}
+
+
+class UntilWidget(forms.MultiWidget):
+    """How long: a choice, and the date when "Until a date" is chosen (forms.js shows it then)"""
+    template_name = "console/widgets/until.html"
+
+    def __init__(self, choices):
+        super().__init__([forms.Select(choices=choices), LocalDateTimeInput()])
+
+    def decompress(self, value):
+        # shown in the time zone it is read back in (a DateTimeField converts it itself, a subwidget doesn't)
+        if value and timezone.is_aware(value):
+            value = timezone.localtime(value)
+        return ["date", value] if value else ["", None]
+
+    def get_context(self, name, value, attrs):
+        context = super().get_context(name, value, attrs)
+        date = context["widget"]["subwidgets"][1]["attrs"]
+        date["data-show-when"] = f"{name}_0=date"
+        date["aria-label"] = gettext("Date")
+        return context
+
+
+class UntilField(forms.MultiValueField):
+    """An end in time: none, in an hour, a day, a week, a month, or a date. Cleaned to an aware datetime or None."""
+
+    def __init__(self, none_label, **kwargs):
+        choices = [("", none_label), ("1h", _("For 1 hour")), ("1d", _("For 1 day")), ("7d", _("For 7 days")),
+                   ("30d", _("For 30 days")), ("date", _("Until a date"))]
+        super().__init__((forms.ChoiceField(choices=choices, required=False), forms.DateTimeField(required=False)),
+                         require_all_fields=False, required=False, widget=UntilWidget(choices), **kwargs)
+
+    def compress(self, data_list):
+        choice, date = (list(data_list) + ["", None])[:2]
+        if not choice:
+            return None
+        if choice in UNTIL_DURATIONS:
+            return timezone.now() + UNTIL_DURATIONS[choice]
+        if not date:
+            raise ValidationError(_("Enter the date."))
+        if date <= timezone.now():
+            raise ValidationError(_("The date must be in the future."))
+        return date
 
 
 class MachinesField(forms.CharField):
@@ -227,11 +284,13 @@ def clean_cel_policy(form, cleaned_data, policy="policy", cel_expr="cel_expr", r
 class RuleForm(TagsMixin, forms.ModelForm):
     machines = MachinesField(label=_("Macs"))
     signing_prefixes = signing_prefixes_field()
+    expires_at = UntilField(_("Never"), label=_("Expires"),
+                            help_text=_("Then the rule is removed from the Macs and deleted."))
 
     class Meta:
         model = Rule
         fields = ("rule_type", "identifier", "policy", "cel_expr", "custom_msg", "custom_url", "is_global", "groups",
-                  "machines", "tags", "description", "is_enabled")
+                  "machines", "expires_at", "tags", "description", "is_enabled")
         widgets = {
             "groups": forms.CheckboxSelectMultiple,
             "cel_expr": forms.Textarea(attrs={"rows": 3, "class": "mono"}),
@@ -274,7 +333,7 @@ class RuleForm(TagsMixin, forms.ModelForm):
 class RuleBulkForm(forms.Form):
     ACTIONS = [("enable", _("Enable / approve")), ("disable", _("Disable")), ("add_tag", _("Add tag")),
                ("remove_tag", _("Remove tag")), ("set_policy", _("Set policy")), ("add_groups", _("Add groups")),
-               ("delete", _("Delete"))]
+               ("set_expiry", _("Set expiry")), ("clear_expiry", _("Remove expiry")), ("delete", _("Delete"))]
     # CEL needs an expression per rule, not a bulk change
     POLICIES = [(value, label) for value, label in Policy.choices if value != Policy.CEL]
 
@@ -283,16 +342,49 @@ class RuleBulkForm(forms.Form):
     tag = forms.CharField(required=False, max_length=100)
     groups = forms.ModelMultipleChoiceField(queryset=Group.objects.all(), required=False)
     policy = forms.ChoiceField(choices=POLICIES, required=False)
+    expires = UntilField(_("Never"))
 
     def clean(self):
         cleaned_data = super().clean()
         action = cleaned_data.get("action")
+        if action != "set_expiry":
+            # the hidden expiry controls are posted with every action
+            self.errors.pop("expires", None)
+        elif not cleaned_data.get("expires") and "expires" not in self.errors:
+            self.add_error("expires", gettext("Choose how long."))
         if action == "set_policy" and not cleaned_data.get("policy"):
             self.add_error("policy", gettext("Choose a policy."))
         if action in ("add_tag", "remove_tag") and not (cleaned_data.get("tag") or "").strip():
             self.add_error("tag", gettext("Enter a tag."))
         if action == "add_groups" and not cleaned_data.get("groups"):
             self.add_error("groups", gettext("Choose at least one group."))
+        return cleaned_data
+
+
+class MachineModeForm(forms.ModelForm):
+    """The mode of one Mac instead of its group's, for good or until a date"""
+    client_mode_override_until = UntilField(_("Until it is reset"), label=_("How long"))
+
+    class Meta:
+        model = Machine
+        fields = ("client_mode_override", "client_mode_override_until")
+        labels = {"client_mode_override": _("Mode of this Mac")}
+        widgets = {"client_mode_override": forms.RadioSelect}
+
+    def __init__(self, *args, group_mode="", **kwargs):
+        super().__init__(*args, **kwargs)
+        field = self.fields["client_mode_override"]
+        field.choices = [("", format_lazy(_("As the group ({mode})"), mode=group_mode)),
+                         *ClientMode.choices]
+        field.help_text = _("Sent to the Mac at its next sync. The configuration profile stays as it is.")
+        self.fields["client_mode_override_until"].help_text = _("Then the Mac gets the mode of its group again.")
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if not cleaned_data.get("client_mode_override"):
+            # as the group: no end to keep, and none to check (the field is hidden then, an old end in it is past)
+            cleaned_data["client_mode_override_until"] = None
+            self._errors.pop("client_mode_override_until", None)
         return cleaned_data
 
 
@@ -617,6 +709,10 @@ class CelPolicyMixin:
         return prefix_expression(identifier, prefixes) if prefixes else self.cleaned_data.get("cel_expr", "")
 
 
+APPROVAL_UNTIL_HELP = _("Then the rule is removed from the Macs and deleted. A rule that exists already keeps the "
+                        "later end; one without an end stays so.")
+
+
 class ApproveEventForm(CelPolicyMixin, TagsMixin):
     """Approve a blocked binary: a new rule, a rule that already allows it (as it is, or with the scope of the form
     added), or no rule
@@ -626,7 +722,7 @@ class ApproveEventForm(CelPolicyMixin, TagsMixin):
     RULE, EXISTING, EXTEND, SIGNING_ID, NONE = "rule", "existing", "extend", "signing", "none"
 
     field_order = ["result", "existing_rule", "rule_type", "policy", "signing_prefixes", "cel_expr", "scope",
-                   "groups", "tags", "new_tags", "note"]
+                   "groups", "expires_at", "tags", "new_tags", "note"]
 
     result = forms.ChoiceField(
         choices=[(RULE, _("New rule")), (EXISTING, _("Existing rule")),
@@ -645,6 +741,7 @@ class ApproveEventForm(CelPolicyMixin, TagsMixin):
                               initial=SCOPE_GROUPS, required=False, widget=forms.RadioSelect, label=_("Scope"))
     groups = forms.ModelMultipleChoiceField(queryset=Group.objects.all(), required=False, label=_("Groups"),
                                             widget=forms.CheckboxSelectMultiple)
+    expires_at = UntilField(_("For good"), label=_("Allowed"), help_text=APPROVAL_UNTIL_HELP)
     note = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 2}), label=_("Note"),
                            help_text=_("Shown to the user"))
 
@@ -954,6 +1051,7 @@ class ApproveOtherForm(CelPolicyMixin, TagsMixin):
                               initial=SCOPE_GROUPS, widget=forms.RadioSelect, label=_("Scope"))
     groups = forms.ModelMultipleChoiceField(queryset=Group.objects.all(), required=False, label=_("Groups"),
                                             widget=forms.CheckboxSelectMultiple)
+    expires_at = UntilField(_("For good"), label=_("Allowed"), help_text=APPROVAL_UNTIL_HELP)
 
     # a package rule: a new one, or more identifiers for an existing one
     package_target = forms.ChoiceField(label=_("Package rule"))
@@ -1419,6 +1517,9 @@ class UserForm(forms.ModelForm):
             "is_staff": _("Can open the console, with the permissions of the roles."),
         }
 
+    # in the card "Roles", not in "Account"
+    ROLE_FIELDS = ("roles_override", "managed_roles", "console_access", "roles")
+
     def __init__(self, *args, managed_roles=(), **kwargs):
         super().__init__(*args, **kwargs)
         self.managed_roles = set(managed_roles)
@@ -1426,9 +1527,26 @@ class UserForm(forms.ModelForm):
         self.is_local = user.pk is None or user.has_usable_password()
         self.fields["roles"].queryset = AuthGroup.objects.exclude(
             pk__in=[role.pk for role in self.managed_roles]).order_by("name")
+        if not self.is_local:
+            # the roles and the console access of the sign-in, or set by hand for this user
+            self.fields["roles_override"] = forms.ChoiceField(
+                choices=UserProfile.RolesOverride.choices, required=False, widget=forms.RadioSelect,
+                label=_("Roles and console access"),
+                help_text=_("By hand: the sign-in no longer changes them. The admin role of the sign-in (the token) "
+                            "still counts."))
+            self.fields["managed_roles"] = RolesField(label=_("Roles of the sign-in groups"))
+            self.fields["managed_roles"].queryset = AuthGroup.objects.filter(
+                pk__in=[role.pk for role in self.managed_roles]).order_by("name")
+            self.fields["console_access"] = forms.BooleanField(
+                required=False, label=_("Console access"), help_text=_("Can open the console, with the permissions "
+                                                                       "of the roles."))
         if user.pk:
             self.initial["roles"] = [role for role in user.groups.all() if role not in self.managed_roles]
             self.initial["email_override"] = profile_for(user).email_override
+            if not self.is_local:
+                self.initial["roles_override"] = profile_for(user).roles_override
+                self.initial["managed_roles"] = [role for role in user.groups.all() if role in self.managed_roles]
+                self.initial["console_access"] = user.is_staff
             self.fields["username"].disabled = True
             self.fields["password1"].help_text = _("Leave empty to keep the password.")
         else:
@@ -1437,6 +1555,13 @@ class UserForm(forms.ModelForm):
             # the sign-in sets them at every sign-in
             for name in ("first_name", "last_name", "email", "is_staff", "password1", "password2"):
                 del self.fields[name]
+
+    def account_fields(self):
+        return [self[name] for name in self.fields if name not in self.ROLE_FIELDS]
+
+    @property
+    def manual_roles(self):
+        return self.cleaned_data.get("roles_override") == UserProfile.RolesOverride.MANUAL
 
     def clean(self):
         cleaned_data = super().clean()
@@ -1455,13 +1580,22 @@ class UserForm(forms.ModelForm):
         user = super().save(commit=False)
         if self.cleaned_data.get("password1"):
             user.set_password(self.cleaned_data["password1"])
+        if not self.is_local and self.manual_roles:
+            user.is_staff = self.cleaned_data["console_access"]
         user.save()
-        kept = [role for role in user.groups.all() if role in self.managed_roles]
+        if not self.is_local and self.manual_roles:
+            kept = list(self.cleaned_data["managed_roles"])
+        else:
+            kept = [role for role in user.groups.all() if role in self.managed_roles]
         user.groups.set([*kept, *self.cleaned_data["roles"]])
         profile = profile_for(user)
-        if profile.email_override != self.cleaned_data["email_override"]:
-            profile.email_override = self.cleaned_data["email_override"]
-            profile.save(update_fields=["email_override"])
+        changed = []
+        for field in ("email_override", "roles_override"):
+            if field in self.cleaned_data and getattr(profile, field) != self.cleaned_data[field]:
+                setattr(profile, field, self.cleaned_data[field])
+                changed.append(field)
+        if changed:
+            profile.save(update_fields=changed)
         return user
 
 

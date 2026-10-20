@@ -108,6 +108,8 @@ Benutzer ohne Rechte; SQL Server und Redis laufen separat.
 - **Geplante Jobs**, dasselbe Image mit einem anderen Befehl (sie warten nicht auf `WAIT_FOR_URL`, außer mit
   `WAIT_FOR_URL_JOBS=1`):
   - stündlich: `python manage.py sync_release_sources` (neue Releases der Paketregeln, verzögerte Freigaben)
+  - stündlich: `python manage.py cleanup_expired_rules` (löscht die abgelaufenen Regeln; die Macs haben sie schon
+    entfernt)
   - täglich: `python manage.py cleanup_events --days 90` (löscht auch die Benachrichtigungen der Glocke nach 30 Tagen,
     `--notification-days`)
   - täglich (mit E-Mail): `python manage.py send_notification_digest` (die tägliche Zusammenfassung)
@@ -172,7 +174,12 @@ Eine **Anmeldegruppe** ist eine Gruppe Ihres Anbieters, die Rollen vergibt, und 
 die Konsole* ankreuzen. Legen Sie nur die Gruppen an, auf die es ankommt: Der Server vergleicht den Gruppen-Claim des
 ID-Tokens (`OIDC_GROUPS_CLAIM`) mit ihnen und ignoriert die anderen, ohne sie zu speichern. Die Rollen gelten ab der
 nächsten Anmeldung; eine geänderte oder gelöschte Anmeldegruppe gilt sofort für ihre Mitglieder. Rollen, die auf der
-Benutzerseite von Hand vergeben wurden, bleiben erhalten.
+Benutzerseite von Hand vergeben wurden, bleiben erhalten. Soll eine Person ganz von den Anmeldegruppen abweichen, stellen
+Sie auf ihrer Benutzerseite *Rollen und Zugriff auf die Konsole* auf *Von Hand*: Dann setzen Sie dort alle Rollen und
+den Zugriff auf die Konsole, und die Anmeldung ändert sie nicht mehr. Nur die Admin-Rolle aus dem Token
+(`OIDC_ADMIN_ROLE`) gilt weiter, damit sich niemand aussperrt. Zurück auf *Wie die Anmeldegruppen es vorgeben* gelten
+deren Rollen sofort wieder.
+Die Benutzerliste zeigt solche Personen mit *Rollen von Hand*.
 
 Die Anmeldegruppe `*` („Everyone“) umfasst alle, die sich anmelden. Sie vergibt die Rolle „Santa requesters“, die
 blockierte Apps, Pakete und andere Software anfragen darf. Entfernen Sie eine Berechtigung aus dieser Rolle und geben
@@ -353,6 +360,10 @@ Hardware, die letzte Synchronisierung, ob der Mac alle seine Regeln hat, alle Re
 über diesen Mac, seine Gruppe oder alle Macs kommen), seine letzten Ereignisse und Anfragen und *Clean Sync*.
 Ausgewählte Regeln können den Mac aus ihrem Geltungsbereich entfernen (*Diesen Mac entfernen*); die Gruppen- und
 globalen Geltungsbereiche bleiben, eine Regel nur für diesen Mac wird gelöscht.
+*Modus* → *Ändern* stellt einen einzelnen Mac unabhängig von seiner Gruppe auf Monitor oder Lockdown, dauerhaft oder
+für eine Zeit (1 Stunde, 1 Tag, 7 Tage, 30 Tage, bis zu einem Datum); danach gilt wieder der Modus der Gruppe. Der Mac
+bekommt ihn bei der nächsten Synchronisierung, das Konfigurationsprofil bleibt gleich. Die Liste zeigt solche Macs mit
+*eigener Modus*. Der Modus eines Macs wird nicht exportiert (Macs gehören nicht zur Konfiguration).
 
 **Ereignisse**: *Blockierte Apps* listet die offenen Blockierungen nach Binary gruppiert (Macs, Benutzer, zuletzt
 gesehen, offene Anfragen). *Alle Ereignisse* ist die flache Liste; ihre erste Seite fügt alle 5 Sekunden neue
@@ -391,13 +402,24 @@ Löschen unter *Administration* → *Tags*.
 **Ausführungsregeln**: Reiter je Regeltyp, Filter für Richtlinie, Geltungsbereich, Tag, Herkunft (manuell oder
 Paketregel) und Zustand. Regeln, die Paketregeln angelegt haben, können nur aktiviert oder deaktiviert werden; ändern
 Sie stattdessen ihre Paketregel.
+Eine manuelle Regel kann ein **Ablaufdatum** haben (*Läuft ab*: 1 Tag, 7 Tage, 30 Tage oder ein Datum; Standard: nie),
+im Regelformular, als Sammelaktion (*Ablauf setzen* / *Ablauf entfernen*) und beim Freigeben einer Anfrage (*Erlaubt*:
+z. B. für 7 Tage). Ab dann bekommen die Macs sie nicht mehr und entfernen sie bei ihrer nächsten Synchronisierung;
+`cleanup_expired_rules` löscht sie (mit Eintrag im Verlauf). Erweitert eine Freigabe eine vorhandene Regel, behält diese
+das spätere Ende; eine Regel ohne Ende bleibt ohne. Die optionale Spalte *Läuft ab* und der Filter *Ablauf* zeigen sie.
 
 **Paketregeln**: *Paketregeln* → *Neue Paketregel*. Für GitHub, Homebrew, npm, VS Code und JetBrains tippen Sie unter
 *Pakete*, um den Katalog zu durchsuchen; `owner/teil` durchsucht die Repositories eines GitHub-Owners. Homebrew hat keine
 Such-API: der Server lädt die Liste der Formeln bzw. Casks einmal am Tag. URLs werden eingetippt und mit Enter
 hinzugefügt. Pakete aus einem **Homebrew-Tap** geben Sie mit vollem Namen an, wie bei `brew install`
 (`hashicorp/tap/terraform`); der Server liest die Formel- bzw. Cask-Datei aus dem GitHub-Repository
-`owner/homebrew-tap` (Version, Downloads mit SHA-256, Bottles). Taps haben nur ihre aktuelle Version. Gelesen werden
+`owner/homebrew-tap` (Version, Downloads mit SHA-256, Bottles). Ältere Versionen einer Tap-Formel kommen aus der
+Git-Historie dieser Datei (Datum: der Commit, der die Version brachte): eine Anfrage an die GitHub-API je Prüfung, die
+Dateien selbst über raw.githubusercontent.com. Nur mit `GITHUB_TOKEN`: ohne erlaubt GitHub 60 API-Anfragen pro Stunde
+und Server-IP, dann haben Taps nur ihre aktuelle Version. Vorabversionen eines Taps (z. B. `1.0.2-preview.2`) zählen
+nur mit *Vorabversionen einbeziehen*; ist die aktuelle eine, nimmt der Server die neueste andere aus der Historie, und
+*Aufräumen* löscht schon erfasste Vorabversionen. Ältere Downloads, die der Hersteller entfernt hat, enden als Fehler der Version. Casks aus Taps haben nur
+ihre aktuelle Version. Gelesen werden
 auch Konstanten und Variablen (`VERSION = "1.0.3"`, `url darwin_url`, `sha256 BINARIES["macos-aarch64"]`), die
 Architektur über `Hardware::CPU.intel? ? … : …` und das fertige Programm in einer `resource` für eine Plattform
 (`on_macos`, `on_arm`, …). Signiert eine Formel ihr Programm beim Installieren neu (`codesign`), nennt die Version das:
@@ -432,7 +454,8 @@ wird für sich geprüft und behält seine eigenen Versionen. Eine Paketregel leg
 - **Behalten**: die letzten *n* Versionen, oder die Versionen der letzten *n* Wochen bzw. Monate; die Regeln älterer
   Versionen werden gelöscht, die neueste Version bleibt immer. `0` behält alle.
 - **Auch die älteren behaltenen Versionen erlauben** (alle Kataloge außer Homebrew-Cask und URL, die nur auf den
-  aktuellen Download zeigen; Homebrew-Formulae aus der Bottle-Registry `ghcr.io`): legt die Regeln für die älteren
+  aktuellen Download zeigen; Homebrew-Formulae aus der Bottle-Registry `ghcr.io`, Tap-Formeln aus der Git-Historie des
+  Taps): legt die Regeln für die älteren
   Versionen im behaltenen Bereich an, nicht nur für neue (höchstens 10 je Prüfung, der Rest bei den nächsten).
   Nicht mit `0`, das würde jede je veröffentlichte Version erlauben.
 - **Abhängigkeiten erlauben** (npm, Homebrew-Formula): erlaubt auch die ausführbaren Dateien der Abhängigkeiten jeder
@@ -628,7 +651,8 @@ santa/
   console/             die Konsole und das Anfrageformular (Views, Forms, URLs)
   templates/, static/  Templates; htmx, console/*.js und *.css (eine Datei je Aufgabe)
   admin.py, forms.py   der Django-Admin
-  management/commands  sync_release_sources, cleanup_events, send_notification_digest, export_config, import_config
+  management/commands  sync_release_sources, cleanup_events, cleanup_expired_rules, send_notification_digest,
+                       export_config, import_config
   locale/              deutsche Übersetzung
   tests/
 scripts/               create_database.py (Devcontainer und CI), Abgleich der Homebrew-Hashes mit einem Test-Mac
@@ -748,6 +772,7 @@ separately.
 - **Scheduled jobs**, the same image with another command (they don't wait for `WAIT_FOR_URL`, unless
   `WAIT_FOR_URL_JOBS=1`):
   - hourly: `python manage.py sync_release_sources` (new releases of the package rules, delayed approvals)
+  - hourly: `python manage.py cleanup_expired_rules` (deletes the expired rules; the Macs removed them already)
   - daily: `python manage.py cleanup_events --days 90` (also deletes the notifications of the bell after 30 days,
     `--notification-days`)
   - daily (with e-mail): `python manage.py send_notification_digest` (the daily summary)
@@ -806,7 +831,11 @@ page, and what users may request), the sign-in groups, the tags and the configur
 A **sign-in group** is a group of your provider that gives roles, and the console if you tick *Console access*.
 Add only the groups that matter: the server compares the groups claim of the ID token (`OIDC_GROUPS_CLAIM`) with
 them and ignores and never stores the others. The roles apply at the next sign-in; a changed or deleted sign-in
-group applies to its members right away. Roles assigned by hand on the user page stay.
+group applies to its members right away. Roles assigned by hand on the user page stay. For a person who should
+differ from the sign-in groups altogether, set *Roles and console access* on their user page to *Set by hand*: then
+you set all roles and the console access there, and the sign-in no longer changes them. Only the admin role of the
+token (`OIDC_ADMIN_ROLE`) still counts, so that nobody is locked out. Back to *As the sign-in groups say*, their roles
+apply again right away. The user list shows such people with *roles by hand*.
 
 The sign-in group `*` ("Everyone") is everyone who signs in. It gives the role "Santa requesters", which may request
 blocked apps, packages and other software. Remove a permission from that role, and give it to other roles, to limit
@@ -975,6 +1004,10 @@ profile, *Regenerate the sync URL*, and the base profile on the list.
 sync, whether the Mac has all its rules, every rule that applies to it (and whether it comes through this Mac, its
 group or all Macs), its recent events and requests, and *Clean sync*. Selected rules can drop the Mac from their
 scope (*Remove this Mac*); the group and global scopes stay, a rule only for this Mac is deleted.
+*Mode* → *Change* sets a single Mac to Monitor or Lockdown independently of its group, for good or for a time (1 hour,
+1 day, 7 days, 30 days, until a date); then the mode of the group applies again. The Mac gets it at its next sync, the
+configuration profile stays the same. The list shows such Macs with *own mode*. The mode of a Mac is not exported
+(Macs are not part of the configuration).
 
 **Events**: *Blocked apps* lists the open blocks grouped by binary (Macs, users, last seen, open requests).
 *All events* is the flat list; its first page adds new events every 5 seconds. Click a file name for the details
@@ -1010,13 +1043,24 @@ uploaded again.
 
 **Execution rules**: tabs per rule type, filters for policy, scope, tag, origin (manual or package rule) and state.
 Rules created by package rules can only be enabled or disabled; change their package rule instead.
+A manual rule can have an **expiry date** (*Expires*: 1 day, 7 days, 30 days or a date; default: never), in the rule
+form, as a bulk action (*Set expiry* / *Remove expiry*) and when approving a request (*Allowed*: e.g. for 7 days).
+From then on the Macs no longer get it and remove it at their next sync; `cleanup_expired_rules` deletes it (with an
+entry in its history). When an approval widens an existing rule, the rule keeps the later end; a rule without an end
+stays without one. The optional column *Expires* and the filter *Expiry* show them.
 
 **Package rules**: *Package rules* → *New package rule*. For GitHub, Homebrew, npm, VS Code and JetBrains, type in
 *Packages* to search the catalog; `owner/part` searches the repositories of a GitHub owner. Homebrew has no search API:
 the server loads the list of formulae or casks once a day. URLs are typed and added with Enter. Packages from a
 **Homebrew tap** are given with their full name, like for `brew install` (`hashicorp/tap/terraform`); the server reads
 the formula or cask file from the GitHub repository `owner/homebrew-tap` (version, downloads with SHA-256, bottles).
-Taps have only their current version. Constants and variables are read too (`VERSION = "1.0.3"`, `url darwin_url`,
+Older versions of a tap formula come from the Git history of that file (date: the commit that brought the version):
+one request to the GitHub API per check, the files themselves through raw.githubusercontent.com. Only with
+`GITHUB_TOKEN`: without it GitHub allows 60 API requests per hour and server IP, taps then have only their current
+version. Prereleases of a tap (e.g. `1.0.2-preview.2`) count only with *Include prereleases*; when the current
+version is one, the server takes the newest other one from the history, and *Clean up* deletes prereleases recorded
+already. Older downloads the vendor removed end as an
+error of the version. Casks from taps have only their current version. Constants and variables are read too (`VERSION = "1.0.3"`, `url darwin_url`,
 `sha256 BINARIES["macos-aarch64"]`), the architecture through `Hardware::CPU.intel? ? … : …`, and the ready-made
 program in a `resource` for one platform (`on_macos`, `on_arm`, …). When a formula signs its program again while
 installing it (`codesign`), the version says so: the Macs then see another hash than the download's.
@@ -1049,7 +1093,8 @@ on its own and keeps its own versions. A package rule also chooses what the rule
 - **Keep**: the last *n* versions, or the versions of the last *n* weeks or months; the rules of older versions are
   deleted, the newest version always stays. `0` keeps all.
 - **Also allow the older kept versions** (every catalog except Homebrew casks and URLs, which only point to the
-  current download; Homebrew formulae from the bottle registry `ghcr.io`): adds the rules of the older versions
+  current download; Homebrew formulae from the bottle registry `ghcr.io`, tap formulae from the Git history of the
+  tap): adds the rules of the older versions
   inside the kept range, not only of new ones (at most 10 per check, the rest at the next ones). Not with `0`: that
   would allow every version ever published.
 - **Allow the dependencies** (npm, Homebrew formula): also allows the executables of the dependencies of every new
@@ -1237,7 +1282,8 @@ santa/
   console/             the console and the request form (views, forms, urls)
   templates/, static/  templates; htmx, console/*.js and *.css (one file per task)
   admin.py, forms.py   the Django admin
-  management/commands  sync_release_sources, cleanup_events, send_notification_digest, export_config, import_config
+  management/commands  sync_release_sources, cleanup_events, cleanup_expired_rules, send_notification_digest,
+                       export_config, import_config
   locale/              German translation
   tests/
 scripts/               create_database.py (devcontainer and CI), comparing the Homebrew hashes with a test Mac

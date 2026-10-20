@@ -14,6 +14,7 @@ import copy
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from .models import FileAccessProcess, FileAccessRule, Group, Machine, ReleaseSource, Rule, Tag
 
@@ -46,7 +47,7 @@ FILE_ACCESS_RULE_FIELDS = (
 FILE_ACCESS_PROCESS_FIELDS = ("signing_id", "team_id", "platform_binary", "binary_path", "cdhash",
                               "certificate_sha256")
 RULE_KEY_FIELDS = ("rule_type", "identifier", "policy")
-RULE_FIELDS = ("custom_msg", "custom_url", "cel_expr", "description", "is_global", "is_enabled")
+RULE_FIELDS = ("custom_msg", "custom_url", "cel_expr", "description", "is_global", "is_enabled", "expires_at")
 
 
 def legacy_usb(item):
@@ -62,6 +63,18 @@ def legacy_usb(item):
 PREVIEW_LISTS = ("groups", "release_sources", "rules", "file_access_rules")
 RENAMABLE_LISTS = ("groups", "release_sources", "file_access_rules")
 SWITCHABLE_LISTS = ("release_sources", "rules", "file_access_rules")
+
+
+def parse_expiry(value):
+    """The `expires_at` of an import, time-zone aware, or None if it isn't a date."""
+    try:
+        expires_at = parse_datetime(str(value))
+    except ValueError:  # matches the format, but no such day or time
+        return None
+    if expires_at is not None and timezone.is_naive(expires_at):
+        # a hand-edited file without an offset: the server's time zone (TIME_ZONE), whoever imports it
+        expires_at = timezone.make_aware(expires_at, timezone.get_default_timezone())
+    return expires_at
 
 
 def item_token(list_name, index):
@@ -163,6 +176,7 @@ def export_config():
     ]
     rules = [
         {**{f: getattr(r, f) for f in RULE_KEY_FIELDS + RULE_FIELDS},
+         "expires_at": r.expires_at.isoformat() if r.expires_at else None,
          "groups": sorted(g.name for g in r.groups.all()),
          "machines": sorted(m.serial_number for m in r.machines.all()),
          "tags": sorted(t.name for t in r.tags.all())}
@@ -345,6 +359,15 @@ class _Importer:
             if any(not item.get(f) for f in RULE_KEY_FIELDS):
                 self.errors.append(f"{label}: rule_type, identifier and policy are required")
                 continue
+            if item.get("expires_at"):
+                expires_at = parse_expiry(item["expires_at"])
+                if expires_at is None:
+                    self.errors.append(f"{label}: expires_at is not a date: {item['expires_at']!r}")
+                    continue
+                if expires_at <= timezone.now():
+                    self.warnings.append(f"{label}: expired on {expires_at:%Y-%m-%d %H:%M}, skipped")
+                    continue
+                item = {**item, "expires_at": expires_at}
             candidate = Rule(cel_expr=item.get("cel_expr", ""), **{f: item[f] for f in RULE_KEY_FIELDS})
             try:
                 candidate.clean_fields(exclude=RULE_FIELDS)

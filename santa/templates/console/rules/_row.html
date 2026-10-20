@@ -12,6 +12,7 @@
     {% for machine in rule.machines.all %}{% url 'console:machine' machine.pk as machine_url %}<a class="chip small mac" href="{{ machine_url }}" hx-get="{{ machine_url }}" hx-target="#drawer">{{ machine.hostname|default:machine.serial_number }}</a>{% endfor %}{% endif %}</td>
   <td data-col="tags">{% for tag in rule.tags.all %}<span class="tag">{{ tag.name }}</span>{% endfor %}</td>
   <td data-col="created" class="nowrap">{{ rule.created_at|date:"d.m.Y H:i" }}{% if rule.created_by %}<small class="muted">{{ rule.created_by.get_full_name|default:rule.created_by.get_username }}</small>{% endif %}</td>
+  <td data-col="expires" class="nowrap">{% if rule.expires_at %}{% if rule.is_expired %}<span class="badge bad" title="{% translate 'Removed from the Macs, deleted soon' %}">{% translate "expired" %}</span>{% else %}{{ rule.expires_at|date:"d.m.Y H:i" }}{% endif %}{% else %}<span class="muted">–</span>{% endif %}</td>
   <td data-col="origin">{% if rule.release_source %}{% url 'console:source' rule.release_source_id as source_url %}<a href="{{ source_url }}" hx-get="{{ source_url }}" hx-target="#drawer">{{ rule.release_source.name }}</a>{% else %}<span class="muted">{% translate "manual" %}</span>{% endif %}</td>
   <td data-col="enabled"{% if perms.santa.change_rule %} class="toggle"{% endif %}>{% if perms.santa.change_rule %}
     <button type="button" class="switch{% if rule.is_enabled %} on{% endif %}" role="switch" aria-checked="{{ rule.is_enabled|yesno:'true,false' }}"

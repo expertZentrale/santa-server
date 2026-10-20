@@ -188,7 +188,7 @@ class ConsoleRulesTestCase(ConsoleBase):
         Rule.objects.create(rule_type=RuleType.SIGNINGID, identifier=long_id, is_global=True, description="teams")
         response = self.client.get(reverse("console:rules"))
         self.assertContains(response, '<span class="muted">UBF8T346G9:</span>' + long_id.split(":")[1])
-        self.assertContains(response, 'data-table="rules" data-optional="comment created"')
+        self.assertContains(response, 'data-table="rules" data-optional="comment created expires"')
         self.assertContains(response, '<th data-col="identifier"')
         self.assertContains(response, '<td data-col="created"')
 

@@ -141,6 +141,11 @@ def preflight(request, group, machine_id, data):
 
     for attr, value in fields.items():
         setattr(machine, attr, value)
+    if machine.override_expired():
+        # its time is up: the mode of the group again
+        logger.info("Machine %s: mode %s ended, the group's again", machine_id, machine.client_mode_override)
+        machine.client_mode_override = ""
+        machine.client_mode_override_until = None
     machine.pending_sync = None
     machine.sync_in_clean_mode = clean_reason is not None
     if clean_reason:
@@ -148,10 +153,12 @@ def preflight(request, group, machine_id, data):
         logger.info("Machine %s: clean sync (%s)", machine_id, clean_reason)
     machine.save()
 
+    # the Mac's own mode, while it lasts
+    client_mode = machine.effective_client_mode(group)
     # a group based on another one: the settings of the parent, except the overridden ones
     group = group.effective()
     response = {
-        "client_mode": group.client_mode,
+        "client_mode": client_mode,
         "batch_size": group.batch_size,
         "full_sync_interval": group.full_sync_interval,
         "allowed_path_regex": group.allowed_path_regex_for_santa() or NON_MATCHING_REGEX,

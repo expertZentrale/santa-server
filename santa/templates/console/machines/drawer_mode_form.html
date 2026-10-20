@@ -1,0 +1,6 @@
+{% extends "console/_drawer.html" %}{% load i18n %}
+{% block drawer_title %}{% translate "Mode of this Mac" %}{% endblock %}
+{% block drawer_subtitle %}<span class="muted">{{ machine.hostname|default:machine.serial_number }}</span>{% endblock %}
+{% block drawer_body %}
+{% include "console/machines/_mode_form.html" with in_drawer=True %}
+{% endblock %}

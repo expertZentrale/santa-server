@@ -1,6 +1,6 @@
 import logging
 
-from .models import POLICY_PRECEDENCE, Rule, payload_hash
+from .models import POLICY_PRECEDENCE, Rule, payload_hash, unexpired
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,8 @@ LIST_FIELDS = (*KEY_FIELDS, "description", "created_at")
 
 
 def _scoped_querysets(machine):
-    enabled = Rule.objects.filter(is_enabled=True)
+    # an expired rule is no longer sent before the clean up deletes it
+    enabled = Rule.objects.filter(unexpired(), is_enabled=True)
     group = machine.group
     scoped_querysets = [
         (GLOBAL, enabled.filter(is_global=True)),

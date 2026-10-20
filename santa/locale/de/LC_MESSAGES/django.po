@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: santa-server\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-16 15:36+0200\n"
+"POT-Creation-Date: 2026-10-20 10:58+0200\n"
 "Language: de\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -59,7 +59,8 @@ msgstr "ist nicht %(values)s"
 msgid "from %(date)s"
 msgstr "ab %(date)s"
 
-#: santa/console/filters.py:225
+#: santa/console/filters.py:225 santa/templates/console/machines/_rows.html:11
+#: santa/templates/console/machines/_summary.html:20
 #, python-format
 msgid "until %(date)s"
 msgstr "bis %(date)s"
@@ -72,123 +73,123 @@ msgstr "beliebiger Zeitraum"
 msgid "all"
 msgstr "alle"
 
-#: santa/console/forms.py:53
+#: santa/console/forms.py:55
 msgid "all versions of this app from this developer"
 msgstr "alle Versionen dieser App von diesem Entwickler"
 
-#: santa/console/forms.py:54
+#: santa/console/forms.py:56
 msgid "exactly this file, for unsigned tools"
 msgstr "genau diese Datei, für unsignierte Tools"
 
-#: santa/console/forms.py:55
+#: santa/console/forms.py:57
 msgid "this code signature of the file"
 msgstr "diese Codesignatur der Datei"
 
-#: santa/console/forms.py:56
+#: santa/console/forms.py:58
 msgid "everything signed with this certificate"
 msgstr "alles, was mit diesem Zertifikat signiert ist"
 
-#: santa/console/forms.py:57
+#: santa/console/forms.py:59
 msgid "everything from this developer"
 msgstr "alles von diesem Entwickler"
 
-#: santa/console/forms.py:59 santa/console/forms.py:154
-#: santa/console/forms.py:846 santa/models.py:47 santa/models.py:425
+#: santa/console/forms.py:61 santa/console/forms.py:211
+#: santa/console/forms.py:943 santa/models.py:47 santa/models.py:450
 msgid "Allow"
 msgstr "Erlauben"
 
-#: santa/console/forms.py:59 santa/models.py:426
+#: santa/console/forms.py:61 santa/models.py:451
 msgid "Allow compiler"
 msgstr "Compiler erlauben"
 
-#: santa/console/forms.py:63 santa/console/forms.py:155 santa/models.py:48
-#: santa/models.py:427
+#: santa/console/forms.py:65 santa/console/forms.py:212 santa/models.py:48
+#: santa/models.py:452
 msgid "Block"
 msgstr "Blockieren"
 
-#: santa/console/forms.py:63 santa/models.py:428
+#: santa/console/forms.py:65 santa/models.py:453
 msgid "Block silently"
 msgstr "Still blockieren"
 
-#: santa/console/forms.py:67 santa/console/forms.py:430
-#: santa/console/forms.py:639 santa/console/forms.py:936
-#: santa/console/forms.py:1549 santa/console/views_file_access.py:69
+#: santa/console/forms.py:69 santa/console/forms.py:519
+#: santa/console/forms.py:732 santa/console/forms.py:1033
+#: santa/console/forms.py:1683 santa/console/views_file_access.py:69
 #: santa/templates/console/file_access/list.html:11
 msgid "Rule type"
 msgstr "Regeltyp"
 
-#: santa/console/forms.py:67 santa/console/forms.py:937
-#: santa/console/views_rules.py:221
+#: santa/console/forms.py:69 santa/console/forms.py:1034
+#: santa/console/views_rules.py:227
 #: santa/templates/console/administration/_config_preview.html:15
 #: santa/templates/console/machines/detail.html:36
 #: santa/templates/console/rules/_package_rule.html:8
-#: santa/templates/console/rules/_rows.html:26
+#: santa/templates/console/rules/_rows.html:33
 msgid "Identifier"
 msgstr "Kennung"
 
-#: santa/console/forms.py:67 santa/console/forms.py:431
-#: santa/console/forms.py:640 santa/console/forms.py:744
-#: santa/console/forms.py:946 santa/console/forms.py:969
-#: santa/console/views_rules.py:153 santa/console/views_rules.py:221
+#: santa/console/forms.py:69 santa/console/forms.py:520
+#: santa/console/forms.py:733 santa/console/forms.py:841
+#: santa/console/forms.py:1043 santa/console/forms.py:1067
+#: santa/console/views_rules.py:157 santa/console/views_rules.py:227
 #: santa/templates/console/machines/detail.html:36
 #: santa/templates/console/rules/_form.html:12
 #: santa/templates/console/rules/_package_rule.html:9
-#: santa/templates/console/rules/_rows.html:14
-#: santa/templates/console/rules/_rows.html:26
+#: santa/templates/console/rules/_rows.html:15
+#: santa/templates/console/rules/_rows.html:33
 msgid "Policy"
 msgstr "Richtlinie"
 
-#: santa/console/forms.py:67 santa/console/forms.py:440
-#: santa/console/views_rules.py:222 santa/templates/console/rules/_rows.html:26
+#: santa/console/forms.py:69 santa/console/forms.py:529
+#: santa/console/views_rules.py:228 santa/templates/console/rules/_rows.html:33
 #: santa/templates/console/sources/_detail.html:15
 msgid "Comment"
 msgstr "Kommentar"
 
-#: santa/console/forms.py:68 santa/console/forms.py:88
-#: santa/console/views_admin.py:63 santa/console/views_admin.py:77
-#: santa/console/views_rules.py:221
+#: santa/console/forms.py:70 santa/console/forms.py:90
+#: santa/console/views_admin.py:65 santa/console/views_admin.py:79
+#: santa/console/views_rules.py:227
 #: santa/templates/console/administration/tag_form.html:5
 #: santa/templates/console/administration/tags.html:2
 #: santa/templates/console/machines/detail.html:37
-#: santa/templates/console/rules/_rows.html:27
+#: santa/templates/console/rules/_rows.html:34
 msgid "Tags"
 msgstr "Tags"
 
-#: santa/console/forms.py:68 santa/console/forms.py:435
-#: santa/console/forms.py:438 santa/console/forms.py:461
-#: santa/console/forms.py:514 santa/console/forms.py:644
-#: santa/console/forms.py:646 santa/console/forms.py:747
-#: santa/console/forms.py:950 santa/console/forms.py:952
-#: santa/console/forms.py:978 santa/console/forms.py:1554
-#: santa/console/views_admin.py:76 santa/console/views_admin.py:421
+#: santa/console/forms.py:70 santa/console/forms.py:524
+#: santa/console/forms.py:527 santa/console/forms.py:550
+#: santa/console/forms.py:603 santa/console/forms.py:737
+#: santa/console/forms.py:739 santa/console/forms.py:844
+#: santa/console/forms.py:1047 santa/console/forms.py:1049
+#: santa/console/forms.py:1076 santa/console/forms.py:1688
+#: santa/console/views_admin.py:78 santa/console/views_admin.py:433
 #: santa/templates/console/base.html:48
 #: santa/templates/console/groups/form.html:5
 #: santa/templates/console/groups/list.html:2
 #: santa/templates/console/groups/list.html:5
-#: santa/templates/console/rules/_rows.html:16
 #: santa/templates/console/rules/_rows.html:17
+#: santa/templates/console/rules/_rows.html:18
 msgid "Groups"
 msgstr "Gruppen"
 
-#: santa/console/forms.py:68
+#: santa/console/forms.py:70
 msgid "Custom message"
 msgstr "Eigene Meldung"
 
-#: santa/console/forms.py:68
+#: santa/console/forms.py:70
 msgid "Custom URL"
 msgstr "Eigene URL"
 
-#: santa/console/forms.py:69 santa/console/forms.py:195
-#: santa/console/forms.py:433 santa/models.py:429 santa/models.py:545
-#: santa/models.py:721
+#: santa/console/forms.py:71 santa/console/forms.py:252
+#: santa/console/forms.py:522 santa/models.py:454 santa/models.py:571
+#: santa/models.py:747
 msgid "CEL expression"
 msgstr "CEL-Ausdruck"
 
-#: santa/console/forms.py:90
+#: santa/console/forms.py:92
 msgid "Add a tag, Enter creates a new one"
 msgstr "Tag hinzufügen, Enter legt einen neuen an"
 
-#: santa/console/forms.py:91 santa/templates/console/notifications/_item.html:9
+#: santa/console/forms.py:93 santa/templates/console/notifications/_item.html:9
 #: santa/templates/console/widgets/identifiers.html:7
 #: santa/templates/console/widgets/identifiers.html:16
 #: santa/templates/console/widgets/patterns.html:5
@@ -197,69 +198,101 @@ msgstr "Tag hinzufügen, Enter legt einen neuen an"
 msgid "Remove"
 msgstr "Entfernen"
 
-#: santa/console/forms.py:92 santa/templates/console/administration/tags.html:5
+#: santa/console/forms.py:94 santa/templates/console/administration/tags.html:5
 msgid "Only labels to find the rules, no effect on the Macs."
 msgstr "Nur Markierungen, um die Regeln zu finden, ohne Wirkung auf die Macs."
 
-#: santa/console/forms.py:93
+#: santa/console/forms.py:95
 msgid "New tags"
 msgstr "Neue Tags"
 
-#: santa/console/forms.py:94
+#: santa/console/forms.py:96
 msgid "comma separated"
 msgstr "durch Komma getrennt"
 
-#: santa/console/forms.py:105
+#: santa/console/forms.py:131 santa/templates/console/rules/_rows.html:26
+msgid "Date"
+msgstr "Datum"
+
+#: santa/console/forms.py:139
+msgid "For 1 hour"
+msgstr "1 Stunde"
+
+#: santa/console/forms.py:139 santa/templates/console/rules/_rows.html:24
+msgid "For 1 day"
+msgstr "1 Tag"
+
+#: santa/console/forms.py:139 santa/templates/console/rules/_rows.html:24
+msgid "For 7 days"
+msgstr "7 Tage"
+
+#: santa/console/forms.py:140 santa/templates/console/rules/_rows.html:25
+msgid "For 30 days"
+msgstr "30 Tage"
+
+#: santa/console/forms.py:140 santa/templates/console/rules/_rows.html:25
+msgid "Until a date"
+msgstr "Bis zu einem Datum"
+
+#: santa/console/forms.py:151
+msgid "Enter the date."
+msgstr "Geben Sie das Datum ein."
+
+#: santa/console/forms.py:153
+msgid "The date must be in the future."
+msgstr "Das Datum muss in der Zukunft liegen."
+
+#: santa/console/forms.py:162
 msgid "serial numbers or hostnames"
 msgstr "Seriennummern oder Hostnamen"
 
-#: santa/console/forms.py:126
+#: santa/console/forms.py:183
 #, python-format
 msgid "Unknown Mac: %(names)s"
 msgstr "Unbekannter Mac: %(names)s"
 
-#: santa/console/forms.py:143
+#: santa/console/forms.py:200
 msgid "TEAMID:bundle.id of the binary (cached)"
 msgstr "TEAMID:bundle.id des Binarys (zwischengespeichert)"
 
-#: santa/console/forms.py:144
+#: santa/console/forms.py:201
 msgid "Team ID of the binary (cached)"
 msgstr "Team ID des Binarys (zwischengespeichert)"
 
-#: santa/console/forms.py:145
+#: santa/console/forms.py:202
 msgid "Signing time, as timestamp (cached)"
 msgstr "Signaturzeit als Zeitstempel (zwischengespeichert)"
 
-#: santa/console/forms.py:146
+#: santa/console/forms.py:203
 msgid "Signing time from a trusted time stamp (cached)"
 msgstr ""
 "Signaturzeit aus einem vertrauenswürdigen Zeitstempel (zwischengespeichert)"
 
-#: santa/console/forms.py:147
+#: santa/console/forms.py:204
 msgid "Part of macOS (cached)"
 msgstr "Teil von macOS (zwischengespeichert)"
 
-#: santa/console/forms.py:148
+#: santa/console/forms.py:205
 msgid "Path of the binary (not cached, slower)"
 msgstr "Pfad des Binarys (nicht zwischengespeichert, langsamer)"
 
-#: santa/console/forms.py:149
+#: santa/console/forms.py:206
 msgid "Arguments, a list (not cached, slower)"
 msgstr "Argumente, eine Liste (nicht zwischengespeichert, langsamer)"
 
-#: santa/console/forms.py:150
+#: santa/console/forms.py:207
 msgid "Environment variables, a map (not cached, slower)"
 msgstr "Umgebungsvariablen, eine Map (nicht zwischengespeichert, langsamer)"
 
-#: santa/console/forms.py:151
+#: santa/console/forms.py:208
 msgid "Effective user ID (not cached, slower)"
 msgstr "Effektive Benutzer-ID (nicht zwischengespeichert, langsamer)"
 
-#: santa/console/forms.py:152
+#: santa/console/forms.py:209
 msgid "Working directory (not cached, slower)"
 msgstr "Arbeitsverzeichnis (nicht zwischengespeichert, langsamer)"
 
-#: santa/console/forms.py:153
+#: santa/console/forms.py:210
 msgid ""
 "Parent processes, each with path, signing_id, team_id, cdhash, args (not "
 "cached)"
@@ -267,51 +300,51 @@ msgstr ""
 "Elternprozesse, jeweils mit path, signing_id, team_id, cdhash, args (nicht "
 "zwischengespeichert)"
 
-#: santa/console/forms.py:156
+#: santa/console/forms.py:213
 msgid "String starts with"
 msgstr "Text beginnt mit"
 
-#: santa/console/forms.py:157
+#: santa/console/forms.py:214
 msgid "String ends with"
 msgstr "Text endet mit"
 
-#: santa/console/forms.py:158
+#: santa/console/forms.py:215
 msgid "String contains"
 msgstr "Text enthält"
 
-#: santa/console/forms.py:159
+#: santa/console/forms.py:216
 msgid "Regular expression (RE2)"
 msgstr "Regulärer Ausdruck (RE2)"
 
-#: santa/console/forms.py:160
+#: santa/console/forms.py:217
 msgid "Length of a string or list"
 msgstr "Länge eines Texts oder einer Liste"
 
-#: santa/console/forms.py:161
+#: santa/console/forms.py:218
 msgid "Any element of a list matches"
 msgstr "Ein Element der Liste passt"
 
-#: santa/console/forms.py:162
+#: santa/console/forms.py:219
 msgid "Every element of a list matches"
 msgstr "Jedes Element der Liste passt"
 
-#: santa/console/forms.py:163
+#: santa/console/forms.py:220
 msgid "Time, e.g. timestamp(\"2025-01-01T00:00:00Z\")"
 msgstr "Zeitpunkt, z. B. timestamp(\"2025-01-01T00:00:00Z\")"
 
-#: santa/console/forms.py:164
+#: santa/console/forms.py:221
 msgid "Duration, e.g. duration(\"24h\")"
 msgstr "Dauer, z. B. duration(\"24h\")"
 
-#: santa/console/forms.py:165
+#: santa/console/forms.py:222
 msgid "Value in a list"
 msgstr "Wert in einer Liste"
 
-#: santa/console/forms.py:176
+#: santa/console/forms.py:233
 msgid "Only signing IDs starting with"
 msgstr "Nur Signing IDs, die beginnen mit"
 
-#: santa/console/forms.py:178
+#: santa/console/forms.py:235
 msgid ""
 "One bundle ID prefix per line. Writes the CEL expression: the binaries of "
 "this team whose signing ID starts with one of them are allowed, the others "
@@ -323,20 +356,20 @@ msgstr ""
 "blockiert, auch im Monitor-Modus. Regeln für eine Signing ID oder ein Binary "
 "gehen weiterhin vor."
 
-#: santa/console/forms.py:188
+#: santa/console/forms.py:245
 #, python-format
 msgid "Only letters, digits, dots, hyphens and underscores: %(prefixes)s"
 msgstr "Nur Buchstaben, Ziffern, Punkte, Binde- und Unterstriche: %(prefixes)s"
 
-#: santa/console/forms.py:219 santa/console/forms.py:268
+#: santa/console/forms.py:276 santa/console/forms.py:327
 msgid "Clear the CEL expression or the prefixes."
 msgstr "Leeren Sie den CEL-Ausdruck oder die Präfixe."
 
-#: santa/console/forms.py:221 santa/models.py:636 santa/models.py:761
+#: santa/console/forms.py:278 santa/models.py:662 santa/models.py:792
 msgid "Required for the CEL policy."
 msgstr "Für die CEL-Richtlinie erforderlich."
 
-#: santa/console/forms.py:228 santa/console/views_admin.py:75
+#: santa/console/forms.py:285 santa/console/views_admin.py:77
 #: santa/templates/console/base.html:47
 #: santa/templates/console/events/_rows.html:25
 #: santa/templates/console/groups/_form.html:4
@@ -348,90 +381,145 @@ msgstr "Für die CEL-Richtlinie erforderlich."
 msgid "Macs"
 msgstr "Macs"
 
-#: santa/console/forms.py:245 santa/console/forms.py:388
-#: santa/console/forms.py:746 santa/console/forms.py:977
+#: santa/console/forms.py:287 santa/console/forms.py:345
+msgid "Never"
+msgstr "Nie"
+
+#: santa/console/forms.py:287 santa/console/views_rules.py:166
+#: santa/templates/console/rules/_rows.html:34
+msgid "Expires"
+msgstr "Läuft ab"
+
+#: santa/console/forms.py:288
+msgid "Then the rule is removed from the Macs and deleted."
+msgstr "Danach wird die Regel von den Macs entfernt und gelöscht."
+
+#: santa/console/forms.py:304 santa/console/forms.py:477
+#: santa/console/forms.py:843 santa/console/forms.py:1075
 msgid "All Macs (global)"
 msgstr "Alle Macs (global)"
 
-#: santa/console/forms.py:246 santa/console/forms.py:389
-#: santa/console/forms.py:1548 santa/console/views_rules.py:160
-#: santa/console/views_rules.py:222
+#: santa/console/forms.py:305 santa/console/forms.py:478
+#: santa/console/forms.py:1682 santa/console/views_rules.py:164
+#: santa/console/views_rules.py:228
 #: santa/templates/console/machines/detail.html:37
 #: santa/templates/console/rules/_package_rule.html:12
-#: santa/templates/console/rules/_row.html:18
-#: santa/templates/console/rules/_rows.html:27
+#: santa/templates/console/rules/_row.html:19
+#: santa/templates/console/rules/_rows.html:34
 msgid "Enabled"
 msgstr "Aktiv"
 
-#: santa/console/forms.py:259
+#: santa/console/forms.py:318
 msgid "Choose a scope: global, some groups or some Macs."
 msgstr "Geltungsbereich wählen: global, einige Gruppen oder einige Macs."
 
-#: santa/console/forms.py:275 santa/templates/console/rules/_rows.html:8
+#: santa/console/forms.py:334 santa/templates/console/rules/_rows.html:8
 msgid "Enable / approve"
 msgstr "Aktivieren / freigeben"
 
-#: santa/console/forms.py:275 santa/templates/console/rules/_row.html:21
+#: santa/console/forms.py:334 santa/templates/console/rules/_row.html:22
 #: santa/templates/console/rules/_rows.html:8
 #: santa/templates/console/sources/_versions.html:24
 msgid "Disable"
 msgstr "Deaktivieren"
 
-#: santa/console/forms.py:275 santa/templates/console/rules/_rows.html:9
+#: santa/console/forms.py:334 santa/templates/console/rules/_rows.html:9
 msgid "Add tag"
 msgstr "Tag hinzufügen"
 
-#: santa/console/forms.py:276 santa/templates/console/rules/_rows.html:9
+#: santa/console/forms.py:335 santa/templates/console/rules/_rows.html:9
 msgid "Remove tag"
 msgstr "Tag entfernen"
 
-#: santa/console/forms.py:276 santa/templates/console/rules/_rows.html:10
+#: santa/console/forms.py:335 santa/templates/console/rules/_rows.html:10
 msgid "Set policy"
 msgstr "Richtlinie setzen"
 
-#: santa/console/forms.py:276 santa/templates/console/rules/_rows.html:11
+#: santa/console/forms.py:335 santa/templates/console/rules/_rows.html:11
 msgid "Add groups"
 msgstr "Gruppen hinzufügen"
 
-#: santa/console/forms.py:277 santa/console/views_admin.py:85
+#: santa/console/forms.py:336 santa/templates/console/rules/_rows.html:12
+msgid "Set expiry"
+msgstr "Ablauf setzen"
+
+#: santa/console/forms.py:336 santa/templates/console/rules/_rows.html:12
+msgid "Remove expiry"
+msgstr "Ablauf entfernen"
+
+#: santa/console/forms.py:336 santa/console/views_admin.py:87
 #: santa/templates/console/administration/_role_form.html:27
 #: santa/templates/console/administration/_sign_in_group_form.html:19
 #: santa/templates/console/administration/_tag_form.html:10
-#: santa/templates/console/administration/_user_form.html:34
+#: santa/templates/console/administration/_user_form.html:40
 #: santa/templates/console/administration/roles.html:17
 #: santa/templates/console/administration/sign_in_groups.html:18
 #: santa/templates/console/administration/tags.html:18
 #: santa/templates/console/file_access/_form.html:45
 #: santa/templates/console/file_access/list.html:25
 #: santa/templates/console/groups/_form.html:54
-#: santa/templates/console/rules/_form.html:37
-#: santa/templates/console/rules/_rows.html:11
+#: santa/templates/console/rules/_form.html:38
+#: santa/templates/console/rules/_rows.html:12
 #: santa/templates/console/sources/_form.html:59
 #: santa/templates/console/widgets/_filter_bar.html:20
 msgid "Delete"
 msgstr "Löschen"
 
-#: santa/console/forms.py:291
+#: santa/console/forms.py:351
+msgid "Choose how long."
+msgstr "Wählen Sie, wie lange."
+
+#: santa/console/forms.py:353
 msgid "Choose a policy."
 msgstr "Wählen Sie eine Richtlinie."
 
-#: santa/console/forms.py:293
+#: santa/console/forms.py:355
 msgid "Enter a tag."
 msgstr "Bitte einen Tag eingeben."
 
-#: santa/console/forms.py:295 santa/console/forms.py:475
-#: santa/console/forms.py:728 santa/console/forms.py:1037
+#: santa/console/forms.py:357 santa/console/forms.py:564
+#: santa/console/forms.py:825 santa/console/forms.py:1135
 msgid "Choose at least one group."
 msgstr "Bitte mindestens eine Gruppe wählen."
 
-#: santa/console/forms.py:306 santa/console/forms.py:940
-#: santa/console/forms.py:1589 santa/templates/console/events/_rows.html:14
+#: santa/console/forms.py:363
+msgid "Until it is reset"
+msgstr "Bis es zurückgesetzt wird"
+
+#: santa/console/forms.py:363 santa/templates/console/rules/_rows.html:23
+msgid "How long"
+msgstr "Wie lange"
+
+#: santa/console/forms.py:368
+#: santa/templates/console/machines/drawer_mode_form.html:2
+#: santa/templates/console/machines/mode_form.html:6
+msgid "Mode of this Mac"
+msgstr "Modus dieses Macs"
+
+#: santa/console/forms.py:374
+#, python-brace-format
+msgid "As the group ({mode})"
+msgstr "Wie die Gruppe ({mode})"
+
+#: santa/console/forms.py:376
+msgid ""
+"Sent to the Mac at its next sync. The configuration profile stays as it is."
+msgstr ""
+"Wird dem Mac bei seiner nächsten Synchronisierung geschickt. Das "
+"Konfigurationsprofil bleibt, wie es ist."
+
+#: santa/console/forms.py:377
+msgid "Then the Mac gets the mode of its group again."
+msgstr "Danach bekommt der Mac wieder den Modus seiner Gruppe."
+
+#: santa/console/forms.py:395 santa/console/forms.py:1037
+#: santa/console/forms.py:1723 santa/templates/console/events/_rows.html:14
 #: santa/templates/console/machines/_activity.html:6
 #: santa/templates/console/requests/_detail.html:18
 msgid "File"
 msgstr "Datei"
 
-#: santa/console/forms.py:307
+#: santa/console/forms.py:396
 msgid ""
 "Mach-O binary, zip / tar archive, installer package (.pkg) or disk image "
 "(.dmg). The file is only hashed, it is not stored."
@@ -439,88 +527,88 @@ msgstr ""
 "Mach-O-Binary, Zip-/Tar-Archiv, Installationspaket (.pkg) oder Disk-Image "
 "(.dmg). Die Datei wird nur gehasht, nicht gespeichert."
 
-#: santa/console/forms.py:309 santa/console/forms.py:944
+#: santa/console/forms.py:398 santa/console/forms.py:1041
 msgid "Binary pattern"
 msgstr "Binary-Muster"
 
-#: santa/console/forms.py:310 santa/console/forms.py:945
+#: santa/console/forms.py:399 santa/console/forms.py:1042
 msgid "Archives only: glob of the files to use, e.g. */bin/colima"
 msgstr "Nur Archive: Glob der zu verwendenden Dateien, z. B. */bin/colima"
 
-#: santa/console/forms.py:369 santa/console/forms.py:1117
-#: santa/console/forms.py:1472 santa/console/forms.py:1485
-#: santa/console/forms.py:1530 santa/console/forms.py:1548
+#: santa/console/forms.py:458 santa/console/forms.py:1215
+#: santa/console/forms.py:1606 santa/console/forms.py:1619
+#: santa/console/forms.py:1664 santa/console/forms.py:1682
 #: santa/templates/console/administration/_config_preview.html:15
 #: santa/templates/console/administration/_config_preview.html:19
 #: santa/templates/console/administration/users.html:9
 msgid "Name"
 msgstr "Name"
 
-#: santa/console/forms.py:369
+#: santa/console/forms.py:458
 msgid "Version patterns"
 msgstr "Versionsmuster"
 
-#: santa/console/forms.py:370
+#: santa/console/forms.py:459
 msgid "Asset patterns"
 msgstr "Asset-Muster"
 
-#: santa/console/forms.py:370
+#: santa/console/forms.py:459
 msgid "Binary patterns"
 msgstr "Binary-Muster"
 
-#: santa/console/forms.py:371
+#: santa/console/forms.py:460
 msgid "Minimum macOS"
 msgstr "Mindest-macOS"
 
-#: santa/console/forms.py:371
+#: santa/console/forms.py:460
 msgid "Take the nearest bottle"
 msgstr "Nächstliegendes Bottle nehmen"
 
-#: santa/console/forms.py:372
+#: santa/console/forms.py:461
 msgid "Include prereleases"
 msgstr "Vorabversionen einbeziehen"
 
-#: santa/console/forms.py:372 santa/console/forms.py:743
-#: santa/console/forms.py:967
+#: santa/console/forms.py:461 santa/console/forms.py:840
+#: santa/console/forms.py:1065
 msgid "Preferred rule type"
 msgstr "Bevorzugter Regeltyp"
 
-#: santa/console/forms.py:373 santa/console/forms.py:971
+#: santa/console/forms.py:462 santa/console/forms.py:1069
 msgid "Auto approve"
 msgstr "Automatisch freigeben"
 
-#: santa/console/forms.py:373
+#: santa/console/forms.py:462
 msgid "Auto approve delay (days)"
 msgstr "Verzögerung der automatischen Freigabe (Tage)"
 
-#: santa/console/forms.py:374 santa/console/forms.py:589
+#: santa/console/forms.py:463 santa/console/forms.py:678
 #: santa/templates/console/administration/_config_preview.html:37
 #: santa/templates/console/administration/_config_preview.html:39
 msgid "Keep"
 msgstr "Behalten"
 
-#: santa/console/forms.py:374 santa/console/forms.py:594
+#: santa/console/forms.py:463 santa/console/forms.py:683
 msgid "Unit"
 msgstr "Einheit"
 
-#: santa/console/forms.py:375 santa/console/forms.py:751
-#: santa/console/forms.py:975
+#: santa/console/forms.py:464 santa/console/forms.py:848
+#: santa/console/forms.py:1073
 msgid "Also allow the older kept versions"
 msgstr "Auch die älteren behaltenen Versionen erlauben"
 
-#: santa/console/forms.py:376 santa/console/forms.py:752
-#: santa/console/forms.py:976
+#: santa/console/forms.py:465 santa/console/forms.py:849
+#: santa/console/forms.py:1074
 msgid "Allow the dependencies"
 msgstr "Abhängigkeiten erlauben"
 
-#: santa/console/forms.py:382 santa/console/forms.py:960
+#: santa/console/forms.py:471 santa/console/forms.py:1058
 #: santa/templates/console/requests/_detail.html:8
 #: santa/templates/request/new.html:36
 msgid "Packages"
 msgstr "Pakete"
 
-#: santa/console/forms.py:383 santa/console/forms.py:848
-#: santa/console/forms.py:958 santa/console/views_sources.py:97
+#: santa/console/forms.py:472 santa/console/forms.py:945
+#: santa/console/forms.py:1056 santa/console/views_sources.py:105
 #: santa/templates/console/events/_packages_form.html:31
 #: santa/templates/console/sources/_detail.html:16
 #: santa/templates/console/sources/_rows.html:2
@@ -528,13 +616,13 @@ msgstr "Pakete"
 msgid "Catalog"
 msgstr "Katalog"
 
-#: santa/console/forms.py:435
+#: santa/console/forms.py:524
 msgid "The Macs of these events"
 msgstr "Die Macs dieser Ereignisse"
 
-#: santa/console/forms.py:436 santa/console/forms.py:462
-#: santa/console/forms.py:514 santa/console/forms.py:644
-#: santa/console/forms.py:950 santa/console/views_rules.py:215
+#: santa/console/forms.py:525 santa/console/forms.py:551
+#: santa/console/forms.py:603 santa/console/forms.py:737
+#: santa/console/forms.py:1047 santa/console/views_rules.py:221
 #: santa/templates/console/machines/detail.html:20
 #: santa/templates/console/machines/detail.html:51
 #: santa/templates/console/requests/_approve_event.html:13
@@ -547,124 +635,132 @@ msgstr "Die Macs dieser Ereignisse"
 msgid "All Macs"
 msgstr "Alle Macs"
 
-#: santa/console/forms.py:437 santa/console/forms.py:645
-#: santa/console/forms.py:951 santa/console/views_rules.py:154
-#: santa/console/views_rules.py:221
+#: santa/console/forms.py:526 santa/console/forms.py:738
+#: santa/console/forms.py:1048 santa/console/views_rules.py:158
+#: santa/console/views_rules.py:227
 #: santa/templates/console/file_access/_form.html:36
 #: santa/templates/console/file_access/list.html:11
 #: santa/templates/console/rules/_form.html:22
-#: santa/templates/console/rules/_rows.html:26
+#: santa/templates/console/rules/_rows.html:33
 #: santa/templates/console/sources/_detail.html:18
 #: santa/templates/console/sources/_form.html:42
 #: santa/templates/console/sources/_rows.html:2
 msgid "Scope"
 msgstr "Geltungsbereich"
 
-#: santa/console/forms.py:441
+#: santa/console/forms.py:530
 msgid "Empty: the name and path of each binary."
 msgstr "Leer: Name und Pfad jedes Binarys."
 
-#: santa/console/forms.py:442
+#: santa/console/forms.py:531
 #: santa/templates/console/events/_create_rules_form.html:12
 #: santa/templates/console/sources/_detail.html:23
 #: santa/templates/console/sources/_versions.html:8
 msgid "Binaries"
 msgstr "Binaries"
 
-#: santa/console/forms.py:456
+#: santa/console/forms.py:545
 msgid "Suggested per binary"
 msgstr "Vorschlag je Binary"
 
-#: santa/console/forms.py:461 santa/templates/console/machines/detail.html:17
+#: santa/console/forms.py:550 santa/templates/console/machines/detail.html:17
 #: santa/templates/console/machines/detail.html:46
 msgid "This Mac"
 msgstr "Dieser Mac"
 
-#: santa/console/forms.py:473
+#: santa/console/forms.py:562
 msgid "Choose at least one binary."
 msgstr "Bitte mindestens ein Binary wählen."
 
-#: santa/console/forms.py:482
+#: santa/console/forms.py:571
 #, python-format
 msgid "No Team ID, so no signing ID prefixes: %(binaries)s"
 msgstr "Keine Team ID, daher keine Signing-ID-Präfixe: %(binaries)s"
 
-#: santa/console/forms.py:515
+#: santa/console/forms.py:604
 msgid "Empty: the file name and the path of each executable."
 msgstr "Leer: Dateiname und Pfad jeder ausführbaren Datei."
 
-#: santa/console/forms.py:520
+#: santa/console/forms.py:609
 msgid "Blocked program"
 msgstr "Blockiertes Programm"
 
-#: santa/console/forms.py:522 santa/console/forms.py:551
-#: santa/console/forms.py:584
+#: santa/console/forms.py:611 santa/console/forms.py:640
+#: santa/console/forms.py:673
 msgid "Justification"
 msgstr "Begründung"
 
-#: santa/console/forms.py:522 santa/console/forms.py:584
+#: santa/console/forms.py:611 santa/console/forms.py:673
 msgid "Why do you need it?"
 msgstr "Wofür benötigen Sie es?"
 
-#: santa/console/forms.py:551
+#: santa/console/forms.py:640
 msgid "Why do you need them?"
 msgstr "Wofür benötigen Sie sie?"
 
-#: santa/console/forms.py:567
+#: santa/console/forms.py:656
 #, python-format
 msgid "%(identifier)s…: too long."
 msgstr "%(identifier)s…: zu lang."
 
-#: santa/console/forms.py:573
+#: santa/console/forms.py:662
 msgid "Add at least one package."
 msgstr "Bitte mindestens ein Paket hinzufügen."
 
-#: santa/console/forms.py:575
+#: santa/console/forms.py:664
 #, python-format
 msgid "At most %(max)s packages per request."
 msgstr "Höchstens %(max)s Pakete pro Anfrage."
 
-#: santa/console/forms.py:580
+#: santa/console/forms.py:669
 msgid "What do you need?"
 msgstr "Was benötigen Sie?"
 
-#: santa/console/forms.py:581 santa/templates/console/requests/_detail.html:7
+#: santa/console/forms.py:670 santa/templates/console/requests/_detail.html:7
 msgid "Link"
 msgstr "Link"
 
-#: santa/console/forms.py:582
+#: santa/console/forms.py:671
 msgid "Download or product page, optional"
 msgstr "Download- oder Produktseite, optional"
 
-#: santa/console/forms.py:632 santa/templates/console/machines/_actions.html:6
+#: santa/console/forms.py:709
+msgid ""
+"Then the rule is removed from the Macs and deleted. A rule that exists "
+"already keeps the later end; one without an end stays so."
+msgstr ""
+"Danach wird die Regel von den Macs entfernt und gelöscht. Eine schon "
+"vorhandene Regel behält das spätere Ende; eine ohne Ende bleibt so."
+
+#: santa/console/forms.py:725 santa/templates/console/machines/_actions.html:6
 #: santa/templates/console/rules/form.html:2
 #: santa/templates/console/rules/list.html:10
 msgid "New rule"
 msgstr "Neue Regel"
 
-#: santa/console/forms.py:632
+#: santa/console/forms.py:725
 msgid "Existing rule"
 msgstr "Bestehende Regel"
 
-#: santa/console/forms.py:633
+#: santa/console/forms.py:726
 msgid "Existing rule, with the scope below added"
 msgstr "Bestehende Regel, um den Geltungsbereich unten erweitert"
 
-#: santa/console/forms.py:634
+#: santa/console/forms.py:727
 msgid "Existing Team ID rule, with this signing ID and the scope below added"
 msgstr ""
 "Bestehende Team-ID-Regel, um diese Signing ID und den Geltungsbereich unten "
 "erweitert"
 
-#: santa/console/forms.py:635 santa/console/forms.py:932
+#: santa/console/forms.py:728 santa/console/forms.py:1029
 msgid "No rule"
 msgstr "Keine Regel"
 
-#: santa/console/forms.py:636 santa/console/forms.py:933
+#: santa/console/forms.py:729 santa/console/forms.py:1030
 msgid "Approve with"
 msgstr "Genehmigen mit"
 
-#: santa/console/forms.py:638 santa/console/forms.py:983
+#: santa/console/forms.py:731 santa/console/forms.py:1081
 #: santa/templates/console/file_access/_form.html:5
 #: santa/templates/console/file_access/list.html:11
 #: santa/templates/console/requests/_detail.html:11
@@ -674,25 +770,33 @@ msgstr "Genehmigen mit"
 msgid "Rule"
 msgstr "Regel"
 
-#: santa/console/forms.py:643
+#: santa/console/forms.py:736
 msgid "The Mac of the requester"
 msgstr "Der Mac des Antragstellers"
 
-#: santa/console/forms.py:648 santa/console/forms.py:753
-#: santa/console/forms.py:989 santa/templates/console/requests/_detail.html:10
+#: santa/console/forms.py:741 santa/console/forms.py:1051
+msgid "For good"
+msgstr "Dauerhaft"
+
+#: santa/console/forms.py:741 santa/console/forms.py:1051
+msgid "Allowed"
+msgstr "Erlaubt"
+
+#: santa/console/forms.py:742 santa/console/forms.py:850
+#: santa/console/forms.py:1087 santa/templates/console/requests/_detail.html:10
 msgid "Note"
 msgstr "Notiz"
 
-#: santa/console/forms.py:649 santa/console/forms.py:754
-#: santa/console/forms.py:990 santa/console/forms.py:1072
+#: santa/console/forms.py:743 santa/console/forms.py:851
+#: santa/console/forms.py:1088 santa/console/forms.py:1170
 msgid "Shown to the user"
 msgstr "Wird dem Benutzer angezeigt"
 
-#: santa/console/forms.py:697
+#: santa/console/forms.py:794
 msgid "Choose a rule."
 msgstr "Wählen Sie eine Regel."
 
-#: santa/console/forms.py:699
+#: santa/console/forms.py:796
 msgid ""
 "Choose a Team ID rule with “Only signing IDs starting with” that doesn't "
 "include this signing ID yet."
@@ -700,7 +804,7 @@ msgstr ""
 "Wählen Sie eine Team-ID-Regel mit „Nur Signing IDs, die beginnen mit“, die "
 "diese Signing ID noch nicht enthält."
 
-#: santa/console/forms.py:706
+#: santa/console/forms.py:803
 msgid ""
 "This rule doesn't allow the binary on these Macs yet: choose “with the scope "
 "below added” or another rule."
@@ -708,7 +812,7 @@ msgstr ""
 "Diese Regel erlaubt das Binary auf diesen Macs noch nicht: Wählen Sie „um "
 "den Geltungsbereich unten erweitert“ oder eine andere Regel."
 
-#: santa/console/forms.py:712
+#: santa/console/forms.py:809
 msgid ""
 "This Team ID rule doesn't include the signing ID of the binary: choose “with "
 "this signing ID and the scope below added” or another rule."
@@ -717,7 +821,7 @@ msgstr ""
 "„um diese Signing ID und den Geltungsbereich unten erweitert“ oder eine "
 "andere Regel."
 
-#: santa/console/forms.py:717
+#: santa/console/forms.py:814
 #, python-format
 msgid ""
 "This rule comes from the package rule %(source)s: change its scope there, or "
@@ -726,28 +830,28 @@ msgstr ""
 "Diese Regel stammt aus der Paketregel %(source)s: Ändern Sie dort den "
 "Geltungsbereich, oder geben Sie mit einer neuen Regel frei."
 
-#: santa/console/forms.py:722 santa/console/forms.py:726
+#: santa/console/forms.py:819 santa/console/forms.py:823
 msgid "This field is required."
 msgstr "Dieses Feld ist zwingend erforderlich."
 
-#: santa/console/forms.py:740 santa/console/forms.py:965
+#: santa/console/forms.py:837 santa/console/forms.py:1063
 msgid "Name of the new package rule"
 msgstr "Name der neuen Paketregel"
 
-#: santa/console/forms.py:741
+#: santa/console/forms.py:838
 msgid ""
 "One per catalog; with several catalogs the catalog is added to the name."
 msgstr ""
 "Eine pro Katalog; bei mehreren Katalogen wird der Katalog an den Namen "
 "angehängt."
 
-#: santa/console/forms.py:767
+#: santa/console/forms.py:864
 #, python-format
 msgid "Approve %(identifier)s"
 msgstr "%(identifier)s freigeben"
 
-#: santa/console/forms.py:768 santa/console/forms.py:858
-#: santa/console/forms.py:1004
+#: santa/console/forms.py:865 santa/console/forms.py:955
+#: santa/console/forms.py:1102
 #: santa/templates/console/events/_packages_form.html:36
 #: santa/templates/console/sources/drawer_form.html:4
 #: santa/templates/console/sources/form.html:2
@@ -756,14 +860,14 @@ msgstr "%(identifier)s freigeben"
 msgid "New package rule"
 msgstr "Neue Paketregel"
 
-#: santa/console/forms.py:769 santa/console/forms.py:1005
+#: santa/console/forms.py:866 santa/console/forms.py:1103
 #, python-format
 msgid "Add to %(name)s"
 msgstr "Zu %(name)s hinzufügen"
 
-#: santa/console/forms.py:774 santa/console/forms.py:862
-#: santa/console/forms.py:931 santa/console/forms.py:956
-#: santa/console/views_rules.py:222
+#: santa/console/forms.py:871 santa/console/forms.py:959
+#: santa/console/forms.py:1028 santa/console/forms.py:1054
+#: santa/console/views_rules.py:228
 #: santa/templates/console/events/_packages_form.html:34
 #: santa/templates/console/requests/_detail.html:12
 #: santa/templates/console/rules/_package_rule.html:2
@@ -771,67 +875,67 @@ msgstr "Zu %(name)s hinzufügen"
 msgid "Package rule"
 msgstr "Paketregel"
 
-#: santa/console/forms.py:799
+#: santa/console/forms.py:896
 msgid "Approve at least one package, or deny the request."
 msgstr "Bitte mindestens ein Paket freigeben oder die Anfrage ablehnen."
 
-#: santa/console/forms.py:803 santa/console/forms.py:1050
+#: santa/console/forms.py:900 santa/console/forms.py:1148
 msgid "Enter a name for the new package rule."
 msgstr "Bitte einen Namen für die neue Paketregel eingeben."
 
-#: santa/console/forms.py:806
+#: santa/console/forms.py:903
 #, python-format
 msgid "A package rule “%(name)s” exists already."
 msgstr "Eine Paketregel „%(name)s“ gibt es bereits."
 
-#: santa/console/forms.py:808 santa/console/forms.py:1053
+#: santa/console/forms.py:905 santa/console/forms.py:1151
 msgid "Choose at least one group for the new package rule, or all Macs."
 msgstr ""
 "Bitte mindestens eine Gruppe für die neue Paketregel wählen oder alle Macs."
 
-#: santa/console/forms.py:833
+#: santa/console/forms.py:930
 msgid "Mark the events as resolved once their binaries are allowed"
 msgstr "Ereignisse als erledigt markieren, sobald ihre Binaries erlaubt sind"
 
-#: santa/console/forms.py:850 santa/models.py:995
+#: santa/console/forms.py:947 santa/models.py:1035
 #: santa/templates/console/requests/_detail.html:41
 #: santa/templates/console/sources/_cleanup.html:6
 msgid "Package"
 msgstr "Paket"
 
-#: santa/console/forms.py:859 santa/console/forms.py:875
+#: santa/console/forms.py:956 santa/console/forms.py:972
 #, python-format
 msgid "Add to %(name)s (%(kind)s)"
 msgstr "Zu %(name)s hinzufügen (%(kind)s)"
 
-#: santa/console/forms.py:912
+#: santa/console/forms.py:1009
 msgid "Choose at least one package."
 msgstr "Wählen Sie mindestens ein Paket."
 
-#: santa/console/forms.py:915
+#: santa/console/forms.py:1012
 msgid "Enter the package."
 msgstr "Geben Sie das Paket ein."
 
-#: santa/console/forms.py:917
+#: santa/console/forms.py:1014
 #, python-format
 msgid "%(name)s is a package rule for %(kind)s."
 msgstr "%(name)s ist eine Paketregel für %(kind)s."
 
-#: santa/console/forms.py:931 santa/templates/console/rules/drawer_form.html:3
+#: santa/console/forms.py:1028 santa/templates/console/rules/drawer_form.html:3
 #: santa/templates/console/rules/form.html:6
 msgid "New execution rule"
 msgstr "Neue Ausführungsregel"
 
-#: santa/console/forms.py:932
+#: santa/console/forms.py:1029
 msgid "Existing execution rule"
 msgstr "Bestehende Ausführungsregel"
 
-#: santa/console/forms.py:939
+#: santa/console/forms.py:1036
 msgid "Or upload the app below: the server reads the identifier from it."
 msgstr ""
 "Oder laden Sie die App unten hoch: Der Server liest die Kennung daraus."
 
-#: santa/console/forms.py:941
+#: santa/console/forms.py:1038
 msgid ""
 "Mach-O binary, zip / tar archive, installer package (.pkg) or disk image "
 "(.dmg). Every executable in it gets a rule. The file is only hashed, it is "
@@ -841,11 +945,11 @@ msgstr ""
 "(.dmg). Jede ausführbare Datei darin erhält eine Regel. Die Datei wird nur "
 "gehasht, nicht gespeichert."
 
-#: santa/console/forms.py:949
+#: santa/console/forms.py:1046
 msgid "The Macs of the requester"
 msgstr "Die Macs der anfragenden Person"
 
-#: santa/console/forms.py:961
+#: santa/console/forms.py:1059
 msgid ""
 "GitHub: owner/repo · Homebrew: formula or cask name · URL: the full URL · "
 "npm: package name · VS Code: publisher.name · JetBrains: plugin ID"
@@ -854,143 +958,143 @@ msgstr ""
 "vollständige URL · npm: Paketname · VS Code: publisher.name · JetBrains: "
 "Plugin-ID"
 
-#: santa/console/forms.py:972
+#: santa/console/forms.py:1070
 msgid "Enable the rules of new releases automatically."
 msgstr "Die Regeln neuer Releases automatisch aktivieren."
 
-#: santa/console/forms.py:984
+#: santa/console/forms.py:1082
 msgid "Identifier of the rule you created for it"
 msgstr "Kennung der Regel, die Sie dafür angelegt haben"
 
-#: santa/console/forms.py:1030
+#: santa/console/forms.py:1128
 msgid "Enter the identifier, or upload the app."
 msgstr "Bitte die Kennung eingeben oder die App hochladen."
 
-#: santa/console/forms.py:1045 santa/models.py:611
+#: santa/console/forms.py:1143 santa/models.py:637
 msgid "Enter at least one identifier."
 msgstr "Bitte mindestens eine Kennung eingeben."
 
-#: santa/console/forms.py:1066
+#: santa/console/forms.py:1164
 msgid "No rule with this identifier."
 msgstr "Keine Regel mit dieser Kennung."
 
-#: santa/console/forms.py:1076
+#: santa/console/forms.py:1174
 #: santa/templates/console/notifications/page.html:10
 msgid "All"
 msgstr "Alle"
 
-#: santa/console/forms.py:1117 santa/console/forms.py:1530
-#: santa/console/forms.py:1548
+#: santa/console/forms.py:1215 santa/console/forms.py:1664
+#: santa/console/forms.py:1682
 #: santa/templates/console/administration/tags.html:9
 #: santa/templates/console/rules/_package_rule.html:10
 msgid "Description"
 msgstr "Beschreibung"
 
-#: santa/console/forms.py:1117 santa/console/forms.py:1143
+#: santa/console/forms.py:1215 santa/console/forms.py:1241
 msgid "Based on"
 msgstr "Basiert auf"
 
-#: santa/console/forms.py:1118
+#: santa/console/forms.py:1216
 msgid "Inherit rules"
 msgstr "Regeln erben"
 
-#: santa/console/forms.py:1118
+#: santa/console/forms.py:1216
 msgid "Inherit file access rules"
 msgstr "Dateizugriffsregeln erben"
 
-#: santa/console/forms.py:1119
+#: santa/console/forms.py:1217
 msgid "Client mode"
 msgstr "Client-Modus"
 
-#: santa/console/forms.py:1120
+#: santa/console/forms.py:1218
 msgid "Batch size"
 msgstr "Batch-Größe"
 
-#: santa/console/forms.py:1120
+#: santa/console/forms.py:1218
 msgid "Full sync interval"
 msgstr "Sync-Intervall"
 
-#: santa/console/forms.py:1121
+#: santa/console/forms.py:1219
 msgid "Allowed path regexes"
 msgstr "Erlaubte Pfad-Regexe"
 
-#: santa/console/forms.py:1121
+#: santa/console/forms.py:1219
 msgid "Blocked path regexes"
 msgstr "Blockierte Pfad-Regexe"
 
-#: santa/console/forms.py:1122
+#: santa/console/forms.py:1220
 msgid "Enable transitive rules"
 msgstr "Transitive Regeln aktivieren"
 
-#: santa/console/forms.py:1122
+#: santa/console/forms.py:1220
 msgid "Enable bundles"
 msgstr "Bundles aktivieren"
 
-#: santa/console/forms.py:1123
+#: santa/console/forms.py:1221
 msgid "Enable all event upload"
 msgstr "Alle Ereignisse hochladen"
 
-#: santa/console/forms.py:1124 santa/console/forms.py:1151
+#: santa/console/forms.py:1222 santa/console/forms.py:1249
 msgid "Removable media"
 msgstr "Wechseldatenträger"
 
-#: santa/console/forms.py:1124
+#: santa/console/forms.py:1222
 msgid "Remount flags"
 msgstr "Flags zum Neu-Einhängen"
 
-#: santa/console/forms.py:1125
+#: santa/console/forms.py:1223
 msgid "Encrypted removable media"
 msgstr "Verschlüsselte Wechseldatenträger"
 
-#: santa/console/forms.py:1126
+#: santa/console/forms.py:1224
 msgid "Remount flags of encrypted media"
 msgstr "Flags für verschlüsselte Datenträger"
 
-#: santa/console/forms.py:1127 santa/console/forms.py:1551
+#: santa/console/forms.py:1225 santa/console/forms.py:1685
 msgid "Block dialog URL"
 msgstr "URL im Blockierdialog"
 
-#: santa/console/forms.py:1128 santa/console/forms.py:1552
+#: santa/console/forms.py:1226 santa/console/forms.py:1686
 msgid "Block dialog button text"
 msgstr "Button-Text im Blockierdialog"
 
-#: santa/console/forms.py:1128
+#: santa/console/forms.py:1226
 msgid "Unknown block message"
 msgstr "Meldung für unbekannte Programme"
 
-#: santa/console/forms.py:1129
+#: santa/console/forms.py:1227
 msgid "Banned block message"
 msgstr "Meldung für blockierte Programme"
 
-#: santa/console/forms.py:1130
+#: santa/console/forms.py:1228
 msgid "Enable bad signature protection"
 msgstr "Schutz vor ungültigen Signaturen aktivieren"
 
-#: santa/console/forms.py:1131
+#: santa/console/forms.py:1229
 msgid "File access override"
 msgstr "Dateizugriff überschreiben"
 
-#: santa/console/forms.py:1132
+#: santa/console/forms.py:1230
 msgid "File access block message"
 msgstr "Blockiermeldung für Dateizugriff"
 
-#: santa/console/forms.py:1133
+#: santa/console/forms.py:1231
 msgid "Removable media mounted when Santa starts"
 msgstr "Beim Start von Santa eingehängte Datenträger"
 
-#: santa/console/forms.py:1134
+#: santa/console/forms.py:1232
 msgid "Company name"
 msgstr "Firmenname"
 
-#: santa/console/forms.py:1137
+#: santa/console/forms.py:1235
 msgid "Company logo"
 msgstr "Firmenlogo"
 
-#: santa/console/forms.py:1138
+#: santa/console/forms.py:1236
 msgid "Company logo in dark mode"
 msgstr "Firmenlogo im dunklen Modus"
 
-#: santa/console/forms.py:1142 santa/console/views_events.py:152
+#: santa/console/forms.py:1240 santa/console/views_events.py:152
 #: santa/console/views_file_access.py:68 santa/console/views_groups.py:217
 #: santa/templates/console/events/_rows.html:15
 #: santa/templates/console/groups/list.html:15
@@ -1000,7 +1104,7 @@ msgstr "Firmenlogo im dunklen Modus"
 msgid "Group"
 msgstr "Gruppe"
 
-#: santa/console/forms.py:1143
+#: santa/console/forms.py:1241
 msgid ""
 "A group based on another one takes its settings, except the ones it sets "
 "itself (Own value). Its own rules win over the inherited ones, so it can "
@@ -1010,19 +1114,19 @@ msgstr ""
 "außer denen, die sie selbst setzt (Eigener Wert). Ihre eigenen Regeln haben "
 "Vorrang vor den geerbten, so kann sie mehr erlauben."
 
-#: santa/console/forms.py:1146
+#: santa/console/forms.py:1244
 msgid "Santa configuration"
 msgstr "Santa-Konfiguration"
 
-#: santa/console/forms.py:1146
+#: santa/console/forms.py:1244
 msgid "Sent to the Macs at every sync."
 msgstr "Wird bei jeder Synchronisierung an die Macs gesendet."
 
-#: santa/console/forms.py:1148
+#: santa/console/forms.py:1246
 msgid "Path regexes"
 msgstr "Pfad-Regexe"
 
-#: santa/console/forms.py:1148
+#: santa/console/forms.py:1246
 msgid ""
 "One per line, combined into one regex for Santa. Rules always win over the "
 "regexes."
@@ -1030,22 +1134,22 @@ msgstr ""
 "Einer pro Zeile, für Santa zu einem Regex zusammengefasst. Regeln haben "
 "immer Vorrang vor den Regexen."
 
-#: santa/console/forms.py:1150
+#: santa/console/forms.py:1248
 msgid "Advanced"
 msgstr "Erweitert"
 
-#: santa/console/forms.py:1151 santa/console/forms.py:1157
+#: santa/console/forms.py:1249 santa/console/forms.py:1255
 msgid "Sent at every sync, no profile change needed."
 msgstr "Wird bei jeder Synchronisierung gesendet, keine Profiländerung nötig."
 
-#: santa/console/forms.py:1154 santa/templates/console/base.html:44
+#: santa/console/forms.py:1252 santa/templates/console/base.html:44
 #: santa/templates/console/file_access/form.html:5
 #: santa/templates/console/file_access/list.html:2
 #: santa/templates/console/file_access/list.html:5
 msgid "File access"
 msgstr "Dateizugriff"
 
-#: santa/console/forms.py:1154
+#: santa/console/forms.py:1252
 msgid ""
 "The file access rules are in the profile of the group, the override is sent "
 "at every sync."
@@ -1053,15 +1157,15 @@ msgstr ""
 "Die Dateizugriffsregeln stehen im Profil der Gruppe, das Überschreiben wird "
 "bei jeder Synchronisierung gesendet."
 
-#: santa/console/forms.py:1157
+#: santa/console/forms.py:1255
 msgid "Block dialog"
 msgstr "Blockierdialog"
 
-#: santa/console/forms.py:1159
+#: santa/console/forms.py:1257
 msgid "Profile only"
 msgstr "Nur im Profil"
 
-#: santa/console/forms.py:1159
+#: santa/console/forms.py:1257
 msgid ""
 "Only in the .mobileconfig: after a change, download the profile again and "
 "replace it in your MDM."
@@ -1069,11 +1173,11 @@ msgstr ""
 "Nur in der .mobileconfig: nach einer Änderung das Profil erneut "
 "herunterladen und in Ihrem MDM ersetzen."
 
-#: santa/console/forms.py:1163
+#: santa/console/forms.py:1261
 msgid "Branding"
 msgstr "Branding"
 
-#: santa/console/forms.py:1163
+#: santa/console/forms.py:1261
 msgid ""
 "Profile only, Santa 2026.1 and newer: after a change, download the profile "
 "again and replace it in your MDM. The company name only shows without a logo."
@@ -1082,86 +1186,86 @@ msgstr ""
 "erneut herunter und ersetzen Sie es in Ihrem MDM. Der Firmenname erscheint "
 "nur ohne Logo."
 
-#: santa/console/forms.py:1181
+#: santa/console/forms.py:1279
 msgid "The same as removable media"
 msgstr "Wie bei Wechseldatenträgern"
 
-#: santa/console/forms.py:1182
+#: santa/console/forms.py:1280
 msgid "Leave them"
 msgstr "Eingehängt lassen"
 
-#: santa/console/forms.py:1188
+#: santa/console/forms.py:1286
 msgid "No other group"
 msgstr "Keine andere Gruppe"
 
-#: santa/console/forms.py:1191
+#: santa/console/forms.py:1289
 msgid "Own value"
 msgstr "Eigener Wert"
 
-#: santa/console/forms.py:1195
+#: santa/console/forms.py:1293
 msgid "Upload an image"
 msgstr "Bild hochladen"
 
-#: santa/console/forms.py:1196
+#: santa/console/forms.py:1294
 #, python-brace-format
 msgid "PNG or JPEG, at most {size} KB. It goes into the profile."
 msgstr "PNG oder JPEG, höchstens {size} KB. Es kommt ins Profil."
 
-#: santa/console/forms.py:1200
+#: santa/console/forms.py:1298
 msgid "Or an image on the Macs"
 msgstr "Oder ein Bild auf den Macs"
 
-#: santa/console/forms.py:1203
+#: santa/console/forms.py:1301
 msgid "Remove the logo"
 msgstr "Logo entfernen"
 
-#: santa/console/forms.py:1282 santa/console/views_rules.py:215
+#: santa/console/forms.py:1380 santa/console/views_rules.py:221
 #: santa/templates/console/rules/_package_rule.html:12
 msgid "yes"
 msgstr "ja"
 
-#: santa/console/forms.py:1282 santa/console/views_rules.py:215
+#: santa/console/forms.py:1380 santa/console/views_rules.py:221
 msgid "no"
 msgstr "nein"
 
-#: santa/console/forms.py:1325 santa/models.py:84
+#: santa/console/forms.py:1423 santa/models.py:84
 #, python-format
 msgid "The image is too large (at most %(size)s KB)."
 msgstr "Das Bild ist zu groß (höchstens %(size)s KB)."
 
-#: santa/console/forms.py:1332
+#: santa/console/forms.py:1430
 msgid "Only PNG or JPEG images."
 msgstr "Nur PNG- oder JPEG-Bilder."
 
-#: santa/console/forms.py:1341 santa/templates/console/base.html:77
+#: santa/console/forms.py:1439 santa/templates/console/base.html:77
 #: santa/templates/console/base.html:78
 msgid "Theme"
 msgstr "Design"
 
-#: santa/console/forms.py:1341 santa/templates/console/base.html:86
+#: santa/console/forms.py:1439 santa/templates/console/base.html:86
 #: santa/templates/console/base.html:87
 msgid "Language"
 msgstr "Sprache"
 
-#: santa/console/forms.py:1341 santa/console/forms.py:1348
+#: santa/console/forms.py:1439 santa/console/forms.py:1446
 msgid "Time zone"
 msgstr "Zeitzone"
 
-#: santa/console/forms.py:1345
+#: santa/console/forms.py:1443
 msgid "Language of the browser"
 msgstr "Sprache des Browsers"
 
-#: santa/console/forms.py:1347
+#: santa/console/forms.py:1445
 msgid "Time zone of the browser"
 msgstr "Zeitzone des Browsers"
 
-#: santa/console/forms.py:1357
+#: santa/console/forms.py:1455
 #, python-format
 msgid "Default (%(mode)s)"
 msgstr "Standard (%(mode)s)"
 
-#: santa/console/forms.py:1396 santa/console/forms.py:1480
-#: santa/console/views_admin.py:61 santa/console/views_admin.py:80
+#: santa/console/forms.py:1494 santa/console/forms.py:1614
+#: santa/console/views_admin.py:63 santa/console/views_admin.py:82
 #: santa/templates/console/administration/_user_form.html:20
 #: santa/templates/console/administration/role_form.html:5
 #: santa/templates/console/administration/roles.html:2
@@ -1170,12 +1274,12 @@ msgstr "Standard (%(mode)s)"
 msgid "Roles"
 msgstr "Rollen"
 
-#: santa/console/forms.py:1398 santa/templates/console/profile.html:26
+#: santa/console/forms.py:1496 santa/templates/console/profile.html:26
 #: santa/templates/console/profile.html:29
 msgid "E-mail notifications"
 msgstr "E-Mail-Benachrichtigungen"
 
-#: santa/console/forms.py:1399
+#: santa/console/forms.py:1497
 msgid ""
 "An exception from the sign-in groups, e.g. no e-mails for an account without "
 "a mailbox."
@@ -1183,42 +1287,42 @@ msgstr ""
 "Eine Ausnahme von den Anmeldegruppen, z. B. keine E-Mails für ein Konto ohne "
 "Postfach."
 
-#: santa/console/forms.py:1400 santa/templates/console/login.html:23
+#: santa/console/forms.py:1498 santa/templates/console/login.html:23
 msgid "Password"
 msgstr "Passwort"
 
-#: santa/console/forms.py:1402
+#: santa/console/forms.py:1500
 msgid "Password again"
 msgstr "Passwort wiederholen"
 
-#: santa/console/forms.py:1409
+#: santa/console/forms.py:1507
 #: santa/templates/console/administration/_user_form.html:4
 msgid "Username"
 msgstr "Benutzername"
 
-#: santa/console/forms.py:1409
+#: santa/console/forms.py:1507
 msgid "First name"
 msgstr "Vorname"
 
-#: santa/console/forms.py:1409
+#: santa/console/forms.py:1507
 msgid "Last name"
 msgstr "Nachname"
 
-#: santa/console/forms.py:1410 santa/templates/console/profile.html:12
+#: santa/console/forms.py:1508 santa/templates/console/profile.html:12
 msgid "E-mail"
 msgstr "E-Mail"
 
-#: santa/console/forms.py:1410
+#: santa/console/forms.py:1508
 msgid "Active"
 msgstr "Aktiv"
 
-#: santa/console/forms.py:1410 santa/console/forms.py:1486
-#: santa/console/views_admin.py:152
+#: santa/console/forms.py:1508 santa/console/forms.py:1538
+#: santa/console/forms.py:1620 santa/console/views_admin.py:157
 #: santa/templates/console/administration/_user_form.html:8
 msgid "Console access"
 msgstr "Zugriff auf die Konsole"
 
-#: santa/console/forms.py:1413
+#: santa/console/forms.py:1511
 msgid ""
 "For a local account, e.g. break-glass-admin. Users of the sign-in are "
 "created at their first sign-in."
@@ -1226,76 +1330,92 @@ msgstr ""
 "Für ein lokales Konto, z. B. break-glass-admin. Benutzer der Anmeldung "
 "werden bei ihrer ersten Anmeldung angelegt."
 
-#: santa/console/forms.py:1415
+#: santa/console/forms.py:1513
 msgid "Inactive users can't sign in."
 msgstr "Inaktive Benutzer können sich nicht anmelden."
 
-#: santa/console/forms.py:1416
+#: santa/console/forms.py:1514 santa/console/forms.py:1538
 msgid "Can open the console, with the permissions of the roles."
 msgstr "Kann die Konsole öffnen, mit den Berechtigungen der Rollen."
 
-#: santa/console/forms.py:1430
+#: santa/console/forms.py:1531
+msgid "Roles and console access"
+msgstr "Rollen und Zugriff auf die Konsole"
+
+#: santa/console/forms.py:1532
+msgid ""
+"By hand: the sign-in no longer changes them. The admin role of the sign-in "
+"(the token) still counts."
+msgstr ""
+"Von Hand: Die Anmeldung ändert sie nicht mehr. Die Admin-Rolle der Anmeldung "
+"(aus dem Token) gilt weiter."
+
+#: santa/console/forms.py:1534
+msgid "Roles of the sign-in groups"
+msgstr "Rollen der Anmeldegruppen"
+
+#: santa/console/forms.py:1548
 msgid "Leave empty to keep the password."
 msgstr "Leer lassen, um das Passwort zu behalten."
 
-#: santa/console/forms.py:1443
+#: santa/console/forms.py:1568
 msgid "The two passwords are different."
 msgstr "Die beiden Passwörter stimmen nicht überein."
 
-#: santa/console/forms.py:1480 santa/models.py:1163
+#: santa/console/forms.py:1614 santa/models.py:1212
 msgid "The members get these roles"
 msgstr "Die Mitglieder erhalten diese Rollen"
 
-#: santa/console/forms.py:1485
+#: santa/console/forms.py:1619
 #: santa/templates/console/administration/sign_in_groups.html:8
 msgid "Value in the groups claim"
 msgstr "Wert im Gruppen-Claim"
 
-#: santa/console/forms.py:1486 santa/models.py:1091
+#: santa/console/forms.py:1620 santa/models.py:1131
 msgid "No e-mails"
 msgstr "Keine E-Mails"
 
-#: santa/console/forms.py:1498
+#: santa/console/forms.py:1632
 #, python-format
 msgid "No default (%(mode)s)"
 msgstr "Kein Standard (%(mode)s)"
 
-#: santa/console/forms.py:1549
+#: santa/console/forms.py:1683
 #: santa/templates/console/file_access/_form.html:11
 #: santa/templates/console/file_access/list.html:11
 msgid "Paths"
 msgstr "Pfade"
 
-#: santa/console/forms.py:1549
+#: santa/console/forms.py:1683
 msgid "Paths with everything below them"
 msgstr "Pfade mit allem darunter"
 
-#: santa/console/forms.py:1550
+#: santa/console/forms.py:1684
 msgid "Allow reading"
 msgstr "Lesen erlauben"
 
-#: santa/console/forms.py:1550 santa/console/views_file_access.py:70
+#: santa/console/forms.py:1684 santa/console/views_file_access.py:70
 #: santa/models.py:91
 msgid "Audit only"
 msgstr "Nur protokollieren"
 
-#: santa/console/forms.py:1551
+#: santa/console/forms.py:1685
 msgid "Block message"
 msgstr "Blockiermeldung"
 
-#: santa/console/forms.py:1552
+#: santa/console/forms.py:1686
 msgid "Silent"
 msgstr "Ohne Dialog"
 
-#: santa/console/forms.py:1553
+#: santa/console/forms.py:1687
 msgid "Silent in the terminal"
 msgstr "Ohne Meldung im Terminal"
 
-#: santa/console/forms.py:1553 santa/templates/console/file_access/list.html:22
+#: santa/console/forms.py:1687 santa/templates/console/file_access/list.html:22
 msgid "All groups"
 msgstr "Alle Gruppen"
 
-#: santa/console/forms.py:1563 santa/models.py:417
+#: santa/console/forms.py:1697 santa/models.py:442
 #: santa/templates/console/events/_detail.html:18
 #: santa/templates/console/events/_rows.html:15
 #: santa/templates/console/events/_rows.html:24
@@ -1304,7 +1424,7 @@ msgstr "Alle Gruppen"
 msgid "Signing ID"
 msgstr "Signing ID"
 
-#: santa/console/forms.py:1563 santa/models.py:419
+#: santa/console/forms.py:1697 santa/models.py:444
 #: santa/templates/console/events/_detail.html:19
 #: santa/templates/console/events/_rows.html:24
 #: santa/templates/console/requests/_detail.html:21
@@ -1312,27 +1432,27 @@ msgstr "Signing ID"
 msgid "Team ID"
 msgstr "Team ID"
 
-#: santa/console/forms.py:1563
+#: santa/console/forms.py:1697
 msgid "Platform binary"
 msgstr "Plattform-Binary"
 
-#: santa/console/forms.py:1564
+#: santa/console/forms.py:1698
 msgid "Binary path"
 msgstr "Pfad der Datei"
 
-#: santa/console/forms.py:1564 santa/models.py:421 santa/models.py:891
+#: santa/console/forms.py:1698 santa/models.py:446 santa/models.py:931
 msgid "CDHash"
 msgstr "CDHash"
 
-#: santa/console/forms.py:1564
+#: santa/console/forms.py:1698
 msgid "Certificate SHA-256"
 msgstr "Zertifikat-SHA-256"
 
-#: santa/console/forms.py:1580
+#: santa/console/forms.py:1714
 msgid "This rule type needs at least one process."
 msgstr "Dieser Regeltyp braucht mindestens einen Prozess."
 
-#: santa/console/forms.py:1590
+#: santa/console/forms.py:1724
 msgid ""
 "JSON file of “Export configuration”, e.g. from the test server, or of the "
 "export_config command."
@@ -1340,12 +1460,12 @@ msgstr ""
 "JSON-Datei von „Konfiguration exportieren“, z. B. vom Testserver, oder des "
 "Befehls export_config."
 
-#: santa/console/forms.py:1593 santa/console/forms.py:1605
+#: santa/console/forms.py:1727 santa/console/forms.py:1739
 #: santa/templates/console/administration/_config_preview.html:30
 msgid "Delete what is not in the file"
 msgstr "Löschen, was nicht in der Datei ist"
 
-#: santa/console/forms.py:1594 santa/console/forms.py:1606
+#: santa/console/forms.py:1728 santa/console/forms.py:1740
 #: santa/templates/console/administration/_config_preview.html:31
 msgid ""
 "Deletes the manual rules, package rules and file access rules that are not "
@@ -1354,13 +1474,13 @@ msgstr ""
 "Löscht die manuellen Regeln, Paketregeln und Dateizugriffsregeln, die nicht "
 "in der Datei sind."
 
-#: santa/console/forms.py:1614 santa/console/forms.py:1616
-#: santa/console/views_admin.py:488 santa/console/views_admin.py:491
+#: santa/console/forms.py:1748 santa/console/forms.py:1750
+#: santa/console/views_admin.py:500 santa/console/views_admin.py:503
 #, python-format
 msgid "Not a JSON file: %(error)s"
 msgstr "Keine JSON-Datei: %(error)s"
 
-#: santa/console/views_admin.py:60 santa/console/views_admin.py:79
+#: santa/console/views_admin.py:62 santa/console/views_admin.py:81
 #: santa/templates/console/administration/_role_form.html:34
 #: santa/templates/console/administration/roles.html:8
 #: santa/templates/console/administration/user_form.html:5
@@ -1369,7 +1489,7 @@ msgstr "Keine JSON-Datei: %(error)s"
 msgid "Users"
 msgstr "Benutzer"
 
-#: santa/console/views_admin.py:62 santa/console/views_admin.py:78
+#: santa/console/views_admin.py:64 santa/console/views_admin.py:80
 #: santa/templates/console/administration/_user_form.html:6
 #: santa/templates/console/administration/roles.html:8
 #: santa/templates/console/administration/sign_in_group_form.html:5
@@ -1377,7 +1497,7 @@ msgstr "Benutzer"
 msgid "Sign-in groups"
 msgstr "Anmeldegruppen"
 
-#: santa/console/views_admin.py:64
+#: santa/console/views_admin.py:66
 #: santa/templates/console/administration/config.html:2
 #: santa/templates/console/administration/config_import.html:5
 #: santa/templates/console/administration/drawer_config.html:3
@@ -1385,7 +1505,7 @@ msgstr "Anmeldegruppen"
 msgid "Export / import"
 msgstr "Export / Import"
 
-#: santa/console/views_admin.py:69 santa/console/views_admin.py:371
+#: santa/console/views_admin.py:71 santa/console/views_admin.py:383
 #: santa/templates/console/base.html:42
 #: santa/templates/console/rules/form.html:5
 #: santa/templates/console/rules/list.html:2
@@ -1395,8 +1515,8 @@ msgstr "Export / Import"
 msgid "Execution rules"
 msgstr "Ausführungsregeln"
 
-#: santa/console/views_admin.py:70 santa/console/views_admin.py:372
-#: santa/console/views_admin.py:421
+#: santa/console/views_admin.py:72 santa/console/views_admin.py:384
+#: santa/console/views_admin.py:433
 #: santa/templates/console/administration/tags.html:9
 #: santa/templates/console/base.html:43
 #: santa/templates/console/sources/detail.html:4
@@ -1406,16 +1526,16 @@ msgstr "Ausführungsregeln"
 msgid "Package rules"
 msgstr "Paketregeln"
 
-#: santa/console/views_admin.py:71
+#: santa/console/views_admin.py:73
 msgid "Package versions"
 msgstr "Paketversionen"
 
-#: santa/console/views_admin.py:72 santa/console/views_admin.py:422
+#: santa/console/views_admin.py:74 santa/console/views_admin.py:434
 #: santa/templates/console/groups/_form.html:10
 msgid "File access rules"
 msgstr "Dateizugriffsregeln"
 
-#: santa/console/views_admin.py:73 santa/templates/console/base.html:41
+#: santa/console/views_admin.py:75 santa/templates/console/base.html:41
 #: santa/templates/console/events/create_rules.html:4
 #: santa/templates/console/events/detail.html:4
 #: santa/templates/console/events/list.html:2
@@ -1424,7 +1544,7 @@ msgstr "Dateizugriffsregeln"
 msgid "Events"
 msgstr "Ereignisse"
 
-#: santa/console/views_admin.py:74
+#: santa/console/views_admin.py:76
 #: santa/templates/console/administration/_role_form.html:18
 #: santa/templates/console/base.html:46
 #: santa/templates/console/events/_detail.html:23
@@ -1434,63 +1554,68 @@ msgstr "Ereignisse"
 msgid "Requests"
 msgstr "Anfragen"
 
-#: santa/console/views_admin.py:85
+#: santa/console/views_admin.py:87
 msgid "View"
 msgstr "Ansehen"
 
-#: santa/console/views_admin.py:85
+#: santa/console/views_admin.py:87
 msgid "Add"
 msgstr "Hinzufügen"
 
-#: santa/console/views_admin.py:85
+#: santa/console/views_admin.py:87
+#: santa/templates/console/machines/_summary.html:22
 msgid "Change"
 msgstr "Ändern"
 
-#: santa/console/views_admin.py:87
+#: santa/console/views_admin.py:89
 msgid "Request apps blocked on their Macs"
 msgstr "Auf den eigenen Macs blockierte Apps anfragen"
 
-#: santa/console/views_admin.py:88
+#: santa/console/views_admin.py:90
 msgid "Request packages"
 msgstr "Pakete anfragen"
 
-#: santa/console/views_admin.py:89
+#: santa/console/views_admin.py:91
 msgid "Request other software"
 msgstr "Andere Software anfragen"
 
-#: santa/console/views_admin.py:151
+#: santa/console/views_admin.py:156
 #: santa/templates/console/administration/_role_form.html:5
 #: santa/templates/console/administration/roles.html:8
 #: santa/templates/console/profile.html:13
 msgid "Role"
 msgstr "Rolle"
 
-#: santa/console/views_admin.py:152
+#: santa/console/views_admin.py:157
 msgid "With console access"
 msgstr "Mit Zugriff auf die Konsole"
 
-#: santa/console/views_admin.py:153
+#: santa/console/views_admin.py:158
 msgid "Without console access"
 msgstr "Ohne Zugriff auf die Konsole"
 
-#: santa/console/views_admin.py:154
+#: santa/console/views_admin.py:159
 msgid "Name, username, e-mail…"
 msgstr "Name, Benutzername, E-Mail…"
 
-#: santa/console/views_admin.py:168
+#: santa/console/views_admin.py:173
 msgid "You can't deactivate your own account."
 msgstr "Sie können Ihr eigenes Konto nicht deaktivieren."
 
 #: santa/console/views_admin.py:176
+msgid "You can't take away your own console access."
+msgstr "Sie können sich nicht selbst den Zugriff auf die Konsole entziehen."
+
+#: santa/console/views_admin.py:187
 #, python-format
 msgid "User %(user)s saved."
 msgstr "Benutzer %(user)s gespeichert."
 
-#: santa/console/views_admin.py:202
+#: santa/console/views_admin.py:214
 msgid "You can't delete your own account."
 msgstr "Sie können Ihr eigenes Konto nicht löschen."
 
-#: santa/console/views_admin.py:216
+#: santa/console/views_admin.py:228
 #, python-format
 msgid ""
 "%(user)s has access requests or changes in the history and can't be deleted. "
@@ -1499,17 +1624,17 @@ msgstr ""
 "%(user)s hat Anfragen oder Änderungen im Verlauf und kann nicht gelöscht "
 "werden. Deaktivieren Sie das Konto stattdessen."
 
-#: santa/console/views_admin.py:219
+#: santa/console/views_admin.py:231
 #, python-format
 msgid "User %(user)s deleted."
 msgstr "Benutzer %(user)s gelöscht."
 
-#: santa/console/views_admin.py:274
+#: santa/console/views_admin.py:286
 #, python-format
 msgid "Role %(role)s saved."
 msgstr "Rolle %(role)s gespeichert."
 
-#: santa/console/views_admin.py:291
+#: santa/console/views_admin.py:303
 #, python-format
 msgid ""
 "The role %(role)s is given by the admin role of the sign-in, it can't be "
@@ -1518,12 +1643,12 @@ msgstr ""
 "Die Rolle %(role)s wird über die Admin-Rolle der Anmeldung vergeben und kann "
 "nicht gelöscht werden."
 
-#: santa/console/views_admin.py:296
+#: santa/console/views_admin.py:308
 #, python-format
 msgid "Role %(role)s deleted."
 msgstr "Rolle %(role)s gelöscht."
 
-#: santa/console/views_admin.py:327
+#: santa/console/views_admin.py:339
 #, python-format
 msgid ""
 "Sign-in group %(group)s saved. It applies to its members now, new members "
@@ -1532,48 +1657,48 @@ msgstr ""
 "Anmeldegruppe %(group)s gespeichert. Sie gilt ab sofort für ihre Mitglieder, "
 "neue Mitglieder erhalten sie bei ihrer nächsten Anmeldung."
 
-#: santa/console/views_admin.py:343
+#: santa/console/views_admin.py:355
 #, python-format
 msgid "Sign-in group %(group)s deleted, its members lost its roles."
 msgstr ""
 "Anmeldegruppe %(group)s gelöscht, ihre Mitglieder haben ihre Rollen verloren."
 
-#: santa/console/views_admin.py:371
+#: santa/console/views_admin.py:383
 msgid "Used by"
 msgstr "Verwendet von"
 
-#: santa/console/views_admin.py:373
+#: santa/console/views_admin.py:385
 msgid "Nothing"
 msgstr "Nichts"
 
-#: santa/console/views_admin.py:374 santa/console/views_groups.py:78
+#: santa/console/views_admin.py:386 santa/console/views_groups.py:78
 msgid "Name, description…"
 msgstr "Name, Beschreibung…"
 
-#: santa/console/views_admin.py:390
+#: santa/console/views_admin.py:402
 #, python-format
 msgid "Tag %(tag)s saved."
 msgstr "Tag %(tag)s gespeichert."
 
-#: santa/console/views_admin.py:402
+#: santa/console/views_admin.py:414
 #, python-format
 msgid "Tag %(tag)s deleted. The rules stay, only the label is gone."
 msgstr "Tag %(tag)s gelöscht. Die Regeln bleiben, nur die Markierung ist weg."
 
-#: santa/console/views_admin.py:421
+#: santa/console/views_admin.py:433
 #: santa/templates/console/administration/tags.html:9
 #: santa/templates/console/events/_allow_tabs.html:8
 #: santa/templates/console/groups/_form.html:7
 #: santa/templates/console/groups/list.html:15
 #: santa/templates/console/machines/_rows.html:2
-#: santa/templates/console/machines/_summary.html:23
+#: santa/templates/console/machines/_summary.html:26
 #: santa/templates/console/sources/_detail.html:17
 #: santa/templates/console/sources/_form.html:34
 #: santa/templates/console/sources/_rows.html:2
 msgid "Rules"
 msgstr "Regeln"
 
-#: santa/console/views_admin.py:508
+#: santa/console/views_admin.py:520
 #, python-format
 msgid "Imported: %(count)s change."
 msgid_plural "Imported: %(count)s changes."
@@ -1630,7 +1755,7 @@ msgstr "Zeitraum"
 
 #: santa/console/views_events.py:158 santa/console/views_groups.py:219
 #: santa/console/views_requests.py:121 santa/console/views_requests.py:295
-#: santa/console/views_rules.py:160 santa/console/views_sources.py:98
+#: santa/console/views_rules.py:164 santa/console/views_sources.py:106
 #: santa/templates/console/administration/_config_preview.html:15
 #: santa/templates/console/events/_rows.html:15
 #: santa/templates/console/machines/_activity.html:6
@@ -1653,7 +1778,7 @@ msgstr "Erledigt"
 msgid "Binary"
 msgstr "Binary"
 
-#: santa/console/views_events.py:164 santa/console/views_rules.py:162
+#: santa/console/views_events.py:164 santa/console/views_rules.py:168
 #: santa/templates/console/events/_detail.html:13
 #: santa/templates/console/events/_rows.html:15
 #: santa/templates/console/machines/_rows.html:2
@@ -1662,7 +1787,7 @@ msgstr "Binary"
 msgid "Mac"
 msgstr "Mac"
 
-#: santa/console/views_events.py:166 santa/console/views_rules.py:164
+#: santa/console/views_events.py:166 santa/console/views_rules.py:170
 #: santa/templates/console/administration/users.html:9
 #: santa/templates/console/events/_detail.html:14
 #: santa/templates/console/events/_rows.html:15
@@ -1700,7 +1825,7 @@ msgstr "Die Macs erhalten sie bei ihrer nächsten Synchronisierung."
 msgid "Select at least one event."
 msgstr "Bitte mindestens ein Ereignis auswählen."
 
-#: santa/console/views_events.py:497 santa/console/views_rules.py:480
+#: santa/console/views_events.py:497 santa/console/views_rules.py:505
 #, python-format
 msgid "%(count)s rule saved (%(new)s new). The Macs get it at their next sync."
 msgid_plural ""
@@ -1712,7 +1837,7 @@ msgstr[1] ""
 "%(count)s Regeln gespeichert (%(new)s neu). Die Macs erhalten sie bei ihrer "
 "nächsten Synchronisierung."
 
-#: santa/console/views_events.py:517 santa/console/views_rules.py:486
+#: santa/console/views_events.py:517 santa/console/views_rules.py:511
 #, python-format
 msgid "%(count)s binary left: choose its rule, or close."
 msgid_plural "%(count)s binaries left: choose their rule, or close."
@@ -1747,6 +1872,7 @@ msgstr ""
 #: santa/templates/console/groups/list.html:15
 #: santa/templates/console/machines/_rows.html:2
 #: santa/templates/console/machines/_summary.html:18
+#: santa/templates/console/machines/mode_form.html:2
 msgid "Mode"
 msgstr "Modus"
 
@@ -1838,7 +1964,7 @@ msgstr "Seit 2 Tagen nicht synchronisiert"
 
 #: santa/console/views_groups.py:220
 #: santa/templates/console/machines/_actions.html:4
-#: santa/templates/console/machines/_rows.html:17
+#: santa/templates/console/machines/_rows.html:18
 msgid "Clean sync pending"
 msgstr "Clean Sync ausstehend"
 
@@ -1846,7 +1972,7 @@ msgstr "Clean Sync ausstehend"
 msgid "Hostname, serial number, user…"
 msgstr "Hostname, Seriennummer, Benutzer…"
 
-#: santa/console/views_groups.py:296
+#: santa/console/views_groups.py:298
 #, python-format
 msgid ""
 "%(count)s rule only applies to this Mac: removing the Mac would delete it, "
@@ -1863,7 +1989,7 @@ msgstr[1] ""
 "löschen, dafür ist die Berechtigung zum Löschen von Regeln nötig. Sie wurden "
 "beibehalten."
 
-#: santa/console/views_groups.py:310
+#: santa/console/views_groups.py:312
 #, python-format
 msgid ""
 "%(mac)s removed from %(count)s rule. Its group and global scopes stay, the "
@@ -1880,14 +2006,24 @@ msgstr[1] ""
 "Geltungsbereiche bleiben, der Mac erhält die Änderung bei seiner nächsten "
 "Synchronisierung."
 
-#: santa/console/views_groups.py:316
+#: santa/console/views_groups.py:318
 #, python-format
 msgid "%(count)s rule that only applied to this Mac deleted."
 msgid_plural "%(count)s rules that only applied to this Mac deleted."
 msgstr[0] "%(count)s Regel, die nur für diesen Mac galt, gelöscht."
 msgstr[1] "%(count)s Regeln, die nur für diesen Mac galten, gelöscht."
 
-#: santa/console/views_groups.py:330
+#: santa/console/views_groups.py:335
+#, python-format
+msgid "%(machine)s: %(mode)s from its next sync on"
+msgstr "%(machine)s: %(mode)s ab der nächsten Synchronisierung"
+
+#: santa/console/views_groups.py:338
+#, python-format
+msgid "%(machine)s: the mode of its group from its next sync on"
+msgstr "%(machine)s: der Modus seiner Gruppe ab der nächsten Synchronisierung"
+
+#: santa/console/views_groups.py:353
 #, python-format
 msgid ""
 "%(machine)s: clean sync at the next sync (the Mac drops and downloads all "
@@ -2015,10 +2151,10 @@ msgstr "Anfrage zurückgezogen."
 msgid "Kind"
 msgstr "Art"
 
-#: santa/console/views_requests.py:298 santa/console/views_rules.py:167
-#: santa/console/views_rules.py:222
+#: santa/console/views_requests.py:298 santa/console/views_rules.py:173
+#: santa/console/views_rules.py:228
 #: santa/templates/console/requests/_rows.html:2
-#: santa/templates/console/rules/_rows.html:27
+#: santa/templates/console/rules/_rows.html:34
 msgid "Created"
 msgstr "Erstellt"
 
@@ -2026,23 +2162,23 @@ msgstr "Erstellt"
 msgid "Title, requester, SHA-256…"
 msgstr "Titel, Antragsteller, SHA-256…"
 
-#: santa/console/views_requests.py:416
+#: santa/console/views_requests.py:417
 #, python-format
 msgid "Request “%(title)s” approved."
 msgstr "Anfrage „%(title)s“ freigegeben."
 
-#: santa/console/views_requests.py:428 santa/console/views_requests.py:461
+#: santa/console/views_requests.py:429 santa/console/views_requests.py:463
 msgid "The Mac of the requester is not known, choose groups or all Macs."
 msgstr ""
 "Der Mac des Antragstellers ist nicht bekannt, bitte Gruppen oder alle Macs "
 "wählen."
 
-#: santa/console/views_requests.py:453
+#: santa/console/views_requests.py:455
 #, python-format
 msgid "The binary has no %(rule_type)s."
 msgstr "Das Binary hat keine %(rule_type)s."
 
-#: santa/console/views_requests.py:501
+#: santa/console/views_requests.py:504
 #, python-format
 msgid ""
 "No Mach-O executable with a %(rule_type)s found in this file (unsigned or ad-"
@@ -2052,102 +2188,110 @@ msgstr ""
 "gefunden (unsigniert oder ad-hoc signiert? Verwenden Sie stattdessen eine "
 "Binary-Regel)."
 
-#: santa/console/views_requests.py:578
+#: santa/console/views_requests.py:581
 #, python-format
 msgid "Request “%(title)s” denied."
 msgstr "Anfrage „%(title)s“ abgelehnt."
 
-#: santa/console/views_rules.py:152 santa/console/views_rules.py:221
+#: santa/console/views_rules.py:156 santa/console/views_rules.py:227
 #: santa/templates/console/administration/_config_changes.html:2
 #: santa/templates/console/administration/_config_preview.html:37
 #: santa/templates/console/machines/detail.html:36
-#: santa/templates/console/rules/_rows.html:26
+#: santa/templates/console/rules/_rows.html:33
 msgid "Type"
 msgstr "Typ"
 
-#: santa/console/views_rules.py:155
+#: santa/console/views_rules.py:159
 msgid "Global"
 msgstr "Global"
 
-#: santa/console/views_rules.py:155
+#: santa/console/views_rules.py:159
 msgid "Individual Macs"
 msgstr "Einzelne Macs"
 
-#: santa/console/views_rules.py:157
+#: santa/console/views_rules.py:161
 #: santa/templates/console/administration/tags.html:9
-#: santa/templates/console/rules/_rows.html:13
+#: santa/templates/console/rules/_rows.html:14
 msgid "Tag"
 msgstr "Tag"
 
-#: santa/console/views_rules.py:158 santa/templates/console/rules/_rows.html:27
+#: santa/console/views_rules.py:162 santa/templates/console/rules/_rows.html:34
 msgid "Origin"
 msgstr "Herkunft"
 
-#: santa/console/views_rules.py:158
+#: santa/console/views_rules.py:162
 msgid "Manual"
 msgstr "Manuell"
 
-#: santa/console/views_rules.py:159
+#: santa/console/views_rules.py:163
 msgid "From package rules"
 msgstr "Aus Paketregeln"
 
-#: santa/console/views_rules.py:161
+#: santa/console/views_rules.py:165
 msgid "Disabled / waiting"
 msgstr "Inaktiv / wartend"
 
-#: santa/console/views_rules.py:173
+#: santa/console/views_rules.py:166
+msgid "Expiry"
+msgstr "Ablauf"
+
+#: santa/console/views_rules.py:167
+msgid "Expired, deleted soon"
+msgstr "Abgelaufen, wird bald gelöscht"
+
+#: santa/console/views_rules.py:179
 msgid "Package version"
 msgstr "Paketversion"
 
-#: santa/console/views_rules.py:179
+#: santa/console/views_rules.py:185
 msgid "Identifier, description, tag…"
 msgstr "Kennung, Beschreibung, Tag…"
 
-#: santa/console/views_rules.py:223
+#: santa/console/views_rules.py:229
 msgid "Created by"
 msgstr "Erstellt von"
 
-#: santa/console/views_rules.py:265
+#: santa/console/views_rules.py:271
 #, python-format
 msgid "%(version)s: automatic approval cancelled."
 msgstr "%(version)s: automatische Freigabe abgebrochen."
 
-#: santa/console/views_rules.py:268
+#: santa/console/views_rules.py:274
 #, python-format
 msgid "%(count)s rule enabled."
 msgid_plural "%(count)s rules enabled."
 msgstr[0] "%(count)s Regel aktiviert."
 msgstr[1] "%(count)s Regeln aktiviert."
 
-#: santa/console/views_rules.py:270
+#: santa/console/views_rules.py:276
 #, python-format
 msgid "%(count)s rule disabled."
 msgid_plural "%(count)s rules disabled."
 msgstr[0] "%(count)s Regel deaktiviert."
 msgstr[1] "%(count)s Regeln deaktiviert."
 
-#: santa/console/views_rules.py:277
+#: santa/console/views_rules.py:283
 #, python-format
 msgid "Tag “%(tag)s” added to %(count)s rule."
 msgid_plural "Tag “%(tag)s” added to %(count)s rules."
 msgstr[0] "Tag „%(tag)s“ zu %(count)s Regel hinzugefügt."
 msgstr[1] "Tag „%(tag)s“ zu %(count)s Regeln hinzugefügt."
 
-#: santa/console/views_rules.py:284
+#: santa/console/views_rules.py:290
 #, python-format
 msgid "Tag “%(tag)s” removed from %(count)s rule."
 msgid_plural "Tag “%(tag)s” removed from %(count)s rules."
 msgstr[0] "Tag „%(tag)s“ von %(count)s Regel entfernt."
 msgstr[1] "Tag „%(tag)s“ von %(count)s Regeln entfernt."
 
-#: santa/console/views_rules.py:292
+#: santa/console/views_rules.py:298
 #, python-format
 msgid "%(count)s rule set to “%(policy)s”."
 msgid_plural "%(count)s rules set to “%(policy)s”."
 msgstr[0] "%(count)s Regel auf „%(policy)s“ gesetzt."
 msgstr[1] "%(count)s Regeln auf „%(policy)s“ gesetzt."
 
-#: santa/console/views_rules.py:295
+#: santa/console/views_rules.py:301
 msgid ""
 "The rules of package rules are managed by their package rule, change the "
 "policy there."
@@ -2155,14 +2299,35 @@ msgstr ""
 "Die Regeln von Paketregeln werden von ihrer Paketregel verwaltet, ändern Sie "
 "die Richtlinie dort."
 
-#: santa/console/views_rules.py:303
+#: santa/console/views_rules.py:309
 #, python-format
 msgid "%(groups)s added to %(count)s rule."
 msgid_plural "%(groups)s added to %(count)s rules."
 msgstr[0] "%(groups)s zu %(count)s Regel hinzugefügt."
 msgstr[1] "%(groups)s zu %(count)s Regeln hinzugefügt."
 
-#: santa/console/views_rules.py:311
+#: santa/console/views_rules.py:319
+#, python-format
+msgid "%(count)s rule expires on %(date)s."
+msgid_plural "%(count)s rules expire on %(date)s."
+msgstr[0] "%(count)s Regel läuft am %(date)s ab."
+msgstr[1] "%(count)s Regeln laufen am %(date)s ab."
+
+#: santa/console/views_rules.py:324
+#, python-format
+msgid "%(count)s rule no longer expires."
+msgid_plural "%(count)s rules no longer expire."
+msgstr[0] "%(count)s Regel läuft nicht mehr ab."
+msgstr[1] "%(count)s Regeln laufen nicht mehr ab."
+
+#: santa/console/views_rules.py:328
+msgid ""
+"The rules of package rules are managed by their package rule, they don't "
+"expire."
+msgstr ""
+"Die Regeln von Paketregeln verwaltet ihre Paketregel, sie laufen nicht ab."
+
+#: santa/console/views_rules.py:336
 #, python-format
 msgid "%(count)s rule deleted. The Macs remove it at their next sync."
 msgid_plural ""
@@ -2174,7 +2339,7 @@ msgstr[1] ""
 "%(count)s Regeln gelöscht. Die Macs entfernen sie bei ihrer nächsten "
 "Synchronisierung."
 
-#: santa/console/views_rules.py:315
+#: santa/console/views_rules.py:340
 msgid ""
 "The rules of package rules are managed by their package rule, disable them "
 "instead."
@@ -2182,41 +2347,41 @@ msgstr ""
 "Die Regeln von Paketregeln werden von ihrer Paketregel verwaltet, "
 "deaktivieren Sie sie stattdessen."
 
-#: santa/console/views_rules.py:341
+#: santa/console/views_rules.py:366
 #, python-format
 msgid "Rule deleted: %(rule)s. The Macs remove it at their next sync."
 msgstr ""
 "Regel gelöscht: %(rule)s. Die Macs entfernen sie bei ihrer nächsten "
 "Synchronisierung."
 
-#: santa/console/views_rules.py:405
+#: santa/console/views_rules.py:430
 #, python-format
 msgid "Rule saved: %(rule)s. The Macs get it at their next sync."
 msgstr ""
 "Regel gespeichert: %(rule)s. Die Macs erhalten sie bei ihrer nächsten "
 "Synchronisierung."
 
-#: santa/console/views_rules.py:459
+#: santa/console/views_rules.py:484
 msgid "The check of the file is too old, upload it again."
 msgstr "Die Prüfung der Datei ist zu alt, laden Sie sie erneut hoch."
 
-#: santa/console/views_rules.py:508
+#: santa/console/views_rules.py:533
 msgid "No Mach-O executable found in this file."
 msgstr "In dieser Datei wurde kein ausführbares Mach-O gefunden."
 
-#: santa/console/views_sources.py:98
+#: santa/console/views_sources.py:106
 msgid "With errors"
 msgstr "Mit Fehlern"
 
-#: santa/console/views_sources.py:99 santa/models.py:92
+#: santa/console/views_sources.py:107 santa/models.py:92
 msgid "Disabled"
 msgstr "Deaktiviert"
 
-#: santa/console/views_sources.py:100
+#: santa/console/views_sources.py:108
 msgid "Name or package…"
 msgstr "Name oder Paket…"
 
-#: santa/console/views_sources.py:176
+#: santa/console/views_sources.py:185
 #, python-format
 msgid ""
 "%(source)s: that would leave no package, delete the package rule instead."
@@ -2224,40 +2389,40 @@ msgstr ""
 "%(source)s: Dann bliebe kein Paket übrig, löschen Sie stattdessen die "
 "Paketregel."
 
-#: santa/console/views_sources.py:185
+#: santa/console/views_sources.py:194
 #, python-format
 msgid "%(count)s package removed from %(source)s: %(names)s."
 msgid_plural "%(count)s packages removed from %(source)s: %(names)s."
 msgstr[0] "%(count)s Paket aus %(source)s entfernt: %(names)s."
 msgstr[1] "%(count)s Pakete aus %(source)s entfernt: %(names)s."
 
-#: santa/console/views_sources.py:221
+#: santa/console/views_sources.py:230
 #, python-format
 msgid "started by the scheduled job at %(time)s"
 msgstr "gestartet vom geplanten Job um %(time)s"
 
-#: santa/console/views_sources.py:223
+#: santa/console/views_sources.py:232
 #, python-format
 msgid "started by %(user)s at %(time)s"
 msgstr "gestartet von %(user)s um %(time)s"
 
-#: santa/console/views_sources.py:226
+#: santa/console/views_sources.py:235
 #, python-format
 msgid "%(current)s / %(total)s"
 msgstr "%(current)s / %(total)s"
 
-#: santa/console/views_sources.py:230
+#: santa/console/views_sources.py:239
 #, python-format
 msgid "Stopping after the current package (%(user)s)…"
 msgstr "Wird nach dem aktuellen Paket abgebrochen (%(user)s)…"
 
-#: santa/console/views_sources.py:262
+#: santa/console/views_sources.py:271
 #, python-format
 msgid "%(source)s: no group and not global, its rules apply to no Mac."
 msgstr ""
 "%(source)s: keine Gruppe und nicht global, ihre Regeln gelten für keinen Mac."
 
-#: santa/console/views_sources.py:267
+#: santa/console/views_sources.py:276
 #, python-format
 msgid ""
 "%(count)s version is no longer covered by the package rule: “Clean up” "
@@ -2272,7 +2437,7 @@ msgstr[1] ""
 "%(count)s Versionen sind nicht mehr von der Paketregel abgedeckt: "
 "„Aufräumen“ löscht sie mit ihren Regeln."
 
-#: santa/console/views_sources.py:272
+#: santa/console/views_sources.py:281
 #, python-format
 msgid ""
 "%(count)s rule is outside the asset or binary pattern now: “Clean up” "
@@ -2287,7 +2452,7 @@ msgstr[1] ""
 "%(count)s Regeln liegen jetzt außerhalb des Asset- oder Binary-Musters: "
 "„Aufräumen“ löscht sie."
 
-#: santa/console/views_sources.py:278
+#: santa/console/views_sources.py:287
 #, python-format
 msgid ""
 "Package rule %(source)s saved, %(count)s package added: “Check the new "
@@ -2302,7 +2467,7 @@ msgstr[1] ""
 "Paketregel %(source)s gespeichert, %(count)s Pakete hinzugefügt: Mit „Die "
 "neuen Pakete prüfen“ holen Sie ihre Releases."
 
-#: santa/console/views_sources.py:283
+#: santa/console/views_sources.py:292
 #, python-format
 msgid ""
 "Package rule %(source)s saved. Use “Check now” to get the current releases."
@@ -2310,65 +2475,69 @@ msgstr ""
 "Paketregel %(source)s gespeichert. Mit „Jetzt prüfen“ holen Sie die "
 "aktuellen Releases."
 
-#: santa/console/views_sources.py:391
+#: santa/console/views_sources.py:400
 #, python-format
 msgid "Package rule %(source)s deleted with its rules."
 msgstr "Paketregel %(source)s mit ihren Regeln gelöscht."
 
-#: santa/console/views_sources.py:405
+#: santa/console/views_sources.py:414
 #, python-format
 msgid "%(source)s cleaned up: %(versions)s, %(rules)s deleted."
 msgstr "%(source)s aufgeräumt: %(versions)s, %(rules)s gelöscht."
 
-#: santa/console/views_sources.py:407
+#: santa/console/views_sources.py:416
 #, python-format
 msgid "%(count)s version"
 msgid_plural "%(count)s versions"
 msgstr[0] "%(count)s Version"
 msgstr[1] "%(count)s Versionen"
 
-#: santa/console/views_sources.py:408
+#: santa/console/views_sources.py:417
 #, python-format
 msgid "%(count)s rule"
 msgid_plural "%(count)s rules"
 msgstr[0] "%(count)s Regel"
 msgstr[1] "%(count)s Regeln"
 
-#: santa/console/views_sources.py:410
+#: santa/console/views_sources.py:419
 #, python-format
 msgid "%(source)s: nothing to clean up."
 msgstr "%(source)s: nichts aufzuräumen."
 
-#: santa/console/views_sources.py:419
+#: santa/console/views_sources.py:428
 msgid "package removed"
 msgstr "Paket entfernt"
 
-#: santa/console/views_sources.py:421
+#: santa/console/views_sources.py:430
 msgid "older than the versions to keep"
 msgstr "älter als die behaltenen Versionen"
 
-#: santa/console/views_sources.py:423
+#: santa/console/views_sources.py:432
 msgid "no file inside the asset or binary pattern"
 msgstr "keine Datei innerhalb des Asset- oder Binary-Musters"
 
-#: santa/console/views_sources.py:425
+#: santa/console/views_sources.py:434
+msgid "prerelease, prereleases are not allowed"
+msgstr "Vorabversion, Vorabversionen sind nicht erlaubt"
+
+#: santa/console/views_sources.py:436
 msgid "outside the version pattern"
 msgstr "außerhalb des Versionsmusters"
 
-#: santa/console/views_sources.py:427
+#: santa/console/views_sources.py:438
 msgid "outside the asset pattern"
 msgstr "außerhalb des Asset-Musters"
 
-#: santa/console/views_sources.py:428
+#: santa/console/views_sources.py:439
 msgid "outside the binary pattern"
 msgstr "außerhalb des Binary-Musters"
 
-#: santa/console/views_sources.py:454
+#: santa/console/views_sources.py:465
 #, python-format
 msgid "%(source)s is being checked already (%(by)s)."
 msgstr "%(source)s wird bereits geprüft (%(by)s)."
 
-#: santa/console/views_sources.py:461
+#: santa/console/views_sources.py:472
 #, python-format
 msgid ""
 "%(source)s: the server is restarting, the check stopped after %(current)s of "
@@ -2377,7 +2546,7 @@ msgstr ""
 "%(source)s: Der Server startet neu, die Prüfung endete nach %(current)s von "
 "%(total)s Paketen. Starten Sie sie erneut."
 
-#: santa/console/views_sources.py:464
+#: santa/console/views_sources.py:475
 #, python-format
 msgid ""
 "%(source)s: check stopped by %(user)s after %(current)s of %(total)s "
@@ -2386,12 +2555,12 @@ msgstr ""
 "%(source)s: Prüfung von %(user)s nach %(current)s von %(total)s Paketen "
 "abgebrochen."
 
-#: santa/console/views_sources.py:469
+#: santa/console/views_sources.py:480
 #, python-format
 msgid "%(source)s: up to date."
 msgstr "%(source)s: aktuell."
 
-#: santa/console/views_sources.py:484
+#: santa/console/views_sources.py:495
 #, python-format
 msgid ""
 "%(source)s is being checked right now: check the new packages when it has "
@@ -2400,35 +2569,35 @@ msgstr ""
 "%(source)s wird gerade geprüft: Prüfen Sie die neuen Pakete, wenn die "
 "Prüfung beendet ist."
 
-#: santa/console/views_sources.py:499
+#: santa/console/views_sources.py:510
 #, python-format
 msgid "%(count)s more"
 msgid_plural "%(count)s more"
 msgstr[0] "%(count)s weitere"
 msgstr[1] "%(count)s weitere"
 
-#: santa/console/views_sources.py:501
+#: santa/console/views_sources.py:512
 #, python-format
 msgid "%(source)s: %(count)s new version (%(versions)s)."
 msgid_plural "%(source)s: %(count)s new versions (%(versions)s)."
 msgstr[0] "%(source)s: %(count)s neue Version (%(versions)s)."
 msgstr[1] "%(source)s: %(count)s neue Versionen (%(versions)s)."
 
-#: santa/console/views_sources.py:510
+#: santa/console/views_sources.py:521
 #, python-format
 msgid "%(count)s is enabled automatically on %(date)s."
 msgid_plural "%(count)s are enabled automatically from %(date)s."
 msgstr[0] "%(count)s wird am %(date)s automatisch aktiviert."
 msgstr[1] "%(count)s werden ab %(date)s automatisch aktiviert."
 
-#: santa/console/views_sources.py:514
+#: santa/console/views_sources.py:525
 #, python-format
 msgid "%(count)s waits for approval."
 msgid_plural "%(count)s wait for approval."
 msgstr[0] "%(count)s wartet auf Freigabe."
 msgstr[1] "%(count)s warten auf Freigabe."
 
-#: santa/console/views_sources.py:517
+#: santa/console/views_sources.py:528
 #, python-format
 msgid "%(count)s has no executable (nothing for Santa to allow)."
 msgid_plural "%(count)s have no executable (nothing for Santa to allow)."
@@ -2437,24 +2606,24 @@ msgstr[0] ""
 msgstr[1] ""
 "%(count)s haben keine ausführbare Datei (für Santa nichts zu erlauben)."
 
-#: santa/console/views_sources.py:539
+#: santa/console/views_sources.py:550
 #, python-format
 msgid "%(source)s: the check stops after the current package."
 msgstr "%(source)s: Die Prüfung endet nach dem aktuellen Paket."
 
-#: santa/console/views_sources.py:541
+#: santa/console/views_sources.py:552
 #, python-format
 msgid "%(source)s: no check is running."
 msgstr "%(source)s: Es läuft keine Prüfung."
 
-#: santa/console/views_sources.py:560
+#: santa/console/views_sources.py:571
 #, python-format
 msgid "%(version)s: %(count)s rule enabled."
 msgid_plural "%(version)s: %(count)s rules enabled."
 msgstr[0] "%(version)s: %(count)s Regel aktiviert."
 msgstr[1] "%(version)s: %(count)s Regeln aktiviert."
 
-#: santa/console/views_sources.py:562
+#: santa/console/views_sources.py:573
 #, python-format
 msgid "%(version)s: %(count)s rule disabled."
 msgid_plural "%(version)s: %(count)s rules disabled."
@@ -2689,7 +2858,7 @@ msgstr ""
 "abzuschalten: „Nur protokollieren“ protokolliert statt zu blockieren, "
 "„Deaktiviert“ schaltet sie ab. Wird bei jeder Synchronisierung gesendet."
 
-#: santa/models.py:185 santa/models.py:833
+#: santa/models.py:185 santa/models.py:873
 msgid "block dialog URL"
 msgstr "URL im Blockierdialog"
 
@@ -2703,7 +2872,7 @@ msgstr ""
 "ersetzt Platzhalter wie %file_sha%, %machine_id% und %username% (siehe Santa-"
 "Dokumentation). Wird bei jeder Synchronisierung gesendet."
 
-#: santa/models.py:190 santa/models.py:834
+#: santa/models.py:190 santa/models.py:874
 msgid "block dialog button text"
 msgstr "Button-Text im Blockierdialog"
 
@@ -2824,57 +2993,73 @@ msgstr "Santa-Machine-ID, die Hardware-UUID"
 msgid "Mode reported by the client"
 msgstr "Vom Client gemeldeter Modus"
 
-#: santa/models.py:394
+#: santa/models.py:382
+msgid "mode of this Mac"
+msgstr "Modus dieses Macs"
+
+#: santa/models.py:383
+msgid "Instead of the mode of its group. Empty = as the group."
+msgstr "Statt des Modus seiner Gruppe. Leer = wie die Gruppe."
+
+#: santa/models.py:385
+msgid "until"
+msgstr "bis"
+
+#: santa/models.py:385
+msgid "Then the mode of the group again. Empty = until it is reset."
+msgstr "Danach wieder der Modus der Gruppe. Leer = bis es zurückgesetzt wird."
+
+#: santa/models.py:401
 msgid "Send a clean sync (client drops all its rules) at the next preflight."
 msgstr ""
 "Beim nächsten Preflight einen Clean Sync senden (der Client verwirft alle "
 "Regeln)."
 
-#: santa/models.py:418
+#: santa/models.py:443
 msgid "Binary (SHA-256)"
 msgstr "Binary (SHA-256)"
 
-#: santa/models.py:420
+#: santa/models.py:445
 msgid "Certificate (SHA-256)"
 msgstr "Zertifikat (SHA-256)"
 
-#: santa/models.py:485
+#: santa/models.py:510
 msgid "GitHub release"
 msgstr "GitHub-Release"
 
-#: santa/models.py:486
+#: santa/models.py:511
 msgid "Homebrew formula (bottle)"
 msgstr "Homebrew-Formel (Bottle)"
 
-#: santa/models.py:487
+#: santa/models.py:512
 msgid "Homebrew cask"
 msgstr "Homebrew-Cask"
 
-#: santa/models.py:488
+#: santa/models.py:513
 msgid "Direct download URL"
 msgstr "Direkte Download-URL"
 
-#: santa/models.py:489
+#: santa/models.py:514
 msgid "npm package"
 msgstr "npm-Paket"
 
-#: santa/models.py:490
+#: santa/models.py:515
 msgid "VS Code extension"
 msgstr "VS-Code-Erweiterung"
 
-#: santa/models.py:491
+#: santa/models.py:516
 msgid "JetBrains plugin (PhpStorm, …)"
 msgstr "JetBrains-Plugin (PhpStorm, …)"
 
-#: santa/models.py:495
+#: santa/models.py:520
 msgid "description"
 msgstr "Beschreibung"
 
-#: santa/models.py:497
+#: santa/models.py:522
 msgid "identifiers"
 msgstr "Kennungen"
 
-#: santa/models.py:498
+#: santa/models.py:523
 msgid ""
 "One per line, each one is checked on its own and keeps its own versions. "
 "GitHub: owner/repo (e.g. abiosoft/colima) · Homebrew: formula or cask name, "
@@ -2890,7 +3075,7 @@ msgstr ""
 "VS Code: publisher.name (z. B. rust-lang.rust-analyzer) · JetBrains: Plugin-"
 "ID (z. B. com.intellij.plugins.watcher)"
 
-#: santa/models.py:506
+#: santa/models.py:531
 msgid ""
 "Regexes, one per line: an asset is taken when one of them matches. GitHub: "
 "matched against the asset names (e.g. Darwin). Homebrew formula: matched "
@@ -2906,7 +3091,7 @@ msgstr ""
 "arm64, darwin-x64, universal). JetBrains: verglichen mit den kompatiblen "
 "Produkten (z. B. ^PHPSTORM$). Leer = alles."
 
-#: santa/models.py:515
+#: santa/models.py:540
 msgid ""
 "Regexes, one per line. Only releases whose version matches one of them are "
 "taken (e.g. ^1\\. to stay on 1.x). Empty = every version."
@@ -2914,7 +3099,7 @@ msgstr ""
 "Regexe, einer pro Zeile. Nur Releases, deren Version zu einem davon passt, "
 "werden übernommen (z. B. ^1\\., um bei 1.x zu bleiben). Leer = jede Version."
 
-#: santa/models.py:520
+#: santa/models.py:545
 msgid ""
 "Globs, one per line, matched against the paths inside an archive (e.g. */bin/"
 "colima). Empty = every Mach-O executable found."
@@ -2922,11 +3107,11 @@ msgstr ""
 "Globs, einer pro Zeile, verglichen mit den Pfaden im Archiv (z. B. */bin/"
 "colima). Leer = jede gefundene ausführbare Mach-O-Datei."
 
-#: santa/models.py:524
+#: santa/models.py:549
 msgid "minimum macOS"
 msgstr "Mindest-macOS"
 
-#: santa/models.py:525
+#: santa/models.py:550
 msgid ""
 "Homebrew formula: only the bottles for Macs with this macOS or newer. Empty "
 "= every bottle."
@@ -2934,11 +3119,11 @@ msgstr ""
 "Homebrew-Formel: nur die Bottles für Macs mit diesem macOS oder neuer. Leer "
 "= jedes Bottle."
 
-#: santa/models.py:528
+#: santa/models.py:553
 msgid "take the nearest bottle"
 msgstr "nächstliegendes Bottle nehmen"
 
-#: santa/models.py:529
+#: santa/models.py:554
 msgid ""
 "Homebrew formula: a bottle for an older macOS counts for the newer ones it "
 "runs on, like in Homebrew (portable-ruby has only arm64_big_sur, which "
@@ -2948,15 +3133,15 @@ msgstr ""
 "auf denen es läuft, wie in Homebrew (portable-ruby hat nur arm64_big_sur, "
 "das auch arm64_sequoia bedient)."
 
-#: santa/models.py:532
-msgid "GitHub, VS Code, JetBrains (EAP)"
-msgstr "GitHub, VS Code, JetBrains (EAP)"
+#: santa/models.py:558
+msgid "GitHub, npm, VS Code, JetBrains (EAP), Homebrew taps"
+msgstr "GitHub, npm, VS Code, JetBrains (EAP), Homebrew-Taps"
 
-#: santa/models.py:535
+#: santa/models.py:561
 msgid "preferred rule type"
 msgstr "bevorzugter Regeltyp"
 
-#: santa/models.py:536
+#: santa/models.py:562
 msgid ""
 "The rules created for the executables found. Binary / CDHash: one rule per "
 "file and version. Signing ID / Certificate / Team ID: one rule for all "
@@ -2969,27 +3154,27 @@ msgstr ""
 "ausführbare Datei ohne diese Angabe (unsigniert) erhält stattdessen eine "
 "Binary-Regel."
 
-#: santa/models.py:541 santa/models.py:718
+#: santa/models.py:567 santa/models.py:744
 msgid "custom message"
 msgstr "eigene Meldung"
 
-#: santa/models.py:542
+#: santa/models.py:568
 msgid "Block and CEL: shown in the block dialog"
 msgstr "Blockieren und CEL: wird im Blockierdialog angezeigt"
 
-#: santa/models.py:544
+#: santa/models.py:570
 msgid "Block and CEL: opened from the block dialog"
 msgstr "Blockieren und CEL: wird aus dem Blockierdialog geöffnet"
 
-#: santa/models.py:545
+#: santa/models.py:571
 msgid "Only with the CEL policy"
 msgstr "Nur mit der CEL-Richtlinie"
 
-#: santa/models.py:547
+#: santa/models.py:573
 msgid "Allow on every Mac"
 msgstr "Auf jedem Mac erlauben"
 
-#: santa/models.py:550
+#: santa/models.py:576
 msgid ""
 "Enable the rules of new releases automatically. Otherwise they wait for "
 "approval."
@@ -2997,11 +3182,11 @@ msgstr ""
 "Die Regeln neuer Releases automatisch aktivieren. Sonst warten sie auf "
 "Freigabe."
 
-#: santa/models.py:553
+#: santa/models.py:579
 msgid "auto approve delay (days)"
 msgstr "Verzögerung der automatischen Freigabe (Tage)"
 
-#: santa/models.py:554
+#: santa/models.py:580
 msgid ""
 "With auto approve: enable the rules of a new release only this many days "
 "after it was published (GitHub), or first seen by this server (Homebrew, "
@@ -3014,27 +3199,27 @@ msgstr ""
 "Release zu bemerken. 0 = sofort. „Aktivieren / freigeben“ bei den Regeln "
 "überspringt die Wartezeit, Deaktivieren bricht sie ab."
 
-#: santa/models.py:560
+#: santa/models.py:586
 msgid "Added to the rules of every new release"
 msgstr "Wird den Regeln jedes neuen Releases hinzugefügt"
 
-#: santa/models.py:562
+#: santa/models.py:588
 msgid "versions"
 msgstr "Versionen"
 
-#: santa/models.py:563
+#: santa/models.py:589
 msgid "weeks"
 msgstr "Wochen"
 
-#: santa/models.py:564
+#: santa/models.py:590
 msgid "months"
 msgstr "Monate"
 
-#: santa/models.py:567
+#: santa/models.py:593
 msgid "keep"
 msgstr "behalten"
 
-#: santa/models.py:568
+#: santa/models.py:594
 msgid ""
 "The last versions, or the versions of the last weeks or months, keep their "
 "rules. The rules of older versions are deleted, the newest version always "
@@ -3044,11 +3229,11 @@ msgstr ""
 "behalten ihre Regeln. Die Regeln älterer Versionen werden gelöscht, die "
 "neueste Version bleibt immer. 0 = alle behalten."
 
-#: santa/models.py:573
+#: santa/models.py:599
 msgid "also allow the older kept versions"
 msgstr "auch die älteren behaltenen Versionen erlauben"
 
-#: santa/models.py:574
+#: santa/models.py:600
 msgid ""
 "Also add the rules of the older versions inside the kept range, not only of "
 "the new ones (not for Homebrew casks and URLs). Not with 0 (keep all): that "
@@ -3058,11 +3243,11 @@ msgstr ""
 "nur die der neuen (nicht für Homebrew-Casks und URLs). Nicht mit 0 (alle "
 "behalten): Das würde jede je veröffentlichte Version erlauben."
 
-#: santa/models.py:579
+#: santa/models.py:605
 msgid "allow the dependencies"
 msgstr "Abhängigkeiten erlauben"
 
-#: santa/models.py:580
+#: santa/models.py:606
 msgid ""
 "Also allow the executables of the dependencies of every new version, also "
 "indirect ones (npm: dependencies and optional dependencies for macOS; "
@@ -3074,38 +3259,38 @@ msgstr ""
 "Abhängigkeiten für macOS; Homebrew-Formula: die Laufzeitabhängigkeiten). "
 "Ihre Regeln gehören zur Version und werden mit ihr gelöscht."
 
-#: santa/models.py:614
+#: santa/models.py:640
 #, python-format
 msgid "%(identifier)s…: at most %(max)s characters."
 msgstr "%(identifier)s…: höchstens %(max)s Zeichen."
 
-#: santa/models.py:617
+#: santa/models.py:643
 #, python-format
 msgid "%(identifier)s: use the owner/repo format."
 msgstr "%(identifier)s: bitte das Format owner/repo verwenden."
 
-#: santa/models.py:629
+#: santa/models.py:655
 #, python-format
 msgid "Invalid regex %(pattern)s: %(error)s"
 msgstr "Ungültiger Regex %(pattern)s: %(error)s"
 
-#: santa/models.py:638 santa/models.py:763
+#: santa/models.py:664 santa/models.py:794
 msgid "Only used with the CEL policy."
 msgstr "Nur mit der CEL-Richtlinie verwendet."
 
-#: santa/models.py:640
+#: santa/models.py:666
 msgid "Only with a limit: 0 keeps every version ever published."
 msgstr "Nur mit einer Grenze: 0 behält jede je veröffentlichte Version."
 
-#: santa/models.py:642
+#: santa/models.py:668
 msgid "This catalog only publishes the newest version."
 msgstr "Dieser Katalog veröffentlicht nur die neueste Version."
 
-#: santa/models.py:644
+#: santa/models.py:670
 msgid "Only for npm packages and Homebrew formulae."
 msgstr "Nur für npm-Pakete und Homebrew-Formulae."
 
-#: santa/models.py:699
+#: santa/models.py:725
 msgid ""
 "Binary: exactly this file, every new version needs a new rule (unsigned "
 "tools). CDHash: this code signature of the file. Signing ID: this program "
@@ -3121,7 +3306,7 @@ msgstr ""
 "Team ID: alles von diesem Entwickler. Auf dem Mac gewinnt der spezifischste "
 "Regeltyp: CDHash > Binary > Signing ID > Zertifikat > Team ID."
 
-#: santa/models.py:709
+#: santa/models.py:735
 msgid ""
 "SHA-256 for binaries / certificates, 10 character Team ID, TEAMID:bundle.id "
 "(or platform:bundle.id) for signing IDs, 40 character CDHash."
@@ -3129,7 +3314,7 @@ msgstr ""
 "SHA-256 für Binaries / Zertifikate, 10-stellige Team ID, TEAMID:bundle.id "
 "(oder platform:bundle.id) für Signing IDs, 40-stelliger CDHash."
 
-#: santa/models.py:714
+#: santa/models.py:740
 msgid ""
 "Allow compiler: allowed, and the files it writes are allowed too on Macs "
 "with transitive rules enabled. Block silently: blocked without showing the "
@@ -3141,47 +3326,55 @@ msgstr ""
 "blockiert, ohne den Dialog anzuzeigen. CEL: erlauben oder blockieren "
 "abhängig von einem CEL-Ausdruck (z. B. über die Argumente)."
 
-#: santa/models.py:719
+#: santa/models.py:745
 msgid "Shown in the block dialog"
 msgstr "Wird im Blockierdialog angezeigt"
 
-#: santa/models.py:720
+#: santa/models.py:746
 msgid "Opened from the block dialog"
 msgstr "Wird aus dem Blockierdialog geöffnet"
 
-#: santa/models.py:724
+#: santa/models.py:750
 msgid "Only to sort and find the rules, no effect on the Macs"
 msgstr "Nur zum Sortieren und Finden der Regeln, ohne Wirkung auf die Macs"
 
-#: santa/models.py:726
+#: santa/models.py:752
 msgid "Apply to every Mac"
 msgstr "Auf jeden Mac anwenden"
 
-#: santa/models.py:729
+#: santa/models.py:755
 msgid "Apply to these individual Macs"
 msgstr "Auf diese einzelnen Macs anwenden"
 
-#: santa/models.py:730
+#: santa/models.py:756
 msgid "Disabled rules are removed from the Macs"
 msgstr "Deaktivierte Regeln werden von den Macs entfernt"
 
-#: santa/models.py:793
+#: santa/models.py:760
+msgid "expires"
+msgstr "läuft ab"
+
+#: santa/models.py:761
+msgid "Then the rule is removed from the Macs and deleted. Empty = never."
+msgstr "Danach wird die Regel von den Macs entfernt und gelöscht. Leer = nie."
+
+#: santa/models.py:833
 msgid "Paths: only the listed processes may access them"
 msgstr "Pfade: nur die genannten Prozesse dürfen darauf zugreifen"
 
-#: santa/models.py:794
+#: santa/models.py:834
 msgid "Paths: the listed processes may not access them"
 msgstr "Pfade: die genannten Prozesse dürfen nicht darauf zugreifen"
 
-#: santa/models.py:795
+#: santa/models.py:835
 msgid "Processes: may only access the listed paths"
 msgstr "Prozesse: dürfen nur auf die genannten Pfade zugreifen"
 
-#: santa/models.py:796
+#: santa/models.py:836
 msgid "Processes: may not access the listed paths"
 msgstr "Prozesse: dürfen nicht auf die genannten Pfade zugreifen"
 
-#: santa/models.py:808
+#: santa/models.py:848
 msgid ""
 "Shown in the logs and in the block dialog, e.g. SSH-keys. Letters, digits "
 "and . _ : - (no spaces)."
@@ -3189,7 +3382,7 @@ msgstr ""
 "Erscheint in den Protokollen und im Blockierdialog, z. B. SSH-Keys. "
 "Buchstaben, Ziffern und . _ : - (keine Leerzeichen)."
 
-#: santa/models.py:816
+#: santa/models.py:856
 msgid ""
 "One path per line, e.g. /Users/*/.ssh/id_rsa. Glob patterns (* ? [ ]) work, "
 "** doesn't."
@@ -3197,7 +3390,7 @@ msgstr ""
 "Ein Pfad pro Zeile, z. B. /Users/*/.ssh/id_rsa. Glob-Muster (* ? [ ]) "
 "funktionieren, ** nicht."
 
-#: santa/models.py:820
+#: santa/models.py:860
 msgid ""
 "One path per line: the path and everything below it, e.g. /Users/*/Library/"
 "Cookies/"
@@ -3205,11 +3398,11 @@ msgstr ""
 "Ein Pfad pro Zeile: der Pfad und alles darunter, z. B. /Users/*/Library/"
 "Cookies/"
 
-#: santa/models.py:823
+#: santa/models.py:863
 msgid "Only writes are checked, everyone may read."
 msgstr "Nur Schreibzugriffe werden geprüft, lesen dürfen alle."
 
-#: santa/models.py:827
+#: santa/models.py:867
 msgid ""
 "Only log the access, don't block it. Start with it, check the events, then "
 "turn it off."
@@ -3217,7 +3410,7 @@ msgstr ""
 "Den Zugriff nur protokollieren, nicht blockieren. Beginnen Sie damit, prüfen "
 "Sie die Ereignisse und schalten Sie es dann aus."
 
-#: santa/models.py:831
+#: santa/models.py:871
 msgid ""
 "Shown when the rule blocks. Empty = the message of the group, or Santa's "
 "default text."
@@ -3225,149 +3418,153 @@ msgstr ""
 "Wird angezeigt, wenn die Regel blockiert. Leer = die Meldung der Gruppe oder "
 "der Standardtext von Santa."
 
-#: santa/models.py:835
+#: santa/models.py:875
 msgid "Block without the dialog."
 msgstr "Ohne Dialog blockieren."
 
-#: santa/models.py:837
+#: santa/models.py:877
 msgid "Block without the message in the terminal."
 msgstr "Ohne die Meldung im Terminal blockieren."
 
-#: santa/models.py:838
+#: santa/models.py:878
 msgid "all groups"
 msgstr "alle Gruppen"
 
-#: santa/models.py:853
+#: santa/models.py:893
 msgid "Only letters, digits and . _ : - (no spaces)."
 msgstr "Nur Buchstaben, Ziffern und . _ : - (keine Leerzeichen)."
 
-#: santa/models.py:857
+#: santa/models.py:897
 #, python-format
 msgid "Line %(line)s: an absolute path, starting with /."
 msgstr "Zeile %(line)s: ein absoluter Pfad, beginnend mit /."
 
-#: santa/models.py:859
+#: santa/models.py:899
 #, python-format
 msgid "Line %(line)s: Santa doesn't support **."
 msgstr "Zeile %(line)s: Santa unterstützt ** nicht."
 
-#: santa/models.py:861
+#: santa/models.py:901
 msgid "At least one path."
 msgstr "Mindestens ein Pfad."
 
-#: santa/models.py:886
+#: santa/models.py:926
 msgid "signing ID"
 msgstr "Signing ID"
 
-#: santa/models.py:887
+#: santa/models.py:927
 msgid "e.g. com.apple.ssh-agent, with the Team ID or “Platform binary”"
 msgstr "z. B. com.apple.ssh-agent, mit der Team ID oder „Plattform-Binary“"
 
-#: santa/models.py:888
+#: santa/models.py:928
 msgid "team ID"
 msgstr "Team ID"
 
-#: santa/models.py:889
+#: santa/models.py:929
 msgid "Part of macOS"
 msgstr "Teil von macOS"
 
-#: santa/models.py:892
+#: santa/models.py:932
 msgid "certificate SHA-256"
 msgstr "Zertifikat-SHA-256"
 
-#: santa/models.py:906 santa/validators.py:25
+#: santa/models.py:946 santa/validators.py:25
 msgid "Must be a 10 character Team ID, e.g. EQHXZ8M8AV."
 msgstr "Muss eine 10-stellige Team ID sein, z. B. EQHXZ8M8AV."
 
-#: santa/models.py:908 santa/validators.py:21
+#: santa/models.py:948 santa/validators.py:21
 msgid "Must be a CDHash (40 hex characters)."
 msgstr "Muss ein CDHash sein (40 Hex-Zeichen)."
 
-#: santa/models.py:910 santa/validators.py:17
+#: santa/models.py:950 santa/validators.py:17
 msgid "Must be a SHA-256 hex digest (64 characters)."
 msgstr "Muss ein SHA-256-Hexwert sein (64 Zeichen)."
 
-#: santa/models.py:912
+#: santa/models.py:952
 msgid "An absolute path, starting with /."
 msgstr "Ein absoluter Pfad, beginnend mit /."
 
-#: santa/models.py:914
+#: santa/models.py:954
 msgid "A Signing ID needs the Team ID, or “Platform binary”."
 msgstr "Eine Signing ID braucht die Team ID oder „Plattform-Binary“."
 
-#: santa/models.py:916
+#: santa/models.py:956
 msgid "Fill in at least one field of the process."
 msgstr "Füllen Sie mindestens ein Feld des Prozesses aus."
 
-#: santa/models.py:994
+#: santa/models.py:1034
 msgid "Blocked on my Mac"
 msgstr "Auf meinem Mac blockiert"
 
-#: santa/models.py:996
+#: santa/models.py:1036
 msgid "Other"
 msgstr "Sonstiges"
 
-#: santa/models.py:999 santa/models.py:1045
+#: santa/models.py:1039 santa/models.py:1085
 msgid "Pending"
 msgstr "Offen"
 
-#: santa/models.py:1000 santa/models.py:1046
+#: santa/models.py:1040 santa/models.py:1086
 msgid "Approved"
 msgstr "Freigegeben"
 
-#: santa/models.py:1001
+#: santa/models.py:1041
 msgid "Denied"
 msgstr "Abgelehnt"
 
-#: santa/models.py:1002
+#: santa/models.py:1042
 msgid "Cancelled"
 msgstr "Zurückgezogen"
 
-#: santa/models.py:1047
+#: santa/models.py:1087
 msgid "Not approved"
 msgstr "Nicht freigegeben"
 
-#: santa/models.py:1071 santa/templates/console/base.html:79
+#: santa/models.py:1111 santa/templates/console/base.html:79
 msgid "System"
 msgstr "System"
 
-#: santa/models.py:1072 santa/templates/console/base.html:80
+#: santa/models.py:1112 santa/templates/console/base.html:80
 msgid "Light"
 msgstr "Hell"
 
-#: santa/models.py:1073 santa/templates/console/base.html:81
+#: santa/models.py:1113 santa/templates/console/base.html:81
 msgid "Dark"
 msgstr "Dunkel"
 
-#: santa/models.py:1077
+#: santa/models.py:1117
 msgid "System: follows the light or dark mode of your computer."
 msgstr "System: folgt dem hellen oder dunklen Modus Ihres Computers."
 
-#: santa/models.py:1090
+#: santa/models.py:1130 santa/models.py:1139
 msgid "As the sign-in groups say"
 msgstr "Wie die Anmeldegruppen es vorgeben"
 
-#: santa/models.py:1092
+#: santa/models.py:1132
 msgid "E-mails allowed"
 msgstr "E-Mails erlaubt"
 
-#: santa/models.py:1107
+#: santa/models.py:1140
+msgid "Set by hand"
+msgstr "Von Hand"
+
+#: santa/models.py:1156
 msgid "Success"
 msgstr "Erfolg"
 
-#: santa/models.py:1108
+#: santa/models.py:1157
 msgid "Info"
 msgstr "Info"
 
-#: santa/models.py:1109
+#: santa/models.py:1158
 msgid "Warning"
 msgstr "Warnung"
 
-#: santa/models.py:1110
+#: santa/models.py:1159
 msgid "Error"
 msgstr "Fehler"
 
-#: santa/models.py:1154
+#: santa/models.py:1203
 msgid ""
 "The value in the groups claim of the ID token: the object ID or the name of "
 "the group, depending on the provider. * is everyone who signs in."
@@ -3375,17 +3572,17 @@ msgstr ""
 "Der Wert im Gruppen-Claim des ID-Tokens: die Objekt-ID oder der Name der "
 "Gruppe, je nach Anbieter. * steht für alle, die sich anmelden."
 
-#: santa/models.py:1156
+#: santa/models.py:1205
 msgid "A name to recognise the group, only for display"
 msgstr "Ein Name, an dem Sie die Gruppe erkennen, nur für die Anzeige"
 
-#: santa/models.py:1158
+#: santa/models.py:1207
 msgid "The members can open the console (with the permissions of their roles)"
 msgstr ""
 "Die Mitglieder können die Konsole öffnen (mit den Berechtigungen ihrer "
 "Rollen)"
 
-#: santa/models.py:1160
+#: santa/models.py:1209
 msgid ""
 "The members get no e-mail notifications, e.g. admin accounts without a "
 "mailbox. A user can be excepted in Administration → Users."
@@ -3509,19 +3706,19 @@ msgstr "VS Code"
 msgid "JetBrains"
 msgstr "JetBrains"
 
-#: santa/services.py:129
+#: santa/services.py:137
 msgid ""
 "Only a Team ID rule with “Only signing IDs starting with” takes signing IDs."
 msgstr ""
 "Nur eine Team-ID-Regel mit „Nur Signing IDs, die beginnen mit“ nimmt Signing "
 "IDs auf."
 
-#: santa/services.py:132
+#: santa/services.py:140
 #, python-format
 msgid "This rule comes from the package rule %(source)s: change it there."
 msgstr "Diese Regel stammt aus der Paketregel %(source)s: Ändern Sie sie dort."
 
-#: santa/services.py:136
+#: santa/services.py:144
 #, python-format
 msgid "The signing ID %(signing_id)s doesn't belong to the team %(team_id)s."
 msgstr "Die Signing ID %(signing_id)s gehört nicht zum Team %(team_id)s."
@@ -3685,11 +3882,12 @@ msgstr "Änderungen anzeigen"
 #: santa/templates/console/administration/_role_form.html:25
 #: santa/templates/console/administration/_sign_in_group_form.html:17
 #: santa/templates/console/administration/_tag_form.html:8
-#: santa/templates/console/administration/_user_form.html:32
+#: santa/templates/console/administration/_user_form.html:38
 #: santa/templates/console/events/_create_rules_form.html:34
 #: santa/templates/console/events/_packages_form.html:70
 #: santa/templates/console/file_access/_form.html:43
-#: santa/templates/console/rules/_form.html:35
+#: santa/templates/console/machines/_mode_form.html:8
+#: santa/templates/console/rules/_form.html:36
 #: santa/templates/console/rules/_upload.html:9
 #: santa/templates/console/rules/_upload_rules.html:38
 #: santa/templates/console/sources/_cleanup.html:34
@@ -3807,11 +4005,12 @@ msgstr ""
 #: santa/templates/console/administration/_role_form.html:24
 #: santa/templates/console/administration/_sign_in_group_form.html:16
 #: santa/templates/console/administration/_tag_form.html:7
-#: santa/templates/console/administration/_user_form.html:31
+#: santa/templates/console/administration/_user_form.html:37
 #: santa/templates/console/file_access/_form.html:42
 #: santa/templates/console/groups/_form.html:52
+#: santa/templates/console/machines/_mode_form.html:7
 #: santa/templates/console/profile.html:33
-#: santa/templates/console/rules/_form.html:34
+#: santa/templates/console/rules/_form.html:35
 #: santa/templates/console/sources/_form.html:56
 #: santa/templates/console/widgets/_filter_bar.html:18
 msgid "Save"
@@ -3824,7 +4023,7 @@ msgstr "Rolle anlegen"
 #: santa/templates/console/administration/_role_form.html:26
 #: santa/templates/console/administration/_sign_in_group_form.html:18
 #: santa/templates/console/administration/_tag_form.html:9
-#: santa/templates/console/administration/_user_form.html:33
+#: santa/templates/console/administration/_user_form.html:39
 #: santa/templates/console/file_access/_form.html:44
 #: santa/templates/console/file_access/list.html:25
 #: santa/templates/console/groups/_form.html:53
@@ -3833,10 +4032,10 @@ msgstr "Rolle anlegen"
 #: santa/templates/console/history/page.html:2
 #: santa/templates/console/history/page.html:6
 #: santa/templates/console/machines/_actions.html:5
-#: santa/templates/console/machines/_rows.html:17
-#: santa/templates/console/rules/_form.html:36
+#: santa/templates/console/machines/_rows.html:18
+#: santa/templates/console/rules/_form.html:37
 #: santa/templates/console/rules/_package_rule.html:3
-#: santa/templates/console/rules/_row.html:21
+#: santa/templates/console/rules/_row.html:22
 #: santa/templates/console/sources/_detail.html:9
 #: santa/templates/console/sources/_rows.html:19
 msgid "History"
@@ -3927,38 +4126,47 @@ msgstr "Bei der letzten Anmeldung."
 #: santa/templates/console/administration/_user_form.html:8
 #: santa/templates/console/administration/sign_in_groups.html:15
 #: santa/templates/console/administration/users.html:18
-#: santa/templates/console/rules/_row.html:19
+#: santa/templates/console/rules/_row.html:20
 msgid "yes,no"
 msgstr "ja,nein"
+
+#: santa/templates/console/administration/_user_form.html:8
+#: santa/templates/console/administration/users.html:16
+msgid "roles by hand"
+msgstr "Rollen von Hand"
 
 #: santa/templates/console/administration/_user_form.html:9
 #: santa/templates/console/administration/users.html:9
 msgid "Last sign-in"
 msgstr "Letzte Anmeldung"
 
-#: santa/templates/console/administration/_user_form.html:23
+#: santa/templates/console/administration/_user_form.html:28
 msgid "Roles of the sign-in are changed in the sign-in groups."
 msgstr "Rollen aus der Anmeldung werden in den Anmeldegruppen geändert."
 
-#: santa/templates/console/administration/_user_form.html:25
+#: santa/templates/console/administration/_user_form.html:30
 #, python-format
 msgid "from %(groups)s"
 msgstr "über %(groups)s"
 
-#: santa/templates/console/administration/_user_form.html:25
+#: santa/templates/console/administration/_user_form.html:30
 msgid "admin role of the sign-in"
 msgstr "Admin-Rolle der Anmeldung"
 
-#: santa/templates/console/administration/_user_form.html:26
+#: santa/templates/console/administration/_user_form.html:31
+msgid "More roles"
+msgstr "Weitere Rollen"
+
+#: santa/templates/console/administration/_user_form.html:32
 #: santa/templates/console/administration/roles.html:20
 msgid "No roles yet."
 msgstr "Noch keine Rollen."
 
-#: santa/templates/console/administration/_user_form.html:31
+#: santa/templates/console/administration/_user_form.html:37
 msgid "Create account"
 msgstr "Konto anlegen"
 
-#: santa/templates/console/administration/_user_form.html:37
+#: santa/templates/console/administration/_user_form.html:43
 #, python-format
 msgid ""
 "Delete the user %(name)s? The account is created again at the next sign-in."
@@ -3966,7 +4174,7 @@ msgstr ""
 "Den Benutzer %(name)s löschen? Das Konto wird bei der nächsten Anmeldung neu "
 "angelegt."
 
-#: santa/templates/console/administration/_user_form.html:37
+#: santa/templates/console/administration/_user_form.html:43
 #, python-format
 msgid "Delete the local account %(name)s?"
 msgstr "Das lokale Konto %(name)s löschen?"
@@ -4024,11 +4232,11 @@ msgstr ""
 #: santa/templates/console/groups/list.html:15
 #: santa/templates/console/groups/list.html:26
 #: santa/templates/console/machines/_rows.html:2
-#: santa/templates/console/machines/_rows.html:16
+#: santa/templates/console/machines/_rows.html:17
 #: santa/templates/console/requests/_rows.html:2
 #: santa/templates/console/requests/_rows.html:12
-#: santa/templates/console/rules/_row.html:20
-#: santa/templates/console/rules/_rows.html:27
+#: santa/templates/console/rules/_row.html:21
+#: santa/templates/console/rules/_rows.html:34
 #: santa/templates/console/sources/_rows.html:2
 #: santa/templates/console/sources/_rows.html:18
 msgid "Actions"
@@ -4040,7 +4248,7 @@ msgstr "Aktionen"
 #: santa/templates/console/administration/users.html:21
 #: santa/templates/console/file_access/list.html:25
 #: santa/templates/console/groups/list.html:27
-#: santa/templates/console/rules/_row.html:21
+#: santa/templates/console/rules/_row.html:22
 #: santa/templates/console/sources/_detail.html:7
 #: santa/templates/console/sources/_rows.html:19
 #: santa/templates/console/sources/drawer_form.html:4
@@ -4262,7 +4470,7 @@ msgstr "Breiten und Spalten zurücksetzen"
 #: santa/templates/console/base.html:141
 #: santa/templates/console/events/_rows.html:13
 #: santa/templates/console/events/_rows.html:23
-#: santa/templates/console/rules/_rows.html:25
+#: santa/templates/console/rules/_rows.html:32
 msgid "Select all"
 msgstr "Alle auswählen"
 
@@ -4340,8 +4548,8 @@ msgstr "angefragt"
 #: santa/templates/console/events/_row.html:14
 #: santa/templates/console/file_access/list.html:25
 #: santa/templates/console/groups/list.html:27
-#: santa/templates/console/machines/_rows.html:17
-#: santa/templates/console/rules/_row.html:21
+#: santa/templates/console/machines/_rows.html:18
+#: santa/templates/console/rules/_row.html:22
 msgctxt "action"
 msgid "Open"
 msgstr "Öffnen"
@@ -4607,13 +4815,13 @@ msgstr "Als erledigt markieren"
 
 #: santa/templates/console/events/_rows.html:9
 #: santa/templates/console/machines/detail.html:32
-#: santa/templates/console/rules/_rows.html:22
+#: santa/templates/console/rules/_rows.html:29
 msgid "Clear selection"
 msgstr "Auswahl aufheben"
 
 #: santa/templates/console/events/_rows.html:9
 #: santa/templates/console/machines/detail.html:32
-#: santa/templates/console/rules/_rows.html:22
+#: santa/templates/console/rules/_rows.html:29
 msgid "Clear selection (Esc)"
 msgstr "Auswahl aufheben (Esc)"
 
@@ -4770,7 +4978,7 @@ msgstr "kein Geltungsbereich"
 
 #: santa/templates/console/file_access/list.html:23
 #: santa/templates/console/groups/list.html:25
-#: santa/templates/console/machines/_rows.html:13
+#: santa/templates/console/machines/_rows.html:14
 #: santa/templates/console/notifications/_item.html:5
 #: santa/templates/console/sources/_rows.html:17
 #, python-format
@@ -4827,7 +5035,7 @@ msgstr[0] "%(count)s im Profil"
 msgstr[1] "%(count)s im Profil"
 
 #: santa/templates/console/groups/_form.html:11
-#: santa/templates/console/machines/_summary.html:27
+#: santa/templates/console/machines/_summary.html:30
 msgid "Open blocks"
 msgstr "Offene Blockierungen"
 
@@ -4901,7 +5109,7 @@ msgstr "Basisprofil (.mobileconfig)"
 
 #: santa/templates/console/groups/list.html:15
 #: santa/templates/console/machines/_rows.html:2
-#: santa/templates/console/machines/_summary.html:20
+#: santa/templates/console/machines/_summary.html:23
 msgid "Last sync"
 msgstr "Letzte Synchronisierung"
 
@@ -4919,7 +5127,7 @@ msgid "Macs of this group"
 msgstr "Macs dieser Gruppe"
 
 #: santa/templates/console/groups/list.html:30
-#: santa/templates/console/rules/_rows.html:18
+#: santa/templates/console/rules/_rows.html:19
 msgid "No groups yet."
 msgstr "Noch keine Gruppen."
 
@@ -4965,7 +5173,7 @@ msgid "User name"
 msgstr "Benutzername"
 
 #: santa/templates/console/machines/_actions.html:3
-#: santa/templates/console/machines/_rows.html:17
+#: santa/templates/console/machines/_rows.html:18
 msgid ""
 "The Mac drops all its rules and downloads them again at its next sync. "
 "Continue?"
@@ -4989,27 +5197,32 @@ msgstr "Keine Ereignisse."
 msgid "Santa / macOS"
 msgstr "Santa / macOS"
 
-#: santa/templates/console/machines/_rows.html:13
-#: santa/templates/console/machines/_summary.html:20
+#: santa/templates/console/machines/_rows.html:11
+#, python-format
+msgid "own: %(mode)s"
+msgstr "eigener Modus: %(mode)s"
+
+#: santa/templates/console/machines/_rows.html:14
+#: santa/templates/console/machines/_summary.html:23
 #: santa/templates/console/sources/_detail.html:25
 msgid "never"
 msgstr "nie"
 
-#: santa/templates/console/machines/_rows.html:15
+#: santa/templates/console/machines/_rows.html:16
 msgid "clean sync"
 msgstr "Clean Sync"
 
-#: santa/templates/console/machines/_rows.html:17
+#: santa/templates/console/machines/_rows.html:18
 #: santa/templates/console/machines/detail.html:11
 #: santa/templates/console/machines/drawer_detail.html:9
 msgid "Rules for this Mac"
 msgstr "Regeln für diesen Mac"
 
-#: santa/templates/console/machines/_rows.html:17
+#: santa/templates/console/machines/_rows.html:18
 msgid "Request a clean sync"
 msgstr "Clean Sync anfordern"
 
-#: santa/templates/console/machines/_rows.html:20
+#: santa/templates/console/machines/_rows.html:21
 msgid "No Macs for these filters."
 msgstr "Keine Macs für diese Filter."
 
@@ -5031,15 +5244,20 @@ msgstr "Synchronisierung"
 
 #: santa/templates/console/machines/_summary.html:19
 #, python-format
+msgid "this Mac: %(mode)s"
+msgstr "dieser Mac: %(mode)s"
+
+#: santa/templates/console/machines/_summary.html:21
+#, python-format
 msgid "group: %(mode)s"
 msgstr "Gruppe: %(mode)s"
 
-#: santa/templates/console/machines/_summary.html:22
+#: santa/templates/console/machines/_summary.html:25
 #, python-format
 msgid "last preflight %(date)s"
 msgstr "letzter Preflight %(date)s"
 
-#: santa/templates/console/machines/_summary.html:23
+#: santa/templates/console/machines/_summary.html:26
 #, python-format
 msgid ""
 "%(expected_count)s should be on the Mac, %(synced_count)s confirmed by it"
@@ -5047,22 +5265,22 @@ msgstr ""
 "%(expected_count)s sollten auf dem Mac sein, %(synced_count)s von ihm "
 "bestätigt"
 
-#: santa/templates/console/machines/_summary.html:24
+#: santa/templates/console/machines/_summary.html:27
 #, python-format
 msgid "%(missing_count)s to add, %(extra_count)s to remove at the next sync"
 msgstr ""
 "%(missing_count)s hinzuzufügen, %(extra_count)s zu entfernen bei der "
 "nächsten Synchronisierung"
 
-#: santa/templates/console/machines/_summary.html:25
+#: santa/templates/console/machines/_summary.html:28
 msgid "in sync"
 msgstr "synchron"
 
-#: santa/templates/console/machines/_summary.html:26
+#: santa/templates/console/machines/_summary.html:29
 msgid "Reported"
 msgstr "Gemeldet"
 
-#: santa/templates/console/machines/_summary.html:26
+#: santa/templates/console/machines/_summary.html:29
 #, python-format
 msgid ""
 "%(total)s rules: %(binary)s binary, %(signing)s signing ID, %(team)s team "
@@ -5149,7 +5367,7 @@ msgid "enabled"
 msgstr "aktiv"
 
 #: santa/templates/console/machines/detail.html:56
-#: santa/templates/console/rules/_rows.html:30
+#: santa/templates/console/rules/_rows.html:37
 msgid "No rules for these filters."
 msgstr "Keine Regeln für diese Filter."
 
@@ -5264,7 +5482,7 @@ msgstr ""
 "IDs, die beginnen mit“) hinzugefügt, die Regel wird aktiviert und um den "
 "Geltungsbereich unten erweitert."
 
-#: santa/templates/console/requests/_approve_event.html:42
+#: santa/templates/console/requests/_approve_event.html:43
 msgid ""
 "No rule is created or changed. The open events of the binary on the Macs of "
 "the requester are marked as resolved."
@@ -5284,13 +5502,13 @@ msgstr ""
 msgid "Upload the app instead"
 msgstr "Stattdessen die App hochladen"
 
-#: santa/templates/console/requests/_approve_other.html:20
+#: santa/templates/console/requests/_approve_other.html:21
 msgid "Creating execution rules needs the permission to add rules."
 msgstr ""
 "Zum Anlegen von Ausführungsregeln ist die Berechtigung zum Hinzufügen von "
 "Regeln nötig."
 
-#: santa/templates/console/requests/_approve_other.html:26
+#: santa/templates/console/requests/_approve_other.html:27
 msgid ""
 "A package rule watches the releases and allows every new version. More "
 "options (patterns, delay) are on the page of the package rule after the "
@@ -5300,13 +5518,13 @@ msgstr ""
 "Weitere Optionen (Muster, Verzögerung) finden Sie nach der Genehmigung auf "
 "der Seite der Paketregel."
 
-#: santa/templates/console/requests/_approve_other.html:40
+#: santa/templates/console/requests/_approve_other.html:41
 msgid "Creating package rules needs the permission to add package rules."
 msgstr ""
 "Zum Anlegen von Paketregeln ist die Berechtigung zum Hinzufügen von "
 "Paketregeln nötig."
 
-#: santa/templates/console/requests/_approve_other.html:47
+#: santa/templates/console/requests/_approve_other.html:48
 msgid "Search by identifier, description or tag, and pick the rule."
 msgstr "Nach Kennung, Beschreibung oder Tag suchen und die Regel auswählen."
 
@@ -5433,12 +5651,12 @@ msgstr ""
 "Aus <code>santactl fileinfo /pfad/zum/binary</code>, oder legen Sie die "
 "Regel aus einem Ereignis an."
 
-#: santa/templates/console/rules/_form.html:29
+#: santa/templates/console/rules/_form.html:30
 #: santa/templates/console/sources/_form.html:51
 msgid "Tags and comment"
 msgstr "Tags und Kommentar"
 
-#: santa/templates/console/rules/_form.html:40
+#: santa/templates/console/rules/_form.html:41
 msgid "Delete this rule? The Macs remove it at their next sync."
 msgstr ""
 "Diese Regel löschen? Die Macs entfernen sie bei ihrer nächsten "
@@ -5464,23 +5682,31 @@ msgid "no – waiting for approval"
 msgstr "nein – wartet auf Freigabe"
 
 #: santa/templates/console/rules/_row.html:15
+msgid "Removed from the Macs, deleted soon"
+msgstr "Von den Macs entfernt, wird bald gelöscht"
+
+#: santa/templates/console/rules/_row.html:15
+msgid "expired"
+msgstr "abgelaufen"
+
+#: santa/templates/console/rules/_row.html:16
 #: santa/templates/console/sources/_detail.html:19
 msgid "manual"
 msgstr "manuell"
 
-#: santa/templates/console/rules/_row.html:21
+#: santa/templates/console/rules/_row.html:22
 msgid "Enable"
 msgstr "Aktivieren"
 
-#: santa/templates/console/rules/_rows.html:13
+#: santa/templates/console/rules/_rows.html:14
 msgid "tag"
 msgstr "Tag"
 
-#: santa/templates/console/rules/_rows.html:21
+#: santa/templates/console/rules/_rows.html:28
 msgid "Delete the selected rules?"
 msgstr "Die ausgewählten Regeln löschen?"
 
-#: santa/templates/console/rules/_rows.html:21
+#: santa/templates/console/rules/_rows.html:28
 #: santa/templates/console/widgets/_filter_bar.html:74
 msgid "Apply"
 msgstr "Anwenden"
@@ -6056,7 +6282,8 @@ msgstr "Suchen: %(label)s"
 #: santa/templates/console/widgets/_filter_bar.html:65
 #, python-format
 msgid "At most %(count)s at a time: only the first %(count)s are used."
-msgstr "Höchstens %(count)s auf einmal: nur die ersten %(count)s werden verwendet."
+msgstr ""
+"Höchstens %(count)s auf einmal: nur die ersten %(count)s werden verwendet."
 
 #: santa/templates/console/widgets/_filter_bar.html:69
 msgid "Date range…"
@@ -6196,20 +6423,25 @@ msgstr ""
 "Ihr Mac erhält die neue Regel bei der nächsten Synchronisierung, meist "
 "innerhalb weniger Minuten."
 
-#: santa/templates/email/request_decided.txt:3
+#: santa/templates/email/request_decided.txt:4
+#, python-format
+msgid "Allowed until %(date)s."
+msgstr "Erlaubt bis %(date)s."
+
+#: santa/templates/email/request_decided.txt:4
 #, python-format
 msgid "Your request “%(title)s” was not approved."
 msgstr "Ihre Anfrage „%(title)s“ wurde nicht genehmigt."
 
-#: santa/templates/email/request_decided.txt:4
+#: santa/templates/email/request_decided.txt:5
 msgid "This time only a lump of coal."
 msgstr "Diesmal leider nur ein Stück Kohle."
 
-#: santa/templates/email/request_decided.txt:6
+#: santa/templates/email/request_decided.txt:7
 msgid "Note:"
 msgstr "Notiz:"
 
-#: santa/templates/email/request_decided.txt:9
+#: santa/templates/email/request_decided.txt:10
 msgid "Your requests:"
 msgstr "Ihre Anfragen:"
 

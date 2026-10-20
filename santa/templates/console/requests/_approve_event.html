@@ -34,6 +34,7 @@
 <div data-show-when="result=rule|extend|signing">
   {% include "console/_field.html" with field=form.scope %}
   <div data-show-when="scope=groups">{% include "console/_field.html" with field=form.groups %}</div>
+  {% include "console/_field.html" with field=form.expires_at %}
 </div>
 <div data-show-when="result=rule">
   {% include "console/_field.html" with field=form.tags %}

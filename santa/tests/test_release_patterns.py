@@ -5,6 +5,7 @@ import io
 import logging
 import time
 import uuid
+from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -12,8 +13,9 @@ from django.apps import apps
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
-from django.test import RequestFactory, SimpleTestCase, TestCase
+from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
 from santa.log_redaction import RedactSyncTokens, redact_sync_path
 from santa.models import Policy, ReleaseSource, ReleaseVersion, Rule, RuleType
@@ -22,10 +24,13 @@ from santa.releases import (
     Asset,
     Release,
     ReleaseError,
+    _tap_release,
     bottle_coverage,
     cleanup_release_source,
     collect_many,
     find_binaries,
+    homebrew_formula_at,
+    homebrew_formula_releases,
     latest_homebrew_formula,
     latest_homebrew_tap,
     parse_tap_file,
@@ -342,6 +347,21 @@ end
 ''' % {"a": "a" * 64, "b": "b" * 64}
 
 
+class TapCleanUpTestCase(TestCase):
+    def test_the_clean_up_takes_the_prereleases_of_a_tap_recorded_before(self):
+        source = ReleaseSource.objects.create(name="rustfs", kind=ReleaseSource.Kind.HOMEBREW_FORMULA,
+                                              identifier="rustfs/tap/rustfs\ngo")
+        preview = ReleaseVersion.objects.create(source=source, identifier="rustfs/tap/rustfs",
+                                                version="1.0.1-preview.16")
+        ReleaseVersion.objects.create(source=source, identifier="rustfs/tap/rustfs", version="1.0.1")
+        ReleaseVersion.objects.create(source=source, identifier="go", version="1.27.2")
+        self.assertEqual(stale_versions(source, check_filters=True), [preview])
+        # not at the hourly check, only in the clean up; and not when they are allowed
+        self.assertEqual(stale_versions(source), [])
+        source.include_prereleases = True
+        self.assertEqual(stale_versions(source, check_filters=True), [])
+
+
 class TapTestCase(SimpleTestCase):
     def test_downloads_per_platform(self):
         found = parse_tap_file(HASHICORP_FORMULA)
@@ -404,6 +424,141 @@ class TapTestCase(SimpleTestCase):
         # it signs the program again: the hash of the download is not the one the Macs see
         [warning] = release.warnings
         self.assertIn("signs its program again", warning)
+
+    def tap_history_session(self, commits, files):
+        """commits: [(sha, date, message)] newest first; files: {sha: version} of Formula/tool.rb"""
+        base = "https://raw.githubusercontent.com/example/homebrew-tap"
+
+        def formula(version):
+            return (f'class Tool < Formula\n  version "{version}"\n  url "https://dl.example/tool-{version}-darwin.zip"'
+                    f'\n  sha256 "{"a" * 64}"\nend\n')
+        routes = {f"{base}/HEAD/Formula/tool.rb": FakeResponse(content=formula(files[commits[0][0]]).encode()),
+                  "https://api.github.com/repos/example/homebrew-tap/commits": FakeResponse(
+                      [{"sha": sha, "commit": {"message": message, "committer": {"date": date}}}
+                       for sha, date, message in commits])}
+        for sha, version in files.items():
+            routes[f"{base}/{sha}/Formula/tool.rb"] = FakeResponse(content=formula(version).encode())
+        return fake_session(routes)
+
+    @override_settings(GITHUB_TOKEN="token")
+    def test_older_versions_from_the_history_of_the_tap(self):
+        session = self.tap_history_session(
+            [("c3", "2026-10-10T10:00:00Z", "tool 1.2.0"), ("c2", "2026-10-01T10:00:00Z", "tool: new bottles"),
+             ("c1", "2026-09-30T10:00:00Z", "tool 1.1.0"), ("c0", "2026-09-01T10:00:00Z", "tool 1.0.0")],
+            {"c3": "1.2.0", "c2": "1.1.0", "c1": "1.1.0", "c0": "1.0.0"})
+        source = ReleaseSource(kind=ReleaseSource.Kind.HOMEBREW_FORMULA, keep_versions=2)
+        releases = homebrew_formula_releases(session, source, "example/tap/tool", 2)
+        # the date of a version: the commit that brought it, not a later one of the same version
+        self.assertEqual([(release.version, release.published_at.date().isoformat()) for release in releases],
+                         [("1.2.0", "2026-10-10"), ("1.1.0", "2026-09-30")])
+        self.assertEqual([asset.url for asset in releases[1].assets], ["https://dl.example/tool-1.1.0-darwin.zip"])
+        # one version of the history
+        self.assertEqual(homebrew_formula_at(session, source, "example/tap/tool", version="1.0.0").version, "1.0.0")
+        with self.assertRaisesMessage(ReleaseError, "no version 0.9 in the history of the tap"):
+            homebrew_formula_at(session, source, "example/tap/tool", version="0.9")
+
+    @override_settings(GITHUB_TOKEN="token")
+    def test_a_known_version_named_by_its_commit_is_not_read_again(self):
+        session = self.tap_history_session(
+            [("c3", "2026-10-10T10:00:00Z", "tool 1.2.0"), ("c1", "2026-09-30T10:00:00Z", "tool 1.1.0")],
+            {"c3": "1.2.0", "c1": "1.1.0"})
+        source = ReleaseSource(kind=ReleaseSource.Kind.HOMEBREW_FORMULA, keep_versions=2)
+        releases = homebrew_formula_releases(session, source, "example/tap/tool", 2, known={"1.1.0": None})
+        self.assertEqual([release.version for release in releases], ["1.2.0", "1.1.0"])
+        urls = [call.args[0] for call in session.get.call_args_list]
+        self.assertNotIn("https://raw.githubusercontent.com/example/homebrew-tap/c1/Formula/tool.rb", urls)
+
+    @override_settings(GITHUB_TOKEN="token")
+    def test_a_dependency_older_than_the_range_to_keep(self):
+        recent = (timezone.now() - timedelta(days=5)).isoformat()
+        old = (timezone.now() - timedelta(days=400)).isoformat()
+        session = self.tap_history_session([("c2", recent, "tool 1.2.0"), ("c1", old, "tool 1.0.0")],
+                                           {"c2": "1.2.0", "c1": "1.0.0"})
+        source = ReleaseSource(kind=ReleaseSource.Kind.HOMEBREW_FORMULA, keep_versions=1,
+                               keep_unit=ReleaseSource.KeepUnit.MONTHS)
+        self.assertEqual([r.version for r in homebrew_formula_releases(session, source, "example/tap/tool", 5)],
+                         ["1.2.0"])
+        # the version a kept release needs, from the same session: not cut by the range
+        self.assertEqual(homebrew_formula_at(session, source, "example/tap/tool", version="1.0.0").version, "1.0.0")
+
+    @override_settings(GITHUB_TOKEN="token")
+    def test_the_history_of_one_lookup_is_not_given_to_another(self):
+        session = self.tap_history_session(
+            [("c3", "2026-10-10T10:00:00Z", "tool 1.2.0"), ("c1", "2026-09-30T10:00:00Z", "tool 1.1.0")],
+            {"c3": "1.2.0", "c1": "1.1.0"})
+        source = ReleaseSource(kind=ReleaseSource.Kind.HOMEBREW_FORMULA, keep_versions=2)
+        homebrew_formula_releases(session, source, "example/tap/tool", 2, known={"1.1.0": None})
+        # without the versions recorded by the first one: with their files, not the placeholders
+        releases = homebrew_formula_releases(session, source, "example/tap/tool", 2)
+        self.assertEqual([asset.url for asset in releases[1].assets], ["https://dl.example/tool-1.1.0-darwin.zip"])
+
+    def test_a_url_put_together_from_a_key_of_a_hash(self):
+        # rustfs/tap/rc before it declared its resources: the URL in a method, the key of BINARIES in it
+        found = parse_tap_file('''
+class Rc < Formula
+  VERSION = "0.1.35".freeze
+  GITHUB_REPO = "rustfs/cli".freeze
+  BINARIES = {
+    "macos-arm64" => "%(a)s",
+    "linux-amd64" => "%(b)s",
+  }.freeze
+  url "https://github.com/#{GITHUB_REPO}/archive/refs/tags/v#{VERSION}.tar.gz"
+  sha256 "%(c)s"
+
+  def binary_url_and_sha
+    target = system_target
+    sha256 = BINARIES[target]
+    url = "https://github.com/#{GITHUB_REPO}/releases/download/v#{VERSION}/rustfs-cli-#{target}-v#{VERSION}.tar.gz"
+    [url, sha256]
+  end
+end
+''' % {"a": "a" * 64, "b": "b" * 64, "c": "c" * 64})
+        release = _tap_release(ReleaseSource(kind=ReleaseSource.Kind.HOMEBREW_FORMULA), "rustfs/tap/rc", found, False)
+        # not Linux, not the source code of the tag
+        base = "https://github.com/rustfs/cli/releases/download/v0.1.35"
+        self.assertEqual([(asset.url, asset.sha256) for asset in release.assets],
+                         [(f"{base}/rustfs-cli-macos-arm64-v0.1.35.tar.gz", "a" * 64)])
+
+    @override_settings(GITHUB_TOKEN="token")
+    def test_prereleases_only_when_allowed(self):
+        commits = [("c3", "2026-10-16T12:00:00Z", "tool 1.0.2-preview.2"),
+                   ("c2", "2026-10-03T10:00:00Z", "tool 1.0.1"),
+                   ("c1", "2026-09-20T10:00:00Z", "tool 1.0.1-preview.16")]
+        files = {"c3": "1.0.2-preview.2", "c2": "1.0.1", "c1": "1.0.1-preview.16"}
+        source = ReleaseSource(kind=ReleaseSource.Kind.HOMEBREW_FORMULA, keep_versions=5)
+        session = self.tap_history_session(commits, files)
+        self.assertEqual([r.version for r in homebrew_formula_releases(session, source, "example/tap/tool", 5)],
+                         ["1.0.1"])
+        # the current one is a prerelease: the newest release instead
+        self.assertEqual(latest_homebrew_formula(session, source, "example/tap/tool").version, "1.0.1")
+        source.include_prereleases = True
+        session = self.tap_history_session(commits, files)
+        self.assertEqual([r.version for r in homebrew_formula_releases(session, source, "example/tap/tool", 5)],
+                         ["1.0.2-preview.2", "1.0.1", "1.0.1-preview.16"])
+        self.assertEqual(latest_homebrew_formula(session, source, "example/tap/tool").version, "1.0.2-preview.2")
+
+    @override_settings(GITHUB_TOKEN=None)
+    def test_a_prerelease_without_a_token(self):
+        session = self.tap_history_session([("c3", "2026-10-16T12:00:00Z", "tool 1.0.2-preview.2")],
+                                           {"c3": "1.0.2-preview.2"})
+        source = ReleaseSource(kind=ReleaseSource.Kind.HOMEBREW_FORMULA, keep_versions=5)
+        self.assertEqual(homebrew_formula_releases(session, source, "example/tap/tool", 5), [])
+        with self.assertRaisesMessage(ReleaseError, "the current version 1.0.2-preview.2 is a prerelease"):
+            latest_homebrew_formula(session, source, "example/tap/tool")
+
+    @override_settings(GITHUB_TOKEN=None)
+    def test_without_a_token_only_the_current_version(self):
+        session = self.tap_history_session(
+            [("c3", "2026-10-10T10:00:00Z", "tool 1.2.0"), ("c1", "2026-09-30T10:00:00Z", "tool 1.1.0")],
+            {"c3": "1.2.0", "c1": "1.1.0"})
+        source = ReleaseSource(kind=ReleaseSource.Kind.HOMEBREW_FORMULA, keep_versions=2)
+        releases = homebrew_formula_releases(session, source, "example/tap/tool", 2)
+        self.assertEqual([release.version for release in releases], ["1.2.0"])
+        urls = [call.args[0] for call in session.get.call_args_list]
+        self.assertNotIn("https://api.github.com/repos/example/homebrew-tap/commits", urls)
+        self.assertEqual(homebrew_formula_at(session, source, "example/tap/tool", version="1.2.0").version, "1.2.0")
+        with self.assertRaisesMessage(ReleaseError, "the older versions of a tap need GITHUB_TOKEN"):
+            homebrew_formula_at(session, source, "example/tap/tool", version="1.1.0")
 
     def test_the_warning_of_a_dependency_is_kept(self):
         session = fake_session({"https://example/tool": FakeResponse(content=unsigned("tool")),

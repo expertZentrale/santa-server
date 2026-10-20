@@ -376,6 +376,13 @@ class Machine(models.Model):
     primary_user = models.CharField(max_length=255, blank=True)
     client_mode = models.CharField(max_length=16, choices=ClientMode.choices, blank=True,
                                    help_text=_("Mode reported by the client"))
+    # the mode this Mac gets instead of its group's (testing in Monitor mode, one Mac in Lockdown early); until a
+    # date or for good
+    client_mode_override = models.CharField(
+        _("mode of this Mac"), max_length=16, choices=ClientMode.choices, blank=True,
+        help_text=_("Instead of the mode of its group. Empty = as the group."))
+    client_mode_override_until = models.DateTimeField(
+        _("until"), null=True, blank=True, help_text=_("Then the mode of the group again. Empty = until it is reset."))
     group = models.ForeignKey(Group, on_delete=models.PROTECT, related_name="machines")
 
     binary_rule_count = models.PositiveIntegerField(default=0)
@@ -409,8 +416,26 @@ class Machine(models.Model):
     def reported_rule_count(self):
         return sum(getattr(self, f"{prefix}_rule_count") for prefix in RULE_COUNT_PREFIXES)
 
+    def override_active(self, now=None):
+        return bool(self.client_mode_override) and (
+            self.client_mode_override_until is None or self.client_mode_override_until > (now or timezone.now()))
+
+    def override_expired(self, now=None):
+        return bool(self.client_mode_override) and not self.override_active(now)
+
+    def effective_client_mode(self, group=None):
+        """The mode the Mac gets: its own while it lasts, else its group's (inherited from a parent group too)"""
+        if self.override_active():
+            return self.client_mode_override
+        return (group or self.group).effective().client_mode
+
 
 RULE_COUNT_PREFIXES = ("binary", "certificate", "teamid", "signingid", "cdhash", "compiler", "transitive")
+
+
+def unexpired(now=None):
+    """The rules without an end, or whose end hasn't come yet"""
+    return models.Q(expires_at__isnull=True) | models.Q(expires_at__gt=now or timezone.now())
 
 
 class RuleType(models.TextChoices):
@@ -529,7 +554,8 @@ class ReleaseSource(models.Model):
         help_text=_("Homebrew formula: a bottle for an older macOS counts for the newer ones it runs on, like in "
                   "Homebrew (portable-ruby has only arm64_big_sur, which serves arm64_sequoia too)."),
     )
-    include_prereleases = models.BooleanField(default=False, help_text=_("GitHub, VS Code, JetBrains (EAP)"))
+    include_prereleases = models.BooleanField(default=False,
+                                              help_text=_("GitHub, npm, VS Code, JetBrains (EAP), Homebrew taps"))
 
     rule_type = models.CharField(
         _("preferred rule type"), max_length=16, choices=RuleType.choices, default=RuleType.BINARY,
@@ -728,6 +754,11 @@ class Rule(models.Model):
     machines = models.ManyToManyField(Machine, blank=True, related_name="rules",
                                       help_text=_("Apply to these individual Macs"))
     is_enabled = models.BooleanField(default=True, help_text=_("Disabled rules are removed from the Macs"))
+    # a rule for a time (a request allowed for a week): from then on not sent, the Macs drop it at their next sync;
+    # the clean up deletes it (cleanup_expired_rules)
+    expires_at = models.DateTimeField(
+        _("expires"), null=True, blank=True, db_index=True,
+        help_text=_("Then the rule is removed from the Macs and deleted. Empty = never."))
 
     release_source = models.ForeignKey(ReleaseSource, on_delete=models.CASCADE, null=True, blank=True,
                                        related_name="rules", editable=False)
@@ -765,6 +796,15 @@ class Rule(models.Model):
     @property
     def santa_key(self):
         return f"{self.rule_type}:{self.identifier}"
+
+    @property
+    def is_expired(self):
+        return self.expires_at is not None and self.expires_at <= timezone.now()
+
+    @property
+    def is_active(self):
+        """Sent to the Macs: enabled and not expired"""
+        return self.is_enabled and not self.is_expired
 
     def to_santa(self):
         return self.santa_payload(self.rule_type, self.identifier, self.policy, self.custom_msg, self.custom_url,
@@ -1093,6 +1133,15 @@ class UserProfile(models.Model):
 
     # set by the administrators (Administration → Users): an exception from SignInGroup.no_email
     email_override = models.CharField(max_length=8, choices=EmailOverride.choices, blank=True, default="",
+                                      editable=False)
+
+    class RolesOverride(models.TextChoices):
+        DEFAULT = "", _("As the sign-in groups say")
+        MANUAL = "manual", _("Set by hand")
+
+    # set by the administrators (Administration → Users): the sign-in no longer changes the roles and the console
+    # access of this user, except the admin role of the token (OIDC_ADMIN_ROLE), so that nobody is locked out
+    roles_override = models.CharField(max_length=8, choices=RolesOverride.choices, blank=True, default="",
                                       editable=False)
 
     def __str__(self):

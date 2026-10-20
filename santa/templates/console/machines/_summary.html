@@ -16,7 +16,10 @@
     <h2>{% translate "Sync" %}</h2>
     <dl class="facts">
       <dt>{% translate "Mode" %}</dt><dd>{% if machine.client_mode %}<span class="badge {% if machine.client_mode == 'LOCKDOWN' %}bad{% else %}info{% endif %}">{{ machine.get_client_mode_display }}</span>{% else %}–{% endif %}
-        <span class="muted">{% blocktranslate with mode=machine.group.get_client_mode_display %}group: {{ mode }}{% endblocktranslate %}</span></dd>
+        {% if machine.override_active %}<br><span class="badge warn">{% blocktranslate with mode=machine.get_client_mode_override_display %}this Mac: {{ mode }}{% endblocktranslate %}</span>
+        {% if machine.client_mode_override_until %}<small class="muted">{% blocktranslate with date=machine.client_mode_override_until|date:"d.m.Y H:i" %}until {{ date }}{% endblocktranslate %}</small>{% endif %}{% endif %}
+        <span class="muted">{% blocktranslate with mode=group_mode %}group: {{ mode }}{% endblocktranslate %}</span>
+        {% if perms.santa.change_machine %}{% url 'console:machine_mode' machine.pk as mode_url %}<a class="small" href="{{ mode_url }}" hx-get="{{ mode_url }}" hx-target="#drawer">{% translate "Change" %}</a>{% endif %}</dd>
       <dt>{% translate "Last sync" %}</dt><dd>{% if is_stale %}<span class="badge bad">{{ machine.last_postflight_at|date:"d.m.Y H:i"|default:_("never") }}</span>
         {% else %}{{ machine.last_postflight_at|date:"d.m.Y H:i" }}{% endif %}
         <small class="muted">{% blocktranslate with date=machine.last_preflight_at|date:"d.m.Y H:i"|default:"–" %}last preflight {{ date }}{% endblocktranslate %}</small></dd>

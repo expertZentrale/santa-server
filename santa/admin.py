@@ -219,13 +219,17 @@ class GroupAdmin(admin.ModelAdmin):
                                    "Download the profiles again and replace them in your MDM.", messages.WARNING)
 
 
+# what can be set on a Mac: the rest is reported by it
+MACHINE_SETTINGS = ("clean_sync_requested", "client_mode_override", "client_mode_override_until")
+
+
 @admin.register(Machine)
 class MachineAdmin(admin.ModelAdmin):
     list_display = ("serial_number", "hostname", "group", "primary_user", "client_mode", "santa_version",
                     "os_version", "reported_rule_count", "last_postflight_at")
-    list_filter = ("group", "client_mode", "santa_version")
+    list_filter = ("group", "client_mode", "client_mode_override", "santa_version")
     search_fields = ("serial_number", "hostname", "primary_user", "machine_id")
-    readonly_fields = [f.name for f in Machine._meta.fields if f.name != "clean_sync_requested"]
+    readonly_fields = [f.name for f in Machine._meta.fields if f.name not in MACHINE_SETTINGS]
     actions = ["request_clean_sync"]
 
     def has_add_permission(self, request):
@@ -248,7 +252,7 @@ class RuleAdmin(admin.ModelAdmin):
     change_list_template = "admin/santa/rule/change_list.html"
     list_display = ("identifier_short", "rule_type", "policy", "scope", "is_enabled", "description", "tag_list",
                     "release_source", "created_at")
-    list_filter = ("is_enabled", "tags", "policy", "rule_type", "is_global", "groups", "release_source")
+    list_filter = ("is_enabled", "expires_at", "tags", "policy", "rule_type", "is_global", "groups", "release_source")
     search_fields = ("identifier", "description", "tags__name")
     filter_horizontal = ("groups", "tags")
     autocomplete_fields = ("machines",)
@@ -256,7 +260,7 @@ class RuleAdmin(admin.ModelAdmin):
     actions = ["enable_rules", "disable_rules", "add_groups", "add_tag", "remove_tag"]
     fieldsets = (
         (None, {"fields": ("rule_type", "identifier", "policy", "description", "tags")}),
-        ("Scope", {"fields": ("is_global", "groups", "machines", "is_enabled")}),
+        ("Scope", {"fields": ("is_global", "groups", "machines", "is_enabled", "expires_at")}),
         ("Block message / CEL", {"classes": ("collapse",), "fields": ("custom_msg", "custom_url", "cel_expr")}),
         ("Info", {"fields": ("release_source", "release_version", "created_by", "created_at", "updated_at")}),
     )

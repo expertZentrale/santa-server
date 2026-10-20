@@ -16,7 +16,9 @@ SHA_B = "b" * 64
 SHA_C = "c" * 64
 
 
-class SyncTestCase(TestCase):
+class SyncBase(TestCase):
+    """The helpers of the sync tests, without tests of its own (a subclass elsewhere would run them again)"""
+
     @classmethod
     def setUpTestData(cls):
         cls.dev = Group.objects.create(name="Development", client_mode="LOCKDOWN", batch_size=5)
@@ -68,6 +70,8 @@ class SyncTestCase(TestCase):
         rule.groups.set(groups)
         return rule
 
+
+class SyncTestCase(SyncBase):
     def test_unknown_token(self):
         response = self.client.post(f"/sync/nope/preflight/{self.machine_id}", "{}", content_type="application/json")
         self.assertEqual(response.status_code, 404)

@@ -1,6 +1,7 @@
 import io
 import json
 import tempfile
+from datetime import datetime, timedelta
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
@@ -8,6 +9,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import CommandError, call_command
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from santa.config_io import ConfigImportError, apply_choices, export_config, import_config
 from santa.models import Group, Machine, Policy, ReleaseSource, ReleaseVersion, Rule, RuleType
@@ -95,6 +97,33 @@ class ConfigIOTestCase(TestCase):
                          ("Container runtime", "*/colima\n*/lima", "sequoia", False))
         self.assertEqual((source.keep_versions, source.keep_unit, source.approve_kept_versions,
                           source.include_dependencies), (2, ReleaseSource.KeepUnit.MONTHS, True, False))
+
+    def test_the_expiry_of_a_rule(self):
+        expires = timezone.now() + timedelta(days=7)
+        Rule.objects.filter(identifier=SHA_A).update(expires_at=expires)
+        Rule.objects.filter(identifier="EQHXZ8M8AV").update(expires_at=timezone.now() - timedelta(minutes=1))
+        data = json.loads(json.dumps(export_config()))
+        self.wipe()
+        report = import_config(data)
+        self.assertEqual(Rule.objects.get(identifier=SHA_A).expires_at, expires)
+        # already expired: not created on the target
+        self.assertFalse(Rule.objects.filter(identifier="EQHXZ8M8AV").exists())
+        self.assertTrue(any("EQHXZ8M8AV" in w and "expired" in w for w in report["warnings"]))
+        # again: nothing to change
+        self.assertFalse(import_config(data)["changes"])
+
+    def test_an_expiry_without_offset_or_no_such_day(self):
+        data = json.loads(json.dumps(export_config()))
+        self.wipe()
+        rule_a = next(item for item in data["rules"] if item["identifier"] == SHA_A)
+        rule_a["expires_at"] = "2099-12-01T12:00:00"
+        import_config(data)
+        self.assertEqual(Rule.objects.get(identifier=SHA_A).expires_at,
+                         timezone.make_aware(datetime(2099, 12, 1, 12), timezone.get_default_timezone()))
+        rule_a["expires_at"] = "2099-13-01T00:00:00"
+        with self.assertRaises(ConfigImportError) as raised:
+            import_config(data)
+        self.assertIn("expires_at is not a date", str(raised.exception))
 
     def test_choices_of_the_preview(self):
         data = json.loads(json.dumps(export_config()))

@@ -1,6 +1,7 @@
 {% load i18n %}{% autoescape off %}{% include "email/_greeting.txt" %}{% if access_request.status == "APPROVED" %}{% blocktranslate with title=access_request.title %}Your request “{{ title }}” was approved.{% endblocktranslate %}{% if christmas %}
 🎁 {% translate "An early present from your IT team." %}{% endif %}{% if access_request.kind == "EVENT" or access_request.result_rule_id or access_request.result_source_id %}
-{% translate "Your Mac gets the new rule at its next sync, usually within a few minutes." %}{% endif %}{% else %}{% blocktranslate with title=access_request.title %}Your request “{{ title }}” was not approved.{% endblocktranslate %}{% if christmas %}
+{% translate "Your Mac gets the new rule at its next sync, usually within a few minutes." %}{% endif %}{% if access_request.result_rule.expires_at %}
+{% blocktranslate with date=access_request.result_rule.expires_at|date:"d.m.Y H:i" %}Allowed until {{ date }}.{% endblocktranslate %}{% endif %}{% else %}{% blocktranslate with title=access_request.title %}Your request “{{ title }}” was not approved.{% endblocktranslate %}{% if christmas %}
 🪨 {% translate "This time only a lump of coal." %}{% endif %}{% endif %}
 {% if access_request.decision_note %}
 {% translate "Note:" %}

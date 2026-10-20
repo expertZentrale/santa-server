@@ -1,0 +1,8 @@
+{% extends "console/base.html" %}{% load i18n %}
+{% block title %}{% translate "Mode" %} · {{ machine.hostname|default:machine.serial_number }}{% endblock %}
+{% block main_class %}narrow{% endblock %}
+{% block content %}
+{% url 'console:machine' machine.pk as back_url %}{% include "console/_back.html" with url=back_url label=machine.hostname|default:machine.serial_number %}
+<div class="page-head"><h1>{% translate "Mode of this Mac" %}</h1></div>
+{% include "console/machines/_mode_form.html" %}
+{% endblock %}

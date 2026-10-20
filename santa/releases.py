@@ -534,7 +534,15 @@ def homebrew_linux_only(data):
 
 def latest_homebrew_formula(session, source, identifier):
     if is_tap_identifier(identifier):
-        return latest_homebrew_tap(session, source, identifier, cask=False)
+        release = latest_homebrew_tap(session, source, identifier, cask=False)
+        if semver.is_prerelease(release.version) and not source.include_prereleases:
+            # the newest release that isn't one, from the history of the tap (like "latest" of GitHub)
+            stable = homebrew_tap_releases(session, source, identifier, 1) if settings.GITHUB_TOKEN else []
+            if not stable:
+                raise ReleaseError(f"{identifier}: the current version {release.version} is a prerelease; "
+                                   "allow prereleases, or wait for a release (older releases need GITHUB_TOKEN)")
+            return stable[0]
+        return release
     response = session.get(f"https://formulae.brew.sh/api/formula/{identifier}.json",
                            timeout=settings.RELEASE_HTTP_TIMEOUT)
     response.raise_for_status()
@@ -645,8 +653,7 @@ def homebrew_formula_releases(session, source, identifier, limit, known=None):
     assets, with the date recorded.
     """
     if is_tap_identifier(identifier):
-        # a tap has only its current version
-        return [latest_homebrew_tap(session, source, identifier, cask=False)]
+        return homebrew_tap_releases(session, source, identifier, limit, known)
     cutoff = source.keep_cutoff()
     releases = {}
     # a looked-up version older than the range ends the search
@@ -669,13 +676,34 @@ def homebrew_formula_releases(session, source, identifier, limit, known=None):
     return list(releases.values())
 
 
+def _tap_release_at(session, source, name, version, before):
+    """A version of a tap formula, or the newest one of the day of `before`, from the history of its file"""
+    if not settings.GITHUB_TOKEN:
+        # only the current version (homebrew_tap_releases): the dependencies of an older version take it, as before
+        current = latest_homebrew_tap(session, source, name, cask=False)
+        if version and current.version != version:
+            raise ReleaseError(f"{name}: version {version} is not the current one, the older versions of a tap "
+                               "need GITHUB_TOKEN (they come from the history of the tap on GitHub)")
+        return current
+    if not version and not before:
+        return latest_homebrew_tap(session, source, name, cask=False)
+    # the version a dependency had then can be older than the range to keep
+    releases = homebrew_tap_releases(session, source, name, HISTORY_LIMIT, in_range=False)
+    end_of_day = before and datetime.combine(before.astimezone(UTC).date(), datetime.max.time(), tzinfo=UTC)
+    for release in releases:
+        if version and release.version != version:
+            continue
+        if not end_of_day or (release.published_at and release.published_at <= end_of_day):
+            return release
+    raise ReleaseError(f"{name}: no version {version or f'up to {before:%Y-%m-%d}'} in the history of the tap")
+
+
 def homebrew_formula_at(session, source, name, version=None, before=None):
     """A formula from the Homebrew registry, as it was on the day of `before` (the dependency of an older version):
     the given version or else the newest one published by then. A version is rebuilt now and then (a new tag "-1",
     other files, often for other macOS versions): its build of that day, the one the Macs got then."""
     if is_tap_identifier(name):
-        # a tap has only its current version
-        return latest_homebrew_tap(session, source, name, cask=False)
+        return _tap_release_at(session, source, name, version, before)
     # the same dependencies (python, openssl…) come up for many versions in one sync
     cache = run_cache(session, "ghcr-tags")
     if name not in cache:
@@ -749,6 +777,10 @@ _RB_SHA256_CONSTANT = re.compile(r"""^\s*sha256\s+([A-Za-z_]\w*)(?:\[["']([^"']+
 _RB_LOCAL = re.compile(r'^\s*([a-z_]\w*)\s*=\s*"([^"]*)"\s*$')
 _RB_LOCAL_ARCH = re.compile(r'^\s*([a-z_]\w*)\s*=\s*Hardware::CPU\.(intel|arm)\?\s*\?\s*"([^"]*)"\s*:\s*"([^"]*)"\s*$')
 _RB_URL_VARIABLE = re.compile(r"^\s*url\s+([a-z_]\w*)\s*$")
+# a URL put together in a method from a key of a hash constant (rustfs/tap/rc before it declared its resources):
+# url = "…/rustfs-cli-#{target}-v#{VERSION}.tar.gz" with sha256 = BINARIES[target]
+_RB_URL_TEMPLATE = re.compile(r'^\s*[a-z_]\w*\s*=\s*"(https?://[^"]*#\{([a-z_]\w*)\}[^"]*)"\s*$', re.M)
+_RB_HASH_LOOKUP = re.compile(r"=\s*([A-Z][A-Z0-9_]*)\[\s*([a-z_]\w*)\s*\]")
 # the formula signs its program again when it installs it (post_install): another hash than the download's
 _RB_CODESIGN = re.compile(r"""["']codesign["']""")
 
@@ -759,23 +791,35 @@ def is_tap_identifier(identifier):
 
 
 def _tap_file(session, identifier, cask):
+    return _tap_path_and_file(session, identifier, cask)[1]
+
+
+def _tap_path_and_file(session, identifier, cask, ref="HEAD", paths=None):
+    """(path, text) of the formula or cask file in the tap's repository, at a commit (ref)"""
     owner, tap, name = identifier.split("/")
-    base = f"https://raw.githubusercontent.com/{owner}/homebrew-{tap}/HEAD"
     folder = "Casks" if cask else "Formula"
-    headers = {"Authorization": f"Bearer {settings.GITHUB_TOKEN}"} if settings.GITHUB_TOKEN else {}
-    for path in (f"{folder}/{name}.rb", f"{folder}/{name[0]}/{name}.rb", f"{name}.rb"):
-        with session.get(f"{base}/{path}", headers=headers, stream=True,
-                         timeout=settings.RELEASE_HTTP_TIMEOUT) as response:
-            if response.status_code == 404:
-                continue
-            response.raise_for_status()
-            data = b""
-            for chunk in response.iter_content(64 * 1024):
-                data += chunk
-                if len(data) > TAP_FILE_MAX_BYTES:
-                    raise ReleaseError(f"{identifier}: the file in the tap is bigger than {TAP_FILE_MAX_BYTES} bytes")
-            return data.decode("utf-8", "replace")
+    for path in paths or (f"{folder}/{name}.rb", f"{folder}/{name[0]}/{name}.rb", f"{name}.rb"):
+        text = _raw_tap_file(session, identifier, ref, path)
+        if text is not None:
+            return path, text
     raise ReleaseError(f"{identifier}: not found in the tap {owner}/{tap}")
+
+
+def _raw_tap_file(session, identifier, ref, path):
+    """The text of a file of the tap's repository, None when it isn't there"""
+    owner, tap, _name = identifier.split("/")
+    headers = {"Authorization": f"Bearer {settings.GITHUB_TOKEN}"} if settings.GITHUB_TOKEN else {}
+    with session.get(f"https://raw.githubusercontent.com/{owner}/homebrew-{tap}/{ref}/{path}", headers=headers,
+                     stream=True, timeout=settings.RELEASE_HTTP_TIMEOUT) as response:
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        data = b""
+        for chunk in response.iter_content(64 * 1024):
+            data += chunk
+            if len(data) > TAP_FILE_MAX_BYTES:
+                raise ReleaseError(f"{identifier}: the file in the tap is bigger than {TAP_FILE_MAX_BYTES} bytes")
+        return data.decode("utf-8", "replace")
 
 
 def parse_tap_file(text):
@@ -894,6 +938,16 @@ def parse_tap_file(text):
         elif (depends := _RB_DEPENDS.match(line)) and not re.search(r":(?:build|test)\b", depends[2] or "") \
                 and "linux" not in context:
             found["dependencies"].append(depends[1])
+    lookups = dict((variable, constant) for constant, variable in _RB_HASH_LOOKUP.findall(text))
+    known = {download[0] for download in found["downloads"]}
+    for template, variable in _RB_URL_TEMPLATE.findall(text):
+        if variable in constants or lookups.get(variable) not in hashes:
+            continue
+        # one download per key (macos-arm64, linux-amd64, …): the ones for other systems drop out by their URL
+        for key, sha in hashes[lookups[variable]].items():
+            url = template.replace(f"#{{{variable}}}", key)
+            if url not in known:
+                found["downloads"].append([url, sha if re.fullmatch(r"[0-9a-f]{64}", sha) else "", ""])
     for download in found["downloads"]:
         # a variable made of others ("#{download_prefix}/v#{version}/…"): filled in until nothing changes
         for _round in range(5):
@@ -938,7 +992,11 @@ def _tap_assets(found, version):
 
 
 def latest_homebrew_tap(session, source, identifier, cask):
-    found = parse_tap_file(_tap_file(session, identifier, cask))
+    return _tap_release(source, identifier, parse_tap_file(_tap_file(session, identifier, cask)), cask)
+
+
+def _tap_release(source, identifier, found, cask, published_at=None):
+    """The Release of a formula or cask file of a tap (parse_tap_file), the current one or one of its history"""
     name = identifier.rsplit("/", 1)[-1]
     version = found["version"]
     if not version:
@@ -971,7 +1029,65 @@ def latest_homebrew_tap(session, source, identifier, cask):
     if found["codesigns"] and not cask:
         warnings = (f"{identifier}: the formula signs its program again when it installs it (codesign), the Macs see "
                     "another hash than the download's: allow the blocked event instead",)
-    return Release(version=package_version, assets=assets, dependencies=found["dependencies"], warnings=warnings)
+    return Release(version=package_version, assets=assets, dependencies=found["dependencies"], warnings=warnings,
+                   published_at=published_at)
+
+
+# the commits of a tap formula looked at for its older versions, at most (each one is a file to read)
+TAP_HISTORY_COMMITS = 100
+
+
+def homebrew_tap_releases(session, source, identifier, limit, known=None, in_range=True):
+    """The versions of a tap formula, newest first, from the history of its file in the tap's GitHub repository:
+    taps have no registry of older bottles. A version's date is that of the commit that brought it.
+
+    Only with GITHUB_TOKEN, else only the current version: without it GitHub allows 60 API requests an hour.
+    One request to the GitHub API (the commits of the file), then the file of each
+    commit from raw.githubusercontent.com until `limit` versions are found, or the commits are older than the range
+    to keep (in_range=False: all `limit` versions). known: {version: published_at} recorded already, they come
+    without their files read again when the commit names them (the message "tool 1.2.3", as Homebrew writes it);
+    else the file is read to know its version.
+    """
+    if not settings.GITHUB_TOKEN:
+        # without a token GitHub allows 60 API requests an hour for the whole server (the catalog search too): only
+        # the current version, as before the history was read
+        current = latest_homebrew_tap(session, source, identifier, cask=False)
+        return [] if semver.is_prerelease(current.version) and not source.include_prereleases else [current]
+    cache = run_cache(session, "tap-history")
+    # one session checks every source: the files, the prereleases and the range are the source's
+    key = (source.pk, identifier, limit, in_range, frozenset(known or ()))
+    if key in cache:
+        return cache[key]
+    owner, tap, name = identifier.split("/")
+    path, _text = _tap_path_and_file(session, identifier, cask=False)
+    response = session.get(f"https://api.github.com/repos/{owner}/homebrew-{tap}/commits",
+                           params={"path": path, "per_page": TAP_HISTORY_COMMITS}, headers=_github_headers(),
+                           timeout=settings.RELEASE_HTTP_TIMEOUT)
+    response.raise_for_status()
+    cutoff = source.keep_cutoff() if in_range else None
+    releases = {}
+    for commit in response.json()[:TAP_HISTORY_COMMITS]:
+        details = commit.get("commit") or {}
+        date = _published((details.get("committer") or {}).get("date"))
+        named = re.match(rf"{re.escape(name)}:? v?(\S+)", (details.get("message") or "").strip())
+        if known and named and named[1] in known:
+            # recorded already: no file to read for it
+            release = Release(version=named[1], assets=[], published_at=date)
+        else:
+            found = parse_tap_file(_raw_tap_file(session, identifier, commit["sha"], path) or "")
+            release = _tap_release(source, identifier, found, cask=False, published_at=date)
+        if not release.version or (semver.is_prerelease(release.version) and not source.include_prereleases):
+            continue
+        if release.version in releases:
+            # an older commit of the same version (a new bottle, a fix): the version came with the oldest one
+            releases[release.version].published_at = date or releases[release.version].published_at
+            continue
+        if len(releases) >= limit or (cutoff and date and date < cutoff and releases):
+            break
+        releases[release.version] = release
+    result = list(releases.values())
+    cache[key] = result
+    return result
 
 
 def latest_url(session, source, identifier):
@@ -1571,12 +1687,18 @@ def pattern_stale_versions(source):
     return _pattern_stale(source)[1]
 
 
+def unwanted_prerelease(source, version):
+    """A prerelease of a tap recorded before they were left out (taps have no flag of their own, the version says)"""
+    return (source.kind == ReleaseSource.Kind.HOMEBREW_FORMULA and not source.include_prereleases
+            and is_tap_identifier(version.identifier) and semver.is_prerelease(version.version))
+
+
 def stale_versions(source, now=None, check_filters=False):
     """The versions to delete: of identifiers removed from the source, and outside the range to keep.
 
-    check_filters: also the versions the version pattern no longer matches, and those whose files the asset or
-    binary pattern no longer covers (the "clean up" of the console; the sync leaves them, the patterns only decide
-    about new versions there).
+    check_filters: also the versions the version pattern no longer matches, the prereleases of taps when they aren't
+    allowed, and those whose files the asset or binary pattern no longer covers (the "clean up" of the console; the
+    sync leaves them, the patterns only decide about new versions there).
     """
     identifiers = set(source.identifiers)
     check_versions = check_filters and source.kind != ReleaseSource.Kind.URL
@@ -1586,7 +1708,7 @@ def stale_versions(source, now=None, check_filters=False):
     by_identifier = {}
     for version in source.versions.all():
         if (version.identifier not in identifiers or (check_versions and not version_matches(source, version.version))
-                or version.pk in outside_files):
+                or version.pk in outside_files or (check_filters and unwanted_prerelease(source, version))):
             stale.append(version)
         else:
             by_identifier.setdefault(version.identifier, []).append(version)
@@ -1669,7 +1791,6 @@ def rerecord_homebrew_versions(session, source, progress=None):
     stays, the new ones are enabled when the version's rules were. The dependencies are looked up again at the next
     check (they are bottles too). Returns (the versions renewed, the error lines)."""
     renewed, errors = 0, []
-    latest = {}
     for version in source.versions.order_by("identifier", "-created_at"):
         if progress:
             try:
@@ -1679,16 +1800,8 @@ def rerecord_homebrew_versions(session, source, progress=None):
                 break
         label = f"{version.identifier} {version.version}" if source.has_several_identifiers else version.version
         try:
-            if is_tap_identifier(version.identifier):
-                # a tap has only its current version
-                if version.identifier not in latest:
-                    latest[version.identifier] = latest_homebrew_tap(session, source, version.identifier, cask=False)
-                release = latest[version.identifier]
-                if release.version != version.version:
-                    errors.append(f"{label}: the tap no longer has this version, kept as it is")
-                    continue
-            else:
-                release = homebrew_formula_at(session, source, version.identifier, version=version.version)
+            # a tap from the history of its file, a formula from the registry
+            release = homebrew_formula_at(session, source, version.identifier, version=version.version)
         except (ReleaseError, requests.RequestException, KeyError, ValueError) as e:
             errors.append(f"{label}: kept as it is ({e})")
             continue
@@ -1803,11 +1916,10 @@ def _release_of_version(session, source, identifier, version, latest):
         return latest
     if source.kind == ReleaseSource.Kind.HOMEBREW_FORMULA:
         release = None
-        if not is_tap_identifier(identifier):
-            try:
-                release = homebrew_formula_at(session, source, identifier, version=version.version)
-            except ReleaseError:
-                pass
+        try:
+            release = homebrew_formula_at(session, source, identifier, version=version.version)
+        except (ReleaseError, requests.RequestException, KeyError, ValueError):
+            pass
         if release and release.dependencies is not None:
             return release
         # the day of the bottle in the registry: a version recorded as the current one has no date of its own
@@ -1950,18 +2062,24 @@ def _sync_kept_versions(session, source, identifier, errors, latest, progress=No
 
 def _date_homebrew_version(session, source, identifier, release):
     """The day of the recorded current version of a formula: formulae.brew.sh doesn't give it, the index of its
-    bottles in the registry does. Asked once, while the version has none. Only the recorded version gets it, not the
-    release: its dependencies are the current ones, not those of its day (homebrew_dependencies)."""
-    if source.kind != ReleaseSource.Kind.HOMEBREW_FORMULA or is_tap_identifier(identifier) or release.published_at:
+    bottles in the registry does (a tap: the commit that brought it). Asked once, while the version has none. Only
+    the recorded version gets it, not the release: its dependencies are the current ones, not those of its day
+    (homebrew_dependencies)."""
+    if source.kind != ReleaseSource.Kind.HOMEBREW_FORMULA or release.published_at:
         return
     undated = source.versions.filter(identifier=identifier, version=release.version, published_at__isnull=True)
     if not release.version or not undated.exists():
         return
     try:
-        index = _ghcr_index(session, identifier, release.version)
-    except (requests.RequestException, ValueError, KeyError):
+        if is_tap_identifier(identifier):
+            newest = homebrew_tap_releases(session, source, identifier, 1)
+            published_at = newest[0].published_at if newest and newest[0].version == release.version else None
+        else:
+            index = _ghcr_index(session, identifier, release.version)
+            published_at = _published((index.get("annotations") or {}).get("org.opencontainers.image.created"))
+    except (ReleaseError, requests.RequestException, ValueError, KeyError):
         return
-    if published_at := _published((index.get("annotations") or {}).get("org.opencontainers.image.created")):
+    if published_at:
         undated.update(published_at=published_at)
 
 
