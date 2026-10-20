@@ -10,7 +10,7 @@
   {% include "console/events/_rule_form.html" %}
   <fieldset class="plain field{% if form.include.errors %} has-error{% endif %}">
     <legend class="strong">{% translate "Binaries" %}</legend>
-    <ul class="plain binaries" data-binaries data-rule-types="{{ rule_types }}"
+    <ul class="plain binaries" data-binaries data-rule-types="{{ rule_types }}" data-pending-label="{% translate 'Loading…' %}"
         data-preview-label="{% translate 'The rule uses' %}" data-fallback-label="{% translate 'Not available, the rule uses' %}">
       {% for binary in binaries %}{% with sha=binary.event.file_sha256 %}
       <li><label>

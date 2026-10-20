@@ -399,7 +399,7 @@ class UploadedBinary:
 
 
 def allow_binaries(choices, policy, is_global, groups, user, description, tags=(), cel_expr_for=None,
-                   progress=None):
+                   progress=None, expires_at=None):
     """The rules of uploaded binaries, choices: [(UploadedBinary, rule type)]. One rule per identifier (CDHash: per
     architecture); binaries with the same identifier (the helpers of an app with one Team ID) share it.
 
@@ -415,7 +415,7 @@ def allow_binaries(choices, policy, is_global, groups, user, description, tags=(
                 rules[(rule_type, identifier)] = allow_identifier(
                     rule_type, identifier, policy, is_global, groups, user,
                     description(binary) if callable(description) else description, tags,
-                    cel_expr=cel_expr_for(binary) if cel_expr_for else "")
+                    cel_expr=cel_expr_for(binary) if cel_expr_for else "", expires_at=expires_at)
     return list(rules.values())
 
 

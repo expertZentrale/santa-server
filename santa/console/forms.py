@@ -154,6 +154,10 @@ class UntilField(forms.MultiValueField):
         return date
 
 
+APPROVAL_UNTIL_HELP = _("Then the rule is removed from the Macs and deleted. A rule that exists already keeps the "
+                        "later end; one without an end stays so.")
+
+
 class MachinesField(forms.CharField):
     """Macs by serial number or hostname, one per line or comma separated"""
 
@@ -513,8 +517,8 @@ class EventRuleForm(TagsMixin):
     rows: the events grouped by binary. With several binaries the rule type can stay "suggested per binary",
     and a type a binary doesn't have falls back to its suggestion (the view decides, see rule_type_for).
     """
-    field_order = ["rule_type", "policy", "signing_prefixes", "cel_expr", "scope", "groups", "tags", "new_tags",
-                   "description", "include"]
+    field_order = ["rule_type", "policy", "signing_prefixes", "cel_expr", "scope", "groups", "expires_at", "tags",
+                   "new_tags", "description", "include"]
 
     rule_type = forms.ChoiceField(label=_("Rule type"), required=False)
     policy = forms.ChoiceField(choices=EVENT_POLICIES, initial=Policy.ALLOWLIST, label=_("Policy"))
@@ -526,6 +530,7 @@ class EventRuleForm(TagsMixin):
                               initial=SCOPE_GROUPS, widget=forms.RadioSelect, label=_("Scope"))
     groups = forms.ModelMultipleChoiceField(queryset=Group.objects.all(), required=False, label=_("Groups"),
                                             widget=forms.CheckboxSelectMultiple)
+    expires_at = UntilField(_("Never"), label=_("Expires"), help_text=APPROVAL_UNTIL_HELP)
     description = forms.CharField(max_length=500, required=False, label=_("Comment"),
                                   help_text=_("Empty: the name and path of each binary."))
     include = forms.MultipleChoiceField(label=_("Binaries"), widget=forms.CheckboxSelectMultiple, required=False)
@@ -704,10 +709,6 @@ class CelPolicyMixin:
     def cel_expr_for(self, identifier):
         prefixes = self.cleaned_data.get("signing_prefixes")
         return prefix_expression(identifier, prefixes) if prefixes else self.cleaned_data.get("cel_expr", "")
-
-
-APPROVAL_UNTIL_HELP = _("Then the rule is removed from the Macs and deleted. A rule that exists already keeps the "
-                        "later end; one without an end stays so.")
 
 
 class ApproveEventForm(CelPolicyMixin, TagsMixin):

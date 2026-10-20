@@ -405,7 +405,8 @@ def rule_type_for(event, rule_type):
     return rule_type if rule_type in available_rule_types(event) else default_rule_type(event)
 
 
-def rule_from_event(user, event, rule_type, policy, scope, groups, tags, description, machines=None, cel_expr=""):
+def rule_from_event(user, event, rule_type, policy, scope, groups, tags, description, machines=None, cel_expr="",
+                    expires_at=None):
     """Create (or widen) the rule of any policy for the binary of an event.
 
     Returns (rule, created), or None without identifier.
@@ -417,7 +418,7 @@ def rule_from_event(user, event, rule_type, policy, scope, groups, tags, descrip
     rule, created = allow_identifier(
         rule_type, identifier, policy, scope == SCOPE_GLOBAL, groups if scope == SCOPE_GROUPS else [], user,
         description or f"{event.file_name} ({event.file_path})", tags,
-        machines=machines if scope == SCOPE_MACHINES else [], cel_expr=cel_expr,
+        machines=machines if scope == SCOPE_MACHINES else [], cel_expr=cel_expr, expires_at=expires_at,
     )
     if created:
         log_addition(user, rule, f"Created from event {event.pk}")
@@ -445,7 +446,7 @@ def save_event_rules(user, form, progress=None):
             failed.append((row, str(e)))
             continue
         widen_rule(rule, data["scope"] == SCOPE_GLOBAL, data["groups"] if data["scope"] == SCOPE_GROUPS else [],
-                   machines if data["scope"] == SCOPE_MACHINES else [], user)
+                   machines if data["scope"] == SCOPE_MACHINES else [], user, expires_at=data.get("expires_at"))
         log_change(user, rule, f"{f'Signing ID prefix {prefix} added, s' if prefix else 'S'}cope extended from "
                                f"event {row[0].pk}")
         saved += 1
@@ -453,7 +454,8 @@ def save_event_rules(user, form, progress=None):
         progress.start(row[0].bundle_name or row[0].file_name or row[0].file_path)
         result = rule_from_event(user, row[0], rule_type_for(row[0], data["rule_type"]), data["policy"],
                                  data["scope"], data["groups"], form.all_tags(), data["description"],
-                                 machines=list({event.machine for event in row}), cel_expr=form.cel_expr_for(row[0]))
+                                 machines=list({event.machine for event in row}), cel_expr=form.cel_expr_for(row[0]),
+                                 expires_at=data.get("expires_at"))
         if result:
             saved += 1
             created += result[1]
@@ -472,7 +474,7 @@ def event_create_rule(request, pk):
         data = form.cleaned_data
         rule, created = rule_from_event(request.user, event, data["rule_type"], data["policy"], data["scope"],
                                         data["groups"], form.all_tags(), data["description"],
-                                        cel_expr=form.cel_expr_for(event))
+                                        cel_expr=form.cel_expr_for(event), expires_at=data.get("expires_at"))
         message = gettext("Rule created: %(rule)s.") if created else gettext("Rule updated: %(rule)s.")
         messages.success(request, (message % {"rule": rule}) + " " + gettext("The Macs get it at their next sync."))
     return redirect(safe_next(request, "console:events"))
