@@ -84,15 +84,21 @@ def widen_rule(rule, is_global, groups, machines, user, tags=(), expires_at=None
     expires_at: the end of this approval, None for good. A new rule gets it. A rule that already exists keeps the
     later end: one without an end stays so (it applies to others already), an approval for good takes its end away.
     """
-    if not rule.pk:
-        rule.expires_at = expires_at
-    elif rule.expires_at is not None:
-        rule.expires_at = None if expires_at is None else max(rule.expires_at, expires_at)
-    rule.is_global = rule.is_global or is_global
-    rule.is_enabled = True
-    # only what it changes: a whole save would write back an expression another request changed meanwhile (a new
-    # rule is saved as a whole)
-    rule.save(update_fields=["is_global", "is_enabled", "expires_at", "updated_at"] if rule.pk else None)
+    with transaction.atomic():
+        if not rule.pk:
+            rule.expires_at = expires_at
+        else:
+            # the end and the scope as they are now, locked: two approvals at once must not shorten each other
+            locked = Rule.objects.select_for_update().only("expires_at", "is_global").get(pk=rule.pk)
+            rule.expires_at = locked.expires_at
+            rule.is_global = locked.is_global
+            if rule.expires_at is not None:
+                rule.expires_at = None if expires_at is None else max(rule.expires_at, expires_at)
+        rule.is_global = rule.is_global or is_global
+        rule.is_enabled = True
+        # only what it changes: a whole save would write back an expression another request changed meanwhile (a
+        # new rule is saved as a whole)
+        rule.save(update_fields=["is_global", "is_enabled", "expires_at", "updated_at"] if rule.pk else None)
     if not is_global:
         rule.groups.add(*groups)
         rule.machines.add(*machines)

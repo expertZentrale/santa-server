@@ -329,7 +329,9 @@ def machine_mode(request, pk):
     group_mode = machine.group.effective().get_client_mode_display()
     form = MachineModeForm(request.POST or None, instance=machine, group_mode=group_mode)
     if request.method == "POST" and form.is_valid():
-        machine = form.save()
+        machine = form.save(commit=False)
+        # only the mode: a whole save would write back the rule ledger of a sync that ran meanwhile
+        machine.save(update_fields=["client_mode_override", "client_mode_override_until"])
         log_change(request.user, machine, changed_message(form))
         if machine.client_mode_override:
             text = gettext("%(machine)s: %(mode)s from its next sync on") % {

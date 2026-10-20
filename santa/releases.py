@@ -687,7 +687,8 @@ def _tap_release_at(session, source, name, version, before):
         return current
     if not version and not before:
         return latest_homebrew_tap(session, source, name, cask=False)
-    releases = homebrew_tap_releases(session, source, name, HISTORY_LIMIT)
+    # the version a dependency had then can be older than the range to keep
+    releases = homebrew_tap_releases(session, source, name, HISTORY_LIMIT, in_range=False)
     end_of_day = before and datetime.combine(before.astimezone(UTC).date(), datetime.max.time(), tzinfo=UTC)
     for release in releases:
         if version and release.version != version:
@@ -1036,15 +1037,16 @@ def _tap_release(source, identifier, found, cask, published_at=None):
 TAP_HISTORY_COMMITS = 100
 
 
-def homebrew_tap_releases(session, source, identifier, limit, known=None):
+def homebrew_tap_releases(session, source, identifier, limit, known=None, in_range=True):
     """The versions of a tap formula, newest first, from the history of its file in the tap's GitHub repository:
     taps have no registry of older bottles. A version's date is that of the commit that brought it.
 
     Only with GITHUB_TOKEN, else only the current version: without it GitHub allows 60 API requests an hour.
     One request to the GitHub API (the commits of the file), then the file of each
     commit from raw.githubusercontent.com until `limit` versions are found, or the commits are older than the range
-    to keep. known: {version: published_at} recorded already, they come without their files read again when the
-    commit names them (the message "tool 1.2.3", as Homebrew writes it); else the file is read to know its version.
+    to keep (in_range=False: all `limit` versions). known: {version: published_at} recorded already, they come
+    without their files read again when the commit names them (the message "tool 1.2.3", as Homebrew writes it);
+    else the file is read to know its version.
     """
     if not settings.GITHUB_TOKEN:
         # without a token GitHub allows 60 API requests an hour for the whole server (the catalog search too): only
@@ -1052,7 +1054,8 @@ def homebrew_tap_releases(session, source, identifier, limit, known=None):
         current = latest_homebrew_tap(session, source, identifier, cask=False)
         return [] if semver.is_prerelease(current.version) and not source.include_prereleases else [current]
     cache = run_cache(session, "tap-history")
-    key = (identifier, limit)
+    # one session checks every source: the files, the prereleases and the range are the source's
+    key = (source.pk, identifier, limit, in_range, frozenset(known or ()))
     if key in cache:
         return cache[key]
     owner, tap, name = identifier.split("/")
@@ -1061,7 +1064,7 @@ def homebrew_tap_releases(session, source, identifier, limit, known=None):
                            params={"path": path, "per_page": TAP_HISTORY_COMMITS}, headers=_github_headers(),
                            timeout=settings.RELEASE_HTTP_TIMEOUT)
     response.raise_for_status()
-    cutoff = source.keep_cutoff()
+    cutoff = source.keep_cutoff() if in_range else None
     releases = {}
     for commit in response.json()[:TAP_HISTORY_COMMITS]:
         details = commit.get("commit") or {}

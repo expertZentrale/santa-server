@@ -77,6 +77,14 @@ class RuleExpiryConsoleTestCase(ConsoleBase):
         rule.refresh_from_db()
         self.assertIsNone(rule.expires_at)
 
+    def test_another_bulk_action_ignores_the_hidden_expiry(self):
+        rule = Rule.objects.create(rule_type=RuleType.BINARY, identifier=SHA_A, is_global=True)
+        # "until a date" chosen, but no date, then another action
+        self.client.post(reverse("console:rules_bulk"), {"action": "disable", "rules": [rule.pk],
+                                                         "expires_0": "date", "expires_1": ""})
+        rule.refresh_from_db()
+        self.assertFalse(rule.is_enabled)
+
 
 class ApprovalExpiryTestCase(AdminRequestBase):
     def test_a_new_rule_for_a_week(self):
