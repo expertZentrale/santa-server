@@ -119,7 +119,7 @@ class ConfigIOTestCase(TestCase):
         rule_a["expires_at"] = "2099-12-01T12:00:00"
         import_config(data)
         self.assertEqual(Rule.objects.get(identifier=SHA_A).expires_at,
-                         timezone.make_aware(datetime(2099, 12, 1, 12)))
+                         timezone.make_aware(datetime(2099, 12, 1, 12), timezone.get_default_timezone()))
         rule_a["expires_at"] = "2099-13-01T00:00:00"
         with self.assertRaises(ConfigImportError) as raised:
             import_config(data)

@@ -72,8 +72,8 @@ def parse_expiry(value):
     except ValueError:  # matches the format, but no such day or time
         return None
     if expires_at is not None and timezone.is_naive(expires_at):
-        # a hand-edited file without an offset: the server's time zone, like the console
-        expires_at = timezone.make_aware(expires_at)
+        # a hand-edited file without an offset: the server's time zone (TIME_ZONE), whoever imports it
+        expires_at = timezone.make_aware(expires_at, timezone.get_default_timezone())
     return expires_at
 
 
