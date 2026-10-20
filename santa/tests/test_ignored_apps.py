@@ -235,7 +235,8 @@ class IgnoredAdministrationTestCase(ConsoleBase):
         self.client.post(reverse("console:admin_config_import"), {**post, "action": "import"})
         self.assertFalse(IgnoredApp.objects.exists())
         import_config(data)
-        self.assertEqual(IgnoredApp.objects.get().expires_at, timezone.make_aware(datetime(2099, 12, 1, 12)))
+        self.assertEqual(IgnoredApp.objects.get().expires_at,
+                         timezone.make_aware(datetime(2099, 12, 1, 12), timezone.get_default_timezone()))
 
     def test_ignores_of_an_event(self):
         event = self.make_event(**SIGNED)
