@@ -415,8 +415,8 @@ hinzugefügt. Pakete aus einem **Homebrew-Tap** geben Sie mit vollem Namen an, w
 (`hashicorp/tap/terraform`); der Server liest die Formel- bzw. Cask-Datei aus dem GitHub-Repository
 `owner/homebrew-tap` (Version, Downloads mit SHA-256, Bottles). Ältere Versionen einer Tap-Formel kommen aus der
 Git-Historie dieser Datei (Datum: der Commit, der die Version brachte): eine Anfrage an die GitHub-API je Prüfung, die
-Dateien selbst über raw.githubusercontent.com. Ohne `GITHUB_TOKEN` erlaubt GitHub 60 API-Anfragen pro Stunde und
-Server-IP. Ältere Downloads, die der Hersteller entfernt hat, enden als Fehler der Version. Casks aus Taps haben nur
+Dateien selbst über raw.githubusercontent.com. Nur mit `GITHUB_TOKEN`: ohne erlaubt GitHub 60 API-Anfragen pro Stunde
+und Server-IP, dann haben Taps nur ihre aktuelle Version. Ältere Downloads, die der Hersteller entfernt hat, enden als Fehler der Version. Casks aus Taps haben nur
 ihre aktuelle Version. Gelesen werden
 auch Konstanten und Variablen (`VERSION = "1.0.3"`, `url darwin_url`, `sha256 BINARIES["macos-aarch64"]`), die
 Architektur über `Hardware::CPU.intel? ? … : …` und das fertige Programm in einer `resource` für eine Plattform
@@ -1053,8 +1053,9 @@ the server loads the list of formulae or casks once a day. URLs are typed and ad
 **Homebrew tap** are given with their full name, like for `brew install` (`hashicorp/tap/terraform`); the server reads
 the formula or cask file from the GitHub repository `owner/homebrew-tap` (version, downloads with SHA-256, bottles).
 Older versions of a tap formula come from the Git history of that file (date: the commit that brought the version):
-one request to the GitHub API per check, the files themselves through raw.githubusercontent.com. Without
-`GITHUB_TOKEN`, GitHub allows 60 API requests per hour and server IP. Older downloads the vendor removed end as an
+one request to the GitHub API per check, the files themselves through raw.githubusercontent.com. Only with
+`GITHUB_TOKEN`: without it GitHub allows 60 API requests per hour and server IP, taps then have only their current
+version. Older downloads the vendor removed end as an
 error of the version. Casks from taps have only their current version. Constants and variables are read too (`VERSION = "1.0.3"`, `url darwin_url`,
 `sha256 BINARIES["macos-aarch64"]`), the architecture through `Hardware::CPU.intel? ? … : …`, and the ready-made
 program in a `resource` for one platform (`on_macos`, `on_arm`, …). When a formula signs its program again while

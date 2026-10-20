@@ -670,6 +670,13 @@ def homebrew_formula_releases(session, source, identifier, limit, known=None):
 
 def _tap_release_at(session, source, name, version, before):
     """A version of a tap formula, or the newest one of the day of `before`, from the history of its file"""
+    if not settings.GITHUB_TOKEN:
+        # only the current version (homebrew_tap_releases): the dependencies of an older version take it, as before
+        current = latest_homebrew_tap(session, source, name, cask=False)
+        if version and current.version != version:
+            raise ReleaseError(f"{name}: version {version} is not the current one, the older versions of a tap "
+                               "need GITHUB_TOKEN (they come from the history of the tap on GitHub)")
+        return current
     if not version and not before:
         return latest_homebrew_tap(session, source, name, cask=False)
     releases = homebrew_tap_releases(session, source, name, HISTORY_LIMIT)
@@ -1011,11 +1018,16 @@ def homebrew_tap_releases(session, source, identifier, limit, known=None):
     """The versions of a tap formula, newest first, from the history of its file in the tap's GitHub repository:
     taps have no registry of older bottles. A version's date is that of the commit that brought it.
 
-    One request to the GitHub API (the commits of the file, GITHUB_TOKEN raises its limit), then the file of each
+    Only with GITHUB_TOKEN, else only the current version: without it GitHub allows 60 API requests an hour.
+    One request to the GitHub API (the commits of the file), then the file of each
     commit from raw.githubusercontent.com until `limit` versions are found, or the commits are older than the range
     to keep. known: {version: published_at} recorded already, they come without their files read again when the
     commit names them (the message "tool 1.2.3", as Homebrew writes it); else the file is read to know its version.
     """
+    if not settings.GITHUB_TOKEN:
+        # without a token GitHub allows 60 API requests an hour for the whole server (the catalog search too): only
+        # the current version, as before the history was read
+        return [latest_homebrew_tap(session, source, identifier, cask=False)]
     cache = run_cache(session, "tap-history")
     key = (identifier, limit)
     if key in cache:

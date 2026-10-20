@@ -12,7 +12,7 @@ from django.apps import apps
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
-from django.test import RequestFactory, SimpleTestCase, TestCase
+from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
 from santa.log_redaction import RedactSyncTokens, redact_sync_path
@@ -422,6 +422,7 @@ class TapTestCase(SimpleTestCase):
             routes[f"{base}/{sha}/Formula/tool.rb"] = FakeResponse(content=formula(version).encode())
         return fake_session(routes)
 
+    @override_settings(GITHUB_TOKEN="token")
     def test_older_versions_from_the_history_of_the_tap(self):
         session = self.tap_history_session(
             [("c3", "2026-10-10T10:00:00Z", "tool 1.2.0"), ("c2", "2026-10-01T10:00:00Z", "tool: new bottles"),
@@ -438,6 +439,7 @@ class TapTestCase(SimpleTestCase):
         with self.assertRaisesMessage(ReleaseError, "no version 0.9 in the history of the tap"):
             homebrew_formula_at(session, source, "example/tap/tool", version="0.9")
 
+    @override_settings(GITHUB_TOKEN="token")
     def test_a_known_version_named_by_its_commit_is_not_read_again(self):
         session = self.tap_history_session(
             [("c3", "2026-10-10T10:00:00Z", "tool 1.2.0"), ("c1", "2026-09-30T10:00:00Z", "tool 1.1.0")],
@@ -447,6 +449,20 @@ class TapTestCase(SimpleTestCase):
         self.assertEqual([release.version for release in releases], ["1.2.0", "1.1.0"])
         urls = [call.args[0] for call in session.get.call_args_list]
         self.assertNotIn("https://raw.githubusercontent.com/example/homebrew-tap/c1/Formula/tool.rb", urls)
+
+    @override_settings(GITHUB_TOKEN=None)
+    def test_without_a_token_only_the_current_version(self):
+        session = self.tap_history_session(
+            [("c3", "2026-10-10T10:00:00Z", "tool 1.2.0"), ("c1", "2026-09-30T10:00:00Z", "tool 1.1.0")],
+            {"c3": "1.2.0", "c1": "1.1.0"})
+        source = ReleaseSource(kind=ReleaseSource.Kind.HOMEBREW_FORMULA, keep_versions=2)
+        releases = homebrew_formula_releases(session, source, "example/tap/tool", 2)
+        self.assertEqual([release.version for release in releases], ["1.2.0"])
+        urls = [call.args[0] for call in session.get.call_args_list]
+        self.assertNotIn("https://api.github.com/repos/example/homebrew-tap/commits", urls)
+        self.assertEqual(homebrew_formula_at(session, source, "example/tap/tool", version="1.2.0").version, "1.2.0")
+        with self.assertRaisesMessage(ReleaseError, "the older versions of a tap need GITHUB_TOKEN"):
+            homebrew_formula_at(session, source, "example/tap/tool", version="1.1.0")
 
     def test_the_warning_of_a_dependency_is_kept(self):
         session = fake_session({"https://example/tool": FakeResponse(content=unsigned("tool")),
