@@ -6,7 +6,7 @@
   <input type="hidden" name="resolved" value="{{ resolved }}">
   <span class="segmented" role="group" aria-label="{% translate 'Allow how' %}">
     {% url 'console:events_create_rules' as rules_url %}<button formaction="{{ rules_url }}"{% if in_drawer %} hx-post="{{ rules_url }}" hx-target="#drawer"{% endif %} aria-pressed="{% if tab == 'rules' %}true{% else %}false{% endif %}">{% translate "Rules" %}</button>
-    {% url 'console:events_packages' as packages_url %}<button formaction="{{ packages_url }}"{% if in_drawer %} hx-post="{{ packages_url }}" hx-target="#drawer"{% endif %} aria-pressed="{% if tab == 'packages' %}true{% else %}false{% endif %}">{% translate "As package" %}{% if package_count %} <span class="tab-count">{{ package_count }}</span>{% endif %}</button>
+    {% url 'console:events_packages' as packages_url %}<button formaction="{{ packages_url }}"{% if in_drawer %} hx-post="{{ packages_url }}" hx-target="#drawer"{% endif %} aria-pressed="{% if tab == 'packages' %}true{% else %}false{% endif %}">{% translate "As package" %} <span class="tab-count"{% if not package_count %} hidden{% endif %}>{{ package_count|default:"" }}</span></button>
   </span>
 </form>
 {% endif %}

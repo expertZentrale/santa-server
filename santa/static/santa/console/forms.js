@@ -201,52 +201,157 @@
   }
 
   // The drawer "create rules" follows the selection of the list behind it: a click, Ctrl- or Shift-click adds or
-  // removes binaries. They show at once (the name of the row, "loading…"); the drawer form is then posted with
-  // ?refresh, which never saves and keeps what was entered, and fills in the rest.
-  let syncFrame = 0;
-  // A save of the drawer form ("Create rules") is never aborted by a refresh: the refresh waits for its answer
-  let refreshing = false;
+  // removes binaries. A binary no longer selected leaves at once, without a request; the form stays as it is (what
+  // was entered, the checks). New binaries show at once (the name of the row, "loading…") and come in one request
+  // after a short pause (events_create_rules_binaries), only them.
+  let syncTimer = 0;
+  let syncController = null;
+  // A save of the drawer form ("Create rules") is never changed under it: the sync waits for its answer
   document.addEventListener("htmx:beforeRequest", (event) => {
-    const form = event.detail.elt;
-    if (form.matches?.("[data-create-rules]") && !refreshing) form.dataset.saving = "1";
+    if (event.detail.elt.matches?.("[data-create-rules]")) event.detail.elt.dataset.saving = "1";
   });
   document.addEventListener("htmx:afterRequest", (event) => {
     if (event.detail.elt.matches?.("[data-create-rules]")) delete event.detail.elt.dataset.saving;
   });
 
+  // {sha: {name, ids}} of the checked rows: the ids of the events ("All events"), none for a blocked app (its sha
+  // stands for all its open blocks)
   function selectedBinaries(listForm) {
     const binaries = new Map();
     SantaConsole.table.rowBoxes(listForm).filter((box) => box.checked).forEach((box) => {
       const sha = box.dataset.sha || box.value;
       if (!binaries.has(sha)) {
-        binaries.set(sha, box.closest("tr")?.querySelector("a.strong")?.textContent.trim() || sha.slice(0, 12));
+        binaries.set(sha, { name: box.closest("tr")?.querySelector("a.strong")?.textContent.trim() || sha.slice(0, 12),
+                            ids: [], byEvent: box.name === "ids" });
       }
+      if (box.name === "ids") binaries.get(sha).ids.push(box.value);
     });
     return binaries;
   }
 
-  // the list of the drawer as it will be: the new binaries as placeholders, the ones no longer selected hidden
+  const sameIds = (item, ids) => [...ids].sort().join(" ") === (item.dataset.ids || "").split(" ").sort().join(" ");
+
+  // the binaries of the drawer as they will be: the ones no longer selected removed, new ones (or ones with other
+  // events) as placeholders. Returns the query of the binaries to load, "" for none.
   function showSelection(drawerForm, binaries) {
     const list = drawerForm.querySelector("[data-binaries]");
-    if (!list) return;
-    list.querySelectorAll("li").forEach((item) => {
-      const sha = item.dataset.pendingSha || item.querySelector('input[name="include"]')?.value;
-      if (sha) item.hidden = !binaries.has(sha);
+    const query = new URLSearchParams();
+    list.querySelectorAll(":scope > li").forEach((item) => {
+      const sha = item.dataset.sha || item.dataset.pendingSha;
+      if (!binaries.has(sha)) item.remove();
     });
-    const shown = new Set([...list.querySelectorAll('input[name="include"]')].map((box) => box.value));
-    list.querySelectorAll("[data-pending-sha]").forEach((item) => shown.add(item.dataset.pendingSha));
-    binaries.forEach((name, sha) => {
-      if (shown.has(sha)) return;
-      const item = document.createElement("li");
-      item.className = "pending";
-      item.dataset.pendingSha = sha;
+    binaries.forEach((binary, sha) => {
+      const item = list.querySelector(`:scope > li[data-sha="${CSS.escape(sha)}"]`);
+      const pending = list.querySelector(`:scope > li[data-pending-sha="${CSS.escape(sha)}"]`);
+      if (item && (!binary.byEvent || sameIds(item, binary.ids))) return;
+      if (binary.byEvent) binary.ids.forEach((id) => query.append("ids", id));
+      else query.append("shas", sha);
+      if (item || pending) {
+        (item || pending).dataset.stale = "1";
+        return;
+      }
+      const placeholder = document.createElement("li");
+      placeholder.className = "pending";
+      placeholder.dataset.pendingSha = sha;
       const strong = document.createElement("strong");
-      strong.textContent = name;
+      strong.textContent = binary.name;
       const note = document.createElement("small");
       note.className = "muted";
       note.textContent = list.dataset.pendingLabel || "…";
-      item.append(strong, " ", note);
-      list.append(item);
+      placeholder.append(strong, " ", note);
+      list.append(placeholder);
+    });
+    updateCreateRules(drawerForm);
+    return query.toString();
+  }
+
+  // what depends on the binaries: the events posted (both forms of the drawer), the title, the rule types, the
+  // Team ID of the CEL help, the count of "As package", and the hint when none is left
+  function updateCreateRules(drawerForm) {
+    const drawer = drawerForm.closest(".drawer-panel") || drawerForm.parentElement;
+    const items = [...drawerForm.querySelectorAll("[data-binaries] > li")];
+    const loaded = items.filter((item) => item.dataset.sha);
+    const tabs = drawer.querySelector(".allow-tabs");
+    [drawerForm, tabs].filter(Boolean).forEach((form) => {
+      form.querySelectorAll('input[type="hidden"][name="ids"]').forEach((input) => input.remove());
+      loaded.flatMap((item) => (item.dataset.ids || "").split(" ").filter(Boolean)).forEach((id) => {
+        const input = document.createElement("input");
+        input.type = "hidden";
+        input.name = "ids";
+        input.value = id;
+        form.prepend(input);
+      });
+    });
+    drawerForm.hidden = !items.length;
+    if (tabs) tabs.hidden = !items.length;
+    const empty = drawer.querySelector("[data-no-binaries]");
+    if (empty) empty.hidden = Boolean(items.length);
+    // saved only with every binary loaded: a placeholder has no events yet
+    drawerForm.querySelectorAll('button[name="apply"]').forEach((button) => {
+      button.disabled = loaded.length < items.length;
+    });
+    try {
+      const titles = JSON.parse(drawerForm.dataset.titles);
+      const plural = items.length === 1 ? "one" : "other";
+      const title = drawer.querySelector("[data-drawer-title]");
+      if (title) title.textContent = titles[plural].replace("%(count)s", items.length);
+      const button = drawerForm.querySelector('button[name="apply"]');
+      if (button) button.textContent = titles[`button_${plural}`];
+    } catch (error) {
+      // no titles: nothing to change
+    }
+    const types = new Set(loaded.flatMap((item) => (item.dataset.types || "").split(" ")));
+    const select = drawerForm.querySelector('select[name="rule_type"]');
+    select?.querySelectorAll("option").forEach((option) => {
+      const unused = Boolean(option.value) && Boolean(loaded.length) && !types.has(option.value);
+      option.hidden = unused;
+      option.disabled = unused && option.value !== select.value;
+    });
+    const teams = new Set(loaded.map((item) => item.dataset.team));
+    const cel = drawerForm.querySelector('[data-show-when="policy=CEL"]');
+    if (cel) {
+      if (teams.size === 1 && [...teams][0]) cel.dataset.teamId = [...teams][0];
+      else delete cel.dataset.teamId;
+    }
+    const count = drawer.querySelector(".allow-tabs .tab-count");
+    const packages = new Set(loaded.map((item) => item.dataset.package).filter(Boolean)).size;
+    if (count) {
+      count.textContent = packages;
+      count.hidden = !packages;
+    }
+  }
+
+  // the binaries loaded: in place of their placeholders (or of their older version, with the checks and the prefix
+  // entered there)
+  function addBinaries(drawerForm, html) {
+    const list = drawerForm.querySelector("[data-binaries]");
+    const template = document.createElement("template");
+    template.innerHTML = html;
+    [...template.content.children].filter((item) => item.matches("li[data-sha]")).forEach((item) => {
+      const sha = item.dataset.sha;
+      const old = list.querySelector(`:scope > li[data-sha="${CSS.escape(sha)}"], :scope > li[data-pending-sha="${CSS.escape(sha)}"]`);
+      if (old?.dataset.sha) {
+        item.querySelectorAll("input").forEach((input) => {
+          const before = old.querySelector(`input[name="${CSS.escape(input.name)}"]`);
+          if (!before) return;
+          if (input.type === "checkbox") input.checked = before.checked;
+          else input.value = before.value;
+        });
+      }
+      if (old) old.replaceWith(item);
+    });
+    // no longer in the answer (e.g. resolved meanwhile): a placeholder goes, an older version stays
+    list.querySelectorAll(":scope > li.pending").forEach((item) => item.remove());
+    list.querySelectorAll(":scope > li[data-stale]").forEach((item) => delete item.dataset.stale);
+    updateCreateRules(drawerForm);
+    updateBinaryPreviews(drawerForm);
+  }
+
+  function failBinaries(drawerForm) {
+    const list = drawerForm.querySelector("[data-binaries]");
+    list.querySelectorAll(":scope > li.pending small").forEach((note) => {
+      note.textContent = list.dataset.failedLabel || "!";
+      note.classList.add("error");
     });
   }
 
@@ -254,45 +359,39 @@
     const drawer = document.getElementById("drawer");
     const drawerForm = drawer.querySelector("[data-create-rules]");
     if (!drawerForm || !drawer.classList.contains("open") || drawer.contains(listForm)) return;
-    showSelection(drawerForm, selectedBinaries(listForm));
-    // a Shift-click selects a range in one go: one request for the frame
-    cancelAnimationFrame(syncFrame);
-    syncFrame = requestAnimationFrame(() => {
-      if (drawerForm.dataset.saving) {
-        drawerForm.addEventListener("htmx:afterRequest", () => syncCreateRules(listForm), { once: true });
-        return;
-      }
-      drawerForm.querySelectorAll('input[type="hidden"][name="ids"], input[type="hidden"][name="shas"]')
-                .forEach((input) => input.remove());
-      SantaConsole.table.rowBoxes(listForm).filter((box) => box.checked).forEach((box) => {
-        const input = document.createElement("input");
-        input.type = "hidden";
-        input.name = box.name;
-        input.value = box.value;
-        drawerForm.append(input);
-      });
-      const resolved = listForm.querySelector('[name="resolved"]');
-      const drawerResolved = drawerForm.querySelector('[name="resolved"]');
-      if (resolved && drawerResolved) drawerResolved.value = resolved.value;
-      const scroll = drawer.scrollTop;
-      // an older answer must not replace a newer selection (only refreshes run now, see above)
-      htmx.trigger(drawerForm, "htmx:abort");
-      // htmx.ajax sends right away (htmx:beforeRequest in this call): it is a refresh, not a save
-      refreshing = true;
-      let request;
-      try {
-        request = htmx.ajax("POST", drawerForm.getAttribute("action"), {
-          source: drawerForm, target: "#drawer", values: { refresh: "1" },
-        });
-      } finally {
-        refreshing = false;
-      }
-      request.then(() => {
-        drawer.scrollTop = scroll;
-      }, () => {
-        // aborted by a newer selection: its answer follows
-      });
+    if (drawerForm.dataset.saving) {
+      drawerForm.addEventListener("htmx:afterRequest", () => syncCreateRules(listForm), { once: true });
+      return;
+    }
+    const query = showSelection(drawerForm, selectedBinaries(listForm));
+    // the status filter of the list: which events of a blocked app
+    const resolved = listForm.querySelector('[name="resolved"]');
+    drawer.querySelectorAll('[name="resolved"]').forEach((input) => {
+      if (resolved) input.value = resolved.value;
     });
+    clearTimeout(syncTimer);
+    syncController?.abort();
+    syncController = null;
+    if (!query) return;
+    // a Shift-click or quick Ctrl-clicks: one request after them
+    syncTimer = setTimeout(async () => {
+      const controller = new AbortController();
+      syncController = controller;
+      try {
+        const params = new URLSearchParams(query);
+        if (resolved) params.set("resolved", resolved.value);
+        const response = await fetch(`${drawerForm.dataset.binariesUrl}?${params}`, { signal: controller.signal });
+        if (!response.ok) throw new Error(String(response.status));
+        const html = await response.text();
+        if (controller.signal.aborted || !drawerForm.isConnected) return;
+        addBinaries(drawerForm, html);
+      } catch (error) {
+        // aborted by a newer selection: it loads its own
+        if (!controller.signal.aborted && drawerForm.isConnected) failBinaries(drawerForm);
+      } finally {
+        if (syncController === controller) syncController = null;
+      }
+    }, 300);
   }
 
   // after saving with binaries left: the saved ones are no longer selected in the list
@@ -355,6 +454,7 @@
     updatePackageTargets(root);
     setupPackageBulk(root);
     updateNewRuleFields(root);
+    root.querySelectorAll("[data-create-rules]").forEach(updateCreateRules);
     if (root.id === "drawer") uncheckSaved(root);
   });
   SantaConsole.onSwap((target) => {

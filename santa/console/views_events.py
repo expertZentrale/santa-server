@@ -406,13 +406,15 @@ def signing_rules_of(matches, rows):
     return rules
 
 
-def event_rule_form(rows, data=None, preview=True, initial=None, include=None, signing_rules=None, add_signing=None):
+def event_rule_form(rows, data=None, preview=True, include=None, signing_rules=None, add_signing=None,
+                    follows_selection=False):
     """The rule form for the binaries of some events (rows: the events grouped by binary)
 
     preview: the identifier under the rule type (one event; the list of binaries shows its own)
-    initial / include: the values and the checked binaries to show (the drawer after a change of the selection)
+    include: the checked binaries
     signing_rules / add_signing: the binaries that can have their signing ID added to a Team ID rule, the ones
     checked (by default the ones still blocked, see the view)
+    follows_selection: the form of the selected events (EventRuleForm)
     """
     events = [event for row in rows for event in row]
     types = [rule_type for rule_type in RuleType.values if any(rule_type in available_rule_types(row[0])
@@ -424,10 +426,10 @@ def event_rule_form(rows, data=None, preview=True, initial=None, include=None, s
                 "include": [sha for sha in (include if include is not None else [row[0].file_sha256 for row in rows])
                             if sha not in add_signing],
                 "add_signing": add_signing}
-    if len(rows) == 1:
+    if len(rows) == 1 and not follows_selection:
         defaults["rule_type"] = default_rule_type(rows[0][0])
-    form = EventRuleForm(data, rows=rows, initial={**defaults, **(initial or {})}, available_types=types,
-                         signing_rules=signing_rules)
+    form = EventRuleForm(data, rows=rows, initial=defaults, available_types=types, signing_rules=signing_rules,
+                         follows_selection=follows_selection)
     if len(rows) == 1 and preview:
         show_rule_preview(form.fields["rule_type"], rows[0][0])
     return form
@@ -522,15 +524,19 @@ def _rows_for(events):
     return list(rows.values())
 
 
-def _binaries(rows, matches, data=None):
+def _binaries(rows, matches, include, add_signing, data=None):
     """The binaries of the form with what their rule would use for every rule type (forms.js shows the chosen one).
-    data: the POST of the drawer, it keeps a prefix entered"""
+    include / add_signing: the checked ones. data: the POST of the drawer, it keeps a prefix entered."""
     data = data or {}
+    packages = package_hints([row[0] for row in rows])
     binaries = []
     for row in rows:
+        sha = row[0].file_sha256
         binary = _binary(row, matches)
+        binary.update(include=sha in include, add_signing=sha in add_signing,
+                      package=packages[sha].key if sha in packages else "")
         if binary["signing_rule"]:
-            binary["signing_prefix"] = (data.get(f"signing_prefix_{row[0].file_sha256}")
+            binary["signing_prefix"] = (data.get(f"signing_prefix_{sha}")
                                         or suggested_prefix(binary["signing_rule"], row[0].signing_id))
         binaries.append(binary)
     return binaries
@@ -541,15 +547,21 @@ def _binary(row, matches):
         "matches": matches.get(row[0].file_sha256, []),
         "signing_rule": signing_rules_of(matches, [row]).get(row[0].file_sha256),
         "event": row[0], "events": len(row), "macs": len({event.machine_id for event in row}),
+        "ids": " ".join(str(event.pk) for event in row),
+        "types": " ".join(available_rule_types(row[0])),
         "identifiers": json.dumps({rule_type: row[0].identifier_for(rule_type)
                                    for rule_type in available_rule_types(row[0])}),
         "suggested": default_rule_type(row[0]),
     }
 
 
-# the fields of the rule form kept when the selection changes while the drawer is open
-KEPT_FIELDS = ("rule_type", "policy", "signing_prefixes", "cel_expr", "scope", "new_tags", "description")
-KEPT_LISTS = ("groups", "tags")
+def _defaults(rows, matches, signing_rules):
+    """The binaries checked at first: (include, add_signing). One an allow rule already reaches starts unchecked; one
+    a Team ID rule leaves out gets its signing ID added, unless another rule allows it already (a prefix would widen
+    the rule for nothing)."""
+    wanted = [row[0].file_sha256 for row in rows if not is_allowed(matches.get(row[0].file_sha256, []))]
+    add_signing = [sha for sha in signing_rules if sha in wanted]
+    return [sha for sha in wanted if sha not in add_signing], add_signing
 
 
 @staff_required
@@ -557,42 +569,23 @@ KEPT_LISTS = ("groups", "tags")
 def events_create_rules(request):
     """One rule decision for the binaries of the selected events, in the drawer.
 
-    The binaries left out stay in the drawer afterwards, for a second decision (e.g. block the rest). A change of
-    the selection in the list while the drawer is open posts ?refresh: the drawer shows the new binaries and keeps
-    what was entered, without saving.
+    The binaries left out stay in the drawer afterwards, for a second decision (e.g. block the rest). While the
+    drawer is open it follows the selection of the list (forms.js): binaries no longer selected leave it, new ones
+    come from events_create_rules_binaries, the form stays as it is.
     """
     require_perms(request, "view_event", "add_rule", "change_rule")
     events = selected_events(request)
-    refresh = "refresh" in request.POST
-    if not events and not refresh:
+    if not events:
         messages.warning(request, gettext("Select at least one event."))
         return redirect("console:events")
     rows = _rows_for(events)
     matches = existing_rules(events)
     signing_rules = signing_rules_of(matches, rows)
-    # a binary an allow rule already reaches starts unchecked; one a Team ID rule leaves out gets its signing ID
-    # added, unless another rule allows it already (a prefix would widen the rule for nothing)
-    wanted = [row[0].file_sha256 for row in rows if not is_allowed(matches.get(row[0].file_sha256, []))]
+    include, add_signing = _defaults(rows, matches, signing_rules)
     saved_before = request.POST.get("saved") == "1"
     saved_shas = []
-    if refresh:
-        known = set(request.POST.getlist("known"))
-        checked = set(request.POST.getlist("include"))
-        include = [sha for sha in (row[0].file_sha256 for row in rows)
-                   if sha in checked or (sha not in known and sha in wanted)]
-        adding = set(request.POST.getlist("add_signing"))
-        add_signing = [sha for sha in signing_rules if sha in adding or (sha not in known and sha in wanted)]
-        initial = {name: request.POST[name] for name in KEPT_FIELDS if name in request.POST}
-        initial.update({name: request.POST.getlist(name) for name in KEPT_LISTS if name in request.POST})
-        if "expires_at_0" in request.POST:
-            # the two controls of the expiry, as posted (a list: the widget takes it as is)
-            initial["expires_at"] = [request.POST["expires_at_0"], request.POST.get("expires_at_1", "")]
-        form = event_rule_form(rows, preview=False, initial=initial, include=include, signing_rules=signing_rules,
-                               add_signing=add_signing)
-    else:
-        form = event_rule_form(rows, request.POST if "apply" in request.POST else None, preview=False,
-                               include=wanted, signing_rules=signing_rules,
-                               add_signing=[sha for sha in signing_rules if sha in wanted])
+    form = event_rule_form(rows, request.POST if "apply" in request.POST else None, preview=False, include=include,
+                           signing_rules=signing_rules, add_signing=add_signing, follows_selection=True)
     if form.is_bound and form.is_valid():
         with progress_for(request) as progress:
             saved, created, failed = save_event_rules(request.user, form, progress)
@@ -614,18 +607,42 @@ def events_create_rules(request):
         events = [event for row in rest for event in row]
         matches = existing_rules(events)
         signing_rules = signing_rules_of(matches, rest)
-        wanted = [row[0].file_sha256 for row in rest if not is_allowed(matches.get(row[0].file_sha256, []))]
-        form = event_rule_form(rest, preview=False, include=wanted, signing_rules=signing_rules,
-                               add_signing=[sha for sha in signing_rules if sha in wanted])
+        include, add_signing = _defaults(rest, matches, signing_rules)
+        form = event_rule_form(rest, preview=False, include=include, signing_rules=signing_rules,
+                               add_signing=add_signing, follows_selection=True)
         messages.info(request, ngettext("%(count)s binary left: choose its rule, or close.",
                                         "%(count)s binaries left: choose their rule, or close.", len(rest))
                       % {"count": len(rest)})
+    # a form with errors shows what was posted
+    if form.is_bound:
+        include, add_signing = form["include"].value() or [], form["add_signing"].value() or []
+    binaries = _binaries(rows, matches, include, add_signing, request.POST)
     return render_drawer(request, "console/events/create_rules.html", "console/events/create_rules_drawer.html", {
-        "form": form, "binaries": _binaries(rows, matches, request.POST), "events": events,
+        "form": form, "binaries": binaries, "events": events,
         "rule_types": json.dumps({value: str(label) for value, label in RuleType.choices}), "saved": saved_before,
         "saved_shas": " ".join(saved_shas), "resolved": request.POST.get("resolved", "open"),
-        "tab": "rules", "package_count": len({s.key for s in package_hints(events).values()}),
+        "tab": "rules", "package_count": len({binary["package"] for binary in binaries if binary["package"]}),
+        # forms.js: the title and the button when the selection changes
+        "titles": json.dumps({"one": ngettext("Create a rule for %(count)s binary",
+                                              "Create rules for %(count)s binaries", 1),
+                              "other": ngettext("Create a rule for %(count)s binary",
+                                                "Create rules for %(count)s binaries", 2),
+                              "button_one": gettext("Create rule"), "button_other": gettext("Create rules")}),
     })
+
+
+@staff_required
+def events_create_rules_binaries(request):
+    """The binaries of the selected events for the drawer "create rules" (?ids, ?shas, ?resolved as its form): the
+    ones the selection added while the drawer is open (forms.js), checked as a new drawer would be"""
+    require_perms(request, "view_event", "add_rule", "change_rule")
+    events = selected_events(request, request.GET)
+    rows = _rows_for(events)
+    matches = existing_rules(events)
+    signing_rules = signing_rules_of(matches, rows)
+    include, add_signing = _defaults(rows, matches, signing_rules)
+    return render(request, "console/events/_binary_items.html", {
+        "binaries": _binaries(rows, matches, include, add_signing)})
 
 
 def save_ignores(user, ignores, expires_at, note):

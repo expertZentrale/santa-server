@@ -48,6 +48,7 @@ Das Image (`santa_server/settings.py`) wird über Umgebungsvariablen konfigurier
 | `DB_HOST`, `DB_USER`, `DB_PASSWORD` | ja | SQL Server (2019 oder neuer). Die Datenbank muss existieren. |
 | `DB_PORT`, `DB_NAME` | | Standard `1433`, `santa` |
 | `DB_EXTRA_PARAMS` | | ODBC-Verbindungsoptionen, z. B. `Encrypt=yes;TrustServerCertificate=no` |
+| `DB_CONN_MAX_AGE` | | Standard `600`: Sekunden, die eine Datenbankverbindung offen bleibt (vor der Wiederverwendung geprüft); `0` öffnet für jeden Request eine neue |
 | `REDIS_URL` | ja | z. B. `redis://user:password@redis:6379/0` (Cache, Sessions, Sperre des geplanten Jobs) |
 | `CACHE_KEY_PREFIX` | | Standard `santa`, um eine Redis-Datenbank zu teilen |
 | `METRICS_ENABLED` | | Standard `true`: Prometheus-Metriken unter `/metrics`; `false` sammelt nichts, `/metrics` gibt 404 |
@@ -115,8 +116,10 @@ Benutzer ohne Rechte; SQL Server und Redis laufen separat.
   - täglich (mit E-Mail): `python manage.py send_notification_digest` (die tägliche Zusammenfassung)
 - **Endpunkte**: `/health` (Liveness, ohne Datenbank), `/ready` (prüft die Datenbank), `/metrics` (Prometheus).
   `/metrics` enthält auch die Datenbank-Metriken (`django_db_*`: Abfragen, Dauer, Fehler, Verbindungen); dafür
-  nutzt der Server mit `santa.db` eine Hülle um das SQL-Server-Backend von mssql-django. `METRICS_ENABLED=false`
-  schaltet die Metriken ganz ab.
+  nutzt der Server mit `santa.db` eine Hülle um das SQL-Server-Backend von mssql-django. Dazu kommen
+  `santa_db_connect_seconds` (Dauer des Aufbaus neuer Verbindungen) und je View (Labels `view`, `method`, `rows`)
+  `santa_view_db_queries`, `santa_view_db_seconds` und `santa_view_db_connect_seconds`: Abfragen, ihre Zeit und
+  der Verbindungsaufbau eines Requests. `METRICS_ENABLED=false` schaltet die Metriken ganz ab.
   Sie antworten vor der Host-Prüfung, für Probes. `/sync/…` muss für die Macs über HTTPS erreichbar sein; die Konsole
   (`/console/`), das Anfrageformular (`/request/`), `/login/`, `/oidc/…` und `/admin/` können auf Ihr Netz
   beschränkt werden.
@@ -731,6 +734,7 @@ The image (`santa_server/settings.py`) is configured with environment variables:
 | `DB_HOST`, `DB_USER`, `DB_PASSWORD` | yes | SQL Server (2019 or later). The database must exist. |
 | `DB_PORT`, `DB_NAME` | | default `1433`, `santa` |
 | `DB_EXTRA_PARAMS` | | ODBC connection options, e.g. `Encrypt=yes;TrustServerCertificate=no` |
+| `DB_CONN_MAX_AGE` | | default `600`: seconds a database connection stays open (checked before reuse); `0` opens a new one for every request |
 | `REDIS_URL` | yes | e.g. `redis://user:password@redis:6379/0` (cache, sessions, lock of the scheduled job) |
 | `CACHE_KEY_PREFIX` | | default `santa`, to share a Redis database |
 | `METRICS_ENABLED` | | default `true`: Prometheus metrics on `/metrics`; `false` collects nothing, `/metrics` gives 404 |
@@ -798,8 +802,10 @@ separately.
   - daily (with e-mail): `python manage.py send_notification_digest` (the daily summary)
 - **Endpoints**: `/health` (liveness, no database), `/ready` (checks the database), `/metrics` (Prometheus).
   `/metrics` also has the database metrics (`django_db_*`: queries, duration, errors, connections); for them the
-  server uses `santa.db`, a wrapper around the SQL Server backend of mssql-django. `METRICS_ENABLED=false` switches
-  the metrics off entirely.
+  server uses `santa.db`, a wrapper around the SQL Server backend of mssql-django. Also `santa_db_connect_seconds`
+  (time to open new connections) and per view (labels `view`, `method`, `rows`) `santa_view_db_queries`,
+  `santa_view_db_seconds` and `santa_view_db_connect_seconds`: the queries of a request, their time and the
+  connection it opened. `METRICS_ENABLED=false` switches the metrics off entirely.
   They answer before the host check, for probes. `/sync/…` must be reachable by the Macs over HTTPS; the console
   (`/console/`), the request form (`/request/`), `/login/`, `/oidc/…` and `/admin/` can be limited to your network.
 - Put a TLS terminating proxy or ingress in front, and set `TRUST_X_FORWARDED_PROTO=1`.

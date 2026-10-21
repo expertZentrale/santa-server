@@ -1,0 +1,4 @@
+{# The notes of a decision: a message to the user only with the toggle, and one for the other reviewers (DecisionNotesMixin) #}
+{% include "console/_field.html" with field=form.tell_user %}
+<div data-show-when="tell_user">{% include "console/_field.html" with field=form.note %}</div>
+{% include "console/_field.html" with field=form.review_note %}

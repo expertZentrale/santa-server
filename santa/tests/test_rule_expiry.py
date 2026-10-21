@@ -137,12 +137,3 @@ class EventRuleExpiryTestCase(ConsoleBase):
                                     headers={"HX-Request": "true"})
         self.assertContains(response, 'name="expires_at_0"')
         self.assertContains(response, 'data-pending-label="Loading…"')
-
-    def test_a_change_of_the_selection_keeps_the_expiry(self):
-        a, b = self.make_event(), self.make_event(sha256=SHA_B, file_name="other")
-        response = self.client.post(reverse("console:events_create_rules"), {
-            "ids": [a.pk, b.pk], "refresh": "1", "known": [SHA_A], "include": [SHA_A], "expires_at_0": "date",
-            "expires_at_1": "2099-12-01T12:00"}, headers={"HX-Request": "true"})
-        self.assertFalse(Rule.objects.exists())
-        self.assertEqual(response.context["form"]["expires_at"].value(), ["date", "2099-12-01T12:00"])
-        self.assertContains(response, 'value="2099-12-01T12:00"')

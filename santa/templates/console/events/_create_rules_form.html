@@ -1,33 +1,18 @@
 {% load i18n %}{% url 'console:events_create_rules' as action %}
-{% if not binaries %}<p class="card empty">{% translate "Select events in the list." %}</p>{% else %}{% include "console/events/_allow_tabs.html" %}{% endif %}
-<form method="post" action="{{ action }}" class="stack" data-progress{% if in_drawer %} hx-post="{{ action }}" hx-target="#drawer"{% endif %} data-create-rules{% if not binaries %} hidden{% endif %}>
+{# forms.js: shown when the selection in the list becomes empty, instead of the tabs and the form #}
+<p class="card empty" data-no-binaries hidden>{% translate "Select events in the list." %}</p>{% include "console/events/_allow_tabs.html" %}
+<form method="post" action="{{ action }}" class="stack" data-progress{% if in_drawer %} hx-post="{{ action }}" hx-target="#drawer"{% endif %} data-create-rules data-binaries-url="{% url 'console:events_create_rules_binaries' %}" data-titles="{{ titles }}">
   {% csrf_token %}
   {% for event in events %}<input type="hidden" name="ids" value="{{ event.pk }}">{% endfor %}
   <input type="hidden" name="resolved" value="{{ resolved }}">
-  {% for binary in binaries %}<input type="hidden" name="known" value="{{ binary.event.file_sha256 }}">{% endfor %}
   {% if saved %}<input type="hidden" name="saved" value="1">{% endif %}
   {% if form.non_field_errors %}<div class="error">{{ form.non_field_errors }}</div>{% endif %}
   {% include "console/events/_rule_form.html" %}
   <fieldset class="plain field{% if form.include.errors %} has-error{% endif %}">
     <legend class="strong">{% translate "Binaries" %}</legend>
-    <ul class="plain binaries" data-binaries data-rule-types="{{ rule_types }}" data-pending-label="{% translate 'Loading…' %}"
+    <ul class="plain binaries" data-binaries data-rule-types="{{ rule_types }}" data-pending-label="{% translate 'Loading…' %}" data-failed-label="{% translate 'Could not be loaded. Select it again.' %}"
         data-preview-label="{% translate 'The rule uses' %}" data-fallback-label="{% translate 'Not available, the rule uses' %}">
-      {% for binary in binaries %}{% with sha=binary.event.file_sha256 %}
-      <li><label>
-        <input type="checkbox" name="include" value="{{ sha }}"{% if sha in form.include.value %} checked{% endif %}>
-        <span class="binary-text">
-          <span><strong>{{ binary.event.file_name|default:_("(no name)") }}</strong>
-            <span class="badge">{% blocktranslate count count=binary.events %}{{ count }} event{% plural %}{{ count }} events{% endblocktranslate %} · {% blocktranslate count count=binary.macs %}{{ count }} Mac{% plural %}{{ count }} Macs{% endblocktranslate %}</span></span>
-          {% include "console/rules/_existing.html" with matches=binary.matches compact=True %}
-          <small class="rule-preview" data-binary-preview data-identifiers="{{ binary.identifiers }}" data-suggested="{{ binary.suggested }}"></small>
-        </span>
-      </label>
-      {% if binary.signing_rule %}<label class="add-signing">
-        <input type="checkbox" name="add_signing" value="{{ sha }}"{% if sha in form.add_signing.value %} checked{% endif %}>
-        <span>{% blocktranslate with team=binary.signing_rule.identifier %}Instead: add the prefix below to the Team ID rule {{ team }}, with the scope above{% endblocktranslate %}</span>
-      </label>
-      <div class="add-signing-prefix"><code>{{ binary.signing_rule.identifier }}:</code><input name="signing_prefix_{{ sha }}" value="{{ binary.signing_prefix }}" class="mono small" aria-label="{% translate 'Signing ID prefix' %}" title="{% translate 'Only the start: it allows every signing ID beginning with it, and replaces the prefixes of the rule it covers.' %}"></div>{% endif %}</li>
-      {% endwith %}{% endfor %}
+      {% for binary in binaries %}{% include "console/events/_binary_item.html" %}{% endfor %}
     </ul>
     {% for error in form.include.errors %}<small class="error">{{ error }}</small>{% endfor %}
   </fieldset>
