@@ -18,6 +18,11 @@
     <dt>{% translate "Scope" %}</dt><dd>{% if source.is_global %}{% translate "All Macs" %}{% else %}{% for group in source.groups.all %}{% url 'console:group' group.pk as group_url %}<a href="{{ group_url }}" hx-get="{{ group_url }}" hx-target="#drawer">{{ group.name }}</a>{% if not forloop.last %}, {% endif %}{% empty %}{% translate "none" %}{% endfor %}{% endif %}</dd>
     <dt>{% translate "Approval" %}</dt><dd>{% if source.auto_approve %}{% if source.auto_approve_delay_days %}{% blocktranslate count days=source.auto_approve_delay_days %}automatic after {{ days }} day{% plural %}automatic after {{ days }} days{% endblocktranslate %}{% else %}{% translate "automatic" %}{% endif %}{% else %}{% translate "manual" %}{% endif %}
       · {% if not source.keep_versions %}{% translate "keep all versions" %}{% elif source.keep_unit == "WEEKS" %}{% blocktranslate count count=source.keep_versions %}keep the versions of the last week{% plural %}keep the versions of the last {{ count }} weeks{% endblocktranslate %}{% elif source.keep_unit == "MONTHS" %}{% blocktranslate count count=source.keep_versions %}keep the versions of the last month{% plural %}keep the versions of the last {{ count }} months{% endblocktranslate %}{% else %}{% blocktranslate count count=source.keep_versions %}keep {{ count }} version{% plural %}keep {{ count }} versions{% endblocktranslate %}{% endif %}{% if source.approve_kept_versions %} · {% translate "also the older ones" %}{% endif %}{% if source.include_dependencies %} · {% translate "with dependencies" %}{% endif %}</dd>
+    {% if source.kind == "URL_LIST" %}
+    <dt>{% translate "List" %}</dt><dd>{% for identifier in source.identifiers %}{% include "console/sources/_identifier.html" with kind=source.kind name="" %}{% if not forloop.last %}<br>{% endif %}{% endfor %}</dd>
+    <dt>{% translate "Downloads" %}</dt><dd class="mono">{{ source.list_downloads|linebreaksbr }}</dd>
+    {% if source.list_filters %}<dt>{% translate "Filters" %}</dt><dd class="mono">{{ source.list_filters|linebreaksbr }}</dd>{% endif %}
+    {% endif %}
     {% if source.version_pattern %}<dt>{% translate "Versions" %}</dt><dd class="mono">{{ source.version_pattern|linebreaksbr }}</dd>{% endif %}
     {% if source.asset_pattern %}<dt>{% translate "Assets" %}</dt><dd class="mono">{{ source.asset_pattern|linebreaksbr }}</dd>{% endif %}
     {% if source.binary_pattern %}<dt>{% translate "Binaries" %}</dt><dd class="mono">{{ source.binary_pattern|linebreaksbr }}</dd>{% endif %}
@@ -30,6 +35,6 @@
   <div class="rows-loading" hx-get="{% url 'console:source' source.pk %}" hx-trigger="load" hx-target="closest [data-list-rows]" hx-swap="innerHTML"
        hx-headers='{"X-Santa-Rows": "1"}' aria-busy="true" aria-label="{% translate 'Loading…' %}">
     <p class="rows-error error" hidden>{% translate "The versions could not be loaded. Reload the page to try again." %}</p>
-    {% for identifier in source.identifiers|slice:":3" %}<section class="card skeleton-card" aria-hidden="true"><h2><code>{{ identifier }}</code></h2><span class="skeleton-bar"></span><span class="skeleton-bar short"></span></section>{% endfor %}
+    {% for identifier in source.identifiers|slice:":3" %}<section class="card skeleton-card" aria-hidden="true"><h2>{% include "console/sources/_identifier.html" with kind=source.kind name="" %}</h2><span class="skeleton-bar"></span><span class="skeleton-bar short"></span></section>{% endfor %}
   </div>
 {% else %}{% include "console/sources/_versions.html" %}{% endif %}</div>

@@ -137,6 +137,8 @@ SANTA_PUBLIC_BASE_URL = "http://localhost:8000"
 # Release sources
 GITHUB_TOKEN = None
 RELEASE_MAX_DOWNLOAD_BYTES = 500 * 1024 * 1024
+# a download list (JSON) is read into memory
+RELEASE_MAX_LIST_BYTES = 20 * 1024 * 1024
 # unpacking archives (releases and uploads): bigger files are skipped, and an archive may not unpack to more in total
 RELEASE_MAX_FILE_BYTES = 512 * 1024 * 1024
 RELEASE_MAX_UNPACKED_BYTES = 2 * 1024 * 1024 * 1024

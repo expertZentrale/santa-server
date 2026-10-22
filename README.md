@@ -63,6 +63,7 @@ Das Image (`santa_server/settings.py`) wird über Umgebungsvariablen konfigurier
 | `GITHUB_TOKEN` | empfohlen | für Paketregeln und die Katalogsuche; ohne erlaubt GitHub 60 Anfragen pro Stunde |
 | `RELEASE_MAX_DEPENDENCIES` | | Standard `200`: so viele Abhängigkeiten (direkte und indirekte) löst eine Paketregel mit *Abhängigkeiten erlauben* je Version höchstens auf |
 | `RELEASE_MAX_DOWNLOAD_BYTES` | | Standard `524288000` (500 MB): größere Dateien eines Releases werden nicht heruntergeladen (z. B. die Bottles von `agda`); vier Downloads laufen parallel, belegen also bis zum Vierfachen davon an temporärem Speicher |
+| `RELEASE_MAX_LIST_BYTES` | | Standard `20971520` (20 MB): eine größere Download-Liste (Katalog „Download-Liste (JSON)“) wird nicht gelesen |
 | `RELEASE_MAX_FILE_BYTES` | | Standard `536870912` (512 MB): größere ausführbare Dateien in einem Archiv werden übersprungen und im Fehler der Version genannt (z. B. `vault` mit 543 MB) |
 | `RELEASE_MAX_UNPACKED_BYTES` | | Standard `2147483648` (2 GB): so viel darf ein Archiv insgesamt entpacken; es zählen nur die ausführbaren Dateien, Bibliotheken und Daten werden nicht entpackt |
 | `RELEASE_UNPACK_TIMEOUT` | | Standard `120`: so viele Sekunden darf 7-Zip zum Auflisten oder Entpacken eines Disk-Images (`.dmg`) brauchen |
@@ -452,9 +453,22 @@ die Macs sehen dann einen anderen Hash als den des Downloads.
 | Homebrew-Formula | `colima` | `^arm64_` (Bottle-Tags) | `*/bin/colima` |
 | Homebrew-Cask | Cask-Name | Regex auf die Download-URL | Glob im Zip |
 | Direkte URL | vollständige URL | | |
+| Download-Liste (JSON) | https-URL der Liste | (Filter, siehe unten) | Glob im Archiv |
 | npm-Paket | `@esbuild/darwin-arm64` | | |
 | VS-Code-Erweiterung | `rust-lang.rust-analyzer` | `^darwin-arm64$` (Zielplattform) | |
 | JetBrains-Plugin | `com.intellij.plugins.watcher` | `^PHPSTORM$` (kompatibles Produkt) | |
+
+**Download-Liste (JSON)**: für Software, die ihre Versionen nur als JSON-Liste veröffentlicht, z. B. Chrome for
+Testing (`https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json`):
+- *Versionen in der Liste*: der Pfad zu den Einträgen, Punkte trennen die Schlüssel, `*` nimmt alle Werte eines
+  Objekts (`versions`, oder `channels.*` bei `last-known-good-versions-with-downloads.json`).
+- *Versionsfeld* (`version`) und *URL-Feld* (`url`).
+- *Downloads in einem Eintrag*: ein Pfad pro Zeile, z. B. `downloads.chrome-headless-shell` und `downloads.chrome`.
+- *Filter*: `feld=regex` pro Zeile, alle müssen passen, gesucht im Download und im Eintrag, z. B.
+  `platform=^mac-arm64$` oder `channel=^Stable$`.
+- Genommen werden nur `https`-Downloads; die Liste darf höchstens `RELEASE_MAX_LIST_BYTES` groß sein. Die Versionen
+  werden als Zahlen verglichen (`131.0.6778.85`); *Behalten* zählt Versionen (die Liste hat keine Daten), und
+  *Auch die älteren behaltenen Versionen erlauben* nimmt die letzten *n* Versionen der Liste.
 
 Eine Paketregel kann **mehrere Pakete** enthalten, eines pro Zeile. Sie teilen die Einstellungen, aber jedes Paket
 wird für sich geprüft und behält seine eigenen Versionen. Eine Paketregel legt außerdem fest, wie die Regeln aussehen:
@@ -474,8 +488,8 @@ wird für sich geprüft und behält seine eigenen Versionen. Eine Paketregel leg
   kompromittierten Release zu erfahren, bevor es auf den Macs läuft.
 - **Behalten**: die letzten *n* Versionen, oder die Versionen der letzten *n* Wochen bzw. Monate; die Regeln älterer
   Versionen werden gelöscht, die neueste Version bleibt immer. `0` behält alle.
-- **Auch die älteren behaltenen Versionen erlauben** (alle Kataloge außer Homebrew-Cask und URL, die nur auf den
-  aktuellen Download zeigen; Homebrew-Formulae aus der Bottle-Registry `ghcr.io`, Tap-Formeln aus der Git-Historie des
+- **Auch die älteren behaltenen Versionen erlauben** (alle Kataloge außer Homebrew-Cask und direkter URL, die nur
+  auf den aktuellen Download zeigen; Homebrew-Formulae aus der Bottle-Registry `ghcr.io`, Tap-Formeln aus der Git-Historie des
   Taps): legt die Regeln für die älteren
   Versionen im behaltenen Bereich an, nicht nur für neue (höchstens 10 je Prüfung, der Rest bei den nächsten).
   Nicht mit `0`, das würde jede je veröffentlichte Version erlauben.
@@ -749,6 +763,7 @@ The image (`santa_server/settings.py`) is configured with environment variables:
 | `GITHUB_TOKEN` | recommended | for package rules and the catalog search; without it GitHub allows 60 requests per hour |
 | `RELEASE_MAX_DEPENDENCIES` | | default `200`: at most this many dependencies (direct and indirect) a package rule with *Allow the dependencies* resolves per version |
 | `RELEASE_MAX_DOWNLOAD_BYTES` | | default `524288000` (500 MB): bigger files of a release are not downloaded (e.g. the bottles of `agda`); four downloads run in parallel, so up to four times that much temporary disk |
+| `RELEASE_MAX_LIST_BYTES` | | default `20971520` (20 MB): a bigger download list (catalog "Download list (JSON)") is not read |
 | `RELEASE_MAX_FILE_BYTES` | | default `536870912` (512 MB): bigger executables inside an archive are skipped and named in the error of the version (e.g. `vault` with 543 MB) |
 | `RELEASE_MAX_UNPACKED_BYTES` | | default `2147483648` (2 GB): at most this much an archive unpacks in total; only the executables count, libraries and data are not unpacked |
 | `RELEASE_UNPACK_TIMEOUT` | | default `120`: the seconds 7-Zip may take to list or unpack a disk image (`.dmg`) |
@@ -1116,9 +1131,22 @@ installing it (`codesign`), the version says so: the Macs then see another hash 
 | Homebrew formula | `colima` | `^arm64_` (bottle tags) | `*/bin/colima` |
 | Homebrew cask | cask name | regex on the download URL | glob inside the zip |
 | Direct URL | full URL | | |
+| Download list (JSON) | https URL of the list | (filters, see below) | glob inside the archive |
 | npm package | `@esbuild/darwin-arm64` | | |
 | VS Code extension | `rust-lang.rust-analyzer` | `^darwin-arm64$` (target platform) | |
 | JetBrains plugin | `com.intellij.plugins.watcher` | `^PHPSTORM$` (compatible product) | |
+
+**Download list (JSON)**: for software that publishes its versions only as a JSON list, e.g. Chrome for Testing
+(`https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json`):
+- *Versions in the list*: the path to the entries, dots separate the keys, `*` takes every value of an object
+  (`versions`, or `channels.*` for `last-known-good-versions-with-downloads.json`).
+- *Version field* (`version`) and *URL field* (`url`).
+- *Downloads in an entry*: one path per line, e.g. `downloads.chrome-headless-shell` and `downloads.chrome`.
+- *Filters*: `field=regex` per line, every one must match, looked up in the download and its entry, e.g.
+  `platform=^mac-arm64$` or `channel=^Stable$`.
+- Only `https` downloads are taken; the list may be at most `RELEASE_MAX_LIST_BYTES`. The versions are compared as
+  numbers (`131.0.6778.85`); *Keep* counts versions (the list has no dates), and *Also allow the older kept versions*
+  takes the last *n* versions of the list.
 
 A package rule can list **several packages**, one per line. They share the settings, but every package is checked
 on its own and keeps its own versions. A package rule also chooses what the rules look like:
@@ -1137,7 +1165,7 @@ on its own and keeps its own versions. A package rule also chooses what the rule
   runs on the Macs.
 - **Keep**: the last *n* versions, or the versions of the last *n* weeks or months; the rules of older versions are
   deleted, the newest version always stays. `0` keeps all.
-- **Also allow the older kept versions** (every catalog except Homebrew casks and URLs, which only point to the
+- **Also allow the older kept versions** (every catalog except Homebrew casks and direct URLs, which only point to the
   current download; Homebrew formulae from the bottle registry `ghcr.io`, tap formulae from the Git history of the
   tap): adds the rules of the older versions
   inside the kept range, not only of new ones (at most 10 per check, the rest at the next ones). Not with `0`: that

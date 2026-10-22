@@ -35,12 +35,11 @@ class ListRowsTestCase(ConsoleBase):
         self.assertNotContains(response, SHA_A)
         # the real table with grey rows where the rows come, not "no rules"
         self.assertContains(response, 'data-table="rules"')
-        # as many as the page will have (50 by default), and the pages bar in its place (hidden on the first page:
-        # table.js shows it if the list had pages last time)
-        self.assertContains(response, '<tr class="skeleton" aria-hidden="true">', count=50)
+        # a list not shown yet: a few, and the pages bar in its place (hidden on the first page: table.js shows it if
+        # the list had pages last time)
+        self.assertContains(response, '<tr class="skeleton" aria-hidden="true">', count=10)
         self.assertContains(response, "data-pages-placeholder hidden")
         response = self.client.get(url + "&page=3&per_page=25", **NAVIGATE)
-        self.assertContains(response, '<tr class="skeleton" aria-hidden="true">', count=25)
         self.assertContains(response, "data-pages-placeholder>")
         response = self.client.get(url, **NAVIGATE)
         self.assertNotContains(response, "No rules for these filters.")
@@ -54,6 +53,23 @@ class ListRowsTestCase(ConsoleBase):
         self.assertNotContains(response, "<html")
         self.assertNotContains(response, "data-filter-form")
         self.assertIn("X-Santa-Rows", response["Vary"])
+
+    def test_the_grey_rows_are_as_many_as_last_time(self):
+        url = reverse("console:rules")
+        # (with filters in every URL: the bare one goes to the last filters)
+        self.client.get(url + "?q=tool", **NAVIGATE, **ROWS)
+        # one rule: one grey row at the next load, not a big table that shrinks
+        self.assertContains(self.client.get(url + "?q=tool", **NAVIGATE), '<tr class="skeleton"', count=1)
+        # an empty list: one grey row too
+        self.client.get(url + "?q=nothing", **NAVIGATE, **ROWS)
+        self.assertContains(self.client.get(url + "?q=nothing", **NAVIGATE), '<tr class="skeleton"', count=1)
+        # many: at most the page size
+        Rule.objects.bulk_create([Rule(rule_type=RuleType.BINARY, identifier=f"{index:064x}", is_global=True)
+                                  for index in range(30)])
+        self.client.get(url + "?q=0&per_page=25", **NAVIGATE, **ROWS)
+        self.assertContains(self.client.get(url + "?q=0", **NAVIGATE), '<tr class="skeleton"', count=25)
+        # each page on its own
+        self.assertContains(self.client.get(url + "?q=0&page=2", **NAVIGATE), '<tr class="skeleton"', count=10)
 
     def test_every_list(self):
         for name in LISTS:

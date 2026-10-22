@@ -38,6 +38,7 @@ from ..releases import (
     sync_release_source,
     unchecked_identifiers,
     unwanted_prerelease,
+    version_order,
 )
 from ..services import groups_prefetch, set_rules_enabled
 from .filters import Facet, any_of, chosen, filter_bar, remember_filters
@@ -66,15 +67,12 @@ def latest_versions(source):
     """The newest version of every identifier, in the order of the identifiers: by its release date, not by when it
     was recorded (the older versions a package rule allows are recorded after the current one)"""
     latest = {}
+    released = version_order(source)
     for version in source.versions.all():
         current = latest.get(version.identifier)
-        if current is None or _released(version) > _released(current):
+        if current is None or released(version) > released(current):
             latest[version.identifier] = version
     return [(identifier, latest.get(identifier)) for identifier in source.identifiers]
-
-
-def _released(version):
-    return version.published_at or version.created_at
 
 
 @staff_required
@@ -137,6 +135,19 @@ def source_detail(request, pk, defer=None):
     return response
 
 
+def _version_files(source):
+    """{version pk: the names of the files its rules came from}: a download list has no dates to show, its files
+    tell the versions apart. Only for it: the rules of other catalogs can be tens of thousands."""
+    if source.kind != ReleaseSource.Kind.URL_LIST:
+        return {}
+    files = {}
+    for version_id, release_files in (source.rules.filter(release_dependency="").order_by()
+                                      .values_list("release_version_id", "release_files")):
+        files.setdefault(version_id, set()).update(item.get("asset") for item in release_files or []
+                                                   if item.get("asset"))
+    return files
+
+
 def _versions_context(source):
     """The versions per package, and what "Clean up" would delete"""
     versions = {}
@@ -151,8 +162,10 @@ def _versions_context(source):
                   .distinct())
     # the notes (the files found, up to 10,000 characters each) are not in the table
     # newest first by release date: the older versions a package rule allows are recorded after the current one
-    for version in sorted(source.versions.defer("notes"), key=_released, reverse=True):
+    files = _version_files(source)
+    for version in sorted(source.versions.defer("notes"), key=version_order(source), reverse=True):
         version.rules_enabled = version.pk in enabled
+        version.files = sorted(files.get(version.pk, ()))
         version.dependency_rows = [(label, label in with_rules.get(version.pk, ())) for label in version.dependencies]
         versions.setdefault(version.identifier, []).append(version)
     per_identifier = [(identifier, source.identifier_icons.get(identifier) or {}, versions.pop(identifier, []))

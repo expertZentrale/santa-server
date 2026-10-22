@@ -8,7 +8,7 @@
         {% if source.description %}<div class="small muted">{{ source.description|truncatechars:120 }}</div>{% endif %}</td>
       <td>{{ source.get_kind_display }}</td>
       <td class="small">{% for identifier, version in source.latest|slice:":4" %}
-        <div><span class="mono">{{ identifier|truncatechars:32 }}</span> {% if version %}<strong>{{ version.version|truncatechars:20 }}</strong>
+        <div>{% with parts=identifier|package_label:source.kind %}<span class="mono" title="{{ identifier }}">{{ parts.title|truncatechars:32 }}</span>{% endwith %} {% if version %}<strong>{{ version.version|truncatechars:20 }}</strong>
           {% if version.auto_enable_pending %}<span class="badge info">{% blocktranslate with date=version.auto_enable_at|date:"d.m." %}on {{ date }}{% endblocktranslate %}</span>{% endif %}{% else %}<span class="muted">{% translate "not checked" %}</span>{% endif %}</div>
         {% endfor %}{% if source.latest|length > 4 %}<span class="muted">{% blocktranslate with count=source.latest|length|add:"-4" %}+{{ count }} more{% endblocktranslate %}</span>{% endif %}</td>
       <td class="small">{{ source.get_rule_type_display }}<br><span class="badge {{ source.policy|policy_class }}">{{ source.get_policy_display }}</span></td>

@@ -1,4 +1,4 @@
-{% load i18n %}<form method="post" class="stack" action="{{ request.get_full_path }}"{% if in_drawer %} hx-post="{{ request.get_full_path }}" hx-target="#drawer"{% endif %} data-source-form data-catalog-url="{% url 'console:catalog_search' %}"
+{% load console i18n %}<form method="post" class="stack" action="{{ request.get_full_path }}"{% if in_drawer %} hx-post="{{ request.get_full_path }}" hx-target="#drawer"{% endif %} data-source-form data-catalog-url="{% url 'console:catalog_search' %}"
       data-searchable="{{ searchable_kinds|join:',' }}">
   {% csrf_token %}
   {{ form.picked }}
@@ -8,17 +8,40 @@
   <section class="card"><h2>{% translate "Source and packages" %}</h2>
     {% include "console/_field.html" with field=form.name %}
     {% include "console/_field.html" with field=form.kind %}
-    {% include "console/_field.html" with field=form.identifier %}
+    {# the identifiers: "List" for a download list, the help of the chosen catalog only #}
+    {% with field=form.identifier %}<div class="field{% if field.errors %} has-error{% endif %}" data-field="identifier">
+      <label for="{{ field.id_for_label }}"><span data-show-when="kind=URL_LIST">{% translate "List" %}</span><span data-show-when="kind=GITHUB_RELEASE|HOMEBREW_FORMULA|HOMEBREW_CASK|URL|NPM_PACKAGE|VSCODE_EXTENSION|JETBRAINS_PLUGIN|">{{ field.label }}</span></label>
+      {{ field|form_widget }}
+      <small class="help" data-show-when="kind=GITHUB_RELEASE|HOMEBREW_FORMULA|HOMEBREW_CASK|URL|NPM_PACKAGE|VSCODE_EXTENSION|JETBRAINS_PLUGIN|">{% translate "One per line, each one is checked on its own and keeps its own versions." %}</small>
+      <small class="help" data-show-when="kind=GITHUB_RELEASE">{% translate "GitHub: owner/repo (e.g. abiosoft/colima)." %}</small>
+      <small class="help" data-show-when="kind=HOMEBREW_FORMULA|HOMEBREW_CASK">{% translate "Homebrew: the name of the formula or cask, from a tap with its full name (e.g. hashicorp/tap/terraform)." %}</small>
+      <small class="help" data-show-when="kind=URL">{% translate "The full URL of the download." %}</small>
+      <small class="help" data-show-when="kind=URL_LIST">{% translate "The https URL of the JSON list, one per line: each one is checked on its own and keeps its own versions." %}</small>
+      <small class="help" data-show-when="kind=NPM_PACKAGE">{% translate "npm: the package name (e.g. @esbuild/darwin-arm64)." %}</small>
+      <small class="help" data-show-when="kind=VSCODE_EXTENSION">{% translate "VS Code: publisher.name (e.g. rust-lang.rust-analyzer)." %}</small>
+      <small class="help" data-show-when="kind=JETBRAINS_PLUGIN">{% translate "JetBrains: the plugin ID (e.g. com.intellij.plugins.watcher)." %}</small>
+      {% for error in field.errors %}<small class="error">{{ error }}</small>{% endfor %}
+    </div>{% endwith %}
+    {# a download list: where the versions and their downloads are in it (ReleaseSource.list_*) #}
+    <div data-show-when="kind=URL_LIST">
+      <small class="help after-field">{% translate "A JSON list of versions with their downloads, e.g." %} <code>{"versions": [{"version": "2.1.0", "downloads": {"app": [{"platform": "mac-arm64", "url": "https://…"}]}}]}</code>: {% translate "versions in the list “versions”, downloads “downloads.app”, filter “platform=^mac-arm64$”. Only https downloads are taken." %}</small>
+      {% include "console/_field.html" with field=form.list_format %}
+      {% include "console/_field.html" with field=form.list_entries %}
+      {% include "console/_field.html" with field=form.list_version_key %}
+      {% include "console/_field.html" with field=form.list_downloads %}
+      {% include "console/_field.html" with field=form.list_url_key %}
+      {% include "console/_field.html" with field=form.list_filters %}
+    </div>
     {% include "console/_field.html" with field=form.is_enabled %}
   </section>
   <section class="card"><h2>{% translate "Filters" %}</h2>
     {% include "console/_field.html" with field=form.version_pattern %}
-    {% include "console/_field.html" with field=form.asset_pattern %}
+    <div data-show-when="kind=GITHUB_RELEASE|HOMEBREW_FORMULA|HOMEBREW_CASK|URL|NPM_PACKAGE|VSCODE_EXTENSION|JETBRAINS_PLUGIN">{% include "console/_field.html" with field=form.asset_pattern %}</div>
     {% include "console/_field.html" with field=form.binary_pattern %}
     <div data-show-when="kind=HOMEBREW_FORMULA">
       {% include "console/_field.html" with field=form.macos_minimum %}
       {% include "console/_field.html" with field=form.macos_nearest %}</div>
-    {% include "console/_field.html" with field=form.include_prereleases %}
+    <div data-show-when="kind=GITHUB_RELEASE|HOMEBREW_FORMULA|HOMEBREW_CASK|URL|NPM_PACKAGE|VSCODE_EXTENSION|JETBRAINS_PLUGIN">{% include "console/_field.html" with field=form.include_prereleases %}</div>
     {% if source %}{% url 'console:source_preview' source.pk as preview_url %}{% else %}{% url 'console:source_preview' as preview_url %}{% endif %}
     {% if source %}{% url 'console:source_preview_result' source.pk as result_url %}{% else %}{% url 'console:source_preview_result' as result_url %}{% endif %}
     {# while it runs, "Preview" is "Stop the preview" (checks.js); it goes on when the drawer is closed, the form shows it again #}

@@ -98,7 +98,9 @@
 
 /* Identifiers widget */
 .identifiers .chips { list-style: none; padding: 0; margin: 0 0 .5rem; display: flex; flex-wrap: wrap; gap: .4rem; }
-.identifiers .chip { border-radius: var(--radius); padding: .3rem .4rem .3rem .35rem; }
+.identifiers .chip { border-radius: var(--radius); padding: .3rem .4rem .3rem .35rem; max-width: 100%; }
+/* a long identifier (a URL, owner/repo) wraps instead of widening the form on a phone */
+.identifiers .chip-text, .identifiers .chip-text > * { min-width: 0; overflow-wrap: anywhere; }
 /* the patterns of a package rule (chips.js) */
 .patterns .chips { list-style: none; padding: 0; margin: 0 0 .4rem; display: flex; flex-wrap: wrap; gap: .4rem; }
 .patterns .chips:empty { display: none; }
@@ -326,7 +328,13 @@ details.dependencies code { overflow-wrap: anywhere; }
 
 /* the preview of the patterns of a package rule (sources/_preview.html) */
 .preview-package { margin-top: 1rem; }
-.preview-package h3 { margin: 0 0 .5rem; font-size: 1rem; }
+.preview-package h3 { margin: 0 0 .5rem; font-size: 1rem; overflow-wrap: anywhere; }
+/* a URL package by its file, its host as a link (sources/_identifier.html) */
+.identifier-title { overflow-wrap: anywhere; }
+.identifier-host { font-size: .8rem; font-weight: normal; white-space: nowrap; }
+/* the files of a version of a download list, apart from each other */
+.version-files { display: flex; flex-wrap: wrap; gap: .25rem; }
+.version-files .chip.small { margin: 0; overflow-wrap: anywhere; }
 .preview-package details { margin-top: .5rem; }
 .preview-package details > summary { cursor: pointer; color: var(--muted); }
 
