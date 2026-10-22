@@ -8,7 +8,7 @@ from django.conf import settings
 from django.contrib.auth import password_validation
 from django.contrib.auth.models import Group as AuthGroup
 from django.contrib.auth.models import Permission, User
-from django.core.exceptions import ValidationError
+from django.core.exceptions import NON_FIELD_ERRORS, ValidationError
 from django.utils import timezone
 from django.utils.text import format_lazy
 from django.utils.translation import gettext
@@ -24,6 +24,9 @@ from ..models import (
     DEPENDENCY_KINDS,
     HISTORY_KINDS,
     IDENTIFIER_MAX_LENGTH,
+    LIST_SOURCE_KEYS,
+    LIST_SOURCE_PATH,
+    LIST_SOURCE_TEMPLATE,
     AccessRequest,
     ClientMode,
     FileAccessProcess,
@@ -41,6 +44,7 @@ from ..models import (
     SignInGroup,
     Tag,
     UserProfile,
+    normalize_list_source,
     validate_logo_url,
 )
 from ..package_detection import SHORT_KIND_LABELS
@@ -445,25 +449,68 @@ def clean_picked(value):
     return picked
 
 
+class ListSourceForm(forms.Form):
+    """A row of the downloads of a download list (ReleaseSource.list_sources, normalize_list_source)"""
+
+    entry_field = forms.CharField(required=False, label=_("Field"),
+                                  widget=forms.TextInput(attrs={"class": "mono", "placeholder": "name"}))
+    entry_value = forms.CharField(required=False, label=_("Value"),
+                                  widget=forms.TextInput(attrs={"class": "mono", "placeholder": "app"}))
+    url_from = forms.ChoiceField(
+        choices=[(LIST_SOURCE_PATH, _("The entry lists its downloads with their URL")),
+                 (LIST_SOURCE_TEMPLATE, _("The URL is built from fields of the entry"))],
+        initial=LIST_SOURCE_PATH, widget=forms.RadioSelect, label=_("Where the URL comes from"))
+    path = forms.CharField(required=False, label=_("Downloads in the entry"),
+                           help_text=_("Keys separated by dots, e.g. downloads.app"),
+                           widget=forms.TextInput(attrs={"class": "mono", "placeholder": "downloads.app"}))
+    url_field = forms.CharField(required=False, label=_("URL field"), initial="url",
+                                widget=forms.TextInput(attrs={"class": "mono"}))
+    download_field = forms.CharField(required=False, label=_("Field"),
+                                     widget=forms.TextInput(attrs={"class": "mono", "placeholder": "platform"}))
+    download_value = forms.CharField(required=False, label=_("Value"),
+                                     widget=forms.TextInput(attrs={"class": "mono", "placeholder": "mac-arm64"}))
+    template = forms.CharField(
+        required=False, label=_("URL"), help_text=_("With {field} for a field of the entry, dots for nested fields."),
+        # grows with the URL (forms.js fitTextarea): long URLs are read whole
+        widget=forms.Textarea(attrs={"rows": 1, "class": "mono",
+                                     "placeholder": "https://example.com/{version}/app-mac-arm64.zip"}))
+
+    def clean(self):
+        cleaned_data = super().clean()
+        row, errors = normalize_list_source(cleaned_data)
+        for error in errors:
+            self.add_error(None, error)
+        self.row = row
+        return cleaned_data
+
+
+class BaseListSourceFormSet(forms.BaseFormSet):
+    def rows(self):
+        """The rows filled in and not removed: the saved ones also when unchanged, a new one only when filled in"""
+        return [form.row for index, form in enumerate(self.forms)
+                if (index < self.initial_form_count() or form.has_changed())
+                and not form.cleaned_data.get("DELETE") and hasattr(form, "row")]
+
+
 class ReleaseSourceForm(TagsMixin, forms.ModelForm):
     picked = forms.CharField(required=False, widget=forms.HiddenInput)
 
     class Meta:
         model = ReleaseSource
         fields = ("name", "description", "kind", "identifier", "is_enabled", "list_format", "list_entries",
-                  "list_version_key", "list_downloads", "list_url_key", "list_filters", "version_pattern",
-                  "asset_pattern", "binary_pattern", "macos_minimum", "macos_nearest", "include_prereleases",
-                  "rule_type", "policy", "cel_expr", "custom_msg", "custom_url", "is_global", "groups", "auto_approve",
+                  "list_version_key", "list_one_version", "list_name_key",
+                  "version_pattern", "asset_pattern", "binary_pattern", "macos_minimum", "macos_nearest",
+                  "include_prereleases", "rule_type", "policy", "cel_expr", "custom_msg", "custom_url", "is_global",
+                  "groups", "auto_approve",
                   "auto_approve_delay_days", "keep_versions", "keep_unit", "approve_kept_versions",
                   "include_dependencies", "tags")
         widgets = {
             "description": forms.Textarea(attrs={"rows": 2}),
             "identifier": IdentifiersWidget,
             "version_pattern": PatternsWidget, "asset_pattern": PatternsWidget, "binary_pattern": PatternsWidget,
-            "list_downloads": PatternsWidget, "list_filters": PatternsWidget,
             "list_entries": forms.TextInput(attrs={"class": "mono"}),
             "list_version_key": forms.TextInput(attrs={"class": "mono"}),
-            "list_url_key": forms.TextInput(attrs={"class": "mono"}),
+            "list_name_key": forms.TextInput(attrs={"class": "mono"}),
             "groups": forms.CheckboxSelectMultiple,
             "cel_expr": forms.Textarea(attrs={"rows": 3, "class": "mono"}),
         }
@@ -477,15 +524,23 @@ class ReleaseSourceForm(TagsMixin, forms.ModelForm):
             "approve_kept_versions": _("Also allow the older kept versions"),
             "include_dependencies": _("Allow the dependencies"),
             "list_format": _("Format"), "list_entries": _("Versions in the list"),
-            "list_version_key": _("Version field"), "list_downloads": _("Downloads in an entry"),
-            "list_url_key": _("URL field"), "list_filters": _("Filters"),
+            "list_version_key": _("Version field"),
+            "list_one_version": _("One version for the whole list"), "list_name_key": _("Name field"),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # only for a download list: the model checks them there
-        for name in ("list_format", "list_entries", "list_version_key", "list_url_key"):
+        for name in ("list_format", "list_entries", "list_version_key", "list_name_key"):
             self.fields[name].required = False
+        # the downloads of a download list, a table in the form (sources/_list_source.html)
+        # every key in every row: the template reads them
+        rows = [{key: row.get(key, "") for key in LIST_SOURCE_KEYS} for row in self.instance.list_sources or []]
+        # posted without the table (a restored draft from before it, a script): the saved rows stay
+        posted = self.is_bound and "downloads-TOTAL_FORMS" in self.data
+        self.downloads = forms.formset_factory(ListSourceForm, formset=BaseListSourceFormSet, extra=0 if rows else 1,
+                                               can_delete=True)(
+            self.data if posted else None, initial=rows, prefix="downloads")
         self.fields["identifier"].widget.icons = self.instance.identifier_icons or {}
         self.fields["identifier"].label = _("Packages")
         # the template shows the help of the chosen catalog (sources/_form.html), not of all of them
@@ -504,6 +559,9 @@ class ReleaseSourceForm(TagsMixin, forms.ModelForm):
     def clean_list_format(self):
         return self.cleaned_data["list_format"] or ReleaseSource.ListFormat.JSON
 
+    def clean_list_name_key(self):
+        return self.cleaned_data["list_name_key"].strip() or "name"
+
     def clean_keep_unit(self):
         return self.cleaned_data["keep_unit"] or ReleaseSource.KeepUnit.VERSIONS
 
@@ -520,7 +578,33 @@ class ReleaseSourceForm(TagsMixin, forms.ModelForm):
         # a download list has no dates: the form hides the unit
         if kind == ReleaseSource.Kind.URL_LIST:
             cleaned_data["keep_unit"] = ReleaseSource.KeepUnit.VERSIONS
+            # before the model checks them (_post_clean)
+            if not self.downloads.is_bound:
+                pass
+            elif self.downloads.is_valid():
+                self.instance.list_sources = self.downloads.rows()
+            else:
+                self.add_error(None, gettext("Correct the downloads."))
         return cleaned_data
+
+    def add_error(self, field, error):
+        # the model checks the rows of the downloads (list_sources), the form shows them as a table: its errors are
+        # the form's, or nothing when the rows have their own already
+        if isinstance(error, ValidationError) and hasattr(error, "error_dict") and "list_sources" in error.error_dict:
+            messages = error.error_dict.pop("list_sources")
+            if not self.downloads.is_bound or self.downloads.is_valid():
+                error.error_dict.setdefault(NON_FIELD_ERRORS, []).extend(messages)
+            if not error.error_dict:
+                return
+        super().add_error(field, error)
+
+    def has_changed(self):
+        return super().has_changed() or self.downloads.has_changed()
+
+    @property
+    def changed_data(self):
+        changed = super().changed_data
+        return [*changed, "list_sources"] if self.downloads.has_changed() else changed
 
     def save(self, commit=True):
         source = super().save(commit=False)

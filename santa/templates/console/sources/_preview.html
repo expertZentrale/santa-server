@@ -3,7 +3,7 @@
 <p class="muted">{% translate "This preview is no longer available. Preview again." %}</p>
 {% elif invalid %}
 <p class="error">{% translate "Correct these fields first, then preview again:" %}</p>
-<ul class="errorlist">{% for field in form %}{% for error in field.errors %}<li>{{ field.label }}: {{ error }}</li>{% endfor %}{% endfor %}{% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}</ul>
+<ul class="errorlist">{% for field in form %}{% for error in field.errors %}<li>{{ field.label }}: {{ error }}</li>{% endfor %}{% endfor %}{% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}{% for row in form.downloads %}{% for error in row.non_field_errors %}<li>{% blocktranslate with number=forloop.parentloop.counter %}Download {{ number }}{% endblocktranslate %}: {{ error }}</li>{% endfor %}{% endfor %}</ul>
 {% else %}
 {% if restart %}<ul class="messages"><li class="warning">{% translate "The server is restarting: only the packages before are shown. Preview again in a moment." %}</li></ul>
 {% elif cancelled_by %}<ul class="messages"><li class="warning">{% blocktranslate with user=cancelled_by %}Preview stopped by {{ user }}: only the packages before are shown.{% endblocktranslate %}</li></ul>{% endif %}
@@ -12,16 +12,24 @@
 <section class="preview-package">
   <h3>{% include "console/sources/_identifier.html" with identifier=result.identifier kind=result.kind name="" %}</h3>
   {% if result.error %}<pre class="error-box">{{ result.error }}</pre>{% endif %}
+  {% if result.entries %}<details class="list-entries"{% if not result.releases %} open{% endif %}><summary>{% blocktranslate count count=result.entry_count %}{{ count }} entry in the list{% plural %}{{ count }} entries in the list{% endblocktranslate %}</summary>
+    <p class="help small">{% translate "The first entries with their fields, to fill in the downloads:" %}</p>
+    {% for fields in result.entries %}<div class="mono small list-entry">{% for key, value in fields %}<span><span class="muted">{{ key }}=</span>{{ value }}</span>{% endfor %}</div>{% endfor %}
+  </details>{% endif %}
+  {% if result.row_problems %}<ul class="messages">{% for number, problem in result.row_problems %}<li class="warning">{% blocktranslate %}Download {{ number }} gives nothing:{% endblocktranslate %} <span class="mono small">{{ problem }}</span></li>{% endfor %}</ul>{% endif %}
   {% if result.releases %}
   <table class="table compact">
     <thead><tr><th>{% translate "Version" %}</th><th>{% translate "Files" %}</th></tr></thead>
     <tbody>{% for release in result.releases %}
-      <tr><td><span class="badge {% if release.version_ok %}ok{% else %}bad{% endif %}">{% if release.version_ok %}✓{% else %}✗{% endif %}</span>
+      {# the mark of the version: only with a version pattern, it is what it says #}
+      <tr><td>{% if result.version_pattern %}<span class="badge {% if release.version_ok %}ok{% else %}bad{% endif %}" title="{% translate 'Version pattern' %}">{% if release.version_ok %}✓{% else %}✗{% endif %}</span>{% endif %}
           <span class="strong">{{ release.version|default:"–" }}</span>
           {% if release.published_at %}<div class="small muted">{{ release.published_at|date:"d.m.Y" }}</div>{% endif %}</td>
         <td>{% for asset in release.assets %}
           <div class="small"><span class="badge {% if asset.ok %}ok{% else %}bad{% endif %}">{% if asset.ok %}✓{% else %}✗{% endif %}</span>
-            <code class="binary-path">{{ asset.name }}</code>{% if asset.also %} <span class="muted">{% blocktranslate with tags=asset.also|join:", " %}also for {{ tags }}{% endblocktranslate %}</span>{% endif %}</div>
+            <code class="binary-path">{{ asset.name }}</code>{% if asset.also %} <span class="muted">{% blocktranslate with tags=asset.also|join:", " %}also for {{ tags }}{% endblocktranslate %}</span>{% endif %}
+            {% if asset.where %}<div class="muted binary-path" title="{{ asset.url }}">{{ asset.where }}</div>{% endif %}
+            {% if asset.error %}<div class="error">{% blocktranslate with error=asset.error %}Not available: {{ error }}{% endblocktranslate %}</div>{% endif %}</div>
         {% empty %}<span class="muted">{% translate "no file for macOS" %}</span>{% endfor %}</td></tr>
     {% endfor %}</tbody>
   </table>

@@ -441,6 +441,8 @@ def source_cleanup(request, pk):
             reason = gettext("package removed")
         elif version.pk in kept:
             reason = gettext("older than the versions to keep")
+        elif version.pk in outside_files and source.kind == ReleaseSource.Kind.URL_LIST:
+            reason = gettext("its downloads were removed from the package rule")
         elif version.pk in outside_files:
             reason = gettext("no file inside the asset or binary pattern")
         elif unwanted_prerelease(source, version):
@@ -448,8 +450,11 @@ def source_cleanup(request, pk):
         else:
             reason = gettext("outside the version pattern")
         rows.append((version, reason))
-    rule_rows = [(rule, gettext("outside the asset pattern") if reason == RULE_OUTSIDE_ASSET_PATTERN
-                  else gettext("outside the binary pattern"))
+    # a download list has no asset pattern: its rows of downloads
+    outside_assets = (gettext("its download was removed from the package rule")
+                      if source.kind == ReleaseSource.Kind.URL_LIST else gettext("outside the asset pattern"))
+    outside_binaries = gettext("outside the binary pattern")
+    rule_rows = [(rule, outside_assets if reason == RULE_OUTSIDE_ASSET_PATTERN else outside_binaries)
                  for rule, reason in stale_rules(source)]
     return render_drawer(request, "console/sources/cleanup.html", "console/sources/drawer_cleanup.html", {
         "source": source, "rows": rows, "rule_count": rule_count,

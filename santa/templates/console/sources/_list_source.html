@@ -1,0 +1,33 @@
+{% load i18n %}{# A row of the downloads of a download list (ListSourceForm). × marks it for deletion (forms.js): a new row disappears, a saved one folds up until "Save", with "Undo". The radio shows the fields of its kind, per row (data-formset-row). #}
+{% with removed=row.DELETE.value saved=row.initial %}
+<fieldset class="process-row list-source{% if row.non_field_errors %} invalid{% endif %}" data-formset-row{% if saved %} data-saved{% endif %}{% if removed and not saved %} hidden{% endif %}>
+  <input type="checkbox" name="{{ row.DELETE.html_name }}" hidden data-formset-delete{% if removed %} checked{% endif %}>
+  <button type="button" class="icon-button process-remove" data-formset-remove title="{% translate 'Remove the download' %}" aria-label="{% translate 'Remove the download' %}"{% if removed %} hidden{% endif %}>{% include "console/icons/x.svg" %}</button>
+  {% if saved %}<div class="process-removed" data-formset-removed{% if not removed %} hidden{% endif %}>
+    <span class="mono small">{{ row.initial.path|default:row.initial.template }}</span>
+    <span class="muted">{% translate "Removed when you save." %}</span>
+    <button type="button" class="button small" data-formset-undo>{% translate "Undo" %}</button>
+  </div>{% endif %}
+  <div class="process-body" data-formset-body{% if removed %} hidden{% endif %}>
+    {% for error in row.non_field_errors %}<div class="error">{{ error }}</div>{% endfor %}
+    <span class="field-label">{% translate "Only for the entries with" %} <span class="muted">{% translate "(optional, e.g. name = app; empty: every entry)" %}</span></span>
+    <div class="process-fields">
+      {% include "console/_field.html" with field=row.entry_field %}
+      {% include "console/_field.html" with field=row.entry_value %}
+    </div>
+    {% include "console/_field.html" with field=row.url_from %}
+    <div data-show-when="url_from=path">
+      <div class="process-fields">
+        {% include "console/_field.html" with field=row.path %}
+        {% include "console/_field.html" with field=row.url_field %}
+      </div>
+      <span class="field-label">{% translate "Only the downloads with" %} <span class="muted">{% translate "(optional, e.g. platform = mac-arm64)" %}</span></span>
+      <div class="process-fields">
+        {% include "console/_field.html" with field=row.download_field %}
+        {% include "console/_field.html" with field=row.download_value %}
+      </div>
+    </div>
+    <div data-show-when="url_from=template">{% include "console/_field.html" with field=row.template %}</div>
+  </div>
+</fieldset>
+{% endwith %}

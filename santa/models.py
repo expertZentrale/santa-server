@@ -526,6 +526,80 @@ class IgnoredApp(models.Model):
 # ReleaseVersion.identifier is part of a unique index
 IDENTIFIER_MAX_LENGTH = 450
 
+URL_TEMPLATE_FIELD = re.compile(r"\{([^{}\s]+)\}")
+
+
+LIST_SOURCE_PATH, LIST_SOURCE_TEMPLATE = "path", "template"
+LIST_SOURCE_KEYS = ("entry_field", "entry_value", "url_from", "path", "url_field", "download_field", "download_value",
+                    "template")
+
+
+def normalize_list_source(row):
+    """A row of the downloads of a download list: (the row with only its keys, stripped; the errors, translated).
+
+    entry_field / entry_value: only for the entries with this value (exact), both or neither.
+    url_from "path": the downloads at path in the entry, their URL in url_field, optionally only those with
+    download_field = download_value. url_from "template": the https URL with {field} from the entry.
+    """
+    row = {key: str((row or {}).get(key) or "").strip() for key in LIST_SOURCE_KEYS}
+    errors = []
+    if bool(row["entry_field"]) != bool(row["entry_value"]):
+        errors.append(gettext("Enter both the field and the value of the entries, or neither."))
+    if bool(row["download_field"]) != bool(row["download_value"]):
+        errors.append(gettext("Enter both the field and the value of the downloads, or neither."))
+    if row["url_from"] == LIST_SOURCE_TEMPLATE:
+        template = row["template"]
+        if not template.startswith("https://"):
+            errors.append(gettext("The URL must start with https://."))
+        elif "{" in URL_TEMPLATE_FIELD.sub("", template) or "}" in URL_TEMPLATE_FIELD.sub("", template):
+            errors.append(gettext("Use {field} for the fields of the entry."))
+        row.update(path="", url_field="", download_field="", download_value="")
+    elif row["url_from"] == LIST_SOURCE_PATH:
+        if not row["path"]:
+            errors.append(gettext("Enter where the downloads are in the entry."))
+        row["url_field"] = row["url_field"] or "url"
+        row["template"] = ""
+    else:
+        errors.append(gettext("Choose where the URL comes from."))
+    return {key: value for key, value in row.items() if value}, errors
+
+
+# a filter of the old text fields that stands for one value: ^value$, only escaped special characters inside
+LITERAL_FILTER = re.compile(r"\^((?:[^\\.^$*+?()\[\]{}|]|\\.)*)\$")
+
+
+def legacy_filter_value(regex):
+    """The value of a filter regex of the old text fields, None when it isn't one value (^mac-arm64$ → mac-arm64; a
+    part of a value or alternatives can't become a condition of a row)"""
+    match = LITERAL_FILTER.fullmatch(regex.strip())
+    return re.sub(r"\\(.)", r"\1", match.group(1)) if match else None
+
+
+def legacy_list_sources(downloads, url_key="url", filters=""):
+    """The rows of the downloads from the text fields of a download list before the table (list_downloads, one path
+    per line; list_url_key; list_filters, field=regex per line). (rows, the filters that could not be taken over).
+
+    A filter matched the download or its entry, the conditions of a row do the same for path rows: the first filter
+    becomes the condition of the downloads, the second the one of the entries. Only filters of one value; more than
+    two, or a regex of several values, are left out and named, so the package rule can be checked.
+    """
+    taken, left_out = [], []
+    for line in pattern_lines(filters):
+        field, _separator, regex = line.partition("=")
+        value = legacy_filter_value(regex)
+        if value is None or len(taken) == 2:
+            left_out.append(line)
+        else:
+            taken.append((field.strip(), value))
+    download_filter = taken[0] if taken else ("", "")
+    entry_filter = taken[1] if len(taken) > 1 else ("", "")
+    rows = [{"entry_field": entry_filter[0], "entry_value": entry_filter[1], "url_from": LIST_SOURCE_PATH,
+             "path": path, "url_field": url_key or "url",
+             "download_field": download_filter[0], "download_value": download_filter[1]}
+            for path in pattern_lines(downloads)]
+    return [{key: value for key, value in row.items() if value} for row in rows], left_out
+
+
 def pattern_lines(text):
     """The patterns of a package rule field, one per line"""
     return [line.strip() for line in (text or "").splitlines() if line.strip()]
@@ -613,18 +687,17 @@ class ReleaseSource(models.Model):
     )
     list_version_key = models.CharField(_("version field"), max_length=100, default="version",
                                         help_text=_("The field of an entry with its version."))
-    list_downloads = models.TextField(
-        _("downloads in an entry"), blank=True,
-        help_text=_("Paths inside an entry to its downloads, one per line (e.g. downloads.app): a list of "
-                    "objects with the URL, or one object."),
+    list_one_version = models.BooleanField(
+        _("one version for the whole list"), default=False,
+        help_text=_("Every state of the list is one version with the downloads of all its entries (e.g. the tools "
+                    "one release of a program pins), named by their name and version fields. Keep counts these "
+                    "states."),
     )
-    list_url_key = models.CharField(_("URL field"), max_length=100, default="url",
-                                    help_text=_("The field of a download with its https URL."))
-    list_filters = models.TextField(
-        _("filters"), blank=True,
-        help_text=_("field=regex, one per line: a download is taken when every one matches a field of the download "
-                    "or of its entry (e.g. platform=^mac-arm64$). Empty = every download."),
-    )
+    list_name_key = models.CharField(_("name field"), max_length=100, default="name",
+                                     help_text=_("The field of an entry with its name, in the name of a version of "
+                                                 "the whole list."))
+    # the downloads of an entry, one dict per row of the table "Downloads" (normalize_list_source)
+    list_sources = models.JSONField(_("downloads"), default=list, blank=True)
     include_prereleases = models.BooleanField(default=False,
                                               help_text=_("GitHub, npm, VS Code, JetBrains (EAP), Homebrew taps"))
 
@@ -747,41 +820,32 @@ class ReleaseSource(models.Model):
             raise ValidationError(errors)
 
     def _clean_list(self):
-        """The fields of a download list: its downloads, valid filters, and a number of versions to keep (the list
-        has no dates)"""
+        """The fields of a download list: its downloads, and a number of versions to keep (the list has no dates)"""
         errors = {}
-        self.list_downloads = "\n".join(pattern_lines(self.list_downloads))
-        if not self.list_downloads:
-            errors["list_downloads"] = gettext("Enter where the downloads of an entry are.")
-        for name in ("list_entries", "list_version_key", "list_url_key"):
+        self.list_name_key = self.list_name_key.strip()
+        for name in ("list_entries", "list_version_key"):
             setattr(self, name, getattr(self, name).strip())
             if not getattr(self, name):
                 errors[name] = gettext("This field is required.")
-        filter_errors = []
-        for line in pattern_lines(self.list_filters):
-            field, separator, regex = line.partition("=")
-            if not separator or not field.strip():
-                filter_errors.append(gettext("%(line)s: use field=regex.") % {"line": line[:50]})
+        rows, row_errors = [], []
+        if not isinstance(self.list_sources, list):
+            row_errors.append(gettext("The downloads must be a list of rows."))
+        for index, row in enumerate(self.list_sources if isinstance(self.list_sources, list) else []):
+            if not isinstance(row, dict):
+                row_errors.append(gettext("Download %(number)s: not a row.") % {"number": index + 1})
                 continue
-            try:
-                re.compile(regex)
-            except re.error as e:
-                filter_errors.append(gettext("Invalid regex %(pattern)s: %(error)s") % {"pattern": line[:50],
-                                                                                        "error": e})
-        if filter_errors:
-            errors["list_filters"] = filter_errors
-        self.list_filters = "\n".join(pattern_lines(self.list_filters))
+            row, problems = normalize_list_source(row)
+            rows.append(row)
+            row_errors += [gettext("Download %(number)s: %(error)s") % {"number": index + 1, "error": problem}
+                           for problem in problems]
+        self.list_sources = rows
+        if not rows:
+            row_errors.append(gettext("Add at least one download."))
+        if row_errors:
+            errors["list_sources"] = row_errors
         if self.keep_unit != self.KeepUnit.VERSIONS:
             errors["keep_unit"] = gettext("A download list has no dates: keep a number of versions.")
         return errors
-
-    def list_filter_patterns(self):
-        """[(field, regex)] of the filters of a download list"""
-        filters = []
-        for line in pattern_lines(self.list_filters):
-            field, _separator, regex = line.partition("=")
-            filters.append((field.strip(), re.compile(regex)))
-        return filters
 
     def keep_cutoff(self, now=None):
         """The publication date before which versions are dropped, with a time range to keep"""
@@ -815,6 +879,8 @@ class ReleaseVersion(models.Model):
     dependencies_resolved = models.BooleanField(default=False)
     # the binaries of the dependencies in binary_count: the clean up takes them off with their rules
     dependency_binary_count = models.PositiveIntegerField(default=0)
+    # a download list: its download URLs (list_fingerprint); other ones under the same version name record it again
+    fingerprint = models.CharField(max_length=64, blank=True, editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
