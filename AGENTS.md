@@ -182,6 +182,12 @@ Every model and query must work on SQL Server (mssql-django 2.x, `mssql_python` 
 - Code, identifiers, comments and admin texts are in English (the German UI texts are in the `.po` file).
 - **Commit messages: German first, then English.** The German subject line and body, a line `---`, then the same
   content in English (subject line and body). Trailers such as `Co-Authored-By` come last.
+- **Changelog:** every user-visible change gets an entry under `## [Unreleased]` in **both** `CHANGELOG.md`
+  (English, authoritative: the release notes come from it) and `CHANGELOG.de.md` (the same in German), in the
+  sections Added / Changed / Fixed / Security / Documentation / Dependencies. A bold short summary, then what it
+  means for the administrators. No infrastructure, no third-party product names as examples. For a release the
+  `[Unreleased]` heading becomes `## [x.y.z] - YYYY-MM-DD` (with its compare link at the bottom), and
+  `python scripts/release_notes.py x.y.z` gives the notes for `gh release create vx.y.z --notes-file …`.
 - **README: German first, then English**, in the one `README.md`: the German part, then the English part with the
   same sections. Every change to the README updates both parts, so they always say the same. Links inside the
   README point to the headings of their own language.

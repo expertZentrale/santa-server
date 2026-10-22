@@ -548,9 +548,10 @@ class ReleaseSourceAdmin(admin.ModelAdmin):
     fieldsets = (
         (None, {"fields": ("name", "kind", "identifier", "is_enabled")}),
         ("Download list (JSON)", {
-            "fields": ("list_format", "list_entries", "list_version_key", "list_downloads", "list_url_key",
-                       "list_filters"),
-            "description": "Only for the catalog “Download list (JSON)”.", "classes": ("collapse",)}),
+            "fields": ("list_format", "list_entries", "list_version_key", "list_one_version", "list_name_key",
+                       "list_sources"),
+            "description": "Only for the catalog “Download list (JSON)”. The downloads are easier to edit in the "
+                           "console.", "classes": ("collapse",)}),
         ("Which versions and files", {"fields": ("version_pattern", "asset_pattern", "binary_pattern", "macos_minimum",
                                                  "macos_nearest", "include_prereleases", "include_dependencies")}),
         ("Rules", {"fields": ("rule_type", "policy", "custom_msg", "custom_url", "cel_expr")}),

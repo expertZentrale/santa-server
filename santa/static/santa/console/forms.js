@@ -12,7 +12,8 @@
   // data-show-when="policy=BLOCKLIST|CEL", data-show-when="parent" (not empty), data-hide-when="is_global"
   function updateConditional(root) {
     root.querySelectorAll("[data-show-when], [data-hide-when]").forEach((element) => {
-      const form = element.closest("form") || document;
+      // a row of a formset decides by its own fields (downloads-3-url_from), the others by the whole form
+      const form = element.closest("[data-formset-row]") || element.closest("form") || document;
       let visible = true;
       if (element.dataset.showWhen) {
         const [name, values] = element.dataset.showWhen.split("=");
@@ -439,6 +440,8 @@
       template.innerHTML.replaceAll("__prefix__", String(index)));
     rows.append(fragment);
     total.value = String(index + 1);
+    // its fields as chosen in it (a new row has no change event yet)
+    if (rows.lastElementChild) updateConditional(rows.lastElementChild);
     rows.lastElementChild?.querySelector("input, select, textarea")?.focus();
   });
 

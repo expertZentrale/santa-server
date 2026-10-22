@@ -37,7 +37,9 @@ from . import archives, bottles, macho, notifications, semver
 from .models import (
     DEPENDENCY_KINDS,
     HISTORY_KINDS,
+    LIST_SOURCE_TEMPLATE,
     MACOS_RELEASES,
+    URL_TEMPLATE_FIELD,
     ReleaseSource,
     ReleaseVersion,
     Rule,
@@ -166,14 +168,14 @@ def http_session():
 MAX_REDIRECTS = 10
 
 
-def https_get(session, url, **kwargs):
-    """A GET that stays on https: the redirects are followed here, each one checked, not by requests (it would follow
-    one to http)"""
+def https_get(session, url, method="get", **kwargs):
+    """A GET (or HEAD) that stays on https: the redirects are followed here, each one checked, not by requests (it
+    would follow one to http)"""
     for _hop in range(MAX_REDIRECTS + 1):
         if urlsplit(url).scheme != "https":
             raise ReleaseError(f"{url}: only https URLs")
-        response = session.get(url, allow_redirects=False, **kwargs)
-        if not getattr(response, "is_redirect", False):
+        response = getattr(session, method)(url, allow_redirects=False, **kwargs)
+        if getattr(response, "is_redirect", False) is not True:
             return response
         url = urljoin(url, response.headers["location"])
         response.close()
@@ -1164,11 +1166,102 @@ def _list_field(objects, field):
     return None
 
 
+def list_state_version(parts):
+    """The version of a whole download list: its entries with their versions ("app 1.2 · tool 3"), at most the
+    length of ReleaseVersion.version (a hash keeps a long one apart from the others)"""
+    version = " · ".join(sorted(set(parts)))
+    if len(version) <= 200:
+        return version
+    return f"{version[:185]}… {hashlib.sha256(version.encode()).hexdigest()[:12]}"
+
+
 def list_version_order(version):
     """A version of a download list to sort by: dotted numbers as numbers (131.0.6778.85, four parts are common),
     the rest as text"""
     return tuple((0, int(part), "") if part.isdigit() else (1, 0, part)
                  for part in re.split(r"[.\-+_]", version or ""))
+
+
+def _list_value(entry, path):
+    """The text at a path of an entry (a field of a URL template), None when it has none"""
+    values = [value for value in _list_path(entry, path) if not isinstance(value, (dict, list, bool))]
+    return str(values[0]) if values else None
+
+
+def _fill_template(entry, template):
+    """The URL of a template for an entry, None when the entry lacks one of its fields"""
+    missing = False
+
+    def field(match):
+        nonlocal missing
+        value = _list_value(entry, match.group(1))
+        missing = missing or value is None
+        return value or ""
+
+    url = URL_TEMPLATE_FIELD.sub(field, template)
+    return None if missing else url
+
+
+def _for_entry(row, entry):
+    """A row of the downloads is for every entry, or only for those with its value (exact)"""
+    return not row.get("entry_field") or _list_value(entry, row["entry_field"]) == row.get("entry_value")
+
+
+def _row_downloads(row, entry):
+    """(download, URL) of a row of the downloads for an entry: the URL built from its template (the download is the
+    entry), or the downloads at its path with their URL"""
+    if not _for_entry(row, entry):
+        return
+    if row.get("url_from") == LIST_SOURCE_TEMPLATE:
+        if url := _fill_template(entry, row.get("template", "")):
+            yield entry, url
+        return
+    for item in _list_path(entry, row.get("path", "")):
+        if not isinstance(item, dict):
+            continue
+        if row.get("download_field") and _list_value(item, row["download_field"]) != row.get("download_value"):
+            continue
+        if url := _list_field([item], row.get("url_field") or "url"):
+            yield item, url
+
+
+def _list_downloads(source, entry):
+    """(row, download, URL) of an entry"""
+    for row in source.list_sources:
+        for item, url in _row_downloads(row, entry):
+            yield row, item, url
+
+
+LIST_ROW_MARK = "download-row:"
+
+
+def list_row_key(row):
+    """A row of the downloads in the files it gave (Asset.match → Rule.release_files): "Clean up" finds the rules of
+    a row removed or changed since"""
+    return LIST_ROW_MARK + hashlib.sha256(json.dumps(row, sort_keys=True).encode()).hexdigest()[:16]
+
+
+def list_file_taken(source, file):
+    """Whether a row of the downloads still gives a recorded file: by the row it came from, or for a file recorded
+    before the rows were kept with it, by its name (the last part of a URL template) and the values of the row's
+    condition"""
+    match = list(file.get("match") or ())
+    keys = [value for value in match if value.startswith(LIST_ROW_MARK)]
+    if keys:
+        return any(list_row_key(row) in keys for row in source.list_sources)
+    name = file.get("asset", "")
+    for row in source.list_sources:
+        if row.get("url_from") == LIST_SOURCE_TEMPLATE:
+            last = row.get("template", "").split("?")[0].rsplit("/", 1)[-1]
+            pattern = ".+".join(re.escape(part) for part in URL_TEMPLATE_FIELD.split(last)[::2])
+            if not re.fullmatch(pattern, name):
+                continue
+            if row.get("entry_field") and row.get("entry_value") not in match:
+                continue
+        elif row.get("download_field") and row.get("download_value") not in match:
+            continue
+        return True
+    return False
 
 
 def url_list_releases(session, source, identifier, limit):
@@ -1183,32 +1276,36 @@ def url_list_releases(session, source, identifier, limit):
 def _url_list_releases(session, source, identifier):
     """(the releases, newest first; the download URLs left out for not being https)"""
     document = _list_document(session, identifier)
-    filters = source.list_filter_patterns()
     releases = {}
     skipped = []
+    # one version for the whole list: its entries with downloads, by name and version
+    parts = []
     for entry in _list_path(document, source.list_entries):
         if not isinstance(entry, dict):
             continue
         version = _list_field([entry], source.list_version_key)
         if not version:
             continue
-        release = releases.setdefault(version, Release(version=version, assets=[]))
-        for path in pattern_lines(source.list_downloads):
-            for item in _list_path(entry, path):
-                if not isinstance(item, dict):
-                    continue
-                url = _list_field([item], source.list_url_key)
-                if not url or not all((value := _list_field([item, entry], field)) is not None and regex.search(value)
-                                      for field, regex in filters):
-                    continue
-                if not url.startswith("https://"):
-                    skipped.append(url)
-                    continue
-                if any(asset.url == url for asset in release.assets):
-                    continue
-                values = tuple(value for value in (_list_field([item], key) for key in item) if value)
-                release.assets.append(Asset(name=url.split("?")[0].rsplit("/", 1)[-1] or "download", url=url,
-                                            match=values, https_only=True))
+        if source.list_one_version:
+            # one release for the whole list, named by its entries below
+            release = releases.setdefault("", Release(version="", assets=[]))
+            before = len(release.assets)
+        else:
+            release = releases.setdefault(version, Release(version=version, assets=[]))
+        for row, item, url in _list_downloads(source, entry):
+            if not url.startswith("https://"):
+                skipped.append(url)
+                continue
+            if any(asset.url == url for asset in release.assets):
+                continue
+            values = tuple(value for value in (_list_field([item], key) for key in item) if value)
+            release.assets.append(Asset(name=url.split("?")[0].rsplit("/", 1)[-1] or "download", url=url,
+                                        match=(*values, list_row_key(row)), https_only=True))
+        if source.list_one_version and len(release.assets) > before:
+            name = _list_field([entry], source.list_name_key)
+            parts.append(f"{name} {version}" if name else version)
+    if "" in releases:
+        releases[""].version = list_state_version(parts)
     # the version pattern before the limit: the newest versions it takes, not the newest of all
     found = [release for release in releases.values() if release.assets and version_matches(source, release.version)]
     found.sort(key=lambda release: list_version_order(release.version), reverse=True)
@@ -1244,45 +1341,77 @@ def _path_hint(value, path):
     return ".".join(done), []
 
 
+def _list_entries(document, source):
+    """The entries of a download list that have a version"""
+    return [entry for entry in _list_path(document, source.list_entries)
+            if isinstance(entry, dict) and _list_field([entry], source.list_version_key)]
+
+
+def list_row_problems(document, source):
+    """[(row number, why the row gives no download)]: a wrong key or value in a row of the downloads, with what the
+    list has instead"""
+    entries = _list_entries(document, source)
+    problems = []
+    for number, row in enumerate(source.list_sources, start=1):
+        if entries and not any(True for entry in entries for _download in _row_downloads(row, entry)):
+            problems.append((number, _row_hint(entries, row)))
+    return problems
+
+
+def _row_hint(entries, row):
+    field = row.get("entry_field")
+    if field:
+        values = [value for entry in entries if (value := _list_value(entry, field)) is not None]
+        if not values:
+            return f'no entry has the field "{field}"; the first has: {_some(entries[0])}'
+        if row.get("entry_value") not in values:
+            return f'no entry has {field} = {row.get("entry_value")}; {field} has: {_some(values)}'
+        entries = [entry for entry in entries if _for_entry(row, entry)]
+    if row.get("url_from") == LIST_SOURCE_TEMPLATE:
+        for name in URL_TEMPLATE_FIELD.findall(row.get("template", "")):
+            if all(_list_value(entry, name) is None for entry in entries):
+                return f'no entry has the field "{name}" of the URL; the first has: {_some(entries[0])}'
+        return "no entry has all fields of the URL"
+    path = row.get("path", "")
+    items = [item for entry in entries for item in _list_path(entry, path) if isinstance(item, dict)]
+    if not items:
+        where, keys = _path_hint(entries[0], path)
+        where = f'"{where}" of ' if where else ""
+        return f'no downloads at "{path}"; {where}the first entry has: {_some(keys)}'
+    download_field = row.get("download_field")
+    if download_field:
+        values = [value for item in items if (value := _list_value(item, download_field)) is not None]
+        if not values:
+            return (f'no download has the field "{download_field}"; '
+                    f"they have: {_some(key for item in items for key in item)}")
+        if row.get("download_value") not in values:
+            return (f"no download has {download_field} = {row.get('download_value')}; "
+                    f"{download_field} has: {_some(values)}")
+    url_field = row.get("url_field") or "url"
+    return f'no download has the field "{url_field}"; they have: {_some(key for item in items for key in item)}'
+
+
 def _explain_url_list(document, source, skipped):
     """Why a download list gives no version: the first step that finds nothing, with what is there instead (a wrong
     key in the package rule)"""
-    entries = [entry for entry in _list_path(document, source.list_entries) if isinstance(entry, dict)]
-    if not entries:
+    found = [entry for entry in _list_path(document, source.list_entries) if isinstance(entry, dict)]
+    if not found:
         where, keys = _path_hint(document, source.list_entries)
         return (f'versions in the list "{source.list_entries}" finds nothing; '
                 f'{where or "the list"} has: {_some(keys)}')
-    versioned = [entry for entry in entries if _list_field([entry], source.list_version_key)]
-    if not versioned:
-        return (f'{len(entries)} entries, none has the field "{source.list_version_key}"; '
-                f"the first has: {_some(entries[0])}")
-    pairs = []
-    for path in pattern_lines(source.list_downloads):
-        items = [(item, entry) for entry in versioned for item in _list_path(entry, path) if isinstance(item, dict)]
-        if not items:
-            where, keys = _path_hint(versioned[0], path)
-            where = f'"{where}" of ' if where else ""
-            return f'no downloads at "{path}"; {where}the first entry has: {_some(keys)}'
-        pairs += items
-    with_url = [(item, entry) for item, entry in pairs if _list_field([item], source.list_url_key)]
-    if not with_url:
-        return (f'{len(pairs)} downloads, none has the field "{source.list_url_key}"; '
-                f"they have: {_some(key for item, _entry in pairs for key in item)}")
-    for field, regex in source.list_filter_patterns():
-        values = [value for item, entry in with_url if (value := _list_field([item, entry], field)) is not None]
-        if not values:
-            return (f'no download or entry has the field "{field}" of the filter {field}={regex.pattern}; '
-                    f"the downloads have: {_some(key for item, _entry in with_url for key in item)}")
-        if not any(regex.search(value) for value in values):
-            return (f"the filter {field}={regex.pattern} matches none of {len(with_url)} downloads; "
-                    f"{field} has: {_some(values)}")
+    entries = _list_entries(document, source)
+    if not entries:
+        return (f'{len(found)} entries, none has the field "{source.list_version_key}"; '
+                f"the first has: {_some(found[0])}")
+    if problems := list_row_problems(document, source):
+        return "; ".join(f"download {number}: {problem}" for number, problem in problems)
     if skipped:
         return f"only URLs other than https, not taken (e.g. {skipped[0]})"
     if source.version_pattern:
-        newest = sorted({_list_field([entry], source.list_version_key) for entry in versioned},
+        newest = sorted({_list_field([entry], source.list_version_key) for entry in entries},
                         key=list_version_order, reverse=True)
         return f"no version matches the version pattern; the newest: {', '.join(newest[:5])}"
-    return "no download matches all filters together"
+    return "no download found"
 
 
 def _npm_url(identifier):
@@ -1818,8 +1947,9 @@ def _version_date(version):
 
 def version_order(source):
     """The key that sorts the recorded versions of a source by their release: the date, or for a download list
-    (no dates; its older versions are recorded after the newest) the version itself"""
-    if source.kind == ReleaseSource.Kind.URL_LIST:
+    (no dates; its older versions are recorded after the newest) the version itself; the states of a whole list
+    when they were seen"""
+    if source.kind == ReleaseSource.Kind.URL_LIST and not source.list_one_version:
         return lambda version: list_version_order(version.version)
     return _version_date
 
@@ -1829,6 +1959,9 @@ RULE_OUTSIDE_BINARY_PATTERN = "binary"
 
 
 def _asset_still_taken(source, patterns, file):
+    if source.kind == ReleaseSource.Kind.URL_LIST:
+        # no asset pattern: the rows of the downloads
+        return not file.get("asset") or list_file_taken(source, file)
     if not file.get("match") or source.kind not in ASSET_PATTERN_KINDS:
         return True
     if source.kind == ReleaseSource.Kind.HOMEBREW_FORMULA and file.get("asset", "").endswith(".bottle.tar.gz"):
@@ -1861,7 +1994,8 @@ def _pattern_stale(source):
         patterns = None
     bottle_settings = source.kind == ReleaseSource.Kind.HOMEBREW_FORMULA and (
         source.macos_minimum or not source.macos_nearest)
-    if patterns is None and not source.binary_pattern and not bottle_settings:
+    if (patterns is None and not source.binary_pattern and not bottle_settings
+            and source.kind != ReleaseSource.Kind.URL_LIST):
         return {}, set()
     own = {}
     for rule in (source.rules.filter(release_dependency="").exclude(release_version=None)
@@ -2330,6 +2464,7 @@ def preview_release_source(source, session=None, progress=None):
             # what it has so far (progress.cancelled tells)
             break
         result = {"identifier": identifier, "kind": source.kind, "error": "", "releases": [],
+                  "version_pattern": bool(source.version_pattern),
                   "files": files_of.get(identifier, [])[:PREVIEW_FILES]}
         results.append(result)
         try:
@@ -2346,7 +2481,51 @@ def preview_release_source(source, session=None, progress=None):
                 "version_ok": version_matches(source, release.version),
                 "assets": [_preview_asset(source, asset_regex, asset) for asset in release.assets],
             })
+    if source.kind == ReleaseSource.Kind.URL_LIST:
+        _check_list_downloads(session, results)
+        _describe_list(session, source, results)
     return results
+
+
+LIST_PREVIEW_ENTRIES = 5
+
+
+def _describe_list(session, source, results):
+    """What helps to fill in the downloads of a download list: its first entries with their simple fields, and the
+    rows that give nothing with why"""
+    for result in results:
+        try:
+            document = _list_document(session, result["identifier"])
+        except (ReleaseError, requests.RequestException):
+            continue
+        entries = [entry for entry in _list_path(document, source.list_entries) if isinstance(entry, dict)]
+        result["entries"] = [
+            [(key, str(value)) for key, value in entry.items() if isinstance(value, (str, int, float))
+             and not isinstance(value, bool)][:8]
+            for entry in entries[:LIST_PREVIEW_ENTRIES]]
+        result["entry_count"] = len(entries)
+        result["row_problems"] = list_row_problems(document, source)
+
+
+def _check_list_downloads(session, results):
+    """The files of a download list in the preview, asked for without downloading them (HEAD): a URL template that
+    builds URLs for the wrong entries shows as missing files, not only at the check"""
+    assets = [asset for result in results for release in result["releases"] for asset in release["assets"]]
+
+    def check(asset):
+        try:
+            with https_get(session, asset["url"], method="head", timeout=settings.RELEASE_HTTP_TIMEOUT) as response:
+                status = response.status_code
+        except (ReleaseError, requests.RequestException) as e:
+            return asset, str(e)
+        # 405: a server without HEAD, the check of the download tells
+        return asset, f"HTTP {status}" if isinstance(status, int) and status >= 400 and status != 405 else ""
+
+    with ThreadPoolExecutor(max_workers=DOWNLOAD_WORKERS) as pool:
+        for asset, error in pool.map(check, assets):
+            if error:
+                asset["ok"] = False
+                asset["error"] = error
 
 
 def _preview_asset(source, patterns, asset):
@@ -2355,8 +2534,13 @@ def _preview_asset(source, patterns, asset):
         # a bottle for an older macOS: the newer ones it serves
         return {"name": asset.name, "ok": bottle_taken(source, patterns, asset.match),
                 "also": [tag for tag in served if tag != asset.match[0]]}
-    return {"name": asset.name, "also": [],
-            "ok": source.kind not in ASSET_PATTERN_KINDS or asset_matches(patterns, asset.match or (asset.name,))}
+    preview = {"name": asset.name, "also": [],
+               "ok": source.kind not in ASSET_PATTERN_KINDS or asset_matches(patterns, asset.match or (asset.name,))}
+    if source.kind == ReleaseSource.Kind.URL_LIST:
+        # where it comes from: a template for the wrong entry shows in its path
+        parts = urlsplit(asset.url)
+        preview.update(url=asset.url, where=f"{parts.hostname}{parts.path}")
+    return preview
 
 
 def _recorded_files(source):

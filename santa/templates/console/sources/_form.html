@@ -7,6 +7,7 @@
   {% if form.non_field_errors %}<div class="error">{{ form.non_field_errors }}</div>{% endif %}
   <section class="card"><h2>{% translate "Source and packages" %}</h2>
     {% include "console/_field.html" with field=form.name %}
+    {% include "console/_field.html" with field=form.is_enabled %}
     {% include "console/_field.html" with field=form.kind %}
     {# the identifiers: "List" for a download list, the help of the chosen catalog only #}
     {% with field=form.identifier %}<div class="field{% if field.errors %} has-error{% endif %}" data-field="identifier">
@@ -22,17 +23,28 @@
       <small class="help" data-show-when="kind=JETBRAINS_PLUGIN">{% translate "JetBrains: the plugin ID (e.g. com.intellij.plugins.watcher)." %}</small>
       {% for error in field.errors %}<small class="error">{{ error }}</small>{% endfor %}
     </div>{% endwith %}
-    {# a download list: where the versions and their downloads are in it (ReleaseSource.list_*) #}
+    {# a download list: where the versions are, and its downloads as a table (ListSourceForm) #}
     <div data-show-when="kind=URL_LIST">
-      <small class="help after-field">{% translate "A JSON list of versions with their downloads, e.g." %} <code>{"versions": [{"version": "2.1.0", "downloads": {"app": [{"platform": "mac-arm64", "url": "https://…"}]}}]}</code>: {% translate "versions in the list “versions”, downloads “downloads.app”, filter “platform=^mac-arm64$”. Only https downloads are taken." %}</small>
+      <small class="help after-field">{% translate "A JSON list with one entry per version (or per tool). The preview shows its entries with their fields: use them below." %}</small>
       {% include "console/_field.html" with field=form.list_format %}
-      {% include "console/_field.html" with field=form.list_entries %}
-      {% include "console/_field.html" with field=form.list_version_key %}
-      {% include "console/_field.html" with field=form.list_downloads %}
-      {% include "console/_field.html" with field=form.list_url_key %}
-      {% include "console/_field.html" with field=form.list_filters %}
+      <div class="process-fields">
+        {% include "console/_field.html" with field=form.list_entries %}
+        {% include "console/_field.html" with field=form.list_version_key %}
+      </div>
+      {% include "console/_field.html" with field=form.list_one_version %}
+      <div data-show-when="list_one_version">{% include "console/_field.html" with field=form.list_name_key %}</div>
+      {% with formset=form.downloads %}<div class="field" data-formset="{{ formset.prefix }}">
+        <span class="field-label">{% translate "Downloads" %}</span>
+        <small class="help">{% translate "One row per download. Rows with “Only for the entries with” give their download only to those entries." %}</small>
+        {{ formset.management_form }}
+        {% for error in formset.non_form_errors %}<div class="error">{{ error }}</div>{% endfor %}
+        <div class="process-rows" data-formset-rows>
+          {% for row in formset %}{% include "console/sources/_list_source.html" %}{% endfor %}
+        </div>
+        <template data-formset-empty>{% include "console/sources/_list_source.html" with row=formset.empty_form %}</template>
+        <button type="button" class="button small" data-formset-add>{% translate "Add a download" %}</button>
+      </div>{% endwith %}
     </div>
-    {% include "console/_field.html" with field=form.is_enabled %}
   </section>
   <section class="card"><h2>{% translate "Filters" %}</h2>
     {% include "console/_field.html" with field=form.version_pattern %}

@@ -453,22 +453,62 @@ die Macs sehen dann einen anderen Hash als den des Downloads.
 | Homebrew-Formula | `colima` | `^arm64_` (Bottle-Tags) | `*/bin/colima` |
 | Homebrew-Cask | Cask-Name | Regex auf die Download-URL | Glob im Zip |
 | Direkte URL | vollständige URL | | |
-| Download-Liste (JSON) | https-URL der Liste | (Filter, siehe unten) | Glob im Archiv |
+| Download-Liste (JSON) | https-URL der Liste | (Downloads, siehe unten) | Glob im Archiv |
 | npm-Paket | `@esbuild/darwin-arm64` | | |
 | VS-Code-Erweiterung | `rust-lang.rust-analyzer` | `^darwin-arm64$` (Zielplattform) | |
 | JetBrains-Plugin | `com.intellij.plugins.watcher` | `^PHPSTORM$` (kompatibles Produkt) | |
 
-**Download-Liste (JSON)**: für Software, die ihre Versionen nur als JSON-Liste veröffentlicht, z. B. Chrome for
-Testing (`https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json`):
+**Download-Liste (JSON)**: für Software, die ihre Versionen als JSON-Liste veröffentlicht. Der Bezeichner ist die
+https-URL der Liste. Die Vorschau zeigt die ersten Einträge mit ihren Feldern; daraus füllt man das Formular:
 - *Versionen in der Liste*: der Pfad zu den Einträgen, Punkte trennen die Schlüssel, `*` nimmt alle Werte eines
-  Objekts (`versions`, oder `channels.*` bei `last-known-good-versions-with-downloads.json`).
-- *Versionsfeld* (`version`) und *URL-Feld* (`url`).
-- *Downloads in einem Eintrag*: ein Pfad pro Zeile, z. B. `downloads.chrome-headless-shell` und `downloads.chrome`.
-- *Filter*: `feld=regex` pro Zeile, alle müssen passen, gesucht im Download und im Eintrag, z. B.
-  `platform=^mac-arm64$` oder `channel=^Stable$`.
-- Genommen werden nur `https`-Downloads; die Liste darf höchstens `RELEASE_MAX_LIST_BYTES` groß sein. Die Versionen
-  werden als Zahlen verglichen (`131.0.6778.85`); *Behalten* zählt Versionen (die Liste hat keine Daten), und
-  *Auch die älteren behaltenen Versionen erlauben* nimmt die letzten *n* Versionen der Liste.
+  Objekts (z. B. `versions` oder `channels.*`).
+- *Versionsfeld*: das Feld eines Eintrags mit seiner Version.
+- *Downloads*: eine Zeile pro Download. Jede Zeile gilt für alle Einträge oder nur für die mit *Feld = Wert*
+  (z. B. `name` = `firefox`). Die URL kommt aus einer von zwei Quellen:
+  - *Der Eintrag listet seine Downloads mit ihrer URL*: Pfad zu den Downloads im Eintrag (z. B. `downloads.app`),
+    das Feld mit der URL (`url`), optional nur die Downloads mit *Feld = Wert* (z. B. `platform` = `mac-arm64`).
+  - *Die URL wird aus Feldern des Eintrags zusammengesetzt*: die https-URL mit `{feld}` für ein Feld des Eintrags,
+    Punkte für verschachtelte Felder. Fehlt einem Eintrag ein Feld, gibt die Zeile für ihn nichts.
+- *Eine Version für die ganze Liste*: Jeder Stand der Liste ist eine Version mit den Downloads aller Einträge, benannt
+  nach *Namensfeld* und *Versionsfeld* (z. B. `chromium 1248 · firefox 1555`). *Behalten* zählt diese Stände.
+- Nur `https`, auch bei Weiterleitungen; die Liste höchstens `RELEASE_MAX_LIST_BYTES`. Versionen werden als Zahlen
+  verglichen (`131.0.6778.85`); *Behalten* zählt Versionen (die Liste hat keine Daten). Die Vorschau fragt jede Datei
+  an (ohne Download) und nennt Zeilen, die nichts ergeben, mit dem, was die Liste stattdessen hat.
+
+Beispiele:
+
+1. **Liste mit URLs**, Chrome for Testing:
+   - Liste `https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json`,
+     *Versionen in der Liste* `versions`, *Versionsfeld* `version`.
+   - Download 1: Der Eintrag listet seine Downloads, Pfad `downloads.chrome`, URL-Feld `url`, nur `platform` =
+     `mac-arm64`.
+   - Download 2: wie 1 mit `downloads.chrome-headless-shell`.
+   - Mit `https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json`:
+     *Versionen in der Liste* `channels.*`, und je Zeile nur für die Einträge mit `channel` = `Stable`.
+2. **Liste mit Version, URL nach festem Schema**: Ein Hersteller veröffentlicht z. B.
+   `https://downloads.example.com/app/latest.json` mit `{"versions": [{"version": "2.4.1"}]}` und die Dateien unter
+   `https://downloads.example.com/app/2.4.1/app-mac-arm64.zip`. *Versionen in der Liste* `versions`, *Versionsfeld*
+   `version`, Download 1: URL zusammengesetzt aus
+   `https://downloads.example.com/app/{version}/app-mac-arm64.zip`.
+3. **Playwright**: Jede Playwright-Version legt ihre Browser in `browsers.json` fest; die Download-URLs stehen nur in
+   ihrem Code. Eine Paketregel für alle Browser:
+   - Liste `https://unpkg.com/playwright-core@latest/browsers.json` (folgt jeder neuen Version; weitere Zeilen wie
+     `https://unpkg.com/playwright-core@1.63.0/browsers.json` für Projekte mit älterem Playwright).
+   - *Versionen in der Liste* `browsers`, *Versionsfeld* `revision` (ändert sich mit jedem Build, anders als
+     `browserVersion`), *Eine Version für die ganze Liste* an, *Namensfeld* `name`.
+   - Downloads, je *nur für die Einträge mit* `name` = … und *URL zusammengesetzt*:
+
+     | `name` = | URL |
+     |---|---|
+     | `chromium` | `https://cdn.playwright.dev/builds/cft/{browserVersion}/mac-arm64/chrome-mac-arm64.zip` |
+     | `chromium-headless-shell` | `https://cdn.playwright.dev/builds/cft/{browserVersion}/mac-arm64/chrome-headless-shell-mac-arm64.zip` |
+     | `firefox` | `https://cdn.playwright.dev/dbazure/download/playwright/builds/firefox/{revision}/firefox-mac-arm64.zip` |
+     | `webkit` | `https://cdn.playwright.dev/dbazure/download/playwright/builds/webkit/{revision}/webkit-mac-15-arm64.zip` |
+     | `webkit` | `https://cdn.playwright.dev/dbazure/download/playwright/builds/webkit/{revision}/webkit-mac-26-arm64.zip` |
+     | `webkit` | `https://cdn.playwright.dev/dbazure/download/playwright/builds/webkit/{revisionOverrides.mac14-arm64}/webkit-mac-14-arm64.zip` |
+     | `ffmpeg` | `https://cdn.playwright.dev/dbazure/download/playwright/builds/ffmpeg/{revision}/ffmpeg-mac-arm64.zip` |
+
+     `winldd` (nur Windows) und `android` (nur APKs) haben nichts für Macs.
 
 Eine Paketregel kann **mehrere Pakete** enthalten, eines pro Zeile. Sie teilen die Einstellungen, aber jedes Paket
 wird für sich geprüft und behält seine eigenen Versionen. Eine Paketregel legt außerdem fest, wie die Regeln aussehen:
@@ -662,6 +702,11 @@ aktivieren); sonst öffnen Sie vom Docker-Host einen Reverse-Tunnel mit
 Siehe [CONTRIBUTING.md](CONTRIBUTING.md) für Pull Requests und [AGENTS.md](AGENTS.md) für die Regeln des Projekts
 (auch für KI-Coding-Agenten). Commit-Nachrichten und diese README werden zuerst auf Deutsch, dann auf Englisch
 geschrieben.
+
+**Änderungen und Releases:** Jede sichtbare Änderung steht unter `[Unreleased]` in
+[CHANGELOG.de.md](CHANGELOG.de.md) und, maßgeblich, in [CHANGELOG.md](CHANGELOG.md). Für ein Release wird daraus
+`## [x.y.z] - JJJJ-MM-TT`; `python scripts/release_notes.py x.y.z` gibt die Notizen für
+`gh release create vx.y.z --notes-file …` aus.
 
 ### Projektstruktur
 
@@ -1131,22 +1176,61 @@ installing it (`codesign`), the version says so: the Macs then see another hash 
 | Homebrew formula | `colima` | `^arm64_` (bottle tags) | `*/bin/colima` |
 | Homebrew cask | cask name | regex on the download URL | glob inside the zip |
 | Direct URL | full URL | | |
-| Download list (JSON) | https URL of the list | (filters, see below) | glob inside the archive |
+| Download list (JSON) | https URL of the list | (downloads, see below) | glob inside the archive |
 | npm package | `@esbuild/darwin-arm64` | | |
 | VS Code extension | `rust-lang.rust-analyzer` | `^darwin-arm64$` (target platform) | |
 | JetBrains plugin | `com.intellij.plugins.watcher` | `^PHPSTORM$` (compatible product) | |
 
-**Download list (JSON)**: for software that publishes its versions only as a JSON list, e.g. Chrome for Testing
-(`https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json`):
-- *Versions in the list*: the path to the entries, dots separate the keys, `*` takes every value of an object
-  (`versions`, or `channels.*` for `last-known-good-versions-with-downloads.json`).
-- *Version field* (`version`) and *URL field* (`url`).
-- *Downloads in an entry*: one path per line, e.g. `downloads.chrome-headless-shell` and `downloads.chrome`.
-- *Filters*: `field=regex` per line, every one must match, looked up in the download and its entry, e.g.
-  `platform=^mac-arm64$` or `channel=^Stable$`.
-- Only `https` downloads are taken; the list may be at most `RELEASE_MAX_LIST_BYTES`. The versions are compared as
-  numbers (`131.0.6778.85`); *Keep* counts versions (the list has no dates), and *Also allow the older kept versions*
-  takes the last *n* versions of the list.
+**Download list (JSON)**: for software that publishes its versions as a JSON list. The identifier is the https URL of
+the list. The preview shows its first entries with their fields; fill in the form from them:
+- *Versions in the list*: the path to the entries, dots separate the keys, `*` takes every value of an object (e.g.
+  `versions` or `channels.*`).
+- *Version field*: the field of an entry with its version.
+- *Downloads*: one row per download. Every row is for all entries, or only for those with *field = value* (e.g.
+  `name` = `firefox`). The URL comes from one of two sources:
+  - *The entry lists its downloads with their URL*: the path to the downloads in the entry (e.g. `downloads.app`), the
+    field with the URL (`url`), optionally only the downloads with *field = value* (e.g. `platform` = `mac-arm64`).
+  - *The URL is built from fields of the entry*: the https URL with `{field}` for a field of the entry, dots for nested
+    fields. When an entry lacks a field, the row gives nothing for it.
+- *One version for the whole list*: every state of the list is one version with the downloads of all its entries,
+  named by the *name field* and *version field* (e.g. `chromium 1248 · firefox 1555`). *Keep* counts these states.
+- Only `https`, also for redirects; the list at most `RELEASE_MAX_LIST_BYTES`. Versions are compared as numbers
+  (`131.0.6778.85`); *Keep* counts versions (the list has no dates). The preview asks for every file (without
+  downloading it) and names the rows that give nothing, with what the list has instead.
+
+Examples:
+
+1. **A list with URLs**, Chrome for Testing:
+   - List `https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json`, *Versions in
+     the list* `versions`, *Version field* `version`.
+   - Download 1: the entry lists its downloads, path `downloads.chrome`, URL field `url`, only `platform` =
+     `mac-arm64`.
+   - Download 2: like 1 with `downloads.chrome-headless-shell`.
+   - With `https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json`:
+     *Versions in the list* `channels.*`, and every row only for the entries with `channel` = `Stable`.
+2. **A list with the version, URLs by a fixed scheme**: a vendor publishes e.g.
+   `https://downloads.example.com/app/latest.json` with `{"versions": [{"version": "2.4.1"}]}` and the files at
+   `https://downloads.example.com/app/2.4.1/app-mac-arm64.zip`. *Versions in the list* `versions`, *Version field*
+   `version`, Download 1: URL built from `https://downloads.example.com/app/{version}/app-mac-arm64.zip`.
+3. **Playwright**: every Playwright version pins its browsers in `browsers.json`; the download URLs are only in its
+   code. One package rule for all browsers:
+   - List `https://unpkg.com/playwright-core@latest/browsers.json` (follows every new version; more lines like
+     `https://unpkg.com/playwright-core@1.63.0/browsers.json` for projects with an older Playwright).
+   - *Versions in the list* `browsers`, *Version field* `revision` (changes with every build, unlike
+     `browserVersion`), *One version for the whole list* on, *Name field* `name`.
+   - Downloads, each *only for the entries with* `name` = … and *URL built*:
+
+     | `name` = | URL |
+     |---|---|
+     | `chromium` | `https://cdn.playwright.dev/builds/cft/{browserVersion}/mac-arm64/chrome-mac-arm64.zip` |
+     | `chromium-headless-shell` | `https://cdn.playwright.dev/builds/cft/{browserVersion}/mac-arm64/chrome-headless-shell-mac-arm64.zip` |
+     | `firefox` | `https://cdn.playwright.dev/dbazure/download/playwright/builds/firefox/{revision}/firefox-mac-arm64.zip` |
+     | `webkit` | `https://cdn.playwright.dev/dbazure/download/playwright/builds/webkit/{revision}/webkit-mac-15-arm64.zip` |
+     | `webkit` | `https://cdn.playwright.dev/dbazure/download/playwright/builds/webkit/{revision}/webkit-mac-26-arm64.zip` |
+     | `webkit` | `https://cdn.playwright.dev/dbazure/download/playwright/builds/webkit/{revisionOverrides.mac14-arm64}/webkit-mac-14-arm64.zip` |
+     | `ffmpeg` | `https://cdn.playwright.dev/dbazure/download/playwright/builds/ffmpeg/{revision}/ffmpeg-mac-arm64.zip` |
+
+     `winldd` (Windows only) and `android` (APKs only) have nothing for Macs.
 
 A package rule can list **several packages**, one per line. They share the settings, but every package is checked
 on its own and keeps its own versions. A package rule also chooses what the rules look like:
@@ -1331,6 +1415,10 @@ test group (they contain `http://localhost:8000/sync/<token>/`), assign them to 
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for pull requests, and [AGENTS.md](AGENTS.md) for the rules of the project
 (also for AI coding agents). Commit messages and this README are written in German first, then in English.
+
+**Changes and releases:** every visible change is listed under `[Unreleased]` in [CHANGELOG.md](CHANGELOG.md)
+(authoritative) and [CHANGELOG.de.md](CHANGELOG.de.md). For a release it becomes `## [x.y.z] - YYYY-MM-DD`;
+`python scripts/release_notes.py x.y.z` prints the notes for `gh release create vx.y.z --notes-file …`.
 
 ### Project layout
 

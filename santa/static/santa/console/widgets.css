@@ -332,6 +332,11 @@ details.dependencies code { overflow-wrap: anywhere; }
 /* a URL package by its file, its host as a link (sources/_identifier.html) */
 .identifier-title { overflow-wrap: anywhere; }
 .identifier-host { font-size: .8rem; font-weight: normal; white-space: nowrap; }
+/* the downloads of a download list in the summary: one per line, long URLs wrap */
+.list-sources li { overflow-wrap: anywhere; margin-bottom: .25rem; }
+/* a field and its value side by side, also on a phone */
+.list-source .process-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.list-source textarea { overflow-wrap: anywhere; }
 /* the files of a version of a download list, apart from each other */
 .version-files { display: flex; flex-wrap: wrap; gap: .25rem; }
 .version-files .chip.small { margin: 0; overflow-wrap: anywhere; }

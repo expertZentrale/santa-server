@@ -16,7 +16,17 @@ from django.db import transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
-from .models import FileAccessProcess, FileAccessRule, Group, IgnoredApp, Machine, ReleaseSource, Rule, Tag
+from .models import (
+    FileAccessProcess,
+    FileAccessRule,
+    Group,
+    IgnoredApp,
+    Machine,
+    ReleaseSource,
+    Rule,
+    Tag,
+    legacy_list_sources,
+)
 
 FORMAT = "santa-server-config"
 # the models in the file: exporting needs their view permission, importing add / change / delete
@@ -38,8 +48,8 @@ RELEASE_SOURCE_FIELDS = (
     "kind", "description", "identifier", "version_pattern", "asset_pattern", "binary_pattern", "macos_minimum",
     "macos_nearest", "include_prereleases", "rule_type", "policy", "custom_msg", "custom_url", "cel_expr",
     "is_global", "auto_approve", "auto_approve_delay_days", "keep_versions", "keep_unit", "approve_kept_versions",
-    "include_dependencies", "is_enabled", "list_format", "list_entries", "list_version_key", "list_downloads",
-    "list_url_key", "list_filters",
+    "include_dependencies", "is_enabled", "list_format", "list_entries", "list_version_key", "list_one_version",
+    "list_name_key", "list_sources",
 )
 FILE_ACCESS_RULE_FIELDS = (
     "description", "rule_type", "paths", "path_prefixes", "allow_read_access", "audit_only", "block_message",
@@ -58,6 +68,16 @@ def legacy_usb(item):
     flags = item.get("remount_usb_mode", "") if item["block_usb_mount"] else ""
     action = ("REMOUNT" if flags else "BLOCK") if item["block_usb_mount"] else "ALLOW"
     return {**item, "removable_media_action": action, "removable_media_remount_flags": flags}
+
+
+def legacy_list(item):
+    """Files of older versions have the downloads of a download list as text (list_downloads, list_url_key,
+    list_filters) instead of the rows of list_sources"""
+    if "list_downloads" not in item or "list_sources" in item:
+        return item
+    rows, _left_out = legacy_list_sources(item.get("list_downloads", ""), item.get("list_url_key", "url"),
+                                          item.get("list_filters", ""))
+    return {**item, "list_sources": rows}
 
 
 # The import preview (console): every item of the file by its list and index, e.g. "rules:3"
@@ -365,7 +385,7 @@ class _Importer:
             created = source is None
             if created:
                 source = ReleaseSource(name=name)
-            changed = self._apply(source, item, RELEASE_SOURCE_FIELDS) or created
+            changed = self._apply(source, legacy_list(item), RELEASE_SOURCE_FIELDS) or created
             if changed and not self.save(source, f"Release source {name}"):
                 continue
             groups = self.resolve_groups(item.get("groups"), f"Release source {name}")
