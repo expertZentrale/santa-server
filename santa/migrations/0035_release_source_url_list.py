@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('santa', '0033_ignored_app'),
+        ('santa', '0034_access_request_review_note'),
     ]
 
     operations = [

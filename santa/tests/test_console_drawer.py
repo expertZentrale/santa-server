@@ -76,8 +76,7 @@ class DrawerTestCase(ConsoleBase):
         response = self.client.post(reverse("console:rule_add"), {"rule_type": RuleType.BINARY, "identifier": "x",
                                                                    "policy": Policy.ALLOWLIST}, **HTMX)
         self.assertDrawer(response, 'class="field has-error')
-        response = self.client.post(reverse("console:request_deny", args=(self.request_other.pk,)), {"note": ""},
-                                    **HTMX)
+        response = self.client.post(reverse("console:request_approve", args=(self.request_other.pk,)), {}, **HTMX)
         self.assertDrawer(response, "Figma")
 
     def test_approve_and_deny_in_the_drawer(self):

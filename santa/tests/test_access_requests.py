@@ -256,7 +256,7 @@ class AdminRequestTestCase(AdminRequestBase):
         access_request = self.event_request()
         response = self.client.post(reverse("console:request_approve", args=(access_request.pk,)), {
             "rule_type": RuleType.SIGNINGID, "policy": Policy.ALLOWLIST, "scope": "machines", "new_tags": "request",
-            "note": "Enjoy"})
+            "tell_user": "on", "note": "Enjoy"})
         self.assertRedirects(response, reverse("console:requests"))
         access_request.refresh_from_db()
         rule = access_request.result_rule
@@ -301,7 +301,8 @@ class AdminRequestTestCase(AdminRequestBase):
         rule = Rule.objects.create(rule_type=RuleType.TEAMID, identifier="ABCDE12345", is_global=True)
         access_request = self.event_request()
         response = self.client.post(reverse("console:request_approve", args=(access_request.pk,)), {
-            "result": "existing", "existing_rule": rule.pk, "note": "Allowed already"})
+            "result": "existing", "existing_rule": rule.pk, "tell_user": "on",
+            "note": "Allowed already"})
         self.assertRedirects(response, reverse("console:requests"))
         access_request.refresh_from_db()
         self.assertEqual((access_request.status, access_request.result_rule),
@@ -381,7 +382,8 @@ class AdminRequestTestCase(AdminRequestBase):
             f"approve_{ra.pk}": "on", f"target_{ra.pk}": "new", f"approve_{python.pk}": "on",
             f"target_{python.pk}": "new", f"approve_{esbuild.pk}": "on", f"target_{esbuild.pk}": "new",
             f"target_{vite.pk}": "new",
-            "new_name": "jdoe tools", "rule_type": RuleType.BINARY, "groups": [self.dev.pk], "note": "vite is not ok"})
+            "new_name": "jdoe tools", "rule_type": RuleType.BINARY, "groups": [self.dev.pk], "tell_user": "on",
+            "note": "vite is not ok"})
         self.assertRedirects(response, reverse("console:requests"))
         vscode = ReleaseSource.objects.get(name="jdoe tools (VS Code extension)")
         npm = ReleaseSource.objects.get(name="jdoe tools (npm package)")
@@ -435,7 +437,8 @@ class AdminRequestTestCase(AdminRequestBase):
         response, _ = self.approve(access_request, {
             "result": "rule", "rule_type": RuleType.TEAMID, "identifier": "t8w5s5s6ra", "policy": Policy.ALLOWLIST,
             "scope": "machines", "package_target": "new", "package_kind": "GITHUB_RELEASE",
-            "package_rule_type": RuleType.BINARY, "new_tags": "design", "note": "enjoy"})
+            "package_rule_type": RuleType.BINARY, "new_tags": "design", "tell_user": "on",
+            "note": "enjoy"})
         self.assertRedirects(response, reverse("console:requests"))
         rule = Rule.objects.get(rule_type=RuleType.TEAMID)
         # normalized like on the rule form, for the Mac of the requester
@@ -670,13 +673,46 @@ class AdminRequestTestCase(AdminRequestBase):
 
     def test_deny(self):
         access_request = AccessRequest.objects.create(requester=self.user, kind="OTHER", title="t", justification="x")
-        response = self.client.post(reverse("console:request_deny", args=(access_request.pk,)), {"note": ""})
-        self.assertEqual(response.status_code, 200)
-        self.client.post(reverse("console:request_deny", args=(access_request.pk,)), {"note": "Use the other tool"})
+        self.client.post(reverse("console:request_deny", args=(access_request.pk,)),
+                         {"tell_user": "on", "note": "Use the other tool"})
         access_request.refresh_from_db()
         self.assertEqual(access_request.status, AccessRequest.Status.DENIED)
         self.client.force_login(self.user)
         self.assertContains(self.client.get(reverse("requests:list")), "Use the other tool")
+
+    def test_deny_without_a_note(self):
+        access_request = AccessRequest.objects.create(requester=self.user, kind="OTHER", title="t", justification="x")
+        response = self.client.post(reverse("console:request_deny", args=(access_request.pk,)), {})
+        self.assertRedirects(response, reverse("console:requests"))
+        access_request.refresh_from_db()
+        self.assertEqual((access_request.status, access_request.decision_note, access_request.review_note),
+                         (AccessRequest.Status.DENIED, "", ""))
+
+    def test_the_message_only_with_the_toggle(self):
+        access_request = AccessRequest.objects.create(requester=self.user, kind="OTHER", title="t", justification="x")
+        # left in the hidden field: not sent
+        self.client.post(reverse("console:request_deny", args=(access_request.pk,)), {"note": "draft"})
+        access_request.refresh_from_db()
+        self.assertEqual((access_request.status, access_request.decision_note), (AccessRequest.Status.DENIED, ""))
+
+    def test_the_note_for_reviewers_stays_in_the_console(self):
+        access_request = self.event_request()
+        detail = reverse("console:request", args=(access_request.pk,))
+        response = self.client.get(detail)
+        self.assertContains(response, 'name="tell_user"', count=2)
+        self.assertContains(response, 'id="deny_tell_user"')
+        self.assertContains(response, '<div data-show-when="tell_user">', count=2)
+        self.client.post(reverse("console:request_approve", args=(access_request.pk,)), {
+            "rule_type": RuleType.SIGNINGID, "policy": Policy.ALLOWLIST, "scope": "machines",
+            "review_note": "Known <tool>, ticket 42"})
+        access_request.refresh_from_db()
+        self.assertEqual((access_request.status, access_request.decision_note, access_request.review_note),
+                         (AccessRequest.Status.APPROVED, "", "Known <tool>, ticket 42"))
+        self.assertContains(self.client.get(detail), "Known &lt;tool&gt;, ticket 42")
+        self.assertTrue(LogEntry.objects.filter(object_id=str(access_request.pk),
+                                                change_message__contains="ticket 42").exists())
+        self.client.force_login(self.user)
+        self.assertNotContains(self.client.get(reverse("requests:list")), "ticket 42")
 
     def test_users_cannot_decide(self):
         access_request = AccessRequest.objects.create(requester=self.user, kind="OTHER", title="t", justification="x")

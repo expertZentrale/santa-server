@@ -14,7 +14,8 @@ FIELDS = {IgnoredApp.Kind.SHA256: "file_sha256", IgnoredApp.Kind.SIGNINGID: "sig
 
 
 def active_ignores(now=None):
-    return IgnoredApp.objects.filter(unexpired(now or timezone.now()))
+    # created_by: the lists show who ignored it
+    return IgnoredApp.objects.filter(unexpired(now or timezone.now())).select_related("created_by")
 
 
 def ignored_q(now=None):

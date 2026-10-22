@@ -50,7 +50,8 @@ SESSION_COOKIE_SECURE = CSRF_COOKIE_SECURE = env_bool("SECURE_COOKIES", not DEBU
 METRICS_ENABLED = env_bool("METRICS_ENABLED", True)
 if not METRICS_ENABLED:
     INSTALLED_APPS = [app for app in INSTALLED_APPS if app != "django_prometheus"]  # noqa: F405
-    MIDDLEWARE = [name for name in MIDDLEWARE if not name.startswith("django_prometheus.")]  # noqa: F405
+    MIDDLEWARE = [name for name in MIDDLEWARE  # noqa: F405
+                  if not name.startswith("django_prometheus.") and name != "santa.middleware.ViewMetricsMiddleware"]
 
 DATABASES = {
     "default": {
@@ -61,7 +62,8 @@ DATABASES = {
         "NAME": env("DB_NAME", "santa"),
         "USER": env("DB_USER", required=True),
         "PASSWORD": env("DB_PASSWORD", required=True),
-        "CONN_MAX_AGE": 60,
+        # a new connection (TLS, login) takes long against a remote server: kept for a while, checked before reuse
+        "CONN_MAX_AGE": int(env("DB_CONN_MAX_AGE", "600")),
         "CONN_HEALTH_CHECKS": True,
         "OPTIONS": {
             "python_driver": "mssql_python",

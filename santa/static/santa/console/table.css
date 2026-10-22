@@ -58,6 +58,8 @@ body:has(main .table-hscroll:not([hidden])) .bulkbar { bottom: calc(1rem + .75re
 .table .cell-stack { display: grid; gap: .15rem; justify-items: start; min-width: 0; }
 .table .cell-stack > * { max-width: 100%; }
 .table .cell-badges { display: flex; flex-wrap: wrap; gap: .3rem; }
+/* the comment of an ignored app: one line, all of it in the title */
+.table .ignore-note { display: block; max-width: 18rem; margin-top: .2rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* long IDs break instead of widening the table past the page */
 .table td.cell-ids { overflow-wrap: anywhere; min-width: 7rem; }
 /* the suggested package: one line, the long name in the title */
@@ -145,6 +147,7 @@ body.has-bulkbar main { padding-bottom: calc(var(--bulkbar-h, 4rem) + 2rem); }
 /* the drawer works on the selection: the bar would cover its buttons */
 body:has(.drawer.open) .bulkbar.visible { opacity: 0; visibility: hidden; pointer-events: none; }
 @media (max-width: 40em) {
+  .table .ignore-note { max-width: none; white-space: normal; }
   .bulkbar {
     left: 1rem; right: 1rem; bottom: calc(1rem + env(safe-area-inset-bottom, 0rem)); max-width: none; transform: none;
     border-radius: var(--radius); padding: .5rem;

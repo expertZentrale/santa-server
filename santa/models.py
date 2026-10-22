@@ -1169,6 +1169,8 @@ class AccessRequest(models.Model):
                                    related_name="+")
     decided_at = models.DateTimeField(null=True, blank=True)
     decision_note = models.TextField(blank=True)
+    # why it was approved or denied, for the other reviewers: only in the console, never to the user
+    review_note = models.TextField(_("note for reviewers"), blank=True)
     result_rule = models.ForeignKey(Rule, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
     result_source = models.ForeignKey(ReleaseSource, on_delete=models.SET_NULL, null=True, blank=True,
                                       related_name="+")

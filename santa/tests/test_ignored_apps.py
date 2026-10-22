@@ -72,6 +72,15 @@ class IgnoredInTheConsoleTestCase(ConsoleBase):
         response = self.client.get(reverse("console:events"), {"rows": "now", **params})
         return sorted(row["file_name"] for row in response.context["page"])
 
+    def test_the_comment_shows_with_the_ignored_event(self):
+        IgnoredApp.objects.update(note="Updater <b>noise</b>", created_by=self.admin)
+        event = Event.objects.get(file_name="tool")
+        response = self.client.get(reverse("console:event", args=(event.pk,)), headers={"HX-Request": "true"})
+        self.assertContains(response, "Updater &lt;b&gt;noise&lt;/b&gt;")
+        self.assertContains(response, f"by {self.admin.get_username()} on")
+        response = self.client.get(reverse("console:events"), {"rows": "now", "resolved": "ignored"})
+        self.assertContains(response, '<small class="muted ignore-note" title="Updater &lt;b&gt;noise&lt;/b&gt;">')
+
     def test_the_lists_leave_them_out_also_with_new_events(self):
         self.assertEqual(self.apps(), ["other"])
         # a new event after it was ignored, also of a new version

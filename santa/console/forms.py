@@ -539,6 +539,8 @@ class EventRuleForm(TagsMixin):
 
     rows: the events grouped by binary. With several binaries the rule type can stay "suggested per binary",
     and a type a binary doesn't have falls back to its suggestion (the view decides, see rule_type_for).
+    follows_selection: the drawer that follows the selection of the list (forms.js) adds and removes binaries without
+    a new form, so it is always the one of several binaries (forms.js hides the types none of them has).
     """
     field_order = ["rule_type", "policy", "signing_prefixes", "cel_expr", "scope", "groups", "expires_at", "tags",
                    "new_tags", "description", "include"]
@@ -561,20 +563,20 @@ class EventRuleForm(TagsMixin):
     # scope of the form (instead of a new rule)
     add_signing = forms.MultipleChoiceField(required=False, widget=forms.CheckboxSelectMultiple)
 
-    def __init__(self, *args, rows, available_types=None, signing_rules=None, **kwargs):
+    def __init__(self, *args, rows, available_types=None, signing_rules=None, follows_selection=False, **kwargs):
         """signing_rules: {SHA-256: the Team ID rule of signing ID prefixes that leaves the binary out}"""
         super().__init__(*args, **kwargs)
         self.rows = rows
         self.signing_rules = signing_rules or {}
         self.fields["add_signing"].choices = [(sha, sha) for sha in self.signing_rules]
-        self.several = len(rows) > 1
-        types = rule_type_choices(available_types)
+        self.several = len(rows) > 1 or follows_selection
+        types = rule_type_choices(None if follows_selection else available_types)
         if self.several:
             self.fields["rule_type"].choices = lambda: [("", _("Suggested per binary")), *types()]
         else:
             self.fields["rule_type"].choices = types
             self.fields["rule_type"].required = True
-        if len({event.machine_id for row in rows for event in row}) == 1:
+        if len({event.machine_id for row in rows for event in row}) == 1 and not follows_selection:
             self.fields["scope"].choices = [(SCOPE_MACHINES, _("This Mac")), (SCOPE_GROUPS, _("Groups")),
                                             (SCOPE_GLOBAL, _("All Macs"))]
         self.fields["cel_expr"].widget.attrs["data-cel-suggestions"] = cel_suggestions_json()
@@ -786,7 +788,26 @@ class CelPolicyMixin:
         return prefix_expression(identifier, prefixes) if prefixes else self.cleaned_data.get("cel_expr", "")
 
 
-class ApproveEventForm(CelPolicyMixin, TagsMixin):
+class DecisionNotesMixin(forms.Form):
+    """The notes of a decision about a request: a message to the user (only with tell_user), and one for the other
+    reviewers, only in the console. Both optional."""
+
+    tell_user = forms.BooleanField(required=False, label=_("Add a message for the user"))
+    note = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 2}), label=_("Message to the user"),
+                           help_text=_("In the e-mail and on the requests of the user."))
+    review_note = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 2}),
+                                  label=_("Note for reviewers"),
+                                  help_text=_("Only in the console: why it was approved or denied."))
+
+    def clean(self):
+        cleaned_data = super().clean()
+        # a message left in the hidden field doesn't reach the user
+        if "note" in self.fields and not cleaned_data.get("tell_user"):
+            cleaned_data["note"] = ""
+        return cleaned_data
+
+
+class ApproveEventForm(DecisionNotesMixin, CelPolicyMixin, TagsMixin):
     """Approve a blocked binary: a new rule, a rule that already allows it (as it is, or with the scope of the form
     added), or no rule
 
@@ -795,7 +816,7 @@ class ApproveEventForm(CelPolicyMixin, TagsMixin):
     RULE, EXISTING, EXTEND, SIGNING_ID, NONE = "rule", "existing", "extend", "signing", "none"
 
     field_order = ["result", "existing_rule", "rule_type", "policy", "signing_prefixes", "cel_expr", "scope",
-                   "groups", "expires_at", "tags", "new_tags", "note"]
+                   "groups", "expires_at", "tags", "new_tags", "tell_user", "note", "review_note"]
 
     result = forms.ChoiceField(
         choices=[(RULE, _("New rule")), (EXISTING, _("Existing rule")),
@@ -820,8 +841,6 @@ class ApproveEventForm(CelPolicyMixin, TagsMixin):
         widget=forms.TextInput(attrs={"class": "mono", "autocomplete": "off"}),
         help_text=_("Only the start: it allows every signing ID beginning with it, and replaces the prefixes of the "
                     "rule it covers."))
-    note = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 2}), label=_("Note"),
-                           help_text=_("Shown to the user"))
 
     def __init__(self, *args, available_types=None, matches=(), allowed=None, signing_id="", **kwargs):
         """allowed: () -> is the binary allowed on the Macs of the requester (services.decisions_for_machines);
@@ -909,7 +928,7 @@ class ApproveEventForm(CelPolicyMixin, TagsMixin):
         return cleaned_data
 
 
-class ApprovePackagesForm(forms.Form):
+class ApprovePackagesForm(DecisionNotesMixin):
     """One row per requested package: approve it or not, into a new or an existing package rule.
 
     The approved packages with "new package rule" become one new package rule per catalog,
@@ -930,8 +949,6 @@ class ApprovePackagesForm(forms.Form):
     keep_unit = keep_unit_field()
     approve_kept_versions = forms.BooleanField(required=False, label=_("Also allow the older kept versions"))
     include_dependencies = forms.BooleanField(required=False, label=_("Allow the dependencies"))
-    note = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 2}), label=_("Note"),
-                           help_text=_("Shown to the user"))
 
     def __init__(self, *args, packages=(), **kwargs):
         super().__init__(*args, **kwargs)
@@ -1021,7 +1038,8 @@ class EventPackagesForm(ApprovePackagesForm):
                                  icon_url=item.icon_url, suggestion=item)
                     for index, item in enumerate(suggestions)]
         super().__init__(*args, packages=packages, **kwargs)
-        del self.fields["note"]
+        for name in ("tell_user", "note", "review_note"):
+            del self.fields[name]
         kinds = [(value, SHORT_KIND_LABELS[value]) for value in ReleaseSource.Kind.values
                  if value not in NO_EVENT_PACKAGE_KINDS]
         all_sources = list(ReleaseSource.objects.order_by("name"))
@@ -1105,7 +1123,7 @@ class EventPackagesForm(ApprovePackagesForm):
         return super().clean()
 
 
-class ApproveOtherForm(CelPolicyMixin, TagsMixin):
+class ApproveOtherForm(DecisionNotesMixin, CelPolicyMixin, TagsMixin):
     """Approve a request for other software: create the rule for it right here, a manual rule or a package rule"""
 
     RULE, PACKAGE, EXISTING, NONE = "rule", "package", "existing", "none"
@@ -1174,15 +1192,13 @@ class ApproveOtherForm(CelPolicyMixin, TagsMixin):
     # the rule picked from the suggestions: one identifier can have several rules (scopes)
     rule = forms.ModelChoiceField(queryset=Rule.objects.all(), required=False, widget=forms.HiddenInput)
 
-    note = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 2}), label=_("Note"),
-                           help_text=_("Shown to the user"))
 
     field_order = ["result", "rule_type", "identifier", "file", "binary_pattern", "policy", "signing_prefixes",
                    "cel_expr", "scope", "groups", "tags", "new_tags", "package_target", "package_kind",
                    "package_identifiers", "package_picked", "package_name", "package_rule_type", "package_policy",
                    "package_cel_expr", "package_auto_approve", "package_keep_versions", "package_keep_unit",
                    "package_approve_kept_versions", "package_include_dependencies", "package_is_global",
-                   "package_groups", "rule_identifier", "rule", "note"]
+                   "package_groups", "rule_identifier", "rule", "tell_user", "note", "review_note"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -1256,8 +1272,11 @@ class ApproveOtherForm(CelPolicyMixin, TagsMixin):
         return cleaned_data
 
 
-class DenyForm(forms.Form):
-    note = forms.CharField(widget=forms.Textarea(attrs={"rows": 2}), help_text=_("Shown to the user"))
+class DenyForm(DecisionNotesMixin):
+    def __init__(self, *args, **kwargs):
+        # on the page of the request next to the approve form: its own ids
+        kwargs.setdefault("auto_id", "deny_%s")
+        super().__init__(*args, **kwargs)
 
 
 class RequestFilterForm(forms.Form):
