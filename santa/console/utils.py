@@ -71,19 +71,52 @@ def defer_rows(request):
             and request.headers.get("X-Santa-Rerender") != "1")
 
 
+# the grey rows of a list not shown yet in this session: a short list must not shrink a lot when its rows arrive
+SKELETON_ROWS_UNKNOWN = 10
+# lists whose number of rows the session remembers
+SKELETON_ROWS_REMEMBERED = 50
+
+
+def _rows_key(request):
+    """A list for the number of rows the session remembers: its page, tab (?view) and page number"""
+    return f"{request.path}?view={request.GET.get('view', '')}&page={request.GET.get('page', '1')}"
+
+
+def remember_rows(request, page):
+    """The rows a list showed, for the grey rows of its next load (skeleton_rows)"""
+    if page is None:
+        return
+    rows = request.session.get("list_rows", {})
+    key = _rows_key(request)
+    if rows.get(key) == len(page):
+        return
+    rows.pop(key, None)
+    rows[key] = len(page)
+    # the newest ones (dicts keep their order)
+    request.session["list_rows"] = dict(list(rows.items())[-SKELETON_ROWS_REMEMBERED:])
+
+
+def skeleton_rows(request, size):
+    """As many grey rows as the list had last time (at least one, at most the page size), else a few"""
+    rows = request.session.get("list_rows", {}).get(_rows_key(request))
+    return min(size, 50, max(rows, 1) if rows is not None else SKELETON_ROWS_UNKNOWN)
+
+
 def render_list(request, template, rows_template, context):
     """A list page, or only its rows (rows_template) for the request of console/_rows.html"""
     if rows_only(request):
+        remember_rows(request, context.get("page"))
         response = render(request, rows_template, context)
     else:
         if context.get("page") is None:
-            # the grey rows while the rows load: as many as the page will have (the window full, the pages below
-            # where they will be), and the pages bar of this page size (console/_pagination.html)
+            # the grey rows while the rows load: as many as the list had last time (skeleton_rows), and the pages
+            # bar of this page size (console/_pagination.html)
             size = page_size(request)
             page_number = request.GET.get("page", "")
-            context = {**context, "skeleton_rows": range(min(size, 50)), "skeleton_page": {
+            context = {**context, "skeleton_rows": range(skeleton_rows(request, size)), "skeleton_page": {
                 "number": int(page_number) if page_number.isdigit() else 1, "per_page": size,
                 "page_sizes": PAGE_SIZES}}
+        remember_rows(request, context.get("page"))
         response = render(request, template, {**context, "rows_template": rows_template})
     # the same URL answers with the page or the rows: a cached copy must not mix them up (Back button)
     # every header defer_rows(), rows_only() and is_htmx() read
