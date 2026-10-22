@@ -22,6 +22,17 @@ from .utils import build_macho
 LIST_URL = "https://downloads.example/list.json"
 
 
+class Redirect(FakeResponse):
+    is_redirect = True
+
+    def __init__(self, location):
+        super().__init__()
+        self.headers = {"location": location}
+
+    def close(self):
+        pass
+
+
 def entry(version, platforms=("mac-arm64", "mac-x64", "linux64"), products=("app", "headless")):
     return {"version": version, "revision": "1", "downloads": {
         product: [{"platform": platform, "url": f"https://downloads.example/{version}/{platform}/{product}.zip"}
@@ -44,10 +55,9 @@ def list_routes(versions, document=None):
 
 class UrlListTestCase(ReleaseSourceBase):
     def list_source(self, **kwargs):
-        options = {"list_downloads": "downloads.headless\ndownloads.app", "list_filters": "platform=^mac-arm64$",
-                   "keep_versions": 3, **kwargs}
-        source = ReleaseSource.objects.create(name="tools", kind=ReleaseSource.Kind.URL_LIST, identifier=LIST_URL,
-                                              **options)
+        options = {"name": "tools", "identifier": LIST_URL, "list_downloads": "downloads.headless\ndownloads.app",
+                   "list_filters": "platform=^mac-arm64$", "keep_versions": 3, **kwargs}
+        source = ReleaseSource.objects.create(kind=ReleaseSource.Kind.URL_LIST, **options)
         source.groups.add(self.dev)
         return source
 
@@ -105,12 +115,36 @@ class UrlListTestCase(ReleaseSourceBase):
 
     def test_only_https_downloads(self):
         document = {"versions": [{"version": "1.0", "downloads": {"app": [
-            {"platform": "mac-arm64", "url": "http://downloads.example/1.0/mac-arm64/app.zip"}]}}]}
+            {"platform": "mac-arm64", "url": "ftp://downloads.example/1.0/mac-arm64/app.zip"}]}}]}
         source = self.list_source(list_downloads="downloads.app")
         session = fake_session(list_routes(["1.0"], document))
-        with self.assertRaisesMessage(ReleaseError, "only http URLs, not taken (e.g. http://downloads.example/"):
+        with self.assertRaisesMessage(ReleaseError, "only URLs other than https, not taken (e.g. ftp://downloads."):
             sync_release_source(source, session)
         self.assertEqual(self.downloaded(session), [])
+
+    def test_redirects_stay_on_https(self):
+        routes = list_routes(["1.0"])
+        # the list moved, on https: followed
+        routes["https://downloads.example/old.json"] = Redirect("/list.json")
+        source = self.list_source(identifier="https://downloads.example/old.json")
+        sync_release_source(source, fake_session(routes))
+        self.assertEqual(list(source.versions.values_list("version", flat=True)), ["1.0"])
+        # a list or a download sent to http: not fetched
+        routes["https://downloads.example/old.json"] = Redirect("http://downloads.example/list.json")
+        with self.assertRaisesMessage(ReleaseError, "http://downloads.example/list.json: only https URLs"):
+            url_list_releases(fake_session(routes), source, "https://downloads.example/old.json", 1)
+        routes = list_routes(["2.0"])
+        routes["https://downloads.example/2.0/mac-arm64/app.zip"] = Redirect("http://mirror.example/app.zip")
+        session = fake_session(routes)
+        other = self.list_source(name="other")
+        try:
+            sync_release_source(other, session)
+        except ReleaseError:
+            pass
+        other.refresh_from_db()
+        self.assertIn("http://mirror.example/app.zip: only https URLs",
+                      other.last_error + "".join(other.versions.values_list("notes", flat=True)))
+        self.assertNotIn("http://mirror.example/app.zip", self.downloaded(session))
 
     def test_a_list_too_big_or_broken(self):
         source = self.list_source()

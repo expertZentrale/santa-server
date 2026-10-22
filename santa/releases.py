@@ -20,7 +20,8 @@ import zlib
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from urllib.parse import parse_qs, urlsplit
+from functools import partial
+from urllib.parse import parse_qs, urljoin, urlsplit
 
 import requests
 from django.conf import settings
@@ -96,6 +97,8 @@ class Asset:
     match: tuple = ()
     # a Homebrew bottle: its executables are changed as Homebrew installs them on the Macs of the tag
     bottle_tag: str = ""
+    # only over https, also its redirects (a download list)
+    https_only: bool = False
 
 
 @dataclass
@@ -160,14 +163,31 @@ def http_session():
     return session
 
 
+MAX_REDIRECTS = 10
+
+
+def https_get(session, url, **kwargs):
+    """A GET that stays on https: the redirects are followed here, each one checked, not by requests (it would follow
+    one to http)"""
+    for _hop in range(MAX_REDIRECTS + 1):
+        if urlsplit(url).scheme != "https":
+            raise ReleaseError(f"{url}: only https URLs")
+        response = session.get(url, allow_redirects=False, **kwargs)
+        if not getattr(response, "is_redirect", False):
+            return response
+        url = urljoin(url, response.headers["location"])
+        response.close()
+    raise ReleaseError(f"{url}: more than {MAX_REDIRECTS} redirects")
+
+
 def download(session, asset):
     """Download the asset to a temporary file, check its SHA-256 if known"""
     tmp = tempfile.TemporaryFile()
     digest = hashlib.sha256()
     digest512 = hashlib.sha512()
     size = 0
-    with session.get(asset.url, headers=asset.headers or {}, stream=True,
-                     timeout=settings.RELEASE_HTTP_TIMEOUT) as response:
+    get = partial(https_get, session) if asset.https_only else session.get
+    with get(asset.url, headers=asset.headers or {}, stream=True, timeout=settings.RELEASE_HTTP_TIMEOUT) as response:
         response.raise_for_status()
         for chunk in response.iter_content(macho.CHUNK_SIZE):
             size += len(chunk)
@@ -1101,10 +1121,8 @@ def _list_document(session, identifier):
     cache = run_cache(session, "url_lists")
     if identifier in cache:
         return cache[identifier]
-    if not identifier.startswith("https://"):
-        raise ReleaseError(f"{identifier}: only https URLs")
     content = bytearray()
-    with session.get(identifier, stream=True, timeout=settings.RELEASE_HTTP_TIMEOUT) as response:
+    with https_get(session, identifier, stream=True, timeout=settings.RELEASE_HTTP_TIMEOUT) as response:
         response.raise_for_status()
         for chunk in response.iter_content(macho.CHUNK_SIZE):
             content += chunk
@@ -1190,7 +1208,7 @@ def _url_list_releases(session, source, identifier):
                     continue
                 values = tuple(value for value in (_list_field([item], key) for key in item) if value)
                 release.assets.append(Asset(name=url.split("?")[0].rsplit("/", 1)[-1] or "download", url=url,
-                                            match=values))
+                                            match=values, https_only=True))
     # the version pattern before the limit: the newest versions it takes, not the newest of all
     found = [release for release in releases.values() if release.assets and version_matches(source, release.version)]
     found.sort(key=lambda release: list_version_order(release.version), reverse=True)
@@ -1259,7 +1277,7 @@ def _explain_url_list(document, source, skipped):
             return (f"the filter {field}={regex.pattern} matches none of {len(with_url)} downloads; "
                     f"{field} has: {_some(values)}")
     if skipped:
-        return f"only http URLs, not taken (e.g. {skipped[0]})"
+        return f"only URLs other than https, not taken (e.g. {skipped[0]})"
     if source.version_pattern:
         newest = sorted({_list_field([entry], source.list_version_key) for entry in versioned},
                         key=list_version_order, reverse=True)
