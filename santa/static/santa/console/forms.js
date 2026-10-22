@@ -243,7 +243,12 @@
     binaries.forEach((binary, sha) => {
       const item = list.querySelector(`:scope > li[data-sha="${CSS.escape(sha)}"]`);
       const pending = list.querySelector(`:scope > li[data-pending-sha="${CSS.escape(sha)}"]`);
-      if (item && (!binary.byEvent || sameIds(item, binary.ids))) return;
+      if (item && (!binary.byEvent || sameIds(item, binary.ids))) {
+        // back to the events it was loaded with
+        delete item.dataset.stale;
+        item.querySelector("[data-failed]")?.remove();
+        return;
+      }
       if (binary.byEvent) binary.ids.forEach((id) => query.append("ids", id));
       else query.append("shas", sha);
       if (item || pending) {
@@ -271,10 +276,12 @@
     const drawer = drawerForm.closest(".drawer-panel") || drawerForm.parentElement;
     const items = [...drawerForm.querySelectorAll("[data-binaries] > li")];
     const loaded = items.filter((item) => item.dataset.sha);
+    // a binary whose selected events changed still has the old ones until its new version is loaded
+    const ready = loaded.filter((item) => !item.dataset.stale);
     const tabs = drawer.querySelector(".allow-tabs");
     [drawerForm, tabs].filter(Boolean).forEach((form) => {
       form.querySelectorAll('input[type="hidden"][name="ids"]').forEach((input) => input.remove());
-      loaded.flatMap((item) => (item.dataset.ids || "").split(" ").filter(Boolean)).forEach((id) => {
+      ready.flatMap((item) => (item.dataset.ids || "").split(" ").filter(Boolean)).forEach((id) => {
         const input = document.createElement("input");
         input.type = "hidden";
         input.name = "ids";
@@ -286,9 +293,9 @@
     if (tabs) tabs.hidden = !items.length;
     const empty = drawer.querySelector("[data-no-binaries]");
     if (empty) empty.hidden = Boolean(items.length);
-    // saved only with every binary loaded: a placeholder has no events yet
+    // saved only with every binary loaded: a placeholder has no events yet, a stale one the old ones
     drawerForm.querySelectorAll('button[name="apply"]').forEach((button) => {
-      button.disabled = loaded.length < items.length;
+      button.disabled = ready.length < items.length;
     });
     try {
       const titles = JSON.parse(drawerForm.dataset.titles);
@@ -352,6 +359,15 @@
     list.querySelectorAll(":scope > li.pending small").forEach((note) => {
       note.textContent = list.dataset.failedLabel || "!";
       note.classList.add("error");
+    });
+    // a binary with other events: it keeps its old version, which can't be saved
+    list.querySelectorAll(":scope > li[data-sha][data-stale]").forEach((item) => {
+      if (item.querySelector("[data-failed]")) return;
+      const note = document.createElement("small");
+      note.className = "error";
+      note.dataset.failed = "";
+      note.textContent = list.dataset.failedLabel || "!";
+      item.append(note);
     });
   }
 
