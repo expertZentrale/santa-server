@@ -1096,6 +1096,177 @@ def latest_url(session, source, identifier):
     return Release(version="", assets=[asset])
 
 
+def _list_document(session, identifier):
+    """The download list, read once per check: only https, at most RELEASE_MAX_LIST_BYTES"""
+    cache = run_cache(session, "url_lists")
+    if identifier in cache:
+        return cache[identifier]
+    if not identifier.startswith("https://"):
+        raise ReleaseError(f"{identifier}: only https URLs")
+    content = bytearray()
+    with session.get(identifier, stream=True, timeout=settings.RELEASE_HTTP_TIMEOUT) as response:
+        response.raise_for_status()
+        for chunk in response.iter_content(macho.CHUNK_SIZE):
+            content += chunk
+            if len(content) > settings.RELEASE_MAX_LIST_BYTES:
+                raise ReleaseError(f"{identifier}: bigger than {settings.RELEASE_MAX_LIST_BYTES} bytes")
+    try:
+        document = json.loads(bytes(content))
+    except ValueError as e:
+        raise ReleaseError(f"{identifier}: not valid JSON ({e})")
+    cache[identifier] = document
+    return document
+
+
+def _list_path(value, path):
+    """The values at a path of a download list: keys separated by dots, * takes every value of an object; a list on
+    the way is gone through"""
+    values = [value]
+    for key in [part for part in path.split(".") if part]:
+        found = []
+        for item in values:
+            items = item if isinstance(item, list) else [item]
+            for element in items:
+                if not isinstance(element, dict):
+                    continue
+                if key == "*":
+                    found += list(element.values())
+                elif key in element:
+                    found.append(element[key])
+        values = found
+    return [element for item in values for element in (item if isinstance(item, list) else [item])]
+
+
+def _list_field(objects, field):
+    """The text of a field in the first object that has it (the download, then its entry); numbers count too"""
+    for item in objects:
+        value = item.get(field)
+        if isinstance(value, (str, int, float)) and not isinstance(value, bool):
+            return str(value)
+    return None
+
+
+def list_version_order(version):
+    """A version of a download list to sort by: dotted numbers as numbers (131.0.6778.85, four parts are common),
+    the rest as text"""
+    return tuple((0, int(part), "") if part.isdigit() else (1, 0, part)
+                 for part in re.split(r"[.\-+_]", version or ""))
+
+
+def url_list_releases(session, source, identifier, limit):
+    """The versions of a download list with their downloads that pass the filters and the version pattern, newest
+    first. None: an error that says which step finds nothing."""
+    releases, skipped = _url_list_releases(session, source, identifier)
+    if not releases:
+        raise ReleaseError(f"{identifier}: {_explain_url_list(_list_document(session, identifier), source, skipped)}")
+    return releases[:limit]
+
+
+def _url_list_releases(session, source, identifier):
+    """(the releases, newest first; the download URLs left out for not being https)"""
+    document = _list_document(session, identifier)
+    filters = source.list_filter_patterns()
+    releases = {}
+    skipped = []
+    for entry in _list_path(document, source.list_entries):
+        if not isinstance(entry, dict):
+            continue
+        version = _list_field([entry], source.list_version_key)
+        if not version:
+            continue
+        release = releases.setdefault(version, Release(version=version, assets=[]))
+        for path in pattern_lines(source.list_downloads):
+            for item in _list_path(entry, path):
+                if not isinstance(item, dict):
+                    continue
+                url = _list_field([item], source.list_url_key)
+                if not url or not all((value := _list_field([item, entry], field)) is not None and regex.search(value)
+                                      for field, regex in filters):
+                    continue
+                if not url.startswith("https://"):
+                    skipped.append(url)
+                    continue
+                if any(asset.url == url for asset in release.assets):
+                    continue
+                values = tuple(value for value in (_list_field([item], key) for key in item) if value)
+                release.assets.append(Asset(name=url.split("?")[0].rsplit("/", 1)[-1] or "download", url=url,
+                                            match=values))
+    # the version pattern before the limit: the newest versions it takes, not the newest of all
+    found = [release for release in releases.values() if release.assets and version_matches(source, release.version)]
+    found.sort(key=lambda release: list_version_order(release.version), reverse=True)
+    return found, skipped
+
+
+def latest_url_list(session, source, identifier):
+    return url_list_releases(session, source, identifier, 1)[0]
+
+
+LIST_HINT_VALUES = 10
+
+
+def _some(values):
+    """A few of the values for a message: sorted, at most LIST_HINT_VALUES"""
+    values = sorted({str(value) for value in values})
+    more = ", …" if len(values) > LIST_HINT_VALUES else ""
+    return ", ".join(values[:LIST_HINT_VALUES]) + more if values else "nothing"
+
+
+def _path_hint(value, path):
+    """Where a path of a download list stops finding anything: (the part found, the keys there)"""
+    values = [value]
+    done = []
+    for key in [part for part in path.split(".") if part]:
+        found = _list_path(values, key)
+        if not found:
+            objects = [element for item in values for element in (item if isinstance(item, list) else [item])
+                       if isinstance(element, dict)]
+            return ".".join(done), (list(objects[0]) if objects else [])
+        done.append(key)
+        values = found
+    return ".".join(done), []
+
+
+def _explain_url_list(document, source, skipped):
+    """Why a download list gives no version: the first step that finds nothing, with what is there instead (a wrong
+    key in the package rule)"""
+    entries = [entry for entry in _list_path(document, source.list_entries) if isinstance(entry, dict)]
+    if not entries:
+        where, keys = _path_hint(document, source.list_entries)
+        return (f'versions in the list "{source.list_entries}" finds nothing; '
+                f'{where or "the list"} has: {_some(keys)}')
+    versioned = [entry for entry in entries if _list_field([entry], source.list_version_key)]
+    if not versioned:
+        return (f'{len(entries)} entries, none has the field "{source.list_version_key}"; '
+                f"the first has: {_some(entries[0])}")
+    pairs = []
+    for path in pattern_lines(source.list_downloads):
+        items = [(item, entry) for entry in versioned for item in _list_path(entry, path) if isinstance(item, dict)]
+        if not items:
+            where, keys = _path_hint(versioned[0], path)
+            where = f'"{where}" of ' if where else ""
+            return f'no downloads at "{path}"; {where}the first entry has: {_some(keys)}'
+        pairs += items
+    with_url = [(item, entry) for item, entry in pairs if _list_field([item], source.list_url_key)]
+    if not with_url:
+        return (f'{len(pairs)} downloads, none has the field "{source.list_url_key}"; '
+                f"they have: {_some(key for item, _entry in pairs for key in item)}")
+    for field, regex in source.list_filter_patterns():
+        values = [value for item, entry in with_url if (value := _list_field([item, entry], field)) is not None]
+        if not values:
+            return (f'no download or entry has the field "{field}" of the filter {field}={regex.pattern}; '
+                    f"the downloads have: {_some(key for item, _entry in with_url for key in item)}")
+        if not any(regex.search(value) for value in values):
+            return (f"the filter {field}={regex.pattern} matches none of {len(with_url)} downloads; "
+                    f"{field} has: {_some(values)}")
+    if skipped:
+        return f"only http URLs, not taken (e.g. {skipped[0]})"
+    if source.version_pattern:
+        newest = sorted({_list_field([entry], source.list_version_key) for entry in versioned},
+                        key=list_version_order, reverse=True)
+        return f"no version matches the version pattern; the newest: {', '.join(newest[:5])}"
+    return "no download matches all filters together"
+
+
 def _npm_url(identifier):
     # scoped packages: the registry wants @scope%2Fname
     return f"https://registry.npmjs.org/{identifier.replace('/', '%2F')}"
@@ -1239,6 +1410,7 @@ PROVIDERS = {
     ReleaseSource.Kind.HOMEBREW_FORMULA: latest_homebrew_formula,
     ReleaseSource.Kind.HOMEBREW_CASK: latest_homebrew_cask,
     ReleaseSource.Kind.URL: latest_url,
+    ReleaseSource.Kind.URL_LIST: latest_url_list,
     ReleaseSource.Kind.NPM_PACKAGE: latest_npm_package,
     ReleaseSource.Kind.VSCODE_EXTENSION: latest_vscode_extension,
     ReleaseSource.Kind.JETBRAINS_PLUGIN: latest_jetbrains_plugin,
@@ -1250,6 +1422,7 @@ HISTORY = {
     ReleaseSource.Kind.NPM_PACKAGE: npm_releases,
     ReleaseSource.Kind.VSCODE_EXTENSION: vscode_releases,
     ReleaseSource.Kind.JETBRAINS_PLUGIN: jetbrains_releases,
+    ReleaseSource.Kind.URL_LIST: url_list_releases,
 }
 assert set(HISTORY) == set(HISTORY_KINDS)
 # releases looked at for a time range, and the older versions added per identifier and sync (the rest follows)
@@ -1625,6 +1798,14 @@ def _version_date(version):
     return version.published_at or version.created_at
 
 
+def version_order(source):
+    """The key that sorts the recorded versions of a source by their release: the date, or for a download list
+    (no dates; its older versions are recorded after the newest) the version itself"""
+    if source.kind == ReleaseSource.Kind.URL_LIST:
+        return lambda version: list_version_order(version.version)
+    return _version_date
+
+
 RULE_OUTSIDE_ASSET_PATTERN = "asset"
 RULE_OUTSIDE_BINARY_PATTERN = "binary"
 
@@ -1715,7 +1896,7 @@ def stale_versions(source, now=None, check_filters=False):
     if source.keep_versions:
         for versions in by_identifier.values():
             # by publication: older versions added later must not push out the newest one
-            versions.sort(key=_version_date, reverse=True)
+            versions.sort(key=version_order(source), reverse=True)
             if cutoff is None:
                 stale += versions[source.keep_versions:]
             else:
@@ -1735,7 +1916,7 @@ def prune_old_versions(source):
 def cleanup_preview(source):
     """What the clean up of a package rule deletes: (versions, number of their rules, number of the dependency rules
     left over when the dependencies are no longer allowed)"""
-    versions = sorted(stale_versions(source, check_filters=True), key=_version_date, reverse=True)
+    versions = sorted(stale_versions(source, check_filters=True), key=version_order(source), reverse=True)
     rule_count = sum(Rule.objects.filter(release_version__in=chunk).count()
                      for chunk in chunked([version.pk for version in versions]))
     return versions, rule_count, len(_left_dependency_rules(source, versions))
@@ -2130,7 +2311,7 @@ def preview_release_source(source, session=None, progress=None):
         except Cancelled:
             # what it has so far (progress.cancelled tells)
             break
-        result = {"identifier": identifier, "error": "", "releases": [],
+        result = {"identifier": identifier, "kind": source.kind, "error": "", "releases": [],
                   "files": files_of.get(identifier, [])[:PREVIEW_FILES]}
         results.append(result)
         try:

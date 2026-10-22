@@ -8,7 +8,7 @@
   </div>
   {% for identifier, messages in error_groups %}
   <details{% if error_groups|length == 1 %} open{% endif %}>
-    <summary>{% if identifier %}<code>{{ identifier }}</code>{% else %}{{ source.name }}{% endif %} <span class="muted">{% blocktranslate count count=messages|length %}{{ count }} message{% plural %}{{ count }} messages{% endblocktranslate %}</span></summary>
+    <summary>{% if identifier %}{% include "console/sources/_identifier.html" with kind=source.kind name="" %}{% else %}{{ source.name }}{% endif %} <span class="muted">{% blocktranslate count count=messages|length %}{{ count }} message{% plural %}{{ count }} messages{% endblocktranslate %}</span></summary>
     <ul class="plain">{% for message, versions in messages %}
       <li><span class="error-text">{{ message }}</span>{% if versions %} <small class="muted">{% blocktranslate with list=versions|join:", " count count=versions|length %}version {{ list }}{% plural %}{{ count }} versions: {{ list }}{% endblocktranslate %}</small>{% endif %}</li>
     {% endfor %}</ul>

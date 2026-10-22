@@ -21,6 +21,7 @@ SHORT_KIND_LABELS = {
     Kind.HOMEBREW_FORMULA: _("Formula"),
     Kind.HOMEBREW_CASK: _("Cask"),
     Kind.URL: _("URL"),
+    Kind.URL_LIST: _("List"),
     Kind.NPM_PACKAGE: _("npm"),
     Kind.VSCODE_EXTENSION: _("VS Code"),
     Kind.JETBRAINS_PLUGIN: _("JetBrains"),

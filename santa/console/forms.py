@@ -450,15 +450,20 @@ class ReleaseSourceForm(TagsMixin, forms.ModelForm):
 
     class Meta:
         model = ReleaseSource
-        fields = ("name", "description", "kind", "identifier", "is_enabled", "version_pattern", "asset_pattern",
-                  "binary_pattern", "macos_minimum", "macos_nearest", "include_prereleases", "rule_type", "policy",
-                  "cel_expr", "custom_msg", "custom_url", "is_global", "groups", "auto_approve",
+        fields = ("name", "description", "kind", "identifier", "is_enabled", "list_format", "list_entries",
+                  "list_version_key", "list_downloads", "list_url_key", "list_filters", "version_pattern",
+                  "asset_pattern", "binary_pattern", "macos_minimum", "macos_nearest", "include_prereleases",
+                  "rule_type", "policy", "cel_expr", "custom_msg", "custom_url", "is_global", "groups", "auto_approve",
                   "auto_approve_delay_days", "keep_versions", "keep_unit", "approve_kept_versions",
                   "include_dependencies", "tags")
         widgets = {
             "description": forms.Textarea(attrs={"rows": 2}),
             "identifier": IdentifiersWidget,
             "version_pattern": PatternsWidget, "asset_pattern": PatternsWidget, "binary_pattern": PatternsWidget,
+            "list_downloads": PatternsWidget, "list_filters": PatternsWidget,
+            "list_entries": forms.TextInput(attrs={"class": "mono"}),
+            "list_version_key": forms.TextInput(attrs={"class": "mono"}),
+            "list_url_key": forms.TextInput(attrs={"class": "mono"}),
             "groups": forms.CheckboxSelectMultiple,
             "cel_expr": forms.Textarea(attrs={"rows": 3, "class": "mono"}),
         }
@@ -471,12 +476,20 @@ class ReleaseSourceForm(TagsMixin, forms.ModelForm):
             "keep_versions": _("Keep"), "keep_unit": _("Unit"),
             "approve_kept_versions": _("Also allow the older kept versions"),
             "include_dependencies": _("Allow the dependencies"),
+            "list_format": _("Format"), "list_entries": _("Versions in the list"),
+            "list_version_key": _("Version field"), "list_downloads": _("Downloads in an entry"),
+            "list_url_key": _("URL field"), "list_filters": _("Filters"),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # only for a download list: the model checks them there
+        for name in ("list_format", "list_entries", "list_version_key", "list_url_key"):
+            self.fields[name].required = False
         self.fields["identifier"].widget.icons = self.instance.identifier_icons or {}
         self.fields["identifier"].label = _("Packages")
+        # the template shows the help of the chosen catalog (sources/_form.html), not of all of them
+        self.fields["identifier"].help_text = ""
         self.fields["kind"].label = _("Catalog")
         self.fields["keep_versions"].help_text = ""
         self.fields["keep_unit"].required = False
@@ -487,6 +500,9 @@ class ReleaseSourceForm(TagsMixin, forms.ModelForm):
 
     def clean_picked(self):
         return clean_picked(self.cleaned_data["picked"])
+
+    def clean_list_format(self):
+        return self.cleaned_data["list_format"] or ReleaseSource.ListFormat.JSON
 
     def clean_keep_unit(self):
         return self.cleaned_data["keep_unit"] or ReleaseSource.KeepUnit.VERSIONS
@@ -501,6 +517,9 @@ class ReleaseSourceForm(TagsMixin, forms.ModelForm):
         if kind not in HISTORY_KINDS or not cleaned_data.get("keep_versions"):
             cleaned_data["approve_kept_versions"] = False
             self.instance.approve_kept_versions = False
+        # a download list has no dates: the form hides the unit
+        if kind == ReleaseSource.Kind.URL_LIST:
+            cleaned_data["keep_unit"] = ReleaseSource.KeepUnit.VERSIONS
         return cleaned_data
 
     def save(self, commit=True):
@@ -986,6 +1005,10 @@ class EventPackage:
     suggestion: object = None
 
 
+# not offered for the packages of events: a URL is the file itself, a download list needs the package rule form
+NO_EVENT_PACKAGE_KINDS = (ReleaseSource.Kind.URL, ReleaseSource.Kind.URL_LIST)
+
+
 class EventPackagesForm(ApprovePackagesForm):
     """The packages of blocked events: each suggestion can be changed before saving (on/off, catalog, identifier,
     package rule), into a new or an existing package rule of its catalog"""
@@ -1000,7 +1023,7 @@ class EventPackagesForm(ApprovePackagesForm):
         super().__init__(*args, packages=packages, **kwargs)
         del self.fields["note"]
         kinds = [(value, SHORT_KIND_LABELS[value]) for value in ReleaseSource.Kind.values
-                 if value != ReleaseSource.Kind.URL]
+                 if value not in NO_EVENT_PACKAGE_KINDS]
         all_sources = list(ReleaseSource.objects.order_by("name"))
         self.sources = {source.pk: source for source in all_sources}
         for package in self.packages:
@@ -1029,7 +1052,7 @@ class EventPackagesForm(ApprovePackagesForm):
     def bulk_kinds(self):
         """The catalogs for the bar "for all checked" (no name: never sent, forms.js copies into the rows)"""
         return [(value, SHORT_KIND_LABELS[value]) for value in ReleaseSource.Kind.values
-                if value != ReleaseSource.Kind.URL]
+                if value not in NO_EVENT_PACKAGE_KINDS]
 
     @property
     def bulk_targets(self):
@@ -1116,7 +1139,10 @@ class ApproveOtherForm(CelPolicyMixin, TagsMixin):
 
     # a package rule: a new one, or more identifiers for an existing one
     package_target = forms.ChoiceField(label=_("Package rule"))
-    package_kind = forms.ChoiceField(choices=ReleaseSource.Kind.choices, initial=ReleaseSource.Kind.GITHUB_RELEASE,
+    # not a download list: it needs the fields of the package rule form
+    package_kind = forms.ChoiceField(choices=[(value, label) for value, label in ReleaseSource.Kind.choices
+                                              if value != ReleaseSource.Kind.URL_LIST],
+                                     initial=ReleaseSource.Kind.GITHUB_RELEASE,
                                      label=_("Catalog"))
     package_identifiers = forms.CharField(
         required=False, label=_("Packages"), widget=IdentifiersWidget,

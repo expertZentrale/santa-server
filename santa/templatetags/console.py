@@ -1,3 +1,5 @@
+from urllib.parse import urlsplit
+
 from django import template
 from django.utils.html import format_html
 
@@ -73,6 +75,19 @@ def pending_requests(context):
 @register.filter
 def get_item(mapping, key):
     return (mapping or {}).get(key) or {}
+
+
+URL_KINDS = ("URL", "URL_LIST")
+
+
+@register.filter
+def package_label(identifier, kind):
+    """How a package of a package rule is named: a URL by its file (and host), not as a long URL twice"""
+    if kind not in URL_KINDS:
+        return {"title": identifier}
+    parts = urlsplit(identifier)
+    name = parts.path.rstrip("/").rsplit("/", 1)[-1]
+    return {"title": name or parts.hostname or identifier, "host": parts.hostname or "", "url": identifier}
 
 
 @register.simple_tag(takes_context=True)

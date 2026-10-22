@@ -10,7 +10,7 @@
 {% if stale_versions or stale_rules %}<ul class="messages"><li class="warning">{% if stale_versions %}{% blocktranslate count count=stale_versions %}With these patterns, “Clean up” deletes {{ count }} version{% plural %}With these patterns, “Clean up” deletes {{ count }} versions{% endblocktranslate %}{% if stale_rules %} {% blocktranslate count count=stale_rules %}and {{ count }} more rule.{% plural %}and {{ count }} more rules.{% endblocktranslate %}{% else %}.{% endif %}{% else %}{% blocktranslate count count=stale_rules %}With these patterns, “Clean up” deletes {{ count }} rule.{% plural %}With these patterns, “Clean up” deletes {{ count }} rules.{% endblocktranslate %}{% endif %}</li></ul>{% endif %}
 {% for result in results %}
 <section class="preview-package">
-  <h3><code>{{ result.identifier }}</code></h3>
+  <h3>{% include "console/sources/_identifier.html" with identifier=result.identifier kind=result.kind name="" %}</h3>
   {% if result.error %}<pre class="error-box">{{ result.error }}</pre>{% endif %}
   {% if result.releases %}
   <table class="table compact">

@@ -556,6 +556,7 @@ class ReleaseSource(models.Model):
         HOMEBREW_FORMULA = "HOMEBREW_FORMULA", _("Homebrew formula (bottle)")
         HOMEBREW_CASK = "HOMEBREW_CASK", _("Homebrew cask")
         URL = "URL", _("Direct download URL")
+        URL_LIST = "URL_LIST", _("Download list (JSON)")
         NPM_PACKAGE = "NPM_PACKAGE", _("npm package")
         VSCODE_EXTENSION = "VSCODE_EXTENSION", _("VS Code extension")
         JETBRAINS_PLUGIN = "JETBRAINS_PLUGIN", _("JetBrains plugin (PhpStorm, …)")
@@ -567,7 +568,8 @@ class ReleaseSource(models.Model):
         _("identifiers"),
         help_text=_("One per line, each one is checked on its own and keeps its own versions. "
                   "GitHub: owner/repo (e.g. abiosoft/colima) · Homebrew: formula or cask name, from a tap with its "
-                  "full name (e.g. hashicorp/tap/terraform) · URL: the full URL · "
+                  "full name (e.g. hashicorp/tap/terraform) · URL: the full URL · Download list: the https URL "
+                  "of the list · "
                   "npm: package name (e.g. @esbuild/darwin-arm64) · VS Code: publisher.name "
                   "(e.g. rust-lang.rust-analyzer) · JetBrains: plugin ID (e.g. com.intellij.plugins.watcher)"),
     )
@@ -598,6 +600,30 @@ class ReleaseSource(models.Model):
         _("take the nearest bottle"), default=True,
         help_text=_("Homebrew formula: a bottle for an older macOS counts for the newer ones it runs on, like in "
                   "Homebrew (portable-ruby has only arm64_big_sur, which serves arm64_sequoia too)."),
+    )
+    class ListFormat(models.TextChoices):
+        JSON = "json", "JSON"
+
+    # Download list: where the versions and their download URLs are in the list
+    list_format = models.CharField(_("format"), max_length=8, choices=ListFormat.choices, default=ListFormat.JSON)
+    list_entries = models.CharField(
+        _("versions in the list"), max_length=255, default="versions",
+        help_text=_("The path to the entries, one per version: keys separated by dots, * takes every value of an "
+                    "object (e.g. versions or channels.*)."),
+    )
+    list_version_key = models.CharField(_("version field"), max_length=100, default="version",
+                                        help_text=_("The field of an entry with its version."))
+    list_downloads = models.TextField(
+        _("downloads in an entry"), blank=True,
+        help_text=_("Paths inside an entry to its downloads, one per line (e.g. downloads.app): a list of "
+                    "objects with the URL, or one object."),
+    )
+    list_url_key = models.CharField(_("URL field"), max_length=100, default="url",
+                                    help_text=_("The field of a download with its https URL."))
+    list_filters = models.TextField(
+        _("filters"), blank=True,
+        help_text=_("field=regex, one per line: a download is taken when every one matches a field of the download "
+                    "or of its entry (e.g. platform=^mac-arm64$). Empty = every download."),
     )
     include_prereleases = models.BooleanField(default=False,
                                               help_text=_("GitHub, npm, VS Code, JetBrains (EAP), Homebrew taps"))
@@ -687,6 +713,8 @@ class ReleaseSource(models.Model):
             elif self.kind == self.Kind.GITHUB_RELEASE and identifier.count("/") != 1:
                 identifier_errors.append(gettext("%(identifier)s: use the owner/repo format.") % {
                     "identifier": identifier})
+            elif self.kind == self.Kind.URL_LIST and not identifier.startswith("https://"):
+                identifier_errors.append(gettext("%(identifier)s: only https URLs.") % {"identifier": identifier[:50]})
         if identifier_errors:
             errors["identifier"] = identifier_errors
         else:
@@ -703,6 +731,8 @@ class ReleaseSource(models.Model):
                 errors[name] = pattern_errors
             setattr(self, name, "\n".join(pattern_lines(getattr(self, name))))
         self.binary_pattern = "\n".join(pattern_lines(self.binary_pattern))
+        if self.kind == self.Kind.URL_LIST:
+            errors.update(self._clean_list())
         if self.policy == Policy.CEL and not self.cel_expr:
             errors["cel_expr"] = gettext("Required for the CEL policy.")
         if self.policy != Policy.CEL and self.cel_expr:
@@ -716,6 +746,43 @@ class ReleaseSource(models.Model):
         if errors:
             raise ValidationError(errors)
 
+    def _clean_list(self):
+        """The fields of a download list: its downloads, valid filters, and a number of versions to keep (the list
+        has no dates)"""
+        errors = {}
+        self.list_downloads = "\n".join(pattern_lines(self.list_downloads))
+        if not self.list_downloads:
+            errors["list_downloads"] = gettext("Enter where the downloads of an entry are.")
+        for name in ("list_entries", "list_version_key", "list_url_key"):
+            setattr(self, name, getattr(self, name).strip())
+            if not getattr(self, name):
+                errors[name] = gettext("This field is required.")
+        filter_errors = []
+        for line in pattern_lines(self.list_filters):
+            field, separator, regex = line.partition("=")
+            if not separator or not field.strip():
+                filter_errors.append(gettext("%(line)s: use field=regex.") % {"line": line[:50]})
+                continue
+            try:
+                re.compile(regex)
+            except re.error as e:
+                filter_errors.append(gettext("Invalid regex %(pattern)s: %(error)s") % {"pattern": line[:50],
+                                                                                        "error": e})
+        if filter_errors:
+            errors["list_filters"] = filter_errors
+        self.list_filters = "\n".join(pattern_lines(self.list_filters))
+        if self.keep_unit != self.KeepUnit.VERSIONS:
+            errors["keep_unit"] = gettext("A download list has no dates: keep a number of versions.")
+        return errors
+
+    def list_filter_patterns(self):
+        """[(field, regex)] of the filters of a download list"""
+        filters = []
+        for line in pattern_lines(self.list_filters):
+            field, _separator, regex = line.partition("=")
+            filters.append((field.strip(), re.compile(regex)))
+        return filters
+
     def keep_cutoff(self, now=None):
         """The publication date before which versions are dropped, with a time range to keep"""
         if not self.keep_versions or self.keep_unit == self.KeepUnit.VERSIONS:
@@ -728,7 +795,7 @@ class ReleaseSource(models.Model):
 # whose dependencies are known
 HISTORY_KINDS = (ReleaseSource.Kind.GITHUB_RELEASE, ReleaseSource.Kind.HOMEBREW_FORMULA,
                  ReleaseSource.Kind.NPM_PACKAGE, ReleaseSource.Kind.VSCODE_EXTENSION,
-                 ReleaseSource.Kind.JETBRAINS_PLUGIN)
+                 ReleaseSource.Kind.JETBRAINS_PLUGIN, ReleaseSource.Kind.URL_LIST)
 DEPENDENCY_KINDS = (ReleaseSource.Kind.NPM_PACKAGE, ReleaseSource.Kind.HOMEBREW_FORMULA)
 
 

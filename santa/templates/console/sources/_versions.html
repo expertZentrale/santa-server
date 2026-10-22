@@ -2,10 +2,10 @@
 {% for identifier, item, versions in per_identifier %}
 <section class="card">
   <h2 class="with-icon">{% if item.icon_url %}<img src="{{ item.icon_url }}" alt="" referrerpolicy="no-referrer">{% endif %}
-    {{ item.name|default:identifier }} <code>{{ identifier }}</code>
+    {% include "console/sources/_identifier.html" with kind=source.kind name=item.name %}
     {% if identifier not in source.identifiers %}<span class="badge bad">{% translate "removed, deleted at the next check" %}</span>{% endif %}</h2>
   <table class="table compact">
-    <thead><tr><th>{% translate "Version" %}</th><th>{% translate "Published" %}</th><th>{% translate "Binaries" %}</th><th>{% translate "Approval" %}</th><th></th></tr></thead>
+    <thead><tr><th>{% translate "Version" %}</th><th>{% if source.kind == "URL_LIST" %}{% translate "Files" %}{% else %}{% translate "Published" %}{% endif %}</th><th>{% translate "Binaries" %}</th><th>{% translate "Approval" %}</th><th></th></tr></thead>
     <tbody>
     {% for version in versions %}
       <tr>
@@ -14,7 +14,9 @@
             <ul class="plain">{% for label, has_rules in version.dependency_rows %}<li><code>{{ label }}</code>{% if has_rules %} <span class="badge ok">{% translate "executables allowed" %}</span>{% endif %}</li>{% endfor %}</ul>
             <small class="muted">{% translate "Dependencies without a mark have no executable (scripts, libraries): nothing for Santa to allow." %}</small></details>
           {% elif source.include_dependencies and not version.dependencies_resolved %}<small class="muted">{% translate "dependencies at the next check" %}</small>{% endif %}</td>
-        <td>{{ version.published_at|default:version.created_at|date:"d.m.Y" }}</td>
+        {# a download list has no dates: its files #}
+        <td>{% if source.kind == "URL_LIST" %}<div class="version-files">{% for name in version.files %}<span class="chip small">{{ name }}</span>{% empty %}<span class="muted">–</span>{% endfor %}</div>
+          <small class="muted">{% blocktranslate with date=version.created_at|date:"d.m.Y" %}found on {{ date }}{% endblocktranslate %}</small>{% else %}{{ version.published_at|default:version.created_at|date:"d.m.Y" }}{% endif %}</td>
         <td><a href="{% url 'console:rules' %}?version={{ version.pk }}">{{ version.binary_count }}</a></td>
         <td>{% if not version.binary_count %}<span class="muted">{% translate "no executable, nothing to allow" %}</span>
           {% elif version.auto_enable_pending %}<span class="badge info">{% blocktranslate with date=version.auto_enable_at|date:"d.m.Y H:i" %}automatic on {{ date }}{% endblocktranslate %}</span>
