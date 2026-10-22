@@ -13,7 +13,10 @@
   *field = value*, and then either takes the downloads the entry lists (path, URL field, optionally only
   the downloads with *field = value*) or builds the URL from fields of the entry (an https URL with
   `{field}`, dots for nested fields). This replaces the text fields for download paths, URL field and
-  `field=regex` filters; existing package rules and older export files are converted automatically.
+  `field=regex` filters; existing package rules and older export files are converted automatically. A
+  filter that is not a single value (`^value$`), or a third one, can't become a condition: the package
+  rule is then disabled with the filter named in its error (import: a warning), to be checked instead of
+  taking other downloads.
 - **One version for the whole list.** Optionally, every state of a download list is one version with
   the downloads of all its entries, named after a name field and the version field. One package rule
   can then cover, for example, all browsers a test framework's browser manifest pins; *Keep* counts
@@ -31,6 +34,10 @@
 - **Clean up after changed download rows.** *Clean up* now finds the rules of a download row that was
   removed or changed: files remember their row, older ones are matched by file name and the row's
   condition.
+- **Changed downloads are recorded again.** A version of a download list remembers its download URLs;
+  when the same version name comes with other downloads (a row changed, the list moved its files), the
+  check records it again and keeps its approval. Versions recorded before are recorded once more at the
+  next check.
 - **Package rule preview.** With saved, unchanged download rows the preview no longer reports "Add at
   least one download", and a preview draft restored from before the table no longer breaks the form
   ("ManagementForm data is missing").

@@ -14,7 +14,10 @@
   aufführt (Pfad, URL-Feld, optional nur die Downloads mit *Feld = Wert*), oder baut die URL aus Feldern
   des Eintrags (eine https-URL mit `{Feld}`, Punkte für verschachtelte Felder). Das ersetzt die
   Textfelder für Download-Pfade, URL-Feld und `feld=regex`-Filter; bestehende Paketregeln und ältere
-  Exportdateien werden automatisch umgewandelt.
+  Exportdateien werden automatisch umgewandelt. Ein Filter, der nicht genau einen Wert beschreibt
+  (`^wert$`), oder ein dritter Filter lässt sich nicht als Bedingung übernehmen: Die Paketregel wird dann
+  deaktiviert und nennt den Filter in ihrem Fehler (beim Import als Warnung), damit sie geprüft wird,
+  statt andere Downloads zu nehmen.
 - **Eine Version für die ganze Liste.** Auf Wunsch ist jeder Stand einer Download-Liste eine Version mit
   den Downloads aller ihrer Einträge, benannt nach einem Namensfeld und dem Versionsfeld. Eine
   Paketregel kann so zum Beispiel alle Browser abdecken, die das Browser-Manifest eines Test-Frameworks
@@ -34,6 +37,10 @@
 - **Aufräumen nach geänderten Download-Zeilen.** *Aufräumen* findet jetzt die Regeln einer entfernten
   oder geänderten Download-Zeile: Dateien merken sich ihre Zeile, ältere werden über den Dateinamen und
   die Bedingung der Zeile zugeordnet.
+- **Geänderte Downloads werden neu erfasst.** Eine Version einer Download-Liste merkt sich ihre
+  Download-URLs; kommt derselbe Versionsname mit anderen Downloads (eine Zeile geändert, die Liste hat ihre
+  Dateien verschoben), erfasst die Prüfung sie neu und behält ihre Freigabe. Bereits erfasste Versionen werden
+  bei der nächsten Prüfung einmal neu erfasst.
 - **Vorschau der Paketregel.** Mit gespeicherten, unveränderten Download-Zeilen meldet die Vorschau
   nicht mehr „Fügen Sie mindestens einen Download hinzu“, und ein wiederhergestellter Vorschau-Entwurf
   von vor der Tabelle bricht das Formular nicht mehr („ManagementForm data is missing“).

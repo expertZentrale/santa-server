@@ -1202,24 +1202,34 @@ def _fill_template(entry, template):
     return None if missing else url
 
 
+def _condition(row, kind, *objects):
+    """A condition of a row (kind "entry" or "download": field = value, exact) on the first of the objects that has
+    the field: the entry, or the download then its entry and the other way round, as the filters before the table"""
+    field = row.get(f"{kind}_field")
+    if not field:
+        return True
+    for item in objects:
+        if (value := _list_value(item, field)) is not None:
+            return value == row.get(f"{kind}_value")
+    return False
+
+
 def _for_entry(row, entry):
     """A row of the downloads is for every entry, or only for those with its value (exact)"""
-    return not row.get("entry_field") or _list_value(entry, row["entry_field"]) == row.get("entry_value")
+    return _condition(row, "entry", entry)
 
 
 def _row_downloads(row, entry):
     """(download, URL) of a row of the downloads for an entry: the URL built from its template (the download is the
     entry), or the downloads at its path with their URL"""
-    if not _for_entry(row, entry):
-        return
     if row.get("url_from") == LIST_SOURCE_TEMPLATE:
-        if url := _fill_template(entry, row.get("template", "")):
+        if _for_entry(row, entry) and (url := _fill_template(entry, row.get("template", ""))):
             yield entry, url
         return
     for item in _list_path(entry, row.get("path", "")):
         if not isinstance(item, dict):
             continue
-        if row.get("download_field") and _list_value(item, row["download_field"]) != row.get("download_value"):
+        if not _condition(row, "entry", entry, item) or not _condition(row, "download", item, entry):
             continue
         if url := _list_field([item], row.get("url_field") or "url"):
             yield item, url
@@ -1296,7 +1306,9 @@ def _url_list_releases(session, source, identifier):
             if not url.startswith("https://"):
                 skipped.append(url)
                 continue
-            if any(asset.url == url for asset in release.assets):
+            if same := next((asset for asset in release.assets if asset.url == url), None):
+                # another row gives the same file: it has both rows, "Clean up" keeps it while one of them is there
+                same.match = (*same.match, list_row_key(row))
                 continue
             values = tuple(value for value in (_list_field([item], key) for key in item) if value)
             release.assets.append(Asset(name=url.split("?")[0].rsplit("/", 1)[-1] or "download", url=url,
@@ -2195,16 +2207,31 @@ def cleanup_release_source(source):
     return len(versions), rule_count + other_count
 
 
+def list_fingerprint(source, release):
+    """The download URLs of a version of a download list: the same name with other downloads (a row changed, the
+    list moved its files) is recorded again. Empty for the other catalogs."""
+    if source.kind != ReleaseSource.Kind.URL_LIST:
+        return ""
+    return hashlib.sha256("\n".join(sorted(asset.url for asset in release.assets)).encode()).hexdigest()
+
+
 def _record_release(session, source, identifier, release, collected=None, progress=None):
     """Download a release and create its version and rules. Return (the new ReleaseVersion or None, errors).
 
     collected: its (binaries, errors, dependency labels) of _collect_releases(), downloaded with others before.
+    A version of a download list whose downloads changed is replaced; it stays approved if it was.
     """
     versions = source.versions.filter(identifier=identifier)
     if not release.assets:
         raise ReleaseError(f"No matching asset in release {release.version or '-'}")
-    if release.version and versions.filter(version=release.version).exists():
-        return None, []
+    fingerprint = list_fingerprint(source, release)
+    replaced = None
+    if release.version and (existing := versions.filter(version=release.version).first()):
+        if existing.fingerprint == fingerprint:
+            return None, []
+        replaced = existing
+    if replaced:
+        versions = versions.exclude(pk=replaced.pk)
     if release.version and not version_matches(source, release.version):
         logger.info("Release source %s: %s version %s skipped by the version pattern",
                     source.name, identifier, release.version)
@@ -2222,16 +2249,26 @@ def _record_release(session, source, identifier, release, collected=None, progre
     if included:
         notes.append(f"Dependencies: {', '.join(included)}")
     with transaction.atomic():
+        enabled = None
+        pending = source.auto_approve and source.auto_approve_delay_days > 0
+        if replaced:
+            # its approval, not the one of a new version
+            enabled = replaced.rules.filter(is_enabled=True).exists()
+            pending = replaced.auto_enable_pending
+            logger.info("Release source %s: %s version %s has other downloads, recorded again",
+                        source.name, identifier, replaced.version)
+            replaced.delete()
         release_version = ReleaseVersion.objects.create(
             source=source, identifier=identifier, version=version, published_at=release.published_at,
+            fingerprint=fingerprint,
             binary_count=len({b.info.sha256 for b in binaries}),
             dependency_binary_count=len({b.info.sha256 for b in binaries if b.dependency}
                                         - {b.info.sha256 for b in binaries if not b.dependency}),
-            auto_enable_pending=source.auto_approve and source.auto_approve_delay_days > 0,
+            auto_enable_pending=pending,
             notes="\n".join(notes + errors)[:10000] or NO_EXECUTABLES_NOTE,
             dependencies=included, dependencies_resolved=uses_dependencies(source),
         )
-        create_release_rules(source, release_version, binaries)
+        create_release_rules(source, release_version, binaries, enabled=enabled)
     logger.info("Release source %s: %s version %s, %s binaries",
                 source.name, identifier, version, release_version.binary_count)
     return release_version, errors
@@ -2357,11 +2394,14 @@ def _sync_kept_versions(session, source, identifier, errors, latest, progress=No
     """The older versions in the range to keep that have no rules yet"""
     limit = source.keep_versions if source.keep_unit == ReleaseSource.KeepUnit.VERSIONS else HISTORY_LIMIT
     known = dict(source.versions.filter(identifier=identifier).values_list("version", "published_at"))
+    fingerprints = dict(source.versions.filter(identifier=identifier).values_list("version", "fingerprint"))
     # the registry of Homebrew needs a request per version: not for the ones recorded already
     options = {"known": known} if source.kind == ReleaseSource.Kind.HOMEBREW_FORMULA else {}
     releases = kept_releases(source, HISTORY[source.kind](session, source, identifier, limit, **options))
     new_versions = []
-    missing = [release for release in releases if release.version not in known][:MAX_KEPT_VERSIONS_PER_SYNC]
+    # a version of a download list with other downloads under its name too (recorded again, _record_release)
+    missing = [release for release in releases if release.version not in known
+               or fingerprints[release.version] != list_fingerprint(source, release)][:MAX_KEPT_VERSIONS_PER_SYNC]
     if source.kind == ReleaseSource.Kind.HOMEBREW_FORMULA:
         for release in missing:
             # a bottle without its dependency versions: the ones of the current formula, in the versions of its day
@@ -2382,10 +2422,14 @@ def _sync_kept_versions(session, source, identifier, errors, latest, progress=No
             errors.append(f"{release.version}: {e}")
             continue
         except ReleaseError as e:
+            if release.version in known:
+                # recorded already, with other downloads (a download list): it stays as it is
+                errors.append(f"{release.version}: {e}")
+                continue
             # an old release without a matching file: recorded with its reason, not tried again at every sync
             release_version = ReleaseVersion.objects.create(
                 source=source, identifier=identifier, version=release.version, published_at=release.published_at,
-                notes=str(e)[:10000])
+                fingerprint=list_fingerprint(source, release), notes=str(e)[:10000])
             warnings = []
         errors += [f"{release.version}: {warning}" for warning in warnings]
         if release_version and release_version.binary_count:

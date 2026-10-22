@@ -267,16 +267,64 @@ class UrlListTestCase(ReleaseSourceBase):
     def test_files_of_older_versions(self):
         """The text fields before the table: paths, URL field, filters (the first for the downloads)"""
         rows, left_out = legacy_list_sources("downloads.chrome\ndownloads.headless", "url",
-                                             "platform=^mac\\-arm64$\nchannel=^Stable$\nother=x")
+                                             "platform=^mac\\-arm64$\nkind=^mac-(arm64|x64)$\nchannel=^Stable$\n"
+                                             "other=^x$")
         self.assertEqual(rows, [at("downloads.chrome", entry_field="channel", entry_value="Stable"),
                                 at("downloads.headless", entry_field="channel", entry_value="Stable")])
-        self.assertEqual(left_out, [("other", "x")])
+        # a regex of several values, and a third filter: named, not changed into something else
+        self.assertEqual(left_out, ["kind=^mac-(arm64|x64)$", "other=^x$"])
         data = json.loads(json.dumps(export_config()))
         data["release_sources"] = [{"name": "old", "kind": "URL_LIST", "identifier": LIST_URL, "groups": [],
                                     "list_downloads": "downloads.app", "list_url_key": "url",
                                     "list_filters": "platform=^mac-arm64$"}]
         import_config(data)
         self.assertEqual(ReleaseSource.objects.get(name="old").list_sources, [at("downloads.app")])
+        self.assertTrue(ReleaseSource.objects.get(name="old").is_enabled)
+        data["release_sources"][0].update(name="regex", list_filters="platform=mac")
+        report = import_config(data)
+        source = ReleaseSource.objects.get(name="regex")
+        self.assertFalse(source.is_enabled)
+        self.assertEqual(source.list_sources, [at("downloads.app", platform=None)])
+        self.assertTrue(any("filters not taken over" in warning and "platform=mac" in warning
+                            for warning in report["warnings"]))
+
+    def test_the_conditions_look_at_the_download_and_its_entry(self):
+        """As the filters before the table: a condition of the downloads also finds a field of the entry"""
+        source = self.list_source(list_sources=[at("downloads.app", platform=None, download_field="revision",
+                                                   download_value="1")])
+        session = fake_session(list_routes(["1.0"]))
+        sync_release_source(source, session)
+        self.assertEqual(len(self.downloaded(session)), 3)
+
+    def test_malformed_rows_are_errors(self):
+        source = ReleaseSource(name="x", kind=ReleaseSource.Kind.URL_LIST, identifier=LIST_URL, list_sources=["bad"])
+        with self.assertRaises(ValidationError) as raised:
+            source.full_clean()
+        self.assertIn("Download 1: not a row.", raised.exception.message_dict["list_sources"])
+        source.list_sources = {"a": 1}
+        with self.assertRaises(ValidationError) as raised:
+            source.full_clean()
+        self.assertIn("The downloads must be a list of rows.", raised.exception.message_dict["list_sources"])
+
+    def test_other_downloads_under_the_same_version_record_it_again(self):
+        source = self.list_source(list_sources=[at("downloads.app")], auto_approve=False)
+        sync_release_source(source, fake_session(list_routes(["1.0"])))
+        version = source.versions.get()
+        version.rules.update(is_enabled=True)
+        # the same check again: nothing new
+        sync_release_source(source, fake_session(list_routes(["1.0"])))
+        self.assertEqual(source.versions.get().pk, version.pk)
+        # a row changed: the files of the same version name are others, recorded again and still approved
+        source.list_sources = [at("downloads.headless")]
+        source.save()
+        session = fake_session(list_routes(["1.0"]))
+        sync_release_source(source, session)
+        again = source.versions.get()
+        self.assertNotEqual(again.pk, version.pk)
+        self.assertEqual(self.downloaded(session), ["https://downloads.example/1.0/mac-arm64/headless.zip"])
+        self.assertEqual([file["asset"] for rule in again.rules.all() for file in rule.release_files],
+                         ["headless.zip"])
+        self.assertTrue(all(rule.is_enabled for rule in again.rules.all()))
 
     def test_the_list_needs_https(self):
         with self.assertRaisesMessage(ReleaseError, "only https"):
@@ -382,6 +430,15 @@ class UrlTemplatesTestCase(ReleaseSourceBase):
         self.assertEqual(sorted(rule.release_files[0]["asset"] for rule in source.rules.all()),
                          ["app-mac-arm64.zip", "helper.zip"])
         self.assertEqual(source.versions.get().binary_count, 2)
+
+    def test_a_file_of_two_rows_stays_with_one_of_them(self):
+        files = ["other/1555/other.zip"]
+        rows = [built(f"{CDN}/other/{{revision}}/other.zip", "other"), built(f"{CDN}/other/1555/other.zip", "other")]
+        source = self.tools_source("tools", list_version_key="revision", list_one_version=True, list_sources=rows)
+        sync_release_source(source, fake_session(tools_routes(files)))
+        source.list_sources = [rows[1]]
+        source.save()
+        self.assertEqual(stale_rules(source), [])
 
     def test_clean_up_of_files_recorded_before_the_rows_were_kept(self):
         """Without the mark of their row: by the name of the file and the condition of the row"""

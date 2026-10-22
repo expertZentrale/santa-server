@@ -8,9 +8,14 @@ from django.db import migrations, models
 logger = logging.getLogger(__name__)
 
 
-def _exact(regex):
-    """^mac-arm64$ → mac-arm64 (as santa.models._exact; copied, the migration must not change with the app)"""
-    return re.sub(r"\\(.)", r"\1", regex.removeprefix("^").removesuffix("$"))
+LITERAL_FILTER = re.compile(r"\^((?:[^\\.^$*+?()\[\]{}|]|\\.)*)\$")
+
+
+def _value(regex):
+    """The value of a filter of one value (^mac-arm64$), None for any other regex (as santa.models; copied, the
+    migration must not change with the app)"""
+    match = LITERAL_FILTER.fullmatch(regex.strip())
+    return re.sub(r"\\(.)", r"\1", match.group(1)) if match else None
 
 
 def _lines(text):
@@ -19,17 +24,21 @@ def _lines(text):
 
 def to_rows(apps, schema_editor):
     """The text fields of the downloads (paths, URL field, field=regex filters) become rows of list_sources: the first
-    filter for the downloads, the second for the entries (santa.models.legacy_list_sources)"""
+    filter of one value for the downloads, the second for the entries (santa.models.legacy_list_sources). A filter
+    that can't be taken over (a regex of several values, more than two) disables the package rule, with the reason
+    as its error, so it is checked instead of taking other downloads."""
     ReleaseSource = apps.get_model("santa", "ReleaseSource")
     for source in ReleaseSource.objects.filter(kind="URL_LIST"):
-        filters = []
+        taken, left_out = [], []
         for line in _lines(source.list_filters):
             field, _separator, regex = line.partition("=")
-            filters.append((field.strip(), _exact(regex.strip())))
-        download_filter = filters[0] if filters else ("", "")
-        entry_filter = filters[1] if len(filters) > 1 else ("", "")
-        if len(filters) > 2:
-            logger.warning("Release source %s: filters left out: %s", source.name, filters[2:])
+            value = _value(regex)
+            if value is None or len(taken) == 2:
+                left_out.append(line)
+            else:
+                taken.append((field.strip(), value))
+        download_filter = taken[0] if taken else ("", "")
+        entry_filter = taken[1] if len(taken) > 1 else ("", "")
         rows = []
         for path in _lines(source.list_downloads):
             row = {"entry_field": entry_filter[0], "entry_value": entry_filter[1], "url_from": "path", "path": path,
@@ -37,7 +46,14 @@ def to_rows(apps, schema_editor):
                    "download_value": download_filter[1]}
             rows.append({key: value for key, value in row.items() if value})
         source.list_sources = rows
-        source.save(update_fields=["list_sources"])
+        fields = ["list_sources"]
+        if left_out:
+            logger.warning("Release source %s: filters not taken over, disabled: %s", source.name, left_out)
+            source.is_enabled = False
+            source.last_error = ("The downloads became a table: these filters could not be taken over, check the "
+                                 "downloads and enable the package rule again: " + "; ".join(left_out))
+            fields += ["is_enabled", "last_error"]
+        source.save(update_fields=fields)
 
 
 class Migration(migrations.Migration):

@@ -564,26 +564,40 @@ def normalize_list_source(row):
     return {key: value for key, value in row.items() if value}, errors
 
 
-def _exact(regex):
-    """The value a filter regex of the old text fields stands for: ^mac-arm64$ → mac-arm64"""
-    return re.sub(r"\\(.)", r"\1", regex.removeprefix("^").removesuffix("$"))
+# a filter of the old text fields that stands for one value: ^value$, only escaped special characters inside
+LITERAL_FILTER = re.compile(r"\^((?:[^\\.^$*+?()\[\]{}|]|\\.)*)\$")
+
+
+def legacy_filter_value(regex):
+    """The value of a filter regex of the old text fields, None when it isn't one value (^mac-arm64$ → mac-arm64; a
+    part of a value or alternatives can't become a condition of a row)"""
+    match = LITERAL_FILTER.fullmatch(regex.strip())
+    return re.sub(r"\\(.)", r"\1", match.group(1)) if match else None
 
 
 def legacy_list_sources(downloads, url_key="url", filters=""):
     """The rows of the downloads from the text fields of a download list before the table (list_downloads, one path
-    per line; list_url_key; list_filters, field=regex per line): the first filter is taken for the downloads, the
-    second for the entries; (rows, the filters left out)"""
-    parsed = []
+    per line; list_url_key; list_filters, field=regex per line). (rows, the filters that could not be taken over).
+
+    A filter matched the download or its entry, the conditions of a row do the same for path rows: the first filter
+    becomes the condition of the downloads, the second the one of the entries. Only filters of one value; more than
+    two, or a regex of several values, are left out and named, so the package rule can be checked.
+    """
+    taken, left_out = [], []
     for line in pattern_lines(filters):
         field, _separator, regex = line.partition("=")
-        parsed.append((field.strip(), _exact(regex.strip())))
-    download_filter = parsed[0] if parsed else ("", "")
-    entry_filter = parsed[1] if len(parsed) > 1 else ("", "")
+        value = legacy_filter_value(regex)
+        if value is None or len(taken) == 2:
+            left_out.append(line)
+        else:
+            taken.append((field.strip(), value))
+    download_filter = taken[0] if taken else ("", "")
+    entry_filter = taken[1] if len(taken) > 1 else ("", "")
     rows = [{"entry_field": entry_filter[0], "entry_value": entry_filter[1], "url_from": LIST_SOURCE_PATH,
              "path": path, "url_field": url_key or "url",
              "download_field": download_filter[0], "download_value": download_filter[1]}
             for path in pattern_lines(downloads)]
-    return [{key: value for key, value in row.items() if value} for row in rows], parsed[2:]
+    return [{key: value for key, value in row.items() if value} for row in rows], left_out
 
 
 def pattern_lines(text):
@@ -814,7 +828,12 @@ class ReleaseSource(models.Model):
             if not getattr(self, name):
                 errors[name] = gettext("This field is required.")
         rows, row_errors = [], []
+        if not isinstance(self.list_sources, list):
+            row_errors.append(gettext("The downloads must be a list of rows."))
         for index, row in enumerate(self.list_sources if isinstance(self.list_sources, list) else []):
+            if not isinstance(row, dict):
+                row_errors.append(gettext("Download %(number)s: not a row.") % {"number": index + 1})
+                continue
             row, problems = normalize_list_source(row)
             rows.append(row)
             row_errors += [gettext("Download %(number)s: %(error)s") % {"number": index + 1, "error": problem}
@@ -860,6 +879,8 @@ class ReleaseVersion(models.Model):
     dependencies_resolved = models.BooleanField(default=False)
     # the binaries of the dependencies in binary_count: the clean up takes them off with their rules
     dependency_binary_count = models.PositiveIntegerField(default=0)
+    # a download list: its download URLs (list_fingerprint); other ones under the same version name record it again
+    fingerprint = models.CharField(max_length=64, blank=True, editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

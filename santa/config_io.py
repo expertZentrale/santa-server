@@ -72,12 +72,16 @@ def legacy_usb(item):
 
 def legacy_list(item):
     """Files of older versions have the downloads of a download list as text (list_downloads, list_url_key,
-    list_filters) instead of the rows of list_sources"""
+    list_filters) instead of the rows of list_sources. (the item, the filters that could not be taken over: then the
+    package rule comes disabled, to be checked)"""
     if "list_downloads" not in item or "list_sources" in item:
-        return item
-    rows, _left_out = legacy_list_sources(item.get("list_downloads", ""), item.get("list_url_key", "url"),
-                                          item.get("list_filters", ""))
-    return {**item, "list_sources": rows}
+        return item, []
+    rows, left_out = legacy_list_sources(item.get("list_downloads", ""), item.get("list_url_key", "url"),
+                                         item.get("list_filters", ""))
+    item = {**item, "list_sources": rows}
+    if left_out:
+        item["is_enabled"] = False
+    return item, left_out
 
 
 # The import preview (console): every item of the file by its list and index, e.g. "rules:3"
@@ -385,7 +389,11 @@ class _Importer:
             created = source is None
             if created:
                 source = ReleaseSource(name=name)
-            changed = self._apply(source, legacy_list(item), RELEASE_SOURCE_FIELDS) or created
+            item, left_out = legacy_list(item)
+            if left_out:
+                self.warnings.append(f"Release source {name}: filters not taken over, check its downloads (disabled): "
+                                     f"{'; '.join(left_out)}")
+            changed = self._apply(source, item, RELEASE_SOURCE_FIELDS) or created
             if changed and not self.save(source, f"Release source {name}"):
                 continue
             groups = self.resolve_groups(item.get("groups"), f"Release source {name}")
