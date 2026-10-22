@@ -25,6 +25,8 @@ urlpatterns = [
     path("events/", views_events.events, name="events"),
     path("events/updates/", views_events.event_updates, name="event_updates"),
     path("events/create-rules/", views_events.events_create_rules, name="events_create_rules"),
+    path("events/create-rules/binaries/", views_events.events_create_rules_binaries,
+         name="events_create_rules_binaries"),
     path("events/bulk/", views_events.events_bulk, name="events_bulk"),
     path("events/resolve/", views_events.events_resolve, name="events_resolve"),
     path("events/ignore/", views_events.events_ignore, name="events_ignore"),

@@ -7,7 +7,8 @@
     {% if access_request.link %}<dt>{% translate "Link" %}</dt><dd><a href="{{ access_request.link }}" rel="noopener noreferrer" target="_blank">{{ access_request.link }}</a></dd>{% endif %}
     {% if access_request.kind == "PACKAGE" %}<dt>{% translate "Packages" %}</dt><dd>{% include "request/_packages.html" with packages=access_request.packages.all %}</dd>{% endif %}
     <dt>{% translate "Macs" %}</dt><dd>{% for machine in requester_machines %}{% url 'console:machine' machine.pk as machine_url %}<a href="{{ machine_url }}" hx-get="{{ machine_url }}" hx-target="#drawer">{{ machine.hostname|default:machine.serial_number }}</a> ({{ machine.group.name }}){% if not forloop.last %}, {% endif %}{% empty %}<span class="muted">{% translate "none found for this user" %}</span>{% endfor %}</dd>
-    {% if access_request.decision_note %}<dt>{% translate "Note" %}</dt><dd class="prewrap">{{ access_request.decision_note }}</dd>{% endif %}
+    {% if access_request.decision_note %}<dt>{% translate "Message to the user" %}</dt><dd class="prewrap">{{ access_request.decision_note }}</dd>{% endif %}
+    {% if access_request.review_note %}<dt>{% translate "Note for reviewers" %}</dt><dd class="prewrap">{{ access_request.review_note }}</dd>{% endif %}
     {% if access_request.result_rule %}<dt>{% translate "Rule" %}</dt><dd>{% url 'console:rule' access_request.result_rule.pk as rule_url %}<a href="{{ rule_url }}" hx-get="{{ rule_url }}" hx-target="#drawer">{{ access_request.result_rule }}</a></dd>{% endif %}
     {% if access_request.result_source %}<dt>{% translate "Package rule" %}</dt><dd>{% url 'console:source' access_request.result_source.pk as source_url %}<a href="{{ source_url }}" hx-get="{{ source_url }}" hx-target="#drawer">{{ access_request.result_source }}</a></dd>{% endif %}
   </dl>
@@ -48,7 +49,7 @@
     </table>
     <p class="help small">{% translate "Unticked packages are not approved. The packages going into a new package rule become one new package rule per catalog." %}</p>
     {% include "console/sources/_new_source_fields.html" with form=approve_form %}
-    {% include "console/_field.html" with field=approve_form.note %}
+    {% include "console/requests/_decision_notes.html" with form=approve_form %}
     {% elif access_request.kind == "OTHER" %}
     {% include "console/requests/_approve_other.html" with form=approve_form %}
     {% else %}
@@ -61,7 +62,7 @@
 <section class="card"><h2>{% translate "Deny" %}</h2>
   <form method="post" action="{% url 'console:request_deny' access_request.pk %}" class="stack"{% if in_drawer %} hx-post="{% url 'console:request_deny' access_request.pk %}" hx-target="#drawer"{% endif %}>
     {% csrf_token %}
-    {% include "console/_field.html" with field=deny_form.note %}
+    {% include "console/requests/_decision_notes.html" with form=deny_form %}
     <div class="actions"><button class="button danger">{% translate "Deny" %}</button></div>
   </form>
 </section>

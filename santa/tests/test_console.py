@@ -686,21 +686,27 @@ class ConsoleEventsTestCase(ConsoleBase):
     def test_the_drawer_follows_the_selection(self):
         a = self.make_event(signing_id="ABCDE12345:com.example.a", team_id="ABCDE12345")
         b = self.make_event(sha256=SHA_B, file_name="unsigned")
-        c = self.make_event(sha256="c" * 64, file_name="third")
-        # b was unchecked by hand, c is new in the selection: checked; the entered values stay
-        response = self.create_rules([a, b, c], refresh="1", known=[SHA_A, SHA_B], include=[SHA_A],
-                                     policy=Policy.BLOCKLIST, new_tags="later", apply="")
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(Rule.objects.exists())
-        form = response.context["form"]
-        self.assertEqual(sorted(form["include"].value()), sorted([SHA_A, "c" * 64]))
-        self.assertEqual(form["policy"].value(), Policy.BLOCKLIST)
-        self.assertEqual(form["new_tags"].value(), "later")
-        self.assertFalse(form.errors)
-        # nothing selected anymore
-        response = self.client.post(reverse("console:events_create_rules"), {"refresh": "1"},
+        Rule.objects.create(rule_type=RuleType.BINARY, identifier=SHA_B, is_global=True)
+        # the drawer: the same form for one binary as for several (forms.js adds and removes binaries)
+        response = self.client.post(reverse("console:events_create_rules"), {"ids": [a.pk]},
                                     headers={"HX-Request": "true"})
-        self.assertContains(response, "Select events in the list.")
+        form = response.context["form"]
+        self.assertEqual(form["rule_type"].value(), None)
+        self.assertEqual([value for value, _label in form.fields["rule_type"].choices],
+                         ["", *RuleType.values])
+        self.assertContains(response, f'data-binaries-url="{reverse("console:events_create_rules_binaries")}"')
+        self.assertContains(response, f'data-sha="{SHA_A}" data-ids="{a.pk}" data-types="SIGNINGID BINARY TEAMID" '
+                                      'data-team="ABCDE12345"')
+        # the binaries added to the selection, checked as a new drawer would: b is allowed already
+        url = reverse("console:events_create_rules_binaries")
+        response = self.client.get(url, {"ids": [b.pk]})
+        self.assertContains(response, f'<li data-sha="{SHA_B}" data-ids="{b.pk}"', count=1)
+        self.assertContains(response, f'value="{SHA_B}">')
+        self.assertNotContains(response, "<form")
+        self.assertContains(self.client.get(url, {"shas": [SHA_A]}), f'name="include" value="{SHA_A}" checked')
+        self.assertEqual(self.client.get(url).content.strip(), b"")
+        self.client.force_login(User.objects.create_user("viewer", is_staff=True))
+        self.assertEqual(self.client.get(url, {"ids": [b.pk]}).status_code, 403)
 
     def test_selected_apps_follow_the_resolved_filter(self):
         event = self.make_event()

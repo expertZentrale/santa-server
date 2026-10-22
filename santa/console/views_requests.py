@@ -374,14 +374,16 @@ def admin_request_detail(request, pk, approve_form=None, deny_form=None):
     })
 
 
-def _decide(access_request, user, status, note):
+def _decide(access_request, user, status, note, review_note=""):
+    """note: the message to the user (mail, /request/), review_note: only for the console"""
     access_request.status = status
     access_request.decided_by = user
     access_request.decided_at = timezone.now()
     access_request.decision_note = note
+    access_request.review_note = review_note
     access_request.save()
     notifications.request_decided(access_request)
-    log_change(user, access_request, f"{access_request.get_status_display()}: {note}"[:500])
+    log_change(user, access_request, f"{access_request.get_status_display()}: {review_note or note}"[:500])
 
 
 @staff_required
@@ -410,7 +412,8 @@ def _approve(request, access_request, progress):
                 _approve_packages(request, access_request, form)
             else:
                 _approve_other(request, access_request, form)
-            _decide(access_request, request.user, AccessRequest.Status.APPROVED, data.get("note", ""))
+            _decide(access_request, request.user, AccessRequest.Status.APPROVED, data.get("note", ""),
+                    data.get("review_note", ""))
     except ValidationError as e:
         form.add_error(None, e)
         return admin_request_detail(request, pk, approve_form=form)
@@ -580,7 +583,8 @@ def admin_request_deny(request, pk):
     form = DenyForm(request.POST)
     if not form.is_valid():
         return admin_request_detail(request, pk, deny_form=form)
-    _decide(access_request, request.user, AccessRequest.Status.DENIED, form.cleaned_data["note"])
+    _decide(access_request, request.user, AccessRequest.Status.DENIED, form.cleaned_data["note"],
+            form.cleaned_data["review_note"])
     access_request.packages.update(status=AccessRequestPackage.Status.DENIED)
     messages.success(request, gettext("Request “%(title)s” denied.") % {"title": access_request.title})
     return drawer_done(request, "console:requests")

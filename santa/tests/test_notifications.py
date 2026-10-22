@@ -64,10 +64,13 @@ class NotificationsTestCase(ConsoleBase):
         access_request = AccessRequest.objects.create(requester=self.user, kind="OTHER", title="Figma",
                                                       justification="x")
         with self.captureOnCommitCallbacks(execute=True):
-            self.client.post(reverse("console:request_deny", args=(access_request.pk,)), {"note": "Use Penpot"})
+            self.client.post(reverse("console:request_deny", args=(access_request.pk,)),
+                             {"tell_user": "on", "note": "Use Penpot", "review_note": "licence too expensive"})
         self.assertEqual(recipients(), ["jdoe@example.com"])
         self.assertEqual(mail.outbox[0].subject, "[Santa Server] Nicht genehmigt: Figma")
         self.assertIn("Use Penpot", mail.outbox[0].body)
+        # the note for the reviewers stays in the console
+        self.assertNotIn("licence", mail.outbox[0].body)
 
     def test_package_versions_by_auto_approve(self):
         self.approver.user_permissions.add(Permission.objects.get(codename="change_rule"))

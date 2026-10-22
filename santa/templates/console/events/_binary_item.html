@@ -1,0 +1,16 @@
+{% load i18n %}{% with sha=binary.event.file_sha256 %}{# A binary of the drawer "create rules"; forms.js reads the data attributes when the selection changes #}
+<li data-sha="{{ sha }}" data-ids="{{ binary.ids }}" data-types="{{ binary.types }}" data-team="{{ binary.event.team_id }}" data-package="{{ binary.package }}"><label>
+  <input type="checkbox" name="include" value="{{ sha }}"{% if binary.include %} checked{% endif %}>
+  <span class="binary-text">
+    <span><strong>{{ binary.event.file_name|default:_("(no name)") }}</strong>
+      <span class="badge">{% blocktranslate count count=binary.events %}{{ count }} event{% plural %}{{ count }} events{% endblocktranslate %} · {% blocktranslate count count=binary.macs %}{{ count }} Mac{% plural %}{{ count }} Macs{% endblocktranslate %}</span></span>
+    {% include "console/rules/_existing.html" with matches=binary.matches compact=True %}
+    <small class="rule-preview" data-binary-preview data-identifiers="{{ binary.identifiers }}" data-suggested="{{ binary.suggested }}"></small>
+  </span>
+</label>
+{% if binary.signing_rule %}<label class="add-signing">
+  <input type="checkbox" name="add_signing" value="{{ sha }}"{% if binary.add_signing %} checked{% endif %}>
+  <span>{% blocktranslate with team=binary.signing_rule.identifier %}Instead: add the prefix below to the Team ID rule {{ team }}, with the scope above{% endblocktranslate %}</span>
+</label>
+<div class="add-signing-prefix"><code>{{ binary.signing_rule.identifier }}:</code><input name="signing_prefix_{{ sha }}" value="{{ binary.signing_prefix }}" class="mono small" aria-label="{% translate 'Signing ID prefix' %}" title="{% translate 'Only the start: it allows every signing ID beginning with it, and replaces the prefixes of the rule it covers.' %}"></div>{% endif %}</li>
+{% endwith %}

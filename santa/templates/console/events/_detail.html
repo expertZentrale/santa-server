@@ -19,7 +19,9 @@
     <dt>{% translate "Team ID" %}</dt><dd class="mono">{{ event.team_id|default:"–" }} {% if event.team_id %}{% include "console/_copy.html" with value=event.team_id %}{% endif %}</dd>
     <dt>{% translate "Certificate" %}</dt><dd>{{ event.cert_cn|default:"–" }}{% if event.cert_sha256 %}<br><span class="mono small">{{ event.cert_sha256 }}</span>{% include "console/_copy.html" with value=event.cert_sha256 %}{% endif %}</dd>
     {% if event.resolved_at %}<dt>{% translate "Resolved" %}</dt><dd>{% blocktranslate with date=event.resolved_at|date:"d.m.Y H:i" by=event.resolved_by|default:"–" %}{{ date }} by {{ by }}{% endblocktranslate %}{% if event.resolution_rule %} · {% url 'console:rule' event.resolution_rule.pk as rule_url %}<a href="{{ rule_url }}" hx-get="{{ rule_url }}" hx-target="#drawer">{% translate "rule" %}</a>{% endif %}</dd>{% endif %}
-    {% if ignores %}<dt>{% translate "Ignored" %}</dt><dd>{% for ignore in ignores %}<span class="badge">{{ ignore }}</span>{% if ignore.expires_at %} <small class="muted">{% blocktranslate with date=ignore.expires_at|date:"d.m.Y H:i" %}until {{ date }}{% endblocktranslate %}</small>{% endif %}{% if not forloop.last %}<br>{% endif %}{% endfor %}
+    {% if ignores %}<dt>{% translate "Ignored" %}</dt><dd>{% for ignore in ignores %}<div class="ignore-detail"><span class="badge">{{ ignore }}</span>{% if ignore.expires_at %} <small class="muted">{% blocktranslate with date=ignore.expires_at|date:"d.m.Y H:i" %}until {{ date }}{% endblocktranslate %}</small>{% endif %}
+      {% if ignore.note %}<span class="prewrap">{{ ignore.note }}</span>{% endif %}
+      {% if ignore.created_by %}<small class="muted">{% blocktranslate with by=ignore.created_by.get_full_name|default:ignore.created_by.get_username date=ignore.created_at|date:"d.m.Y H:i" %}by {{ by }} on {{ date }}{% endblocktranslate %}</small>{% endif %}</div>{% endfor %}
       <small class="muted">{% translate "The lists of the console don't show it." %}</small></dd>{% endif %}
   </dl>
   {% if ignores and perms.santa.delete_ignoredapp %}<form method="post" action="{% url 'console:events_unignore' %}" class="actions facts-actions">{% csrf_token %}

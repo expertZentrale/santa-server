@@ -1,10 +1,12 @@
 import json
+import time
 
 from django.conf import settings
 from django.db import connection
 from django.http import HttpResponse
 from django.utils import timezone, translation
 from django_prometheus.exports import ExportToDjangoView
+from prometheus_client import Histogram
 
 from .users import profile_for, time_zone_for
 
@@ -31,6 +33,50 @@ class HealthCheckMiddleware:
         if request.path == "/metrics" and settings.METRICS_ENABLED:
             return ExportToDjangoView(request)
         return self.get_response(request)
+
+
+VIEW_LABELS = ["view", "method", "rows"]
+view_db_queries = Histogram("santa_view_db_queries", "Database queries of a request, by view", VIEW_LABELS,
+                            buckets=(1, 2, 5, 10, 15, 20, 30, 50, 100, 200))
+view_db_seconds = Histogram("santa_view_db_seconds", "Time of the database queries of a request, by view", VIEW_LABELS,
+                            buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5))
+view_db_connect_seconds = Histogram("santa_view_db_connect_seconds",
+                                    "Time to open a new database connection in a request, by view", VIEW_LABELS,
+                                    buckets=(0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10))
+
+
+class ViewMetricsMiddleware:
+    """The queries of a request by view: django-prometheus counts them only per database.
+
+    rows: the request of the rows of a list (console/_rows.html), the page itself is "0".
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        queries = [0, 0.0]
+
+        def timed(execute, sql, params, many, context):
+            started = time.perf_counter()
+            try:
+                return execute(sql, params, many, context)
+            finally:
+                queries[0] += 1
+                queries[1] += time.perf_counter() - started
+
+        # set by santa.db when the request opens a connection
+        connection.connect_seconds = None
+        with connection.execute_wrapper(timed):
+            response = self.get_response(request)
+        match = getattr(request, "resolver_match", None)
+        if match is not None:
+            labels = (match.view_name, request.method, "1" if request.headers.get("X-Santa-Rows") == "1" else "0")
+            view_db_queries.labels(*labels).observe(queries[0])
+            view_db_seconds.labels(*labels).observe(queries[1])
+            if connection.connect_seconds is not None:
+                view_db_connect_seconds.labels(*labels).observe(connection.connect_seconds)
+        return response
 
 
 class UserLanguageMiddleware:

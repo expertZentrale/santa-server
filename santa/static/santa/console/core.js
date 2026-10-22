@@ -829,6 +829,11 @@
     if (connectionLost) recovered();
   });
   document.addEventListener("htmx:sendAbort", (event) => inflight.delete(event.detail.xhr));
+  // htmx:abort on an element: its request ends without a status before htmx:sendAbort, it is no lost connection.
+  // Capture: before the handler of htmx on the element aborts it.
+  document.addEventListener("htmx:abort", (event) => {
+    [...inflight].filter(([, entry]) => entry.elt === event.target).forEach(([xhr]) => inflight.delete(xhr));
+  }, true);
 
   // a request without an answer in time: /health is asked, twice before the connection counts as lost
   let suspecting = false;
