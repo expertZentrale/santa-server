@@ -28,6 +28,12 @@
   view the default. The list opens with the default view from the menu, and *Reset all* goes back to it; the
   console no longer reopens the filter used last.
 
+### Fixed
+
+- **Selection bar on wide windows.** The bar with the actions for the selected rows now takes the width its
+  controls need instead of at most half the window, so nothing is cut off on the desktop. When it wraps, its
+  lines are centred, and × stays at the top right.
+
 ## [0.12.0] - 2026-10-22
 
 ### Added

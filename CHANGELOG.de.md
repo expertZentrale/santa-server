@@ -30,6 +30,12 @@
   Stern macht jede Ansicht zur Standardansicht. Die Liste öffnet sich aus dem Menü mit der Standardansicht, und
   *Alle zurücksetzen* führt dorthin zurück; die Konsole öffnet nicht mehr den zuletzt verwendeten Filter.
 
+### Behoben
+
+- **Auswahlleiste in breiten Fenstern.** Die Leiste mit den Aktionen für die ausgewählten Zeilen nimmt jetzt die
+  Breite, die ihre Bedienelemente brauchen, statt höchstens die halbe Fensterbreite; auf dem Desktop wird
+  nichts mehr abgeschnitten. Bricht sie um, sind ihre Zeilen zentriert, und × bleibt oben rechts.
+
 ## [0.12.0] - 2026-10-22
 
 ### Hinzugefügt
