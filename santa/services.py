@@ -471,6 +471,12 @@ def machines_for_user(user):
     return Machine.objects.filter(Q(primary_user__iexact=username) | Q(primary_user__iexact=local_part))
 
 
+def request_clean_sync(machines, include_transitive=False):
+    """A clean sync of the Macs at their next preflight; include_transitive: a full clean sync (CLEAN_ALL), which
+    drops the transitive rules too. Only these fields: a save would write back the rule ledger of a running sync."""
+    return machines.update(clean_sync_requested=True, clean_sync_all=include_transitive)
+
+
 def chunked(values, size=1000):
     """SQL Server: at most 2100 parameters per query"""
     values = list(values)

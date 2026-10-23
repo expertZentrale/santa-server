@@ -8,6 +8,18 @@
 
 ### Added
 
+- **Full clean sync.** Besides the clean sync, a Mac can get a full clean sync: it also drops the
+  transitive rules it created itself (Santa 2024.1 or newer; older versions get a clean sync). In the
+  Mac's detail, as a bulk action and in the admin.
+- **Actions for several Macs.** Select Macs in the list (as for the rules) and request a clean sync, a
+  full clean sync, or change their mode (Monitor, Lockdown or the group's, for good or for a time).
+- **Check one package.** In a package rule with several packages, *Check* at a package checks only
+  that one.
+
+## [0.12.0] - 2026-10-22
+
+### Added
+
 - **Download rows for the download list.** The downloads of a "Download list (JSON)" package rule are
   now a table in the package rule form, one row per download. A row can be limited to the entries with
   *field = value*, and then either takes the downloads the entry lists (path, URL field, optionally only
@@ -494,7 +506,8 @@
   docker/setup-buildx-action 4, docker/metadata-action 6.
 - Python packages: hiredis 3.4.2, tzdata 2026.4.
 
-[Unreleased]: https://github.com/expertZentrale/santa-server/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/expertZentrale/santa-server/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/expertZentrale/santa-server/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/expertZentrale/santa-server/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/expertZentrale/santa-server/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/expertZentrale/santa-server/compare/v0.8.3...v0.9.0

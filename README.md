@@ -361,7 +361,11 @@ Konfigurationsprofils, *Sync-URL neu erzeugen* und in der Liste das Basisprofil.
 
 **Macs**: Filter nach Gruppe, Modus und Macs, die seit 2 Tagen nicht synchronisiert haben. Die Detailseite zeigt die
 Hardware, die letzte Synchronisierung, ob der Mac alle seine Regeln hat, alle Regeln, die für ihn gelten (und ob sie
-über diesen Mac, seine Gruppe oder alle Macs kommen), seine letzten Ereignisse und Anfragen und *Clean Sync*.
+über diesen Mac, seine Gruppe oder alle Macs kommen), seine letzten Ereignisse und Anfragen, *Clean Sync* und
+*Vollständiger Clean Sync*. Ein Clean Sync lässt den Mac alle Regeln des Servers verwerfen und neu laden; der
+vollständige verwirft auch die transitiven Regeln, die der Mac selbst angelegt hat (`CLEAN_ALL`, ab Santa 2024.1,
+ältere Versionen bekommen einen Clean Sync). In der Liste wählen Sie mehrere Macs aus (wie bei den Regeln) für
+*Clean Sync*, *Vollständiger Clean Sync* oder *Modus wechseln*.
 Ausgewählte Regeln können den Mac aus ihrem Geltungsbereich entfernen (*Diesen Mac entfernen*); die Gruppen- und
 globalen Geltungsbereiche bleiben, eine Regel nur für diesen Mac wird gelöscht.
 *Modus* → *Ändern* stellt einen einzelnen Mac unabhängig von seiner Gruppe auf Monitor oder Lockdown, dauerhaft oder
@@ -511,7 +515,8 @@ Beispiele:
      `winldd` (nur Windows) und `android` (nur APKs) haben nichts für Macs.
 
 Eine Paketregel kann **mehrere Pakete** enthalten, eines pro Zeile. Sie teilen die Einstellungen, aber jedes Paket
-wird für sich geprüft und behält seine eigenen Versionen. Eine Paketregel legt außerdem fest, wie die Regeln aussehen:
+wird für sich geprüft und behält seine eigenen Versionen; *Prüfen* bei einem Paket im Detail prüft nur dieses. Eine
+Paketregel legt außerdem fest, wie die Regeln aussehen:
 - **Bevorzugter Regeltyp**: Binary (Standard) oder CDHash für eine Regel je Datei und Version, oder Signing ID,
   Zertifikat, Team ID für signierte Tools (eine Regel für alle Versionen). Unsignierte ausführbare Dateien erhalten
   stattdessen eine Binary-Regel.
@@ -1089,7 +1094,10 @@ profile, *Regenerate the sync URL*, and the base profile on the list.
 
 **Macs**: filter by group, mode, and Macs that haven't synced for 2 days. The detail page shows the hardware, the last
 sync, whether the Mac has all its rules, every rule that applies to it (and whether it comes through this Mac, its
-group or all Macs), its recent events and requests, and *Clean sync*. Selected rules can drop the Mac from their
+group or all Macs), its recent events and requests, *Clean sync* and *Full clean sync*. A clean sync makes the Mac
+drop all the rules of the server and download them again; the full one also drops the transitive rules the Mac
+created itself (`CLEAN_ALL`, Santa 2024.1 or newer, older versions get a clean sync). In the list, select several Macs
+(as for the rules) for *Clean sync*, *Full clean sync* or *Change mode*. Selected rules can drop the Mac from their
 scope (*Remove this Mac*); the group and global scopes stay, a rule only for this Mac is deleted.
 *Mode* → *Change* sets a single Mac to Monitor or Lockdown independently of its group, for good or for a time (1 hour,
 1 day, 7 days, 30 days, until a date); then the mode of the group applies again. The Mac gets it at its next sync, the
@@ -1233,7 +1241,8 @@ Examples:
      `winldd` (Windows only) and `android` (APKs only) have nothing for Macs.
 
 A package rule can list **several packages**, one per line. They share the settings, but every package is checked
-on its own and keeps its own versions. A package rule also chooses what the rules look like:
+on its own and keeps its own versions; *Check* at a package in the detail checks only that one. A package rule also
+chooses what the rules look like:
 - **Preferred rule type**: Binary (default) or CDHash for one rule per file and version, or Signing ID, Certificate,
   Team ID for signed tools (one rule for all versions). Unsigned executables fall back to a Binary rule.
 - **Policy**: allow, allow compiler, block, block silently, or CEL, plus the block message and URL.

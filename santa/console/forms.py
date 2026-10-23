@@ -397,6 +397,25 @@ class MachineModeForm(forms.ModelForm):
         return cleaned_data
 
 
+class MachineBulkForm(forms.Form):
+    """An action for the Macs selected in the list"""
+    ACTIONS = [("clean_sync", _("Clean sync")), ("clean_sync_all", _("Full clean sync")),
+               ("set_mode", _("Change mode"))]
+
+    action = forms.ChoiceField(choices=ACTIONS)
+    machines = forms.ModelMultipleChoiceField(queryset=Machine.objects.all())
+    mode = forms.ChoiceField(choices=[("", _("As the group")), *ClientMode.choices], required=False)
+    until = UntilField(_("Until it is reset"))
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if cleaned_data.get("action") != "set_mode" or not cleaned_data.get("mode"):
+            # the hidden controls are posted with every action; the mode of the group has no end
+            self.errors.pop("until", None)
+            cleaned_data["until"] = None
+        return cleaned_data
+
+
 class FileDropInput(forms.FileInput):
     """A file input as a drop zone: the input covers the zone, so a file can be dropped on it (console/upload.js)"""
     template_name = "console/widgets/file_drop.html"

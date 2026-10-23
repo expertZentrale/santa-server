@@ -44,6 +44,7 @@ from .services import (
     can_see_sync_token,
     groups_prefetch,
     related_count,
+    request_clean_sync,
     set_rules_enabled,
 )
 
@@ -221,7 +222,7 @@ class GroupAdmin(admin.ModelAdmin):
 
 
 # what can be set on a Mac: the rest is reported by it
-MACHINE_SETTINGS = ("clean_sync_requested", "client_mode_override", "client_mode_override_until")
+MACHINE_SETTINGS = ("clean_sync_requested", "clean_sync_all", "client_mode_override", "client_mode_override_until")
 
 
 @admin.register(Machine)
@@ -231,7 +232,7 @@ class MachineAdmin(admin.ModelAdmin):
     list_filter = ("group", "client_mode", "client_mode_override", "santa_version")
     search_fields = ("serial_number", "hostname", "primary_user", "machine_id")
     readonly_fields = [f.name for f in Machine._meta.fields if f.name not in MACHINE_SETTINGS]
-    actions = ["request_clean_sync"]
+    actions = ["request_clean_sync", "request_full_clean_sync"]
 
     def has_add_permission(self, request):
         # machines enroll themselves with the sync URL of their group
@@ -243,8 +244,13 @@ class MachineAdmin(admin.ModelAdmin):
 
     @admin.action(description="Send a clean sync at the next sync")
     def request_clean_sync(self, request, queryset):
-        count = queryset.update(clean_sync_requested=True)
+        count = request_clean_sync(queryset)
         self.message_user(request, f"{count} machine(s) will do a clean sync.")
+
+    @admin.action(description="Send a full clean sync (also the transitive rules) at the next sync")
+    def request_full_clean_sync(self, request, queryset):
+        count = request_clean_sync(queryset, include_transitive=True)
+        self.message_user(request, f"{count} machine(s) will do a full clean sync.")
 
 
 @admin.register(Rule)

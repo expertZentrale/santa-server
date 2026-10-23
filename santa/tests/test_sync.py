@@ -263,6 +263,30 @@ class SyncTestCase(SyncBase):
         self.assertEqual(self.preflight(binary_rule_count=1)["sync_type"], "CLEAN")
         self.assertEqual(self.preflight(binary_rule_count=1)["sync_type"], "NORMAL")
 
+    def test_full_clean_sync_requested_by_admin(self):
+        self.make_rule(SHA_A, groups=[self.dev])
+        self.full_sync()
+        machines = Machine.objects.filter(machine_id=self.machine_id)
+        machines.update(clean_sync_requested=True, clean_sync_all=True)
+        preflight, rules = self.full_sync(binary_rule_count=1)
+        self.assertEqual(preflight["sync_type"], "CLEAN_ALL")
+        # everything again, as after a clean sync
+        self.assertEqual([r["identifier"] for r in rules], [SHA_A])
+        self.assertEqual(list(machines.values_list("clean_sync_requested", "clean_sync_all")), [(False, False)])
+        self.assertEqual(self.preflight(binary_rule_count=1)["sync_type"], "NORMAL")
+        # only the admin asks for it: a clean sync the Mac asks for keeps the transitive rules
+        machines.update(clean_sync_all=True)
+        self.assertEqual(self.preflight(binary_rule_count=1, request_clean_sync=True)["sync_type"], "CLEAN")
+
+    def test_old_santa_gets_a_clean_sync_instead_of_a_full_one(self):
+        self.preflight(santa_version="2023.9")
+        Machine.objects.filter(machine_id=self.machine_id).update(clean_sync_requested=True, clean_sync_all=True)
+        with self.assertLogs("santa.sync_views", "INFO") as logs:
+            response = self.preflight(santa_version="2023.9", binary_rule_count=1)
+        self.assertIs(response["clean_sync"], True)
+        self.assertNotIn("sync_type", response)
+        self.assertIn("has no full clean sync", "\n".join(logs.output))
+
     def test_group_change(self):
         self.make_rule(SHA_A, groups=[self.dev])
         self.make_rule(SHA_C, groups=[self.sales])

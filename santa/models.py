@@ -400,6 +400,10 @@ class Machine(models.Model):
     clean_sync_requested = models.BooleanField(
         default=False, help_text=_("Send a clean sync (client drops all its rules) at the next preflight.")
     )
+    # the requested clean sync drops the transitive rules too (sync type CLEAN_ALL)
+    clean_sync_all = models.BooleanField(
+        _("full clean sync"), default=False,
+        help_text=_("With the clean sync: also drop the transitive rules the Mac created itself (Santa 2024.1+)."))
     sync_in_clean_mode = models.BooleanField(default=False, editable=False)
 
     last_ip = models.GenericIPAddressField(null=True, blank=True)

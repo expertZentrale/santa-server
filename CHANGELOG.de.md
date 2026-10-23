@@ -8,6 +8,19 @@
 
 ### Hinzugefügt
 
+- **Vollständiger Clean Sync.** Neben dem Clean Sync kann ein Mac einen vollständigen Clean Sync
+  bekommen: Er verwirft auch die transitiven Regeln, die er selbst angelegt hat (ab Santa 2024.1;
+  ältere Versionen bekommen einen Clean Sync). Im Detail des Macs, als Sammelaktion und im Admin.
+- **Aktionen für mehrere Macs.** Macs in der Liste auswählen (wie bei den Regeln) und einen Clean Sync,
+  einen vollständigen Clean Sync anfordern oder ihren Modus wechseln (Monitor, Lockdown oder der der
+  Gruppe, dauerhaft oder für eine Zeit).
+- **Ein Paket prüfen.** In einer Paketregel mit mehreren Paketen prüft *Prüfen* bei einem Paket nur
+  dieses.
+
+## [0.12.0] - 2026-10-22
+
+### Hinzugefügt
+
 - **Download-Zeilen für die Download-Liste.** Die Downloads einer Paketregel „Download-Liste (JSON)“
   sind jetzt eine Tabelle im Paketregel-Formular, eine Zeile je Download. Eine Zeile lässt sich auf die
   Einträge mit *Feld = Wert* beschränken und nimmt dann entweder die Downloads, die der Eintrag
@@ -527,7 +540,8 @@
   docker/setup-buildx-action 4, docker/metadata-action 6.
 - Python-Pakete: hiredis 3.4.2, tzdata 2026.4.
 
-[Unreleased]: https://github.com/expertZentrale/santa-server/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/expertZentrale/santa-server/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/expertZentrale/santa-server/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/expertZentrale/santa-server/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/expertZentrale/santa-server/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/expertZentrale/santa-server/compare/v0.8.3...v0.9.0
