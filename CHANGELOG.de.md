@@ -19,6 +19,10 @@
 
 ### Geändert
 
+- **Alle CEL-Ergebnisse und -Hilfsfunktionen in den Vorschlägen.** Die Vorschläge des CEL-Felds bieten jetzt
+  jedes Ergebnis, das Santa kennt (Compiler erlauben, die stillen Blockierungen, Touch ID, Sicherheitsschlüssel
+  und Anwesenheit samt Cooldown-Hilfsfunktionen), die Zeit- und Markierungsfunktionen, `has()` und die
+  Santa-Version, die jeweils nötig ist.
 - **Standardansicht je Liste.** Das Menü *Ansichten* einer Liste hat eine eingebaute Ansicht *Standard*, und der
   Stern macht jede Ansicht zur Standardansicht. Die Liste öffnet sich aus dem Menü mit der Standardansicht, und
   *Alle zurücksetzen* führt dorthin zurück; die Konsole öffnet nicht mehr den zuletzt verwendeten Filter.

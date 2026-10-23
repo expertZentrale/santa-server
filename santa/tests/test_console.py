@@ -207,6 +207,15 @@ class ConsoleRulesTestCase(ConsoleBase):
         self.assertEqual((kinds['timestamp("")'], kinds['duration("")'], kinds['startsWith("")']),
                          ("global", "global", "function"))
 
+    def test_cel_suggestions_cover_the_return_values(self):
+        # every value of santa.cel.v2.ReturnValue Santa documents (https://northpole.dev/features/binary-authorization/)
+        kinds = {text: kind for text, kind, _help in CEL_SUGGESTIONS}
+        for value in ("ALLOWLIST", "ALLOWLIST_COMPILER", "BLOCKLIST", "SILENT_BLOCKLIST", "SILENT_GUI_BLOCKLIST",
+                      "SILENT_TTY_BLOCKLIST", "REQUIRE_TOUCHID", "REQUIRE_TOUCHID_ONLY", "REQUIRE_SECURITY_KEY",
+                      "REQUIRE_SECURITY_KEY_ONLY", "REQUIRE_PRESENCE", "REQUIRE_PRESENCE_ONLY"):
+            self.assertEqual(kinds.get(value), "result", value)
+        self.assertEqual(kinds["policy_for_range()"], "global")
+
     def test_export_csv(self):
         Rule.objects.create(rule_type=RuleType.BINARY, identifier=SHA_A, is_global=True, description="=HYPERLINK()")
         blocked = Rule.objects.create(rule_type=RuleType.TEAMID, identifier="ABCDE12345", policy=Policy.BLOCKLIST)

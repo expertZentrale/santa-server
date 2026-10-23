@@ -18,6 +18,9 @@
 
 ### Changed
 
+- **All CEL return values and helpers in the suggestions.** The suggestions of the CEL field now offer every
+  result Santa knows (allow compiler, the silent blocks, Touch ID, security key and presence, with their
+  cooldown helpers), the time and annotation helpers, `has()`, and the Santa version each needs.
 - **Default view per list.** The *Views* menu of a list has a built-in *Standard* view, and the star makes any
   view the default. The list opens with the default view from the menu, and *Reset all* goes back to it; the
   console no longer reopens the filter used last.
