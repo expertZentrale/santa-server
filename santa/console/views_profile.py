@@ -1,6 +1,5 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.db import transaction
 from django.http import HttpResponse, QueryDict
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import translation
@@ -8,6 +7,7 @@ from django.views.decorators.http import require_POST
 
 from .. import notifications
 from ..models import SavedFilter, UserProfile
+from ..services import set_default_filter
 from ..users import gravatar_url, profile_for
 from .filters import FILTER_PAGES, MAX_QUERY_LENGTH, MAX_SAVED_FILTERS, filter_query
 from .forms import ProfileForm
@@ -92,11 +92,7 @@ def default_filter(request):
         return redirect(safe_next(request, "home"))
     pk = request.POST.get("pk", "")
     chosen = get_object_or_404(SavedFilter, pk=pk, user=request.user, page=page) if pk.isdigit() else None
-    with transaction.atomic():
-        SavedFilter.objects.filter(user=request.user, page=page, is_default=True).update(is_default=False)
-        if chosen:
-            chosen.is_default = True
-            chosen.save(update_fields=["is_default"])
+    set_default_filter(request.user, page, chosen)
     if chosen:
         messages.success(request, translation.gettext("“%(name)s” is now the default view.") % {"name": chosen.name})
     else:

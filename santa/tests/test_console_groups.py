@@ -4,6 +4,7 @@ from datetime import timedelta
 from django.contrib.admin.models import DELETION, LogEntry
 from django.contrib.auth.models import Permission, User
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -290,6 +291,19 @@ class MachinesBulkTestCase(ConsoleBase):
         response = self.bulk("set_mode", mode="MONITOR", until_0="date", until_1=past)
         self.assertContains(response, "The date must be in the future.")
         self.assertEqual(set(Machine.objects.values_list("client_mode_override", flat=True)), {""})
+
+    @override_settings(DATA_UPLOAD_MAX_NUMBER_FIELDS=None)
+    def test_more_macs_than_sql_server_parameters(self):
+        # SQL Server takes at most 2100 parameters per query: the selection is checked and changed in chunks
+        # (Django's default limit of 1000 form fields is lifted here, a deployment can raise it)
+        Machine.objects.bulk_create(Machine(machine_id=f"BULK-{i}", serial_number=f"S{i}", group=self.machine.group)
+                                    for i in range(2200))
+        machines = list(Machine.objects.all())
+        response = self.bulk("clean_sync", machines=machines)
+        self.assertContains(response, f"{len(machines)} Macs: clean sync at their next sync.")
+        self.assertEqual(Machine.objects.filter(clean_sync_requested=True).count(), len(machines))
+        self.bulk("set_mode", machines=machines, mode="MONITOR", until_0="1d")
+        self.assertEqual(Machine.objects.filter(client_mode_override="MONITOR").count(), len(machines))
 
     def test_permissions(self):
         viewer = User.objects.create_user("viewer", is_staff=True)

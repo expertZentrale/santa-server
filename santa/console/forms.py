@@ -48,7 +48,7 @@ from ..models import (
     validate_logo_url,
 )
 from ..package_detection import SHORT_KIND_LABELS
-from ..services import is_allowed
+from ..services import chunked, is_allowed
 from ..users import profile_for, time_zone_names
 from ..validators import validate_identifier
 
@@ -440,13 +440,28 @@ class MachineModeForm(forms.ModelForm):
         return cleaned_data
 
 
+class ChunkedModelMultipleChoiceField(forms.ModelMultipleChoiceField):
+    """A selection that can be longer than SQL Server's 2100 parameters per query: checked in chunks, the objects as
+    a list"""
+
+    def _check_values(self, value):
+        try:
+            values = list(dict.fromkeys(value))
+        except TypeError:
+            raise ValidationError(self.error_messages["invalid_list"], code="invalid_list") from None
+        objects = {}
+        for chunk in chunked(values):
+            objects.update((obj.pk, obj) for obj in super()._check_values(chunk))
+        return list(objects.values())
+
+
 class MachineBulkForm(forms.Form):
     """An action for the Macs selected in the list"""
     ACTIONS = [("clean_sync", _("Clean sync")), ("clean_sync_all", _("Full clean sync")),
                ("set_mode", _("Change mode"))]
 
     action = forms.ChoiceField(choices=ACTIONS)
-    machines = forms.ModelMultipleChoiceField(queryset=Machine.objects.all())
+    machines = ChunkedModelMultipleChoiceField(queryset=Machine.objects.all())
     mode = forms.ChoiceField(choices=[("", _("As the group")), *ClientMode.choices], required=False)
     until = UntilField(_("Until it is reset"))
 

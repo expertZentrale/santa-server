@@ -45,6 +45,7 @@ from .services import (
     groups_prefetch,
     related_count,
     request_clean_sync,
+    set_default_filter,
     set_rules_enabled,
 )
 
@@ -705,6 +706,12 @@ class SavedFilterAdmin(admin.ModelAdmin):
     list_filter = ("page",)
     search_fields = ("name", "user__username")
     raw_id_fields = ("user",)
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        if obj.is_default:
+            # the other views of the list lose the flag, as in the console
+            set_default_filter(obj.user, obj.page, obj)
 
 
 class AccessRequestPackageInline(admin.TabularInline):

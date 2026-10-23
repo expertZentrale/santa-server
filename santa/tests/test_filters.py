@@ -111,6 +111,17 @@ class SavedFiltersTestCase(ConsoleBase):
         self.assertContains(response, "Unknown list.")
         self.assertFalse(SavedFilter.objects.get(pk=first.pk).is_default)
 
+    def test_default_view_in_the_admin(self):
+        # the admin keeps one default per user and list too
+        first = SavedFilter.objects.create(user=self.admin, page="rules", name="Global", query="q=&scope=global",
+                                           is_default=True)
+        second = SavedFilter.objects.create(user=self.admin, page="rules", name="Macs", query="q=&scope=machines")
+        response = self.client.post(reverse("admin:santa_savedfilter_change", args=[second.pk]), {
+            "user": self.admin.pk, "page": "rules", "name": "Macs", "query": second.query, "is_default": "on"})
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(list(SavedFilter.objects.filter(is_default=True)), [second])
+        self.assertFalse(SavedFilter.objects.get(pk=first.pk).is_default)
+
     def test_overwritten_and_deleted_default_views(self):
         url = reverse("console:rules")
         saved = SavedFilter.objects.create(user=self.admin, page="rules", name="Global", query="q=&scope=global",
@@ -278,8 +289,9 @@ class FilterBarTestCase(ConsoleBase):
         # × keeps the other filters and q: an empty query would bring back the last filter
         self.assertEqual(chips["scope"]["remove_url"],
                          "?q=&created=range&created_from=2026-01-01&created_to=2026-03-31")
-        self.assertEqual(chips["created"]["remove_url"],
-                         f"?q=&scope={self.dev.pk}&scope={self.sales.pk}&scope=global&scope=machines")
+        # the values in text order: the pks 9 and 10 come as "10", "9"
+        scopes = sorted([str(self.dev.pk), str(self.sales.pk), "global", "machines"])
+        self.assertEqual(chips["created"]["remove_url"], "?q=&" + "&".join(f"scope={scope}" for scope in scopes))
         self.assertFalse(bar["is_default"])
         response = self.client.get(url, {"q": "", "scope": "global"})
         self.assertContains(response, "Reset all")
