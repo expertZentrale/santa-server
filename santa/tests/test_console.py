@@ -99,9 +99,8 @@ class ConsolePaginationTestCase(ConsoleBase):
         self.assertContains(response, 'href="?per_page=100&amp;policy=ALLOWLIST"')
         self.assertContains(response, '<a href="?per_page=25&amp;policy=ALLOWLIST" aria-current="true">25</a>',
                             html=True)
-        # every list keeps the size of the session (the rules come back with their last filter)
-        response = self.client.get(reverse("console:rules"), follow=True)
-        self.assertEqual(response.redirect_chain, [("/console/rules/?policy=ALLOWLIST", 302)])
+        # every list keeps the size of the session
+        response = self.client.get(reverse("console:rules"))
         self.assertEqual(response.context["page"].paginator.per_page, 25)
         self.assertEqual(self.client.get(reverse("console:machines")).context["page"].paginator.per_page, 25)
 

@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: santa-server\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-23 11:50+0000\n"
+"POT-Creation-Date: 2026-10-23 12:42+0000\n"
 "Language: de\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -49,17 +49,17 @@ msgstr "1 Jahr"
 msgid "All time"
 msgstr "Gesamter Zeitraum"
 
-#: santa/console/filters.py:216
+#: santa/console/filters.py:215
 #, python-format
 msgid "is not %(values)s"
 msgstr "ist nicht %(values)s"
 
-#: santa/console/filters.py:225
+#: santa/console/filters.py:224
 #, python-format
 msgid "from %(date)s"
 msgstr "ab %(date)s"
 
-#: santa/console/filters.py:225 santa/templates/console/events/_app_row.html:17
+#: santa/console/filters.py:224 santa/templates/console/events/_app_row.html:17
 #: santa/templates/console/events/_detail.html:22
 #: santa/templates/console/machines/_rows.html:33
 #: santa/templates/console/machines/_summary.html:20
@@ -67,11 +67,11 @@ msgstr "ab %(date)s"
 msgid "until %(date)s"
 msgstr "bis %(date)s"
 
-#: santa/console/filters.py:227
+#: santa/console/filters.py:226
 msgid "any time"
 msgstr "beliebiger Zeitraum"
 
-#: santa/console/filters.py:281
+#: santa/console/filters.py:280
 msgid "all"
 msgstr "alle"
 
@@ -481,7 +481,7 @@ msgstr "Ablauf entfernen"
 #: santa/templates/console/rules/_form.html:38
 #: santa/templates/console/rules/_rows.html:12
 #: santa/templates/console/sources/_form.html:94
-#: santa/templates/console/widgets/_filter_bar.html:20
+#: santa/templates/console/widgets/_filter_bar.html:25
 msgid "Delete"
 msgstr "Löschen"
 
@@ -1535,7 +1535,7 @@ msgstr "Leer lassen, um das Passwort zu behalten."
 msgid "The two passwords are different."
 msgstr "Die beiden Passwörter stimmen nicht überein."
 
-#: santa/console/forms.py:1826 santa/models.py:1396
+#: santa/console/forms.py:1826 santa/models.py:1397
 msgid "The members get these roles"
 msgstr "Die Mitglieder erhalten diese Rollen"
 
@@ -1544,7 +1544,7 @@ msgstr "Die Mitglieder erhalten diese Rollen"
 msgid "Value in the groups claim"
 msgstr "Wert im Gruppen-Claim"
 
-#: santa/console/forms.py:1832 santa/models.py:1315
+#: santa/console/forms.py:1832 santa/models.py:1313
 msgid "No e-mails"
 msgstr "Keine E-Mails"
 
@@ -2297,7 +2297,9 @@ msgstr "%(machine)s: der Modus seiner Gruppe ab der nächsten Synchronisierung"
 msgid ""
 "%(machine)s: full clean sync at the next sync (the Mac drops all its rules, "
 "the transitive ones too, and downloads them again)."
-msgstr "%(machine)s: vollständiger Clean Sync bei der nächsten Synchronisierung (der Mac verwirft alle Regeln, auch die transitiven, und lädt sie neu herunter)."
+msgstr ""
+"%(machine)s: vollständiger Clean Sync bei der nächsten Synchronisierung (der "
+"Mac verwirft alle Regeln, auch die transitiven, und lädt sie neu herunter)."
 
 #: santa/console/views_groups.py:365
 #, python-format
@@ -2314,8 +2316,12 @@ msgid ""
 "%(count)s Mac: full clean sync at its next sync, the transitive rules too."
 msgid_plural ""
 "%(count)s Macs: full clean sync at their next sync, the transitive rules too."
-msgstr[0] "%(count)s Mac: vollständiger Clean Sync bei der nächsten Synchronisierung, auch die transitiven Regeln."
-msgstr[1] "%(count)s Macs: vollständiger Clean Sync bei der nächsten Synchronisierung, auch die transitiven Regeln."
+msgstr[0] ""
+"%(count)s Mac: vollständiger Clean Sync bei der nächsten Synchronisierung, "
+"auch die transitiven Regeln."
+msgstr[1] ""
+"%(count)s Macs: vollständiger Clean Sync bei der nächsten Synchronisierung, "
+"auch die transitiven Regeln."
 
 #: santa/console/views_groups.py:391
 #, python-format
@@ -2335,48 +2341,59 @@ msgstr[1] "%(count)s Macs: %(mode)s ab der nächsten Synchronisierung."
 #, python-format
 msgid "%(count)s Mac: the mode of its group from its next sync on."
 msgid_plural "%(count)s Macs: the mode of their group from their next sync on."
-msgstr[0] "%(count)s Mac: der Modus seiner Gruppe ab der nächsten Synchronisierung."
-msgstr[1] "%(count)s Macs: der Modus ihrer Gruppe ab der nächsten Synchronisierung."
+msgstr[0] ""
+"%(count)s Mac: der Modus seiner Gruppe ab der nächsten Synchronisierung."
+msgstr[1] ""
+"%(count)s Macs: der Modus ihrer Gruppe ab der nächsten Synchronisierung."
 
-#: santa/console/views_profile.py:23
+#: santa/console/views_profile.py:24
 msgid "Preferences saved."
 msgstr "Einstellungen gespeichert."
 
-#: santa/console/views_profile.py:66
+#: santa/console/views_profile.py:67 santa/console/views_profile.py:91
 msgid "Unknown list."
 msgstr "Unbekannte Liste."
 
-#: santa/console/views_profile.py:69 santa/console/views_profile.py:99
+#: santa/console/views_profile.py:70 santa/console/views_profile.py:122
 msgid "Enter a name for the view."
 msgstr "Bitte einen Namen für die Ansicht eingeben."
 
-#: santa/console/views_profile.py:72
+#: santa/console/views_profile.py:73
 msgid "This view is too long to save."
 msgstr "Diese Ansicht ist zu lang zum Speichern."
 
-#: santa/console/views_profile.py:76
+#: santa/console/views_profile.py:77
 #, python-format
 msgid "At most %(count)s saved views per list. Delete one first."
 msgstr ""
 "Höchstens %(count)s gespeicherte Ansichten pro Liste. Löschen Sie zuerst "
 "eine."
 
-#: santa/console/views_profile.py:80
+#: santa/console/views_profile.py:81
 #, python-format
 msgid "View “%(name)s” saved."
 msgstr "Ansicht „%(name)s“ gespeichert."
 
-#: santa/console/views_profile.py:89
+#: santa/console/views_profile.py:101
+#, python-format
+msgid "“%(name)s” is now the default view."
+msgstr "„%(name)s“ ist jetzt die Standardansicht."
+
+#: santa/console/views_profile.py:103
+msgid "The standard view is now the default."
+msgstr "Die Ansicht „Standard“ ist jetzt die Standardansicht."
+
+#: santa/console/views_profile.py:112
 #, python-format
 msgid "View “%(name)s” deleted."
 msgstr "Ansicht „%(name)s“ gelöscht."
 
-#: santa/console/views_profile.py:101
+#: santa/console/views_profile.py:124
 #, python-format
 msgid "There is a view “%(name)s” already."
 msgstr "Eine Ansicht „%(name)s“ gibt es bereits."
 
-#: santa/console/views_profile.py:105
+#: santa/console/views_profile.py:128
 #, python-format
 msgid "View renamed to “%(name)s”."
 msgstr "Ansicht in „%(name)s“ umbenannt."
@@ -3343,7 +3360,9 @@ msgstr "vollständiger Clean Sync"
 msgid ""
 "With the clean sync: also drop the transitive rules the Mac created itself "
 "(Santa 2024.1+)."
-msgstr "Mit dem Clean Sync: auch die transitiven Regeln verwerfen, die der Mac selbst angelegt hat (Santa 2024.1+)."
+msgstr ""
+"Mit dem Clean Sync: auch die transitiven Regeln verwerfen, die der Mac "
+"selbst angelegt hat (Santa 2024.1+)."
 
 #: santa/models.py:447
 msgid "Binary (SHA-256)"
@@ -4018,35 +4037,35 @@ msgstr "Dunkel"
 msgid "System: follows the light or dark mode of your computer."
 msgstr "System: folgt dem hellen oder dunklen Modus Ihres Computers."
 
-#: santa/models.py:1314 santa/models.py:1323
+#: santa/models.py:1312 santa/models.py:1321
 msgid "As the sign-in groups say"
 msgstr "Wie die Anmeldegruppen es vorgeben"
 
-#: santa/models.py:1316
+#: santa/models.py:1314
 msgid "E-mails allowed"
 msgstr "E-Mails erlaubt"
 
-#: santa/models.py:1324
+#: santa/models.py:1322
 msgid "Set by hand"
 msgstr "Von Hand"
 
-#: santa/models.py:1340
+#: santa/models.py:1338
 msgid "Success"
 msgstr "Erfolg"
 
-#: santa/models.py:1341
+#: santa/models.py:1339
 msgid "Info"
 msgstr "Info"
 
-#: santa/models.py:1342
+#: santa/models.py:1340
 msgid "Warning"
 msgstr "Warnung"
 
-#: santa/models.py:1343
+#: santa/models.py:1341
 msgid "Error"
 msgstr "Fehler"
 
-#: santa/models.py:1387
+#: santa/models.py:1388
 msgid ""
 "The value in the groups claim of the ID token: the object ID or the name of "
 "the group, depending on the provider. * is everyone who signs in."
@@ -4054,17 +4073,17 @@ msgstr ""
 "Der Wert im Gruppen-Claim des ID-Tokens: die Objekt-ID oder der Name der "
 "Gruppe, je nach Anbieter. * steht für alle, die sich anmelden."
 
-#: santa/models.py:1389
+#: santa/models.py:1390
 msgid "A name to recognise the group, only for display"
 msgstr "Ein Name, an dem Sie die Gruppe erkennen, nur für die Anzeige"
 
-#: santa/models.py:1391
+#: santa/models.py:1392
 msgid "The members can open the console (with the permissions of their roles)"
 msgstr ""
 "Die Mitglieder können die Konsole öffnen (mit den Berechtigungen ihrer "
 "Rollen)"
 
-#: santa/models.py:1393
+#: santa/models.py:1394
 msgid ""
 "The members get no e-mail notifications, e.g. admin accounts without a "
 "mailbox. A user can be excepted in Administration → Users."
@@ -4388,7 +4407,7 @@ msgstr "Änderungen anzeigen"
 #: santa/templates/console/rules/_upload_rules.html:38
 #: santa/templates/console/sources/_cleanup.html:34
 #: santa/templates/console/sources/_form.html:92
-#: santa/templates/console/widgets/_filter_bar.html:19
+#: santa/templates/console/widgets/_filter_bar.html:24
 msgid "Cancel"
 msgstr "Abbrechen"
 
@@ -4485,7 +4504,7 @@ msgstr "Vorschau aktualisieren"
 #: santa/templates/console/profile.html:33
 #: santa/templates/console/rules/_form.html:35
 #: santa/templates/console/sources/_form.html:91
-#: santa/templates/console/widgets/_filter_bar.html:18
+#: santa/templates/console/widgets/_filter_bar.html:23
 msgid "Save"
 msgstr "Speichern"
 
@@ -5447,7 +5466,7 @@ msgstr "Als erledigt markieren"
 #: santa/templates/console/events/_rows.html:14
 #: santa/templates/console/machines/_rows.html:19
 #: santa/templates/console/rules/_rows.html:28
-#: santa/templates/console/widgets/_filter_bar.html:74
+#: santa/templates/console/widgets/_filter_bar.html:79
 msgid "Apply"
 msgstr "Anwenden"
 
@@ -5826,13 +5845,17 @@ msgstr "Vollständiger Clean Sync ausstehend"
 msgid ""
 "The Mac drops all its rules, the transitive ones too, and downloads them "
 "again at its next sync. Continue?"
-msgstr "Der Mac verwirft alle Regeln, auch die transitiven, und lädt sie bei der nächsten Synchronisierung neu herunter. Fortfahren?"
+msgstr ""
+"Der Mac verwirft alle Regeln, auch die transitiven, und lädt sie bei der "
+"nächsten Synchronisierung neu herunter. Fortfahren?"
 
 #: santa/templates/console/machines/_actions.html:6
 msgid ""
 "Also drops the transitive rules the Mac created itself (Santa 2024.1 or "
 "newer)"
-msgstr "Verwirft auch die transitiven Regeln, die der Mac selbst angelegt hat (Santa 2024.1 oder neuer)"
+msgstr ""
+"Verwirft auch die transitiven Regeln, die der Mac selbst angelegt hat (Santa "
+"2024.1 oder neuer)"
 
 #: santa/templates/console/machines/_activity.html:2
 msgid "Recent events"
@@ -5846,7 +5869,9 @@ msgstr "Keine Ereignisse."
 msgid ""
 "The selected Macs drop all their rules, the transitive ones too, and "
 "download them again at their next sync. Continue?"
-msgstr "Die ausgewählten Macs verwerfen alle Regeln, auch die transitiven, und laden sie bei der nächsten Synchronisierung neu herunter. Fortfahren?"
+msgstr ""
+"Die ausgewählten Macs verwerfen alle Regeln, auch die transitiven, und laden "
+"sie bei der nächsten Synchronisierung neu herunter. Fortfahren?"
 
 #: santa/templates/console/machines/_rows.html:23
 msgid "Santa / macOS"
@@ -7020,82 +7045,102 @@ msgstr ""
 "Pakete in einem Katalog beobachten. Jede neue Version wird heruntergeladen, "
 "ihre ausführbaren Dateien werden zu Ausführungsregeln."
 
+#: santa/templates/console/widgets/_default_view_button.html:2
+msgid "Default view"
+msgstr "Standardansicht"
+
+#: santa/templates/console/widgets/_default_view_button.html:2
+#, python-format
+msgid "%(name)s is the default view"
+msgstr "%(name)s ist die Standardansicht"
+
+#: santa/templates/console/widgets/_default_view_button.html:2
+msgid "Use as default"
+msgstr "Als Standardansicht verwenden"
+
+#: santa/templates/console/widgets/_default_view_button.html:2
+#, python-format
+msgid "Use %(name)s as default"
+msgstr "%(name)s als Standardansicht verwenden"
+
+#: santa/templates/console/widgets/_filter_bar.html:12
+#: santa/templates/console/widgets/_filter_bar.html:16
+#: santa/templates/console/widgets/_filter_bar.html:17
+msgid "Standard"
+msgstr "Standard"
+
 #: santa/templates/console/widgets/_filter_bar.html:12
 msgid "Views"
 msgstr "Ansichten"
 
-#: santa/templates/console/widgets/_filter_bar.html:16
+#: santa/templates/console/widgets/_filter_bar.html:21
 msgid "Rename"
 msgstr "Umbenennen"
 
-#: santa/templates/console/widgets/_filter_bar.html:17
+#: santa/templates/console/widgets/_filter_bar.html:22
 msgid "New name"
 msgstr "Neuer Name"
 
-#: santa/templates/console/widgets/_filter_bar.html:21
-msgid "No saved views yet."
-msgstr "Noch keine gespeicherten Ansichten."
-
-#: santa/templates/console/widgets/_filter_bar.html:23
+#: santa/templates/console/widgets/_filter_bar.html:28
 msgid "Name of the view"
 msgstr "Name der Ansicht"
 
-#: santa/templates/console/widgets/_filter_bar.html:24
+#: santa/templates/console/widgets/_filter_bar.html:29
 msgid "Save current view"
 msgstr "Aktuelle Ansicht speichern"
 
-#: santa/templates/console/widgets/_filter_bar.html:26
+#: santa/templates/console/widgets/_filter_bar.html:31
 msgid "An existing name is overwritten with the current filter."
 msgstr "Ein vorhandener Name wird mit dem aktuellen Filter überschrieben."
 
-#: santa/templates/console/widgets/_filter_bar.html:34
+#: santa/templates/console/widgets/_filter_bar.html:39
 msgid "+ Filter"
 msgstr "+ Filter"
 
-#: santa/templates/console/widgets/_filter_bar.html:37
+#: santa/templates/console/widgets/_filter_bar.html:42
 msgid "All filters are shown."
 msgstr "Alle Filter werden angezeigt."
 
-#: santa/templates/console/widgets/_filter_bar.html:55
+#: santa/templates/console/widgets/_filter_bar.html:60
 msgid "is"
 msgstr "ist"
 
-#: santa/templates/console/widgets/_filter_bar.html:56
+#: santa/templates/console/widgets/_filter_bar.html:61
 msgid "is not"
 msgstr "ist nicht"
 
-#: santa/templates/console/widgets/_filter_bar.html:60
+#: santa/templates/console/widgets/_filter_bar.html:65
 msgid "Search…"
 msgstr "Suchen…"
 
-#: santa/templates/console/widgets/_filter_bar.html:60
+#: santa/templates/console/widgets/_filter_bar.html:65
 #, python-format
 msgid "Search: %(label)s"
 msgstr "Suchen: %(label)s"
 
-#: santa/templates/console/widgets/_filter_bar.html:65
+#: santa/templates/console/widgets/_filter_bar.html:70
 #, python-format
 msgid "At most %(count)s at a time: only the first %(count)s are used."
 msgstr ""
 "Höchstens %(count)s auf einmal: nur die ersten %(count)s werden verwendet."
 
-#: santa/templates/console/widgets/_filter_bar.html:69
+#: santa/templates/console/widgets/_filter_bar.html:74
 msgid "Date range…"
 msgstr "Zeitraum wählen…"
 
-#: santa/templates/console/widgets/_filter_bar.html:71
+#: santa/templates/console/widgets/_filter_bar.html:76
 msgid "From"
 msgstr "Von"
 
-#: santa/templates/console/widgets/_filter_bar.html:73
+#: santa/templates/console/widgets/_filter_bar.html:78
 msgid "To"
 msgstr "Bis"
 
-#: santa/templates/console/widgets/_filter_bar.html:81
+#: santa/templates/console/widgets/_filter_bar.html:86
 msgid "Remove filter"
 msgstr "Filter entfernen"
 
-#: santa/templates/console/widgets/_filter_bar.html:84
+#: santa/templates/console/widgets/_filter_bar.html:89
 msgid "Reset all"
 msgstr "Alle zurücksetzen"
 
@@ -7379,6 +7424,9 @@ msgstr "Unbekannter Regeltyp %(rule_type)s."
 #, python-format
 msgid "Line %(number)s (%(pattern)s): %(error)s"
 msgstr "Zeile %(number)s (%(pattern)s): %(error)s"
+
+#~ msgid "No saved views yet."
+#~ msgstr "Noch keine gespeicherten Ansichten."
 
 #~ msgid "URL templates"
 #~ msgstr "URL-Vorlagen"

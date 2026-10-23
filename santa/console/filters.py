@@ -1,4 +1,5 @@
-"""The filters of the lists: several values per filter, time ranges, the last used and the saved filters (views).
+"""The filters of the lists: several values per filter, time ranges and the saved filters (views), one of them the
+default of the list.
 
 The filter bar (console/widgets/_filter_bar.html) shows each active filter as a chip; the facets describe them.
 """
@@ -15,11 +16,10 @@ from django.utils.translation import gettext
 from django.utils.translation import gettext_lazy as _
 
 from ..models import SavedFilter
-from ..users import profile_for
 
 RANGE = "range"
-# the page of the list and its length are not part of a filter
-NOT_FILTERS = ("page", "per_page", "reset", "rows")
+# the page of the list and its length are not part of a filter; standard: the built-in defaults of the list
+NOT_FILTERS = ("page", "per_page", "reset", "rows", "standard")
 MAX_SAVED_FILTERS = 30
 # the lists with a filter bar (the page of filter_bar()), and whether they belong to the console (staff only)
 FILTER_PAGES = {"rules": True, "events-blocked": True, "events-all": True, "machines": True, "sources": True,
@@ -85,28 +85,27 @@ def filter_query(params, keep=()):
 
 
 def remember_filters(request, page, keep=()):
-    """The last used filter of a list, kept in the profile of the user.
+    """The default view of a list: the saved filter the user chose as the default, else the built-in defaults.
 
-    Opened without a filter (e.g. from the menu), the list redirects to the last one; ?reset forgets it. A
-    submitted filter form always has a value (the search field), so an empty filter means "not chosen".
-    Returns the redirect or None.
+    Opened without a filter (e.g. from the menu) or with ?reset, the list redirects to the default view; ?standard
+    shows the built-in defaults whatever the default is. A submitted filter form always has a value (the search
+    field), so an empty filter means "not chosen". Returns the redirect or None.
     """
-    profile = profile_for(request.user)
-    stored = dict(profile.last_filters or {})
     kept = {name: request.GET.getlist(name) for name in keep if name in request.GET}
+    if "standard" in request.GET:
+        return None
+    default = default_view(request.user, page)
     if "reset" in request.GET:
-        if stored.pop(page, None) is not None:
-            profile.last_filters = stored
-            profile.save(update_fields=["last_filters"])
-        return redirect(_url(request, kept, ""))
-    current = filter_query(request.GET, keep)
-    if not current:
-        return redirect(_url(request, kept, stored[page])) if stored.get(page) else None
-    if len(current) <= MAX_QUERY_LENGTH and stored.get(page) != current:
-        stored[page] = current
-        profile.last_filters = stored
-        profile.save(update_fields=["last_filters"])
+        return redirect(_url(request, kept, default.query if default else ""))
+    if not filter_query(request.GET, keep) and default:
+        return redirect(_url(request, kept, default.query))
     return None
+
+
+def default_view(user, page):
+    """The saved filter the user chose as the default of the list, or None (the built-in defaults). A view without
+    a query would redirect to itself."""
+    return SavedFilter.objects.filter(user=user, page=page, is_default=True).exclude(query="").first()
 
 
 def _url(request, kept, query):
@@ -287,17 +286,21 @@ def filter_bar(request, page, facets, hidden=(), keep=(), placeholder=""):
             "date_from": params.get(facet.from_name, "") if facet.kind == "time" else "",
             "date_to": params.get(facet.to_name, "") if facet.kind == "time" else "",
         })
-    # as opened without a filter: the default values, and only the chips of the defaults that filter
-    is_default = not q.strip() and all(value == _default(facet) and shown[facet.name] == _restricts(facet, value)
-                                       for facet, value in states)
+    # as opened with ?standard: the default values, and only the chips of the defaults that filter
+    is_standard = not q.strip() and all(value == _default(facet) and shown[facet.name] == _restricts(facet, value)
+                                        for facet, value in states)
     canonical = query()
     views = list(SavedFilter.objects.filter(user=request.user, page=page))
+    default = next((view for view in views if view.is_default and view.query), None)
     kept = {name: params.getlist(name) for name in keep if name in params}
+    active_view = next((view for view in views if canonical_query(view.query) == canonical), None)
     return {"bar": {
         "page": page, "q": q, "placeholder": placeholder, "hidden": hidden_pairs, "chips": chips,
-        "is_default": is_default,
+        # "Reset all" leads there
+        "is_default": canonical_query(default.query) == canonical if default else is_standard,
         "reset_url": _url(request, kept, "reset=1"), "query": canonical, "views": views,
-        "active_view": next((view for view in views if canonical_query(view.query) == canonical), None),
+        "active_view": active_view, "default_view": default,
+        "standard_url": _url(request, kept, "standard=1"), "standard_active": is_standard and not active_view,
     }}
 
 

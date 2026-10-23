@@ -17,6 +17,12 @@
 - **Ein Paket prüfen.** In einer Paketregel mit mehreren Paketen prüft *Prüfen* bei einem Paket nur
   dieses.
 
+### Geändert
+
+- **Standardansicht je Liste.** Das Menü *Ansichten* einer Liste hat eine eingebaute Ansicht *Standard*, und der
+  Stern macht jede Ansicht zur Standardansicht. Die Liste öffnet sich aus dem Menü mit der Standardansicht, und
+  *Alle zurücksetzen* führt dorthin zurück; die Konsole öffnet nicht mehr den zuletzt verwendeten Filter.
+
 ## [0.12.0] - 2026-10-22
 
 ### Hinzugefügt

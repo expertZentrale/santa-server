@@ -348,6 +348,9 @@ Profil des Benutzers gespeichert. Auf dem Smartphone liegt die Navigation hinter
 **Listen**: Klicken Sie auf eine Spaltenüberschrift zum Sortieren, erneut zum Umkehren. Ein Klick auf eine Zeile
 wählt sie aus, Strg-Klick fügt eine hinzu oder entfernt sie, Umschalt-Klick wählt einen Bereich. Die Aktionen für die
 Auswahl erscheinen unten im Fenster; Esc hebt die Auswahl auf.
+*Ansichten* speichert den aktuellen Filter unter einem Namen. Der Stern macht eine Ansicht zur Standardansicht der Liste
+(oder *Standard*, die eingebauten Filter): Die Liste öffnet sich aus dem Menü damit, und *Alle zurücksetzen* führt
+dorthin zurück.
 
 **Seitenleiste**: Ereignisse, Regeln, Paketregeln, Dateizugriffsregeln, Anfragen, Macs, Gruppen, alles unter
 *Administration* und der Verlauf öffnen sich in einer Leiste rechts, auch zum Anlegen und Bearbeiten. Nach dem
@@ -1082,6 +1085,8 @@ navigation is behind the menu button.
 
 **Lists**: click a column header to sort, again to reverse. A click on a row selects it, Ctrl-click adds or removes
 one, Shift-click selects a range. The actions for the selection appear at the bottom of the window; Esc clears it.
+*Views* saves the current filter under a name. The star makes a view the default of the list (or *Standard*, the
+built-in filters): the list opens with it from the menu, and *Reset all* goes back to it.
 
 **Side panel**: events, rules, package rules, file access rules, requests, Macs, groups, everything under
 *Administration* and the history open in a panel on the right, also to create and edit them. After saving, the list

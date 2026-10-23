@@ -48,38 +48,92 @@ class FilterHelpersTestCase(SimpleTestCase):
                          "q=x&group=1&group=2")
 
 
-class SavedAndLastFiltersTestCase(ConsoleBase):
-    def test_the_last_filter_is_remembered_per_list_and_user(self):
+class SavedFiltersTestCase(ConsoleBase):
+    def test_a_list_opens_with_its_default_view(self):
         url = reverse("console:rules")
-        self.client.get(url, {"q": "", "scope": ["global", "machines"]})
-        self.assertRedirects(self.client.get(url), f"{url}?q=&scope=global&scope=machines")
-        # the page and its size don't count, the tab is kept
-        self.client.get(url, {"q": "", "page": "2"})
-        self.assertRedirects(self.client.get(url), f"{url}?q=")
+        # without a default: the built-in defaults, a filter used before is not remembered
+        self.client.get(url, {"q": "", "scope": "global"})
+        self.assertEqual(self.client.get(url).status_code, 200)
+        SavedFilter.objects.create(user=self.admin, page="rules", name="Global", query="q=&scope=global",
+                                   is_default=True)
+        self.assertRedirects(self.client.get(url), f"{url}?q=&scope=global")
+        self.assertRedirects(self.client.get(url, {"q": "x", "reset": "1"}), f"{url}?q=&scope=global")
+        # Standard: the built-in defaults whatever the default is
+        self.assertEqual(self.client.get(url, {"standard": "1"}).status_code, 200)
+        # a filter of its own stays
+        self.assertEqual(self.client.get(url, {"q": "", "scope": "machines"}).status_code, 200)
+        # the tab is kept
         events = reverse("console:events")
-        self.client.get(events, {"view": "all", "q": "colima"})
+        SavedFilter.objects.create(user=self.admin, page="events-all", name="colima", query="q=colima&view=all",
+                                   is_default=True)
         self.assertRedirects(self.client.get(events, {"view": "all"}), f"{events}?q=colima&view=all")
         self.assertEqual(self.client.get(events, {"view": "blocked"}).status_code, 200)
         # another user has their own
         other = User.objects.create_superuser("other", "other@example.com", "pw")
         self.client.force_login(other)
         self.assertEqual(self.client.get(url).status_code, 200)
-        # reset forgets it
-        self.client.force_login(self.admin)
         self.assertRedirects(self.client.get(url, {"reset": "1"}), url)
+
+    def test_the_default_view_never_redirects_to_another_site(self):
+        SavedFilter.objects.create(user=self.admin, page="rules", name="Global", query="q=x&scope=global",
+                                   is_default=True)
+        # the path of the request is not used: a // path would be a URL of another host
+        for params, location in (({}, "/console/rules/?q=x&scope=global"),
+                                 ({"reset": "1"}, "/console/rules/?q=x&scope=global")):
+            request = RequestFactory().get("//evil.example/console/rules/", params)
+            request.user = self.admin
+            request.resolver_match = resolve(reverse("console:rules"))
+            self.assertEqual(remember_filters(request, "rules")["Location"], location)
+
+    def test_choose_the_default_view(self):
+        url = reverse("console:rules")
+        first = SavedFilter.objects.create(user=self.admin, page="rules", name="Global", query="q=&scope=global")
+        second = SavedFilter.objects.create(user=self.admin, page="rules", name="Macs", query="q=&scope=machines")
+        events = SavedFilter.objects.create(user=self.admin, page="events-all", name="All", query="q=&view=all",
+                                            is_default=True)
+        response = self.client.post(reverse("default_filter"), {"page": "rules", "pk": first.pk, "next": url},
+                                    follow=True)
+        self.assertContains(response, "“Global” is now the default view.")
+        self.client.post(reverse("default_filter"), {"page": "rules", "pk": second.pk})
+        self.assertEqual(list(SavedFilter.objects.filter(is_default=True)), [events, second])
+        # Standard again; another list keeps its default
+        response = self.client.post(reverse("default_filter"), {"page": "rules", "pk": ""}, follow=True)
+        self.assertContains(response, "The standard view is now the default.")
+        self.assertEqual(list(SavedFilter.objects.filter(is_default=True)), [events])
+        # only your own views of that list
+        other = User.objects.create_user("other")
+        theirs = SavedFilter.objects.create(user=other, page="rules", name="Theirs", query="q=")
+        self.assertEqual(self.client.post(reverse("default_filter"), {"page": "rules", "pk": theirs.pk}).status_code,
+                         404)
+        self.assertEqual(self.client.post(reverse("default_filter"), {"page": "events-all", "pk": first.pk})
+                         .status_code, 404)
+        response = self.client.post(reverse("default_filter"), {"page": "nope", "pk": first.pk}, follow=True)
+        self.assertContains(response, "Unknown list.")
+        self.assertFalse(SavedFilter.objects.get(pk=first.pk).is_default)
+
+    def test_overwritten_and_deleted_default_views(self):
+        url = reverse("console:rules")
+        saved = SavedFilter.objects.create(user=self.admin, page="rules", name="Global", query="q=&scope=global",
+                                           is_default=True)
+        self.client.post(reverse("save_filter"), {"page": "rules", "name": "Global", "query": "q=&scope=machines"})
+        saved.refresh_from_db()
+        self.assertEqual((saved.query, saved.is_default), ("q=&scope=machines", True))
+        self.client.post(reverse("delete_filter", args=(saved.pk,)))
         self.assertEqual(self.client.get(url).status_code, 200)
 
-    def test_remembered_filter_never_redirects_to_another_site(self):
-        self.client.get(reverse("console:rules"), {"q": "x", "scope": "global"})
-        # the path of the request is not used: a // path would be a URL of another host
-        request = RequestFactory().get("//evil.example/console/rules/")
-        request.user = self.admin
-        request.resolver_match = resolve(reverse("console:rules"))
-        self.assertEqual(remember_filters(request, "rules")["Location"], "/console/rules/?q=x&scope=global")
-        request = RequestFactory().get("//evil.example/console/rules/", {"reset": "1"})
-        request.user = self.admin
-        request.resolver_match = resolve(reverse("console:rules"))
-        self.assertEqual(remember_filters(request, "rules")["Location"], "/console/rules/")
+    def test_the_picker_and_reset_all(self):
+        url = reverse("console:rules")
+        SavedFilter.objects.create(user=self.admin, page="rules", name="Global", query="q=&scope=global",
+                                   is_default=True)
+        response = self.client.get(url, {"q": "", "scope": "global"})
+        self.assertNotContains(response, "Reset all")
+        self.assertContains(response, 'title="Default view"')
+        self.assertContains(response, 'aria-label="Use Standard as default"')
+        response = self.client.get(url, {"standard": "1"})
+        self.assertContains(response, "Reset all")
+        self.assertContains(response, f'<a href="{url}?standard=1" aria-current="true">Standard</a>', html=True)
+        SavedFilter.objects.filter(is_default=True).update(is_default=False)
+        self.assertNotContains(self.client.get(url), "Reset all")
 
     def test_save_overwrite_and_delete_filters(self):
         url = reverse("console:rules")

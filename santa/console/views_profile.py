@@ -1,5 +1,6 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db import transaction
 from django.http import HttpResponse, QueryDict
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import translation
@@ -79,6 +80,28 @@ def save_filter(request):
     SavedFilter.objects.update_or_create(user=request.user, page=page, name=name, defaults={"query": query})
     messages.success(request, translation.gettext("View “%(name)s” saved.") % {"name": name})
     return redirect(back)
+
+
+@login_required
+@require_POST
+def default_filter(request):
+    """The view a list opens with (from the menu, "Reset all"): a saved one, or without pk the built-in one"""
+    page = request.POST.get("page", "").strip()[:32]
+    if page not in FILTER_PAGES or (FILTER_PAGES[page] and not request.user.is_staff):
+        messages.error(request, translation.gettext("Unknown list."))
+        return redirect(safe_next(request, "home"))
+    pk = request.POST.get("pk", "")
+    chosen = get_object_or_404(SavedFilter, pk=pk, user=request.user, page=page) if pk.isdigit() else None
+    with transaction.atomic():
+        SavedFilter.objects.filter(user=request.user, page=page, is_default=True).update(is_default=False)
+        if chosen:
+            chosen.is_default = True
+            chosen.save(update_fields=["is_default"])
+    if chosen:
+        messages.success(request, translation.gettext("“%(name)s” is now the default view.") % {"name": chosen.name})
+    else:
+        messages.success(request, translation.gettext("The standard view is now the default."))
+    return redirect(safe_next(request, "home"))
 
 
 @login_required

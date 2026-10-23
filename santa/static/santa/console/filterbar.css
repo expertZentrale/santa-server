@@ -82,3 +82,9 @@
 .lookup-options label small { margin-left: .3rem; }
 .filter-chip-picker .picker-panel:has(.lookup-search) { min-width: min(20rem, calc(100vw - 2rem)); }
 .picker-panel .lookup-options label { white-space: normal; overflow-wrap: anywhere; }
+/* the star of the default view: filled on the default, faint on the others until hovered */
+.saved-filter .default-view { align-self: center; color: var(--muted); }
+.saved-filter button.default-view { opacity: .45; }
+.saved-filter:hover button.default-view, .saved-filter button.default-view:focus-visible { opacity: 1; }
+.saved-filter .default-view.is-default { color: var(--warn); cursor: default; }
+.saved-filter .default-view.is-default .icon { fill: currentColor; }

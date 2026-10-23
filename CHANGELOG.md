@@ -16,6 +16,12 @@
 - **Check one package.** In a package rule with several packages, *Check* at a package checks only
   that one.
 
+### Changed
+
+- **Default view per list.** The *Views* menu of a list has a built-in *Standard* view, and the star makes any
+  view the default. The list opens with the default view from the menu, and *Reset all* goes back to it; the
+  console no longer reopens the filter used last.
+
 ## [0.12.0] - 2026-10-22
 
 ### Added

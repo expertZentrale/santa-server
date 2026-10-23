@@ -7,7 +7,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 from django.utils import timezone
 
-from santa.models import Group, Machine, Policy, Rule, RuleType
+from santa.models import Group, Machine, Policy, Rule, RuleType, SavedFilter
 from santa.rules import GROUP, MACHINE, effective_rules
 
 from .test_console import SHA_A, SHA_B, ConsoleBase
@@ -29,7 +29,9 @@ class ConsoleGroupsTestCase(ConsoleBase):
         self.assertEqual([group.name for group in response.context["page"]], ["Sales"])
         response = self.client.get(reverse("console:groups"), {"q": "", "mode": "MONITOR"})
         self.assertEqual([group.name for group in response.context["page"]], ["Development"])
-        # the last filter is kept
+        # the default view
+        SavedFilter.objects.create(user=self.admin, page="groups", name="Monitor", query="q=&mode=MONITOR",
+                                   is_default=True)
         self.assertRedirects(self.client.get(reverse("console:groups")),
                              reverse("console:groups") + "?q=&mode=MONITOR", fetch_redirect_response=False)
 
