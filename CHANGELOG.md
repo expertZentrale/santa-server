@@ -6,6 +6,38 @@
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-23
+
+### Added
+
+- **Demo data for development.** `python manage.py create_demo_data` fills a development database with groups,
+  Macs, events, users and requests (no rules or package rules), `--delete` removes them again. Only with
+  `DEBUG`, or with `--force`.
+- **Full clean sync.** Besides the clean sync, a Mac can get a full clean sync: it also drops the
+  transitive rules it created itself (Santa 2024.1 or newer; older versions get a clean sync). In the
+  Mac's detail, as a bulk action and in the admin.
+- **Actions for several Macs.** Select Macs in the list (as for the rules) and request a clean sync, a
+  full clean sync, or change their mode (Monitor, Lockdown or the group's, for good or for a time).
+- **Check one package.** In a package rule with several packages, *Check* at a package checks only
+  that one.
+
+### Changed
+
+- **All CEL return values and helpers in the suggestions.** The suggestions of the CEL field now offer every
+  result Santa knows (allow compiler, the silent blocks, Touch ID, security key and presence, with their
+  cooldown helpers), the time and annotation helpers, `has()`, and the Santa version each needs.
+- **Default view per list.** The *Views* menu of a list has a built-in *Standard* view, and the star makes any
+  view the default. The list opens with the default view from the menu, and *Reset all* goes back to it; the
+  console no longer reopens the filter used last.
+
+### Fixed
+
+- **Selection bar on wide windows.** The bar with the actions for the selected rows now takes the width its
+  controls need instead of at most half the window, so nothing is cut off on the desktop. When it wraps, its
+  lines are centred, and × stays at the top right.
+
+## [0.12.0] - 2026-10-22
+
 ### Added
 
 - **Download rows for the download list.** The downloads of a "Download list (JSON)" package rule are
@@ -494,7 +526,9 @@
   docker/setup-buildx-action 4, docker/metadata-action 6.
 - Python packages: hiredis 3.4.2, tzdata 2026.4.
 
-[Unreleased]: https://github.com/expertZentrale/santa-server/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/expertZentrale/santa-server/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/expertZentrale/santa-server/compare/v0.12.0...v0.13.0
+[0.12.0]: https://github.com/expertZentrale/santa-server/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/expertZentrale/santa-server/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/expertZentrale/santa-server/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/expertZentrale/santa-server/compare/v0.8.3...v0.9.0

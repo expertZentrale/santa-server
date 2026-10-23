@@ -7,6 +7,7 @@ from django.views.decorators.http import require_POST
 
 from .. import notifications
 from ..models import SavedFilter, UserProfile
+from ..services import set_default_filter
 from ..users import gravatar_url, profile_for
 from .filters import FILTER_PAGES, MAX_QUERY_LENGTH, MAX_SAVED_FILTERS, filter_query
 from .forms import ProfileForm
@@ -79,6 +80,24 @@ def save_filter(request):
     SavedFilter.objects.update_or_create(user=request.user, page=page, name=name, defaults={"query": query})
     messages.success(request, translation.gettext("View “%(name)s” saved.") % {"name": name})
     return redirect(back)
+
+
+@login_required
+@require_POST
+def default_filter(request):
+    """The view a list opens with (from the menu, "Reset all"): a saved one, or without pk the built-in one"""
+    page = request.POST.get("page", "").strip()[:32]
+    if page not in FILTER_PAGES or (FILTER_PAGES[page] and not request.user.is_staff):
+        messages.error(request, translation.gettext("Unknown list."))
+        return redirect(safe_next(request, "home"))
+    pk = request.POST.get("pk", "")
+    chosen = get_object_or_404(SavedFilter, pk=pk, user=request.user, page=page) if pk.isdigit() else None
+    set_default_filter(request.user, page, chosen)
+    if chosen:
+        messages.success(request, translation.gettext("“%(name)s” is now the default view.") % {"name": chosen.name})
+    else:
+        messages.success(request, translation.gettext("The standard view is now the default."))
+    return redirect(safe_next(request, "home"))
 
 
 @login_required

@@ -4,10 +4,11 @@ from datetime import timedelta
 from django.contrib.admin.models import DELETION, LogEntry
 from django.contrib.auth.models import Permission, User
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from santa.models import Group, Machine, Policy, Rule, RuleType
+from santa.models import Group, Machine, Policy, Rule, RuleType, SavedFilter
 from santa.rules import GROUP, MACHINE, effective_rules
 
 from .test_console import SHA_A, SHA_B, ConsoleBase
@@ -29,7 +30,9 @@ class ConsoleGroupsTestCase(ConsoleBase):
         self.assertEqual([group.name for group in response.context["page"]], ["Sales"])
         response = self.client.get(reverse("console:groups"), {"q": "", "mode": "MONITOR"})
         self.assertEqual([group.name for group in response.context["page"]], ["Development"])
-        # the last filter is kept
+        # the default view
+        SavedFilter.objects.create(user=self.admin, page="groups", name="Monitor", query="q=&mode=MONITOR",
+                                   is_default=True)
         self.assertRedirects(self.client.get(reverse("console:groups")),
                              reverse("console:groups") + "?q=&mode=MONITOR", fetch_redirect_response=False)
 
@@ -108,10 +111,21 @@ class ConsoleGroupsTestCase(ConsoleBase):
         self.assertEqual(list(response.context["page"]), [])
 
     def test_clean_sync(self):
+        response = self.client.get(reverse("console:machine", args=(self.machine.pk,)))
+        self.assertContains(response, "Full clean sync")
         self.client.post(reverse("console:machine_clean_sync", args=(self.machine.pk,)))
         self.machine.refresh_from_db()
-        self.assertTrue(self.machine.clean_sync_requested)
+        self.assertEqual((self.machine.clean_sync_requested, self.machine.clean_sync_all), (True, False))
         self.assertTrue(LogEntry.objects.filter(object_id=str(self.machine.pk)).exists())
+        response = self.client.post(reverse("console:machine_clean_sync", args=(self.machine.pk,)), {"all": "1"},
+                                    follow=True)
+        self.assertContains(response, "full clean sync at the next sync")
+        self.machine.refresh_from_db()
+        self.assertEqual((self.machine.clean_sync_requested, self.machine.clean_sync_all), (True, True))
+        self.assertContains(self.client.get(reverse("console:machine", args=(self.machine.pk,))),
+                            "Full clean sync pending")
+        self.assertTrue(LogEntry.objects.filter(object_id=str(self.machine.pk),
+                                                change_message="Full clean sync requested").exists())
 
     def test_machine_lists_every_rule_that_reaches_it(self):
         Rule.objects.create(rule_type=RuleType.BINARY, identifier=SHA_A, is_global=True, description="for all")
@@ -232,3 +246,69 @@ class GroupCountsTestCase(ConsoleBase):
         self.assertEqual(rows["Development"], (2, 3, True))
         self.assertEqual(rows["Sales"], (1, 0, False))
         self.assertEqual(next(iter(response.context["page"])).name, "Development")
+
+
+class MachinesBulkTestCase(ConsoleBase):
+    def bulk(self, action, machines=None, follow=True, **data):
+        machines = machines or [self.machine, self.other_machine]
+        return self.client.post(reverse("console:machines_bulk"), {
+            "action": action, "machines": [machine.pk for machine in machines], "next": reverse("console:machines"),
+            **data}, follow=follow)
+
+    def test_the_list_offers_the_actions(self):
+        response = self.client.get(reverse("console:machines"), {"q": ""})
+        self.assertContains(response, 'name="machines" value="%s"' % self.machine.pk)
+        self.assertContains(response, '<option value="clean_sync_all">Full clean sync</option>', html=True)
+        # the clean sync of a row is a form of its own, not one inside the selection
+        self.assertContains(response, 'form="mac-clean-sync-form"')
+
+    def test_clean_sync_and_full_clean_sync(self):
+        Machine.objects.filter(pk=self.machine.pk).update(synced_rules={"BINARY:" + SHA_A: "x"})
+        response = self.bulk("clean_sync")
+        self.assertContains(response, "2 Macs: clean sync at their next sync.")
+        self.assertEqual(set(Machine.objects.values_list("clean_sync_requested", "clean_sync_all")), {(True, False)})
+        response = self.bulk("clean_sync_all", machines=[self.machine])
+        self.assertContains(response, "1 Mac: full clean sync at its next sync, the transitive rules too.")
+        self.machine.refresh_from_db()
+        self.assertTrue(self.machine.clean_sync_all)
+        # the rule ledger stays as it is
+        self.assertEqual(self.machine.synced_rules, {"BINARY:" + SHA_A: "x"})
+        self.assertEqual(LogEntry.objects.filter(object_id=str(self.other_machine.pk)).count(), 1)
+
+    def test_change_the_mode(self):
+        response = self.bulk("set_mode", mode="LOCKDOWN", until_0="7d")
+        self.assertContains(response, "2 Macs: Lockdown from their next sync on.")
+        for machine in Machine.objects.all():
+            self.assertEqual(machine.client_mode_override, "LOCKDOWN")
+            self.assertAlmostEqual(machine.client_mode_override_until, timezone.now() + timedelta(days=7),
+                                   delta=timedelta(minutes=1))
+        # as the group: no end
+        response = self.bulk("set_mode", mode="", until_0="1d")
+        self.assertContains(response, "2 Macs: the mode of their group from their next sync on.")
+        self.assertEqual(set(Machine.objects.values_list("client_mode_override", "client_mode_override_until")),
+                         {("", None)})
+        past = (timezone.localtime() - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M")
+        response = self.bulk("set_mode", mode="MONITOR", until_0="date", until_1=past)
+        self.assertContains(response, "The date must be in the future.")
+        self.assertEqual(set(Machine.objects.values_list("client_mode_override", flat=True)), {""})
+
+    @override_settings(DATA_UPLOAD_MAX_NUMBER_FIELDS=None)
+    def test_more_macs_than_sql_server_parameters(self):
+        # SQL Server takes at most 2100 parameters per query: the selection is checked and changed in chunks
+        # (Django's default limit of 1000 form fields is lifted here, a deployment can raise it)
+        Machine.objects.bulk_create(Machine(machine_id=f"BULK-{i}", serial_number=f"S{i}", group=self.machine.group)
+                                    for i in range(2200))
+        machines = list(Machine.objects.all())
+        response = self.bulk("clean_sync", machines=machines)
+        self.assertContains(response, f"{len(machines)} Macs: clean sync at their next sync.")
+        self.assertEqual(Machine.objects.filter(clean_sync_requested=True).count(), len(machines))
+        self.bulk("set_mode", machines=machines, mode="MONITOR", until_0="1d")
+        self.assertEqual(Machine.objects.filter(client_mode_override="MONITOR").count(), len(machines))
+
+    def test_permissions(self):
+        viewer = User.objects.create_user("viewer", is_staff=True)
+        viewer.user_permissions.add(Permission.objects.get(codename="view_machine"))
+        self.client.force_login(viewer)
+        self.assertNotContains(self.client.get(reverse("console:machines"), {"q": ""}), "data-bulkbar")
+        self.assertEqual(self.bulk("clean_sync", follow=False).status_code, 403)
+        self.assertFalse(Machine.objects.filter(clean_sync_requested=True).exists())

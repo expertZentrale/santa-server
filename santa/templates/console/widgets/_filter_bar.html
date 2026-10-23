@@ -8,16 +8,21 @@ filters.{% endcomment %}
     <noscript><button class="button">{% translate "Filter" %}</button></noscript>
     <div class="filter-tools" data-table-tools>
       <details class="picker down views-picker" data-picker>
-        <summary class="button">{% if bar.active_view %}{{ bar.active_view.name }}{% else %}{% translate "Views" %}{% endif %}</summary>
+        <summary class="button">{% if bar.active_view %}{{ bar.active_view.name }}{% elif bar.standard_active %}{% translate "Standard" %}{% else %}{% translate "Views" %}{% endif %}</summary>
         <div class="picker-panel">
+          {# the built-in defaults of the list; the star marks the view the list opens with (menu, "Reset all") #}
+          <div class="saved-filter{% if bar.standard_active %} current{% endif %}">
+            <a href="{{ bar.standard_url }}"{% if bar.standard_active %} aria-current="true"{% endif %}>{% translate "Standard" %}</a>
+            {% include "console/widgets/_default_view_button.html" with pk="" name=_("Standard") is_default=bar.default_view|yesno:"0,1" %}</div>
           {% for view in bar.views %}<div class="saved-filter{% if view == bar.active_view %} current{% endif %}">
             <a href="?{{ view.query }}"{% if view == bar.active_view %} aria-current="true"{% endif %}>{{ view.name }}</a>
+            {% include "console/widgets/_default_view_button.html" with pk=view.pk name=view.name is_default=view.is_default|yesno:"1,0" %}
             <details class="rename-view"><summary class="icon-button" title="{% translate 'Rename' %}" aria-label="{% translate 'Rename' %} {{ view.name }}">{% include "console/icons/pencil.svg" %}</summary>
               <div class="rename-view-form"><input name="name" form="rename-filter-{{ view.pk }}" autocomplete="off" value="{{ view.name }}" maxlength="100" required aria-label="{% translate 'New name' %}">
                 <div class="actions"><button class="button primary" form="rename-filter-{{ view.pk }}">{% translate "Save" %}</button>
                   <button type="button" class="button" data-rename-cancel>{% translate "Cancel" %}</button></div></div></details>
             <button class="icon-button" form="delete-filter-form" formaction="{% url 'delete_filter' view.pk %}" title="{% translate 'Delete' %}" aria-label="{% translate 'Delete' %} {{ view.name }}">{% include "console/icons/x.svg" %}</button></div>
-          {% empty %}<p class="muted small">{% translate "No saved views yet." %}</p>{% endfor %}
+          {% endfor %}
           <div class="saved-filter-new">
             <input name="name" form="save-filter-form" autocomplete="off" maxlength="100" placeholder="{% translate 'Name of the view' %}" aria-label="{% translate 'Name of the view' %}" required>
             <button class="button" form="save-filter-form">{% translate "Save current view" %}</button>
@@ -86,5 +91,7 @@ filters.{% endcomment %}
 <form id="save-filter-form" method="post" action="{% url 'save_filter' %}" hidden>{% csrf_token %}
   <input type="hidden" name="page" value="{{ bar.page }}"><input type="hidden" name="query" value="{{ bar.query }}">
   <input type="hidden" name="next" value="{{ request.get_full_path }}"></form>
+<form id="default-filter-form" method="post" action="{% url 'default_filter' %}" hidden>{% csrf_token %}
+  <input type="hidden" name="page" value="{{ bar.page }}"><input type="hidden" name="next" value="{{ request.get_full_path }}"></form>
 <form id="delete-filter-form" method="post" hidden>{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"></form>
 {% for view in bar.views %}<form id="rename-filter-{{ view.pk }}" method="post" action="{% url 'rename_filter' view.pk %}" hidden>{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"></form>{% endfor %}

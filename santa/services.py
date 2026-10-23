@@ -27,6 +27,7 @@ from .models import (
     ReleaseVersion,
     Rule,
     RuleType,
+    SavedFilter,
     with_parent_groups,
 )
 from .progress import Progress
@@ -469,6 +470,31 @@ def machines_for_user(user):
         return Machine.objects.none()
     local_part = username.split("@", 1)[0]
     return Machine.objects.filter(Q(primary_user__iexact=username) | Q(primary_user__iexact=local_part))
+
+
+def request_clean_sync(machines, include_transitive=False):
+    """A clean sync of the Macs at their next preflight; include_transitive: a full clean sync (CLEAN_ALL), which
+    drops the transitive rules too. Only these fields: a save would write back the rule ledger of a running sync.
+    machines: a queryset, or a list of Macs or pks (in chunks: SQL Server takes at most 2100 parameters)."""
+    if not isinstance(machines, (list, tuple)):
+        return machines.update(clean_sync_requested=True, clean_sync_all=include_transitive)
+    pks = [getattr(machine, "pk", machine) for machine in machines]
+    return sum(Machine.objects.filter(pk__in=chunk).update(clean_sync_requested=True,
+                                                           clean_sync_all=include_transitive)
+               for chunk in chunked(pks))
+
+
+def set_default_filter(user, page, saved_filter=None):
+    """The view a list opens with: saved_filter, or None for the built-in one. At most one per user and list; there is
+    no filtered unique constraint on SQL Server, so the views of the list are locked: two requests at once would
+    otherwise both clear the flag and each set their own."""
+    with transaction.atomic():
+        views = SavedFilter.objects.select_for_update().filter(user=user, page=page)
+        list(views)  # takes the locks
+        views.filter(is_default=True).exclude(pk=getattr(saved_filter, "pk", None)).update(is_default=False)
+        if saved_filter is not None:
+            views.filter(pk=saved_filter.pk).update(is_default=True)
+            saved_filter.is_default = True
 
 
 def chunked(values, size=1000):

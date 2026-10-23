@@ -99,9 +99,8 @@ class ConsolePaginationTestCase(ConsoleBase):
         self.assertContains(response, 'href="?per_page=100&amp;policy=ALLOWLIST"')
         self.assertContains(response, '<a href="?per_page=25&amp;policy=ALLOWLIST" aria-current="true">25</a>',
                             html=True)
-        # every list keeps the size of the session (the rules come back with their last filter)
-        response = self.client.get(reverse("console:rules"), follow=True)
-        self.assertEqual(response.redirect_chain, [("/console/rules/?policy=ALLOWLIST", 302)])
+        # every list keeps the size of the session
+        response = self.client.get(reverse("console:rules"))
         self.assertEqual(response.context["page"].paginator.per_page, 25)
         self.assertEqual(self.client.get(reverse("console:machines")).context["page"].paginator.per_page, 25)
 
@@ -207,6 +206,15 @@ class ConsoleRulesTestCase(ConsoleBase):
         # timestamp() and duration() start a value, startsWith() follows one
         self.assertEqual((kinds['timestamp("")'], kinds['duration("")'], kinds['startsWith("")']),
                          ("global", "global", "function"))
+
+    def test_cel_suggestions_cover_the_return_values(self):
+        # every value of santa.cel.v2.ReturnValue Santa documents (https://northpole.dev/features/binary-authorization/)
+        kinds = {text: kind for text, kind, _help in CEL_SUGGESTIONS}
+        for value in ("ALLOWLIST", "ALLOWLIST_COMPILER", "BLOCKLIST", "SILENT_BLOCKLIST", "SILENT_GUI_BLOCKLIST",
+                      "SILENT_TTY_BLOCKLIST", "REQUIRE_TOUCHID", "REQUIRE_TOUCHID_ONLY", "REQUIRE_SECURITY_KEY",
+                      "REQUIRE_SECURITY_KEY_ONLY", "REQUIRE_PRESENCE", "REQUIRE_PRESENCE_ONLY"):
+            self.assertEqual(kinds.get(value), "result", value)
+        self.assertEqual(kinds["policy_for_range()"], "global")
 
     def test_export_csv(self):
         Rule.objects.create(rule_type=RuleType.BINARY, identifier=SHA_A, is_global=True, description="=HYPERLINK()")

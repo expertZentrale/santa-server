@@ -85,6 +85,7 @@ urlpatterns = [
     path("groups/<int:pk>/delete/", views_groups.group_delete, name="group_delete"),
 
     path("macs/", views_groups.machines, name="machines"),
+    path("macs/bulk/", views_groups.machines_bulk, name="machines_bulk"),
     path("macs/<int:pk>/", views_groups.machine_detail, name="machine"),
     path("macs/<int:pk>/mode/", views_groups.machine_mode, name="machine_mode"),
     path("macs/<int:pk>/clean-sync/", views_groups.machine_clean_sync, name="machine_clean_sync"),

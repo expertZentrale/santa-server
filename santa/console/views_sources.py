@@ -125,7 +125,8 @@ def source_detail(request, pk, defer=None):
     if not defer:
         context.update(_versions_context(source))
     if versions_only:
-        response = render(request, "console/sources/_versions.html", {**context, "oob": True, "in_drawer": True})
+        response = render(request, "console/sources/_versions.html", {
+            **context, "oob": True, "in_drawer": True, "check": read_source_check(source.pk)})
     else:
         context.update({"check": check_texts(read_source_check(source.pk)), "error_groups": error_groups(source),
                         "removable": removable_packages(source)})
@@ -472,8 +473,13 @@ def source_check(request, pk):
     try:
         with run_source_check(source, request.user, progress_for(request)) as progress:
             try:
-                # "Check the new packages": the ones never checked, not the whole list
+                # "Check the new packages": the ones never checked, not the whole list; or one package of it
                 only = unchecked_identifiers(source) if request.POST.get("only") == "new" else None
+                if identifier := request.POST.get("identifier", "").strip():
+                    if identifier not in source.identifiers:
+                        raise ReleaseError(gettext("%(package)s is not a package of this package rule.")
+                                           % {"package": identifier})
+                    only = [identifier]
                 new_versions = sync_release_source(source, progress=progress, only=only)
             except ReleaseError as e:
                 messages.error(request, f"{source}: {e}")

@@ -84,10 +84,9 @@ class ListRowsTestCase(ConsoleBase):
     def test_scripts_and_browsers_without_javascript_get_everything(self):
         # no Sec-Fetch-Mode: a script, an older browser
         self.assertContains(self.client.get(reverse("console:rules"), {"q": "tool"}), SHA_A)
-        # the link of the placeholder for browsers without JavaScript; it is no filter to remember
+        # the link of the placeholder for browsers without JavaScript
         response = self.client.get(reverse("console:rules"), {"q": "tool", "rows": "now"}, **NAVIGATE)
         self.assertContains(response, SHA_A)
-        self.assertEqual(profile_for(self.admin).last_filters["rules"], "q=tool")
 
 
 class BoostedPagesTestCase(ConsoleBase):

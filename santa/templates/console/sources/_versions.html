@@ -3,7 +3,9 @@
 <section class="card">
   <h2 class="with-icon">{% if item.icon_url %}<img src="{{ item.icon_url }}" alt="" referrerpolicy="no-referrer">{% endif %}
     {% include "console/sources/_identifier.html" with kind=source.kind name=item.name %}
-    {% if identifier not in source.identifiers %}<span class="badge bad">{% translate "removed, deleted at the next check" %}</span>{% endif %}</h2>
+    {% if identifier not in source.identifiers %}<span class="badge bad">{% translate "removed, deleted at the next check" %}</span>{% elif source.has_several_identifiers and perms.santa.change_releasesource and perms.santa.add_rule %}
+    {# only this package of the package rule; hidden while a check runs, like "Check now" (checks.js) #}
+    {% url 'console:source_check' source.pk as check_url %}<form method="post" action="{{ check_url }}" class="inline package-check" data-progress data-check-start{% if in_drawer %} hx-post="{{ check_url }}" hx-target="#drawer"{% endif %}{% if check %} hidden{% endif %}>{% csrf_token %}<input type="hidden" name="next" value="{% url 'console:source' source.pk %}"><input type="hidden" name="identifier" value="{{ identifier }}"><button class="button small" aria-label="{% blocktranslate %}Check {{ identifier }}{% endblocktranslate %}">{% translate "Check" %}</button></form>{% endif %}</h2>
   <table class="table compact">
     <thead><tr><th>{% translate "Version" %}</th><th>{% if source.kind == "URL_LIST" %}{% translate "Files" %}{% else %}{% translate "Published" %}{% endif %}</th><th>{% translate "Binaries" %}</th><th>{% translate "Approval" %}</th><th></th></tr></thead>
     <tbody>

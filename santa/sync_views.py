@@ -148,9 +148,12 @@ def preflight(request, group, machine_id, data):
         machine.client_mode_override_until = None
     machine.pending_sync = None
     machine.sync_in_clean_mode = clean_reason is not None
+    # a full clean sync also drops the transitive rules; only the admin asks for it
+    clean_all = clean_reason == "requested by admin" and machine.clean_sync_all
     if clean_reason:
         machine.clean_sync_requested = False
-        logger.info("Machine %s: clean sync (%s)", machine_id, clean_reason)
+        machine.clean_sync_all = False
+        logger.info("Machine %s: %s (%s)", machine_id, "full clean sync" if clean_all else "clean sync", clean_reason)
     machine.save()
 
     # the Mac's own mode, while it lasts
@@ -181,7 +184,13 @@ def preflight(request, group, machine_id, data):
         if group.event_detail_text:
             response["event_detail_text"] = group.event_detail_text
     if santa_version_tuple(machine.santa_version) < (2024, 1):
+        # no CLEAN_ALL before sync_type: a clean sync keeps the transitive rules
+        if clean_all:
+            logger.info("Machine %s: Santa %s has no full clean sync, a clean sync instead", machine_id,
+                        machine.santa_version)
         response["clean_sync"] = machine.sync_in_clean_mode
+    elif clean_all:
+        response["sync_type"] = "CLEAN_ALL"
     else:
         response["sync_type"] = "CLEAN" if machine.sync_in_clean_mode else "NORMAL"
     return response

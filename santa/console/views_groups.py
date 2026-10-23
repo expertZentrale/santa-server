@@ -16,14 +16,16 @@ from ..profiles import base_profile, file_access_rules, group_profile
 from ..rules import GLOBAL, GROUP, LIST_FIELDS, MACHINE, PARENT, effective_rule_values
 from ..services import (
     can_see_sync_token,
+    chunked,
     groups_prefetch,
     related_aggregate,
     related_count,
     remove_machine_from_rules,
+    request_clean_sync,
     rules_only_for,
 )
 from .filters import Facet, any_of, chosen, filter_bar, remember_filters
-from .forms import GroupForm, MachineModeForm
+from .forms import GroupForm, MachineBulkForm, MachineModeForm
 from .utils import (
     changed_message,
     defer_rows,
@@ -215,7 +217,7 @@ def machines(request):
     for machine in page or []:
         machine.is_stale = not machine.last_postflight_at or machine.last_postflight_at < stale_before
     return render_list(request, "console/machines/list.html", "console/machines/_rows.html", {
-        "page": page, "sort": sort, "params": request.GET,
+        "page": page, "sort": sort, "params": request.GET, "client_modes": ClientMode.choices,
         **filter_bar(request, "machines", [
             Facet("group", gettext("Group"), choices=Group.objects.order_by("name").values_list("pk", "name")),
             Facet("mode", gettext("Mode"), choices=ClientMode.choices),
@@ -351,11 +353,60 @@ def machine_mode(request, pk):
 @staff_required
 @require_POST
 def machine_clean_sync(request, pk):
+    """all: a full clean sync, the transitive rules go too"""
     require_perms(request, "change_machine")
     machine = get_object_or_404(Machine, pk=pk)
-    machine.clean_sync_requested = True
-    machine.save(update_fields=["clean_sync_requested"])
-    log_change(request.user, machine, "Clean sync requested")
-    messages.success(request, gettext("%(machine)s: clean sync at the next sync (the Mac drops and downloads all its "
-                                      "rules).") % {"machine": machine})
+    full = request.POST.get("all") == "1"
+    request_clean_sync(Machine.objects.filter(pk=machine.pk), include_transitive=full)
+    log_change(request.user, machine, "Full clean sync requested" if full else "Clean sync requested")
+    if full:
+        text = gettext("%(machine)s: full clean sync at the next sync (the Mac drops all its rules, the transitive "
+                       "ones too, and downloads them again).")
+    else:
+        text = gettext("%(machine)s: clean sync at the next sync (the Mac drops and downloads all its rules).")
+    messages.success(request, text % {"machine": machine})
     return redirect("console:machine", pk=machine.pk)
+
+
+@staff_required
+@require_POST
+def machines_bulk(request):
+    require_perms(request, "view_machine", "change_machine")
+    form = MachineBulkForm(request.POST)
+    if not form.is_valid():
+        for errors in form.errors.values():
+            messages.error(request, " ".join(errors))
+        return redirect(safe_next(request, "console:machines"))
+    action = form.cleaned_data["action"]
+    machines = form.cleaned_data["machines"]
+    count = len(machines)
+    if action in ("clean_sync", "clean_sync_all"):
+        full = action == "clean_sync_all"
+        request_clean_sync(machines, include_transitive=full)
+        log_change(request.user, machines, "Full clean sync requested" if full else "Clean sync requested")
+        if full:
+            message = ngettext("%(count)s Mac: full clean sync at its next sync, the transitive rules too.",
+                               "%(count)s Macs: full clean sync at their next sync, the transitive rules too.", count)
+        else:
+            message = ngettext("%(count)s Mac: clean sync at its next sync.",
+                               "%(count)s Macs: clean sync at their next sync.", count)
+        messages.success(request, message % {"count": count})
+    else:
+        mode, until = form.cleaned_data["mode"], form.cleaned_data["until"]
+        # only the mode: a whole save would write back the rule ledger of a sync that ran meanwhile
+        # in chunks: SQL Server takes at most 2100 parameters per query
+        for chunk in chunked([machine.pk for machine in machines]):
+            Machine.objects.filter(pk__in=chunk).update(client_mode_override=mode, client_mode_override_until=until)
+        if mode:
+            label = ClientMode(mode).label
+            log_change(request.user, machines, f"Mode {mode}" + (f" until {until.isoformat()}" if until else ""))
+            message = ngettext("%(count)s Mac: %(mode)s from its next sync on.",
+                               "%(count)s Macs: %(mode)s from their next sync on.", count) % {
+                "count": count, "mode": label}
+        else:
+            log_change(request.user, machines, "Mode of the group")
+            message = ngettext("%(count)s Mac: the mode of its group from its next sync on.",
+                               "%(count)s Macs: the mode of their group from their next sync on.", count) % {
+                "count": count}
+        messages.success(request, message)
+    return redirect(safe_next(request, "console:machines"))

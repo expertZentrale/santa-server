@@ -1,8 +1,30 @@
-{% load console i18n %}<table class="table" data-table="macs">
-  <thead><tr>{% sort_th _("Mac") "mac" %}{% sort_th _("User") "user" %}{% sort_th _("Group") "group" %}{% sort_th _("Mode") "mode" %}{% sort_th _("Santa / macOS") "santa" %}<th class="num">{% translate "Rules" %}</th>{% sort_th _("Last sync") "sync" %}<th class="row-actions" aria-label="{% translate 'Actions' %}"></th></tr></thead>
+{% load console i18n %}{% if perms.santa.change_machine %}<form method="post" action="{% url 'console:machines_bulk' %}" data-select-form>
+  {% csrf_token %}
+  <input type="hidden" name="next" value="{{ request.get_full_path }}">
+  <div class="bulkbar" data-bulkbar hidden>
+    <span class="count" title="{% translate 'Click selects a row, Ctrl-click adds or removes one, Shift-click selects a range.' %}">{% blocktranslate %}<span data-selected-count>0</span> selected{% endblocktranslate %}</span>
+    <select name="action" aria-label="{% translate 'Action' %}"><button><selectedcontent></selectedcontent></button>
+      <option value="clean_sync">{% translate "Clean sync" %}</option><option value="clean_sync_all">{% translate "Full clean sync" %}</option>
+      <option value="set_mode">{% translate "Change mode" %}</option>
+    </select>
+    <select name="mode" aria-label="{% translate 'Mode' %}" data-show-when="action=set_mode"><button><selectedcontent></selectedcontent></button>
+      <option value="">{% translate "As the group" %}</option>{% for value, label in client_modes %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select>
+    <span class="bulkbar-until" data-show-when="action=set_mode">
+      <select name="until_0" aria-label="{% translate 'How long' %}"><button><selectedcontent></selectedcontent></button>
+        <option value="">{% translate "Until it is reset" %}</option><option value="1h">{% translate "For 1 hour" %}</option>
+        <option value="1d">{% translate "For 1 day" %}</option><option value="7d">{% translate "For 7 days" %}</option>
+        <option value="30d">{% translate "For 30 days" %}</option><option value="date">{% translate "Until a date" %}</option></select>
+      <input type="datetime-local" name="until_1" aria-label="{% translate 'Date' %}" data-show-when="until_0=date">
+    </span>
+    <button class="button primary" data-confirm-when="action=clean_sync_all" data-confirm="{% translate 'The selected Macs drop all their rules, the transitive ones too, and download them again at their next sync. Continue?' %}">{% translate "Apply" %}</button>
+    <button type="button" class="bulkbar-clear" data-clear-selection aria-label="{% translate 'Clear selection' %}" title="{% translate 'Clear selection (Esc)' %}">×</button>
+  </div>{% endif %}
+<table class="table" data-table="macs">
+  <thead><tr>{% if perms.santa.change_machine %}<th class="select"><input type="checkbox" id="select-all-macs" data-select-all aria-label="{% translate 'Select all' %}"></th>{% endif %}{% sort_th _("Mac") "mac" %}{% sort_th _("User") "user" %}{% sort_th _("Group") "group" %}{% sort_th _("Mode") "mode" %}{% sort_th _("Santa / macOS") "santa" %}<th class="num">{% translate "Rules" %}</th>{% sort_th _("Last sync") "sync" %}<th class="row-actions" aria-label="{% translate 'Actions' %}"></th></tr></thead>
   <tbody>
   {% for machine in page %}
     <tr>
+      {% if perms.santa.change_machine %}<td class="select"><input type="checkbox" name="machines" value="{{ machine.pk }}" aria-label="{% translate 'Select Mac' %} {{ machine.hostname|default:machine.serial_number }}"></td>{% endif %}
       <td>{% url 'console:machine' machine.pk as machine_url %}<a class="strong" href="{{ machine_url }}" hx-get="{{ machine_url }}" hx-target="#drawer">{{ machine.hostname|default:machine.serial_number }}</a>
         <small class="muted mono">{{ machine.serial_number }}</small></td>
       <td>{{ machine.primary_user|default:"–" }}</td>
@@ -13,13 +35,15 @@
       <td class="num">{{ machine.reported_rule_count }}</td>
       <td>{% if machine.last_postflight_at %}{% blocktranslate with since=machine.last_postflight_at|timesince asvar last_sync %}{{ since }} ago{% endblocktranslate %}{% else %}{% translate "never" as last_sync %}{% endif %}
         {% if machine.is_stale %}<span class="badge bad">{{ last_sync }}</span>{% else %}{{ last_sync }}{% endif %}
-        {% if machine.clean_sync_requested %}<span class="badge info">{% translate "clean sync" %}</span>{% endif %}</td>
+        {% if machine.clean_sync_requested %}<span class="badge info">{% if machine.clean_sync_all %}{% translate "full clean sync" %}{% else %}{% translate "clean sync" %}{% endif %}</span>{% endif %}</td>
       <td class="row-actions"><button type="button" class="icon-button row-menu-button" popovertarget="row-menu-mac-{{ machine.pk }}" aria-haspopup="menu" title="{% translate 'Actions' %}" aria-label="{% translate 'Actions' %}: {{ machine.hostname|default:machine.serial_number }}">{% include "console/icons/more.svg" %}</button>
-        <div id="row-menu-mac-{{ machine.pk }}" class="row-menu" popover role="menu"><a class="menu-item" role="menuitem" href="{% url 'console:machine' machine.pk %}" hx-get="{% url 'console:machine' machine.pk %}" hx-target="#drawer">{% translate "Open" context "action" %}</a><a class="menu-item" role="menuitem" href="{% url 'console:machine' machine.pk %}#rules">{% translate "Rules for this Mac" %}</a>{% if perms.santa.change_machine %}<form method="post" action="{% url 'console:machine_clean_sync' machine.pk %}" data-confirm="{% translate 'The Mac drops all its rules and downloads them again at its next sync. Continue?' %}">{% csrf_token %}<button class="menu-item" role="menuitem"{% if machine.clean_sync_requested %} disabled{% endif %}>{% if machine.clean_sync_requested %}{% translate "Clean sync pending" %}{% else %}{% translate "Request a clean sync" %}{% endif %}</button></form>{% endif %}<a class="menu-item" role="menuitem" href="{% url 'console:history' 'machine' machine.pk %}" hx-get="{% url 'console:history' 'machine' machine.pk %}" hx-target="#drawer">{% translate "History" %}</a></div></td>
+        <div id="row-menu-mac-{{ machine.pk }}" class="row-menu" popover role="menu"><a class="menu-item" role="menuitem" href="{% url 'console:machine' machine.pk %}" hx-get="{% url 'console:machine' machine.pk %}" hx-target="#drawer">{% translate "Open" context "action" %}</a><a class="menu-item" role="menuitem" href="{% url 'console:machine' machine.pk %}#rules">{% translate "Rules for this Mac" %}</a>{% if perms.santa.change_machine %}{# outside the form of the selection: a form can't be inside another one #}<button class="menu-item" role="menuitem" form="mac-clean-sync-form" formaction="{% url 'console:machine_clean_sync' machine.pk %}"{% if machine.clean_sync_requested %} disabled{% endif %}>{% if machine.clean_sync_requested %}{% translate "Clean sync pending" %}{% else %}{% translate "Request a clean sync" %}{% endif %}</button>{% endif %}<a class="menu-item" role="menuitem" href="{% url 'console:history' 'machine' machine.pk %}" hx-get="{% url 'console:history' 'machine' machine.pk %}" hx-target="#drawer">{% translate "History" %}</a></div></td>
     </tr>
   {% empty %}
-    {% if skeleton %}{% include "console/_skeleton_rows.html" with columns=8 %}{% else %}<tr class="empty"><td colspan="8">{% translate "No Macs for these filters." %}</td></tr>{% endif %}
+    {% if skeleton %}{% if perms.santa.change_machine %}{% include "console/_skeleton_rows.html" with columns=9 select=True %}{% else %}{% include "console/_skeleton_rows.html" with columns=8 %}{% endif %}{% else %}<tr class="empty"><td colspan="{% if perms.santa.change_machine %}9{% else %}8{% endif %}">{% translate "No Macs for these filters." %}</td></tr>{% endif %}
   {% endfor %}
   </tbody>
 </table>
+{% if perms.santa.change_machine %}</form>
+<form id="mac-clean-sync-form" method="post" data-confirm="{% translate 'The Mac drops all its rules and downloads them again at its next sync. Continue?' %}" hidden>{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"></form>{% endif %}
 {% include "console/_pagination.html" %}

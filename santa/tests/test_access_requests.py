@@ -177,9 +177,9 @@ class UserRequestTestCase(ConsoleBase):
                                  ("year", ["today", "last week", "last month"]), ("all", list(ages))]:
             response = self.client.get(reverse("requests:list"), {"period": period} if period else {})
             self.assertEqual([r.title for r in response.context["page"]], expected, period)
-        # the last time span is remembered; "reset" goes back to 7 days
+        # opened again: 7 days, the default; so does "reset"
         response = self.client.get(reverse("requests:list"), follow=True)
-        self.assertEqual([r.title for r in response.context["page"]], list(ages))
+        self.assertEqual([r.title for r in response.context["page"]], ["today"])
         response = self.client.get(reverse("requests:list"), {"reset": "1"}, follow=True)
         self.assertContains(response, '<input type="radio" name="period" value="week" checked>', html=True)
         AccessRequest.objects.filter(title="today").delete()

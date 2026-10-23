@@ -126,6 +126,8 @@ a.badge:hover { text-decoration: none; filter: brightness(.95); outline: 1px sol
   left: 50%;
   bottom: 1rem;
   z-index: 20;
+  /* its own width: centred with left: 50%, an automatic width would end at the right edge, half the window */
+  width: max-content;
   max-width: calc(100vw - 2rem);
   transform: translate(-50%, 0);
   transition: transform .18s ease-out, opacity .18s ease-out, visibility .18s;
@@ -139,6 +141,11 @@ a.badge:hover { text-decoration: none; filter: brightness(.95); outline: 1px sol
 .bulkbar > .combobox:not(:has(> input:not([hidden]))) { display: none; }
 .bulkbar-clear { border: 0; background: none; color: var(--muted); font-size: 1.2rem; line-height: 1; padding: .3rem .5rem; border-radius: var(--radius-sm); cursor: pointer; min-height: var(--control-h); }
 .bulkbar-clear:hover { background: var(--surface-2); color: var(--text); }
+/* wider windows: when the bar wraps, its lines are centred, and × stays at the top right */
+@media (min-width: 40.01em) {
+  .bulkbar { justify-content: center; padding-right: calc(.5rem + 2.75rem + .25rem); }
+  .bulkbar-clear { position: absolute; top: .5rem; right: .5rem; }
+}
 /* room for the bar below the last row (its height: table.js) */
 body.has-bulkbar main { padding-bottom: calc(var(--bulkbar-h, 4rem) + 2rem); }
 /* the bar is at the bottom of the window: its tag suggestions open upwards, wide enough to read */
@@ -149,7 +156,8 @@ body:has(.drawer.open) .bulkbar.visible { opacity: 0; visibility: hidden; pointe
 @media (max-width: 40em) {
   .table .ignore-note { max-width: none; white-space: normal; }
   .bulkbar {
-    left: 1rem; right: 1rem; bottom: calc(1rem + env(safe-area-inset-bottom, 0rem)); max-width: none; transform: none;
+    left: 1rem; right: 1rem; bottom: calc(1rem + env(safe-area-inset-bottom, 0rem)); width: auto; max-width: none;
+    transform: none;
     border-radius: var(--radius); padding: .5rem;
   }
   .bulkbar:not(.visible) { transform: translateY(calc(100% + 1.5rem)); }

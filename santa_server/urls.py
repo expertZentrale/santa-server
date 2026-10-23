@@ -19,6 +19,7 @@ urlpatterns = [
     path("profile/", views_profile.profile, name="profile"),
     path("profile/preferences/", views_profile.set_preference, name="set_preference"),
     path("profile/filters/save/", views_profile.save_filter, name="save_filter"),
+    path("profile/filters/default/", views_profile.default_filter, name="default_filter"),
     path("profile/filters/<int:pk>/delete/", views_profile.delete_filter, name="delete_filter"),
     path("profile/filters/<int:pk>/rename/", views_profile.rename_filter, name="rename_filter"),
     path("notifications/", views_notifications.notifications, name="notifications"),

@@ -348,6 +348,9 @@ Profil des Benutzers gespeichert. Auf dem Smartphone liegt die Navigation hinter
 **Listen**: Klicken Sie auf eine Spaltenüberschrift zum Sortieren, erneut zum Umkehren. Ein Klick auf eine Zeile
 wählt sie aus, Strg-Klick fügt eine hinzu oder entfernt sie, Umschalt-Klick wählt einen Bereich. Die Aktionen für die
 Auswahl erscheinen unten im Fenster; Esc hebt die Auswahl auf.
+*Ansichten* speichert den aktuellen Filter unter einem Namen. Der Stern macht eine Ansicht zur Standardansicht der Liste
+(oder *Standard*, die eingebauten Filter): Die Liste öffnet sich aus dem Menü damit, und *Alle zurücksetzen* führt
+dorthin zurück.
 
 **Seitenleiste**: Ereignisse, Regeln, Paketregeln, Dateizugriffsregeln, Anfragen, Macs, Gruppen, alles unter
 *Administration* und der Verlauf öffnen sich in einer Leiste rechts, auch zum Anlegen und Bearbeiten. Nach dem
@@ -361,7 +364,11 @@ Konfigurationsprofils, *Sync-URL neu erzeugen* und in der Liste das Basisprofil.
 
 **Macs**: Filter nach Gruppe, Modus und Macs, die seit 2 Tagen nicht synchronisiert haben. Die Detailseite zeigt die
 Hardware, die letzte Synchronisierung, ob der Mac alle seine Regeln hat, alle Regeln, die für ihn gelten (und ob sie
-über diesen Mac, seine Gruppe oder alle Macs kommen), seine letzten Ereignisse und Anfragen und *Clean Sync*.
+über diesen Mac, seine Gruppe oder alle Macs kommen), seine letzten Ereignisse und Anfragen, *Clean Sync* und
+*Vollständiger Clean Sync*. Ein Clean Sync lässt den Mac alle Regeln des Servers verwerfen und neu laden; der
+vollständige verwirft auch die transitiven Regeln, die der Mac selbst angelegt hat (`CLEAN_ALL`, ab Santa 2024.1,
+ältere Versionen bekommen einen Clean Sync). In der Liste wählen Sie mehrere Macs aus (wie bei den Regeln) für
+*Clean Sync*, *Vollständiger Clean Sync* oder *Modus wechseln*.
 Ausgewählte Regeln können den Mac aus ihrem Geltungsbereich entfernen (*Diesen Mac entfernen*); die Gruppen- und
 globalen Geltungsbereiche bleiben, eine Regel nur für diesen Mac wird gelöscht.
 *Modus* → *Ändern* stellt einen einzelnen Mac unabhängig von seiner Gruppe auf Monitor oder Lockdown, dauerhaft oder
@@ -511,7 +518,8 @@ Beispiele:
      `winldd` (nur Windows) und `android` (nur APKs) haben nichts für Macs.
 
 Eine Paketregel kann **mehrere Pakete** enthalten, eines pro Zeile. Sie teilen die Einstellungen, aber jedes Paket
-wird für sich geprüft und behält seine eigenen Versionen. Eine Paketregel legt außerdem fest, wie die Regeln aussehen:
+wird für sich geprüft und behält seine eigenen Versionen; *Prüfen* bei einem Paket im Detail prüft nur dieses. Eine
+Paketregel legt außerdem fest, wie die Regeln aussehen:
 - **Bevorzugter Regeltyp**: Binary (Standard) oder CDHash für eine Regel je Datei und Version, oder Signing ID,
   Zertifikat, Team ID für signierte Tools (eine Regel für alle Versionen). Unsignierte ausführbare Dateien erhalten
   stattdessen eine Binary-Regel.
@@ -673,6 +681,7 @@ Ihre. Dann:
 ```bash
 python manage.py createsuperuser
 python manage.py test                        # gegen SQL Server
+python manage.py create_demo_data            # Demo-Macs, Ereignisse, Anfragen; --delete entfernt sie
 ruff check .
 ```
 
@@ -1077,6 +1086,8 @@ navigation is behind the menu button.
 
 **Lists**: click a column header to sort, again to reverse. A click on a row selects it, Ctrl-click adds or removes
 one, Shift-click selects a range. The actions for the selection appear at the bottom of the window; Esc clears it.
+*Views* saves the current filter under a name. The star makes a view the default of the list (or *Standard*, the
+built-in filters): the list opens with it from the menu, and *Reset all* goes back to it.
 
 **Side panel**: events, rules, package rules, file access rules, requests, Macs, groups, everything under
 *Administration* and the history open in a panel on the right, also to create and edit them. After saving, the list
@@ -1089,7 +1100,10 @@ profile, *Regenerate the sync URL*, and the base profile on the list.
 
 **Macs**: filter by group, mode, and Macs that haven't synced for 2 days. The detail page shows the hardware, the last
 sync, whether the Mac has all its rules, every rule that applies to it (and whether it comes through this Mac, its
-group or all Macs), its recent events and requests, and *Clean sync*. Selected rules can drop the Mac from their
+group or all Macs), its recent events and requests, *Clean sync* and *Full clean sync*. A clean sync makes the Mac
+drop all the rules of the server and download them again; the full one also drops the transitive rules the Mac
+created itself (`CLEAN_ALL`, Santa 2024.1 or newer, older versions get a clean sync). In the list, select several Macs
+(as for the rules) for *Clean sync*, *Full clean sync* or *Change mode*. Selected rules can drop the Mac from their
 scope (*Remove this Mac*); the group and global scopes stay, a rule only for this Mac is deleted.
 *Mode* → *Change* sets a single Mac to Monitor or Lockdown independently of its group, for good or for a time (1 hour,
 1 day, 7 days, 30 days, until a date); then the mode of the group applies again. The Mac gets it at its next sync, the
@@ -1233,7 +1247,8 @@ Examples:
      `winldd` (Windows only) and `android` (APKs only) have nothing for Macs.
 
 A package rule can list **several packages**, one per line. They share the settings, but every package is checked
-on its own and keeps its own versions. A package rule also chooses what the rules look like:
+on its own and keeps its own versions; *Check* at a package in the detail checks only that one. A package rule also
+chooses what the rules look like:
 - **Preferred rule type**: Binary (default) or CDHash for one rule per file and version, or Signing ID, Certificate,
   Team ID for signed tools (one rule for all versions). Unsigned executables fall back to a Binary rule.
 - **Policy**: allow, allow compiler, block, block silently, or CEL, plus the block message and URL.
@@ -1387,6 +1402,7 @@ host user, so the files in the workspace stay yours. Then:
 ```bash
 python manage.py createsuperuser
 python manage.py test                        # against SQL Server
+python manage.py create_demo_data            # demo Macs, events, requests; --delete removes them
 ruff check .
 ```
 

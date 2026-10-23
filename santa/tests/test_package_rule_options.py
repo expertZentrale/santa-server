@@ -1225,6 +1225,27 @@ class CheckNewPackagesTestCase(ReleaseSourceBase):
             self.client.post(reverse("console:source_check", args=(self.source.pk,)), {"only": "new"})
         self.assertEqual(sync.call_args.kwargs["only"], ["o/c"])
 
+    def test_one_package(self):
+        response = self.client.get(reverse("console:source", args=(self.source.pk,)))
+        self.assertContains(response, 'name="identifier" value="o/b"')
+        self.assertContains(response, 'aria-label="Check o/b"')
+        with patch("santa.console.views_sources.sync_release_source", return_value=[]) as sync:
+            response = self.client.post(reverse("console:source_check", args=(self.source.pk,)),
+                                        {"identifier": "o/b"}, follow=True)
+        self.assertEqual(sync.call_args.kwargs["only"], ["o/b"])
+        self.assertContains(response, "up to date")
+        with patch("santa.console.views_sources.sync_release_source", return_value=[]) as sync:
+            response = self.client.post(reverse("console:source_check", args=(self.source.pk,)),
+                                        {"identifier": "o/unknown"}, follow=True)
+        sync.assert_not_called()
+        self.assertContains(response, "o/unknown is not a package of this package rule.")
+        # one package: "Check now" is the same
+        single = ReleaseSource.objects.create(name="single", kind=ReleaseSource.Kind.GITHUB_RELEASE, identifier="o/x",
+                                              is_global=True)
+        ReleaseVersion.objects.create(source=single, identifier="o/x", version="1.0")
+        response = self.client.get(reverse("console:source", args=(single.pk,)))
+        self.assertNotContains(response, 'name="identifier"')
+
     def test_no_button_when_all_are_new(self):
         fresh = ReleaseSource.objects.create(name="fresh", kind=ReleaseSource.Kind.GITHUB_RELEASE,
                                              identifier="o/x\no/y", is_global=True)

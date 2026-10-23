@@ -400,6 +400,10 @@ class Machine(models.Model):
     clean_sync_requested = models.BooleanField(
         default=False, help_text=_("Send a clean sync (client drops all its rules) at the next preflight.")
     )
+    # the requested clean sync drops the transitive rules too (sync type CLEAN_ALL)
+    clean_sync_all = models.BooleanField(
+        _("full clean sync"), default=False,
+        help_text=_("With the clean sync: also drop the transitive rules the Mac created itself (Santa 2024.1+)."))
     sync_in_clean_mode = models.BooleanField(default=False, editable=False)
 
     last_ip = models.GenericIPAddressField(null=True, blank=True)
@@ -1301,8 +1305,6 @@ class UserProfile(models.Model):
     time_zone = models.CharField(max_length=64, blank=True)
     # OIDC_ADMIN_ROLE was in the ID token of the last sign-in: keeps "Santa admins" when the roles are recomputed
     has_admin_role = models.BooleanField(default=False, editable=False)
-    # {list: query string} of the last used filter of each list, a document only (never filtered on)
-    last_filters = models.JSONField(default=dict, blank=True, editable=False)
     # {notification: "off" | "instant" | "daily"} (notifications.py), a document only; missing = its default
     notifications = models.JSONField(default=dict, blank=True, editable=False)
 
@@ -1360,6 +1362,9 @@ class SavedFilter(models.Model):
     page = models.CharField(max_length=32)
     name = models.CharField(max_length=100)
     query = models.TextField()
+    # the view the list opens with (from the menu, "Reset all"); at most one per user and list, kept by
+    # views_profile.default_filter (no filtered unique constraint on SQL Server)
+    is_default = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
