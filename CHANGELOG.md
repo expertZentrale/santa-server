@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-23
+
 ### Added
 
 - **Demo data for development.** `python manage.py create_demo_data` fills a development database with groups,
@@ -524,7 +526,8 @@
   docker/setup-buildx-action 4, docker/metadata-action 6.
 - Python packages: hiredis 3.4.2, tzdata 2026.4.
 
-[Unreleased]: https://github.com/expertZentrale/santa-server/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/expertZentrale/santa-server/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/expertZentrale/santa-server/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/expertZentrale/santa-server/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/expertZentrale/santa-server/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/expertZentrale/santa-server/compare/v0.9.0...v0.10.0
