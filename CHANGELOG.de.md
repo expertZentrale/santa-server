@@ -8,6 +8,9 @@
 
 ### Hinzugefügt
 
+- **Demo-Daten für die Entwicklung.** `python manage.py create_demo_data` füllt eine Entwicklungsdatenbank mit
+  Gruppen, Macs, Ereignissen, Benutzern und Anfragen (keine Regeln oder Paketregeln), `--delete` entfernt sie
+  wieder. Nur mit `DEBUG` oder mit `--force`.
 - **Vollständiger Clean Sync.** Neben dem Clean Sync kann ein Mac einen vollständigen Clean Sync
   bekommen: Er verwirft auch die transitiven Regeln, die er selbst angelegt hat (ab Santa 2024.1;
   ältere Versionen bekommen einen Clean Sync). Im Detail des Macs, als Sammelaktion und im Admin.

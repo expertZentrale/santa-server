@@ -681,6 +681,7 @@ Ihre. Dann:
 ```bash
 python manage.py createsuperuser
 python manage.py test                        # gegen SQL Server
+python manage.py create_demo_data            # Demo-Macs, Ereignisse, Anfragen; --delete entfernt sie
 ruff check .
 ```
 
@@ -1401,6 +1402,7 @@ host user, so the files in the workspace stay yours. Then:
 ```bash
 python manage.py createsuperuser
 python manage.py test                        # against SQL Server
+python manage.py create_demo_data            # demo Macs, events, requests; --delete removes them
 ruff check .
 ```
 

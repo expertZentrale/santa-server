@@ -8,6 +8,9 @@
 
 ### Added
 
+- **Demo data for development.** `python manage.py create_demo_data` fills a development database with groups,
+  Macs, events, users and requests (no rules or package rules), `--delete` removes them again. Only with
+  `DEBUG`, or with `--force`.
 - **Full clean sync.** Besides the clean sync, a Mac can get a full clean sync: it also drops the
   transitive rules it created itself (Santa 2024.1 or newer; older versions get a clean sync). In the
   Mac's detail, as a bulk action and in the admin.
