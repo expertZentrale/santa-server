@@ -11,10 +11,14 @@ from django.utils import timezone
 from santa.events import build_event
 from santa.models import AccessRequest, ClientMode, Event, Group, Machine
 
-# everything this command creates carries one of these marks, so --delete finds it and nothing else
+# --delete only removes what carries all the marks of this command, not everything with a similar name:
+# groups "Demo: …" with this description, Macs "DEMO-…" with a serial "DEMO…" and a demo owner, users of the
+# reserved domain .invalid (RFC 2606, no real account has it) that are no superusers
 GROUP_PREFIX = "Demo: "
+DEMO_NOTE = "Demo data (create_demo_data)"
 MACHINE_PREFIX = "DEMO-"
-USER_PREFIX = "demo."
+SERIAL_PREFIX = "DEMO"
+USER_DOMAIN = "@demo.invalid"
 
 GROUPS = [
     ("Engineering", ClientMode.MONITOR),
@@ -70,7 +74,8 @@ def _hex(rng, length):
 
 class Command(BaseCommand):
     help = ("Create demo data for development: groups, Macs, events, users and requests, no rules or package rules. "
-            "Everything is marked (groups \"Demo: …\", Macs \"DEMO-…\", users \"demo.…\"); --delete removes it again")
+            "Everything is marked (groups \"Demo: …\", Macs \"DEMO-…\", users \"…@demo.invalid\"); --delete removes "
+            "it again")
 
     def add_arguments(self, parser):
         parser.add_argument("--macs", type=int, default=24, help="Number of Macs (default 24)")
@@ -103,7 +108,7 @@ class Command(BaseCommand):
         for name, mode in GROUPS:
             group, _created = Group.objects.get_or_create(
                 name=f"{GROUP_PREFIX}{name}",
-                defaults={"client_mode": mode, "description": "Demo data (create_demo_data)"})
+                defaults={"client_mode": mode, "description": DEMO_NOTE})
             groups.append(group)
         return groups
 
@@ -112,8 +117,8 @@ class Command(BaseCommand):
         users = []
         for name in USERS:
             user, created = User.objects.get_or_create(
-                username=f"{USER_PREFIX}{name}@example.com",
-                defaults={"first_name": name.capitalize(), "last_name": "Demo", "email": f"{name}@example.com"})
+                username=f"{name}{USER_DOMAIN}",
+                defaults={"first_name": name.capitalize(), "last_name": "Demo", "email": f"{name}{USER_DOMAIN}"})
             if created:
                 # no password: a demo account must not be a way in; set one in the admin to try the request form
                 user.set_unusable_password()
@@ -133,13 +138,13 @@ class Command(BaseCommand):
                                else timedelta(minutes=rng.randint(1, 600)))
             machine = Machine(
                 machine_id=f"{MACHINE_PREFIX}{uuid.UUID(int=rng.getrandbits(128))}".upper(),
-                serial_number=f"DEMO{number:04d}{_hex(rng, 4).upper()}",
+                serial_number=f"{SERIAL_PREFIX}{number:04d}{_hex(rng, 4).upper()}",
                 hostname=f"mac-{user}-{number:02d}",
                 model_identifier=rng.choice(MODELS),
                 os_version=os_version,
                 os_build=os_build,
                 santa_version=rng.choice(SANTA_VERSIONS),
-                primary_user=f"{USER_PREFIX}{user}@example.com",
+                primary_user=f"{user}{USER_DOMAIN}",
                 group=rng.choice(groups),
                 last_ip=f"10.20.{rng.randint(0, 255)}.{rng.randint(1, 254)}",
                 last_preflight_at=last_sync,
@@ -154,7 +159,9 @@ class Command(BaseCommand):
                 machine.client_mode_override_until = now + timedelta(days=rng.randint(1, 7))
             machines.append(machine)
         Machine.objects.bulk_create(machines)
-        return list(Machine.objects.filter(machine_id__in=[m.machine_id for m in machines]).select_related("group"))
+        # not by their ids: SQL Server takes at most 2100 parameters per query
+        return list(Machine.objects.filter(machine_id__startswith=MACHINE_PREFIX, created_at__gte=now)
+                    .select_related("group"))
 
     def create_events(self, rng, machines, count, days):
         now = timezone.now()
@@ -236,16 +243,18 @@ class Command(BaseCommand):
     def delete(self):
         User = get_user_model()
         with transaction.atomic():
-            users = User.objects.filter(username__startswith=USER_PREFIX)
-            # requests protect their requester; the events and requests of the Macs go with them
+            users = User.objects.filter(username__endswith=USER_DOMAIN, is_superuser=False)
+            # requests protect their requester; the events go with their Macs
             requests = AccessRequest.objects.filter(requester__in=users).delete()[1].get("santa.AccessRequest", 0)
-            machines = Machine.objects.filter(machine_id__startswith=MACHINE_PREFIX)
+            machines = Machine.objects.filter(machine_id__startswith=MACHINE_PREFIX,
+                                              serial_number__startswith=SERIAL_PREFIX,
+                                              primary_user__endswith=USER_DOMAIN)
             events = Event.objects.filter(machine__in=machines).delete()[1].get("santa.Event", 0)
             machine_count = machines.delete()[1].get("santa.Machine", 0)
             user_count = users.delete()[1].get(User._meta.label, 0)
             # a demo group someone gave real Macs or rules stays
-            groups = Group.objects.filter(name__startswith=GROUP_PREFIX, machines=None, rules=None,
-                                          release_sources=None, file_access_rules=None, children=None)
+            groups = Group.objects.filter(name__startswith=GROUP_PREFIX, description=DEMO_NOTE, machines=None,
+                                          rules=None, release_sources=None, file_access_rules=None, children=None)
             group_count = groups.delete()[1].get("santa.Group", 0)
         self.stdout.write(f"{group_count} group(s), {machine_count} Mac(s), {events} event(s), {user_count} user(s), "
                           f"{requests} request(s) deleted")
