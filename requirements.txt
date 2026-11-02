@@ -8,5 +8,5 @@ mssql-django==2.0
 mozilla-django-oidc==5.0.2
 redis==8.1.0
 requests==2.34.2
-tzdata==2026.5
+tzdata==2026.6
 whitenoise==6.12.0
