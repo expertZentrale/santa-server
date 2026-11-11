@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-11
+
 ### Hinzugefügt
 
 - **Namen für Regeln.** Eine Regel kann neben ihrem Identifier einen Namen haben, z. B. „Microsoft-Apps“ für eine
@@ -589,7 +591,8 @@
   docker/setup-buildx-action 4, docker/metadata-action 6.
 - Python-Pakete: hiredis 3.4.2, tzdata 2026.4.
 
-[Unreleased]: https://github.com/expertZentrale/santa-server/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/expertZentrale/santa-server/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/expertZentrale/santa-server/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/expertZentrale/santa-server/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/expertZentrale/santa-server/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/expertZentrale/santa-server/compare/v0.10.0...v0.11.0
