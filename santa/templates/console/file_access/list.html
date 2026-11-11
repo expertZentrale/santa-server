@@ -7,13 +7,13 @@
   <div class="actions">{% if perms.santa.add_fileaccessrule %}{% url 'console:file_access_rule_add' as add_url %}<a class="button primary" href="{{ add_url }}" hx-get="{{ add_url }}" hx-target="#drawer">{% translate "New file access rule" %}</a>{% endif %}</div>
 </div>
 {% include "console/widgets/_filter_bar.html" %}
-<table class="table" data-table="file-access">
-  <thead><tr>{% sort_th _("Rule") "name" %}{% sort_th _("Rule type") "type" %}<th>{% translate "Paths" %}</th><th class="num">{% translate "Processes" %}</th><th>{% translate "Mode" %}</th><th>{% translate "Scope" %}</th>{% sort_th _("Changed") "changed" %}<th class="row-actions" aria-label="{% translate 'Actions' %}"></th></tr></thead>
+<table class="table" data-table="file-access" data-merged="description:name">
+  <thead><tr>{% sort_th _("Rule") "name" %}<th data-col="description">{% translate "Description" %}</th>{% sort_th _("Rule type") "type" %}<th>{% translate "Paths" %}</th><th class="num">{% translate "Processes" %}</th><th>{% translate "Mode" %}</th><th>{% translate "Scope" %}</th>{% sort_th _("Changed") "changed" %}<th class="row-actions" aria-label="{% translate 'Actions' %}"></th></tr></thead>
   <tbody>
   {% for rule in page %}
     <tr{% if not rule.is_enabled %} class="disabled"{% endif %}>
-      <td>{% url 'console:file_access_rule' rule.pk as rule_url %}<a class="strong" href="{{ rule_url }}" hx-get="{{ rule_url }}" hx-target="#drawer">{{ rule.name }}</a>
-        {% if rule.description %}<small class="muted">{{ rule.description|truncatechars:90 }}</small>{% endif %}</td>
+      <td>{% url 'console:file_access_rule' rule.pk as rule_url %}<a class="strong" href="{{ rule_url }}" hx-get="{{ rule_url }}" hx-target="#drawer">{{ rule.name }}</a></td>
+      <td>{% if rule.description %}<span class="cell-line" title="{{ rule.description }}">{{ rule.description|truncatechars:90 }}</span>{% endif %}</td>
       <td class="small">{{ rule.get_rule_type_display }}</td>
       <td class="small">{% for path in rule.path_list|slice:":3" %}<div class="mono">{{ path.Path }}{% if path.IsPrefix %} <span class="muted">…</span>{% endif %}</div>{% endfor %}
         {% if rule.path_list|length > 3 %}<span class="muted">{% blocktranslate with count=rule.path_list|length|add:"-3" %}+{{ count }} more{% endblocktranslate %}</span>{% endif %}</td>
@@ -25,7 +25,7 @@
         <div id="row-menu-file-access-{{ rule.pk }}" class="row-menu" popover role="menu"><a class="menu-item" role="menuitem" href="{{ rule_url }}" hx-get="{{ rule_url }}" hx-target="#drawer">{% if perms.santa.change_fileaccessrule %}{% translate "Edit" %}{% else %}{% translate "Open" context "action" %}{% endif %}</a><a class="menu-item" role="menuitem" href="{% url 'console:history' 'fileaccessrule' rule.pk %}" hx-get="{% url 'console:history' 'fileaccessrule' rule.pk %}" hx-target="#drawer">{% translate "History" %}</a>{% if perms.santa.delete_fileaccessrule %}<form method="post" action="{% url 'console:file_access_rule_delete' rule.pk %}" data-confirm="{% blocktranslate with name=rule.name %}Delete the file access rule {{ name }}? It stays on the Macs until their profile is replaced.{% endblocktranslate %}">{% csrf_token %}<button class="menu-item danger" role="menuitem">{% translate "Delete" %}</button></form>{% endif %}</div></td>
     </tr>
   {% empty %}
-    <tr class="empty"><td colspan="8">{% translate "No file access rules for these filters." %}</td></tr>
+    <tr class="empty"><td colspan="9">{% translate "No file access rules for these filters." %}</td></tr>
   {% endfor %}
   </tbody>
 </table>

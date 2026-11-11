@@ -161,7 +161,8 @@ class PrefixRulesTestCase(ConsoleBase):
         response = self.client.get(reverse("console:request", args=(access_request.pk,)))
         self.assertEqual(response.context["approve_form"]["result"].value(), "signing")
         response = self.client.post(reverse("console:request_approve", args=(access_request.pk,)), {
-            "result": "signing", "existing_rule": self.rule.pk, "scope": "groups", "groups": [self.dev.pk]})
+            "result": "signing", "existing_rule": self.rule.pk, "added_scope": "groups",
+            "added_groups": [self.dev.pk]})
         access_request.refresh_from_db()
         self.rule.refresh_from_db()
         self.assertEqual(access_request.status, AccessRequest.Status.APPROVED)
@@ -194,7 +195,7 @@ class PrefixRulesTestCase(ConsoleBase):
                                                       machine=self.machine, file_sha256=SHA_A, title="a",
                                                       justification="x")
         response = self.client.post(reverse("console:request_approve", args=(access_request.pk,)), {
-            "result": "extend", "existing_rule": self.rule.pk, "scope": "groups", "groups": [self.dev.pk]})
+            "result": "extend", "existing_rule": self.rule.pk, "added_scope": "groups", "added_groups": [self.dev.pk]})
         self.assertContains(response, "doesn&#x27;t include the signing ID")
         access_request.refresh_from_db()
         self.assertEqual(access_request.status, AccessRequest.Status.PENDING)
@@ -294,7 +295,7 @@ class SharedPrefixTestCase(ConsoleBase):
         response = self.client.get(reverse("console:request", args=(access_request.pk,)))
         self.assertEqual(response.context["approve_form"]["signing_prefix"].value(), "com.microsoft.teams2.")
         self.client.post(reverse("console:request_approve", args=(access_request.pk,)), {
-            "result": "signing", "existing_rule": self.rule.pk, "scope": "global",
+            "result": "signing", "existing_rule": self.rule.pk, "added_scope": "global",
             "signing_prefix": "com.microsoft.teams2."})
         access_request.refresh_from_db()
         self.rule.refresh_from_db()

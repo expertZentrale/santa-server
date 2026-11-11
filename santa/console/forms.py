@@ -55,6 +55,8 @@ from ..validators import validate_identifier
 SCOPE_GLOBAL = "global"
 SCOPE_GROUPS = "groups"
 SCOPE_MACHINES = "machines"
+# an existing rule approved with its scope as it is (ApproveEventForm.added_scope)
+SCOPE_KEEP = "keep"
 
 RULE_TYPE_HELP = {
     RuleType.SIGNINGID: _("all versions of this app from this developer"),
@@ -71,7 +73,8 @@ EVENT_POLICIES = [*ALLOW_POLICIES, (Policy.BLOCKLIST, _("Block")), (Policy.SILEN
                   (Policy.CEL, Policy.CEL.label)]
 # labels of the model fields the console forms show (the admin keeps the English field names)
 RULE_LABELS = {
-    "rule_type": _("Rule type"), "identifier": _("Identifier"), "policy": _("Policy"), "description": _("Comment"),
+    "rule_type": _("Rule type"), "identifier": _("Identifier"), "policy": _("Policy"), "name": _("Name"),
+    "description": _("Comment"),
     "tags": _("Tags"), "groups": _("Groups"), "custom_msg": _("Custom message"), "custom_url": _("Custom URL"),
     "cel_expr": _("CEL expression"),
 }
@@ -341,8 +344,8 @@ class RuleForm(TagsMixin, forms.ModelForm):
 
     class Meta:
         model = Rule
-        fields = ("rule_type", "identifier", "policy", "cel_expr", "custom_msg", "custom_url", "is_global", "groups",
-                  "machines", "expires_at", "tags", "description", "is_enabled")
+        fields = ("rule_type", "identifier", "name", "policy", "cel_expr", "custom_msg", "custom_url", "is_global",
+                  "groups", "machines", "expires_at", "tags", "description", "is_enabled")
         widgets = {
             "groups": forms.CheckboxSelectMultiple,
             "cel_expr": forms.Textarea(attrs={"rows": 3, "class": "mono"}),
@@ -977,12 +980,13 @@ class ApproveEventForm(DecisionNotesMixin, CelPolicyMixin, TagsMixin):
     RULE, EXISTING, EXTEND, SIGNING_ID, NONE = "rule", "existing", "extend", "signing", "none"
 
     field_order = ["result", "existing_rule", "rule_type", "policy", "signing_prefixes", "cel_expr", "scope",
-                   "groups", "expires_at", "tags", "new_tags", "tell_user", "note", "review_note"]
+                   "groups", "added_scope", "added_groups", "expires_at", "tags", "new_tags", "tell_user", "note",
+                   "review_note"]
 
     result = forms.ChoiceField(
         choices=[(RULE, _("New rule")), (EXISTING, _("Existing rule")),
-                 (EXTEND, _("Existing rule, with the scope below added")),
-                 (SIGNING_ID, _("Existing Team ID rule, with this signing ID and the scope below added")),
+                 (EXTEND, _("Existing rule, enabled and its scope extended")),
+                 (SIGNING_ID, _("Existing Team ID rule, extended by this signing ID")),
                  (NONE, _("No rule"))],
         initial=RULE, required=False, widget=forms.RadioSelect, label=_("Approve with"))
     existing_rule = forms.ModelChoiceField(queryset=Rule.objects.none(), required=False, widget=forms.RadioSelect,
@@ -996,6 +1000,14 @@ class ApproveEventForm(DecisionNotesMixin, CelPolicyMixin, TagsMixin):
                               initial=SCOPE_GROUPS, required=False, widget=forms.RadioSelect, label=_("Scope"))
     groups = forms.ModelMultipleChoiceField(queryset=Group.objects.all(), required=False, label=_("Groups"),
                                             widget=forms.CheckboxSelectMultiple)
+    # an existing rule only ever gets more scope (services.widen_rule): what is added, nothing by default
+    added_scope = forms.ChoiceField(choices=[(SCOPE_KEEP, _("Nothing, the scope stays as it is")),
+                                             (SCOPE_MACHINES, _("The Mac of the requester")),
+                                             (SCOPE_GROUPS, _("Groups")), (SCOPE_GLOBAL, _("All Macs"))],
+                                    initial=SCOPE_KEEP, required=False, widget=forms.RadioSelect,
+                                    label=_("Add to the scope"))
+    added_groups = forms.ModelMultipleChoiceField(queryset=Group.objects.all(), required=False,
+                                                  label=_("Groups to add"), widget=forms.CheckboxSelectMultiple)
     expires_at = UntilField(_("For good"), label=_("Allowed"), help_text=APPROVAL_UNTIL_HELP)
     signing_prefix = forms.CharField(
         required=False, max_length=255, label=_("Signing ID prefix"),
@@ -1049,6 +1061,20 @@ class ApproveEventForm(DecisionNotesMixin, CelPolicyMixin, TagsMixin):
         value = str(self["existing_rule"].value() or "")
         return [(match, str(match["rule"].pk) == value) for match in self.allowing]
 
+    def global_rule_ids(self):
+        """The rules to choose from that apply to all Macs already: there is no scope to add ("1|5", forms.js)"""
+        return "|".join(str(match["rule"].pk) for match in self.allowing if match["rule"].is_global)
+
+    def added(self):
+        """(is_global, groups, machines?) to add to the existing rule: machines is True for the Mac of the requester.
+        Nothing for a rule that applies to all Macs already."""
+        data = self.cleaned_data
+        scope = data.get("added_scope") or SCOPE_KEEP
+        if data["existing_rule"].is_global or scope == SCOPE_KEEP:
+            return False, [], False
+        return scope == SCOPE_GLOBAL, list(data["added_groups"]) if scope == SCOPE_GROUPS else [], \
+            scope == SCOPE_MACHINES
+
     def clean(self):
         cleaned_data = super().clean()
         result = cleaned_data.get("result")
@@ -1062,15 +1088,15 @@ class ApproveEventForm(DecisionNotesMixin, CelPolicyMixin, TagsMixin):
                                               # and Santa lets it run there: no block of their group wins
                                               and (self.allowed is None or self.allowed())):
             # approved as it is, the rule has to allow the binary on these Macs already (disabled, another scope or
-            # a CEL rule that may block it: "with the scope below added")
+            # a CEL rule that may block it: "enabled and its scope extended")
             self.add_error("existing_rule", gettext("This rule doesn't allow the binary on these Macs yet: choose "
-                                                    "“with the scope below added” or another rule."))
+                                                    "“enabled and its scope extended” or another rule."))
         if result == self.EXTEND and rule and any(match["rule"].pk == rule.pk and match.get("cel") is False
                                                   for match in self.allowing):
             # a wider scope doesn't change its expression: Santa would still block the binary
             self.add_error("existing_rule", gettext(
-                "This Team ID rule doesn't include the signing ID of the binary: choose “with this signing ID and the "
-                "scope below added” or another rule."))
+                "This Team ID rule doesn't include the signing ID of the binary: choose “extended by this signing "
+                "ID” or another rule."))
         if result == self.EXTEND and rule and rule.release_source_id:
             # its package rule decides its scope, the next versions would leave out the Macs added here
             self.add_error("existing_rule", gettext(
@@ -1081,11 +1107,25 @@ class ApproveEventForm(DecisionNotesMixin, CelPolicyMixin, TagsMixin):
                 if not cleaned_data.get(name):
                     self.add_error(name, gettext("This field is required."))
             clean_cel_policy(self, cleaned_data)
-        if result in (self.RULE, self.EXTEND, self.SIGNING_ID):
+        if result == self.RULE:
             if not cleaned_data.get("scope"):
                 self.add_error("scope", gettext("This field is required."))
             elif cleaned_data["scope"] == SCOPE_GROUPS and not cleaned_data.get("groups"):
                 self.add_error("groups", gettext("Choose at least one group."))
+        if result in (self.EXTEND, self.SIGNING_ID):
+            if "added_scope" not in self.data and self.data.get("scope"):
+                # posted by a page loaded before "Add to the scope" existed: its scope is the one to add
+                cleaned_data["added_scope"] = cleaned_data.get("scope")
+                cleaned_data["added_groups"] = cleaned_data.get("groups")
+            added_scope = cleaned_data.get("added_scope") or SCOPE_KEEP
+            if rule and not rule.is_global:
+                if added_scope == SCOPE_GROUPS and not cleaned_data.get("added_groups"):
+                    self.add_error("added_groups", gettext("Choose at least one group."))
+                elif added_scope == SCOPE_KEEP and not any(match["rule"].pk == rule.pk and match.get("reaches", True)
+                                                          for match in self.allowing):
+                    # enabled as it is, it still wouldn't reach the Mac of the requester
+                    self.add_error("added_scope", gettext("The rule doesn't apply to the Mac of the requester: add "
+                                                          "it, its group or all Macs."))
         return cleaned_data
 
 

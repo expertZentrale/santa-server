@@ -61,8 +61,8 @@ from .utils import (
 )
 from .views_filters import machine_choices
 
-RULE_COLUMNS = {"identifier": "identifier", "type": "rule_type", "policy": "policy", "created": "created_at",
-                "enabled": "is_enabled"}
+RULE_COLUMNS = {"identifier": "identifier", "name": "name", "type": "rule_type", "policy": "policy",
+                "created": "created_at", "enabled": "is_enabled"}
 
 
 # The filters on groups, tags and Macs are subqueries, not joins: a join repeats a rule per group or tag, and the
@@ -114,7 +114,7 @@ def filter_rules(request, rules):
         rules = _on_machines(rules, Machine.objects.filter(primary_user__in=users), exclude)
     q = params.get("q", "").strip()
     if q:
-        rules = rules.filter(Q(identifier__icontains=q) | Q(description__icontains=q)
+        rules = rules.filter(Q(identifier__icontains=q) | Q(name__icontains=q) | Q(description__icontains=q)
                              | rules_of(Rule.tags.through, tag__name__iexact=q))
     return rules
 
@@ -182,7 +182,7 @@ def rules(request):
         "page": page, "sort": sort, "params": request.GET, "policies": Policy.choices,
         "groups": groups,
         **filter_bar(request, "rules", facets, hidden=("sort",),
-                     placeholder=gettext("Identifier, description, tag…")),
+                     placeholder=gettext("Identifier, name, comment, tag…")),
     })
 
 
@@ -213,7 +213,7 @@ def rules_export(request):
     queryset, _sort = sort_by(request, filter_rules(request, Rule.objects.all()), RULE_COLUMNS, "-created")
     # tens of thousands of rows: only the columns of the file, the related names only
     queryset = queryset.select_related("release_source", "created_by").only(
-        "rule_type", "identifier", "policy", "is_global", "is_enabled", "description", "created_at",
+        "rule_type", "identifier", "name", "policy", "is_global", "is_enabled", "description", "created_at",
         "release_source__name", "created_by__username",
     )
     # the labels translated once, not per row
@@ -224,9 +224,9 @@ def rules_export(request):
     # the BOM makes Excel read UTF-8
     response.write("\ufeff")
     writer = csv.writer(response)
-    writer.writerow([gettext("Type"), gettext("Identifier"), gettext("Policy"), gettext("Scope"), gettext("Tags"),
-                     gettext("Enabled"), gettext("Package rule"), gettext("Comment"), gettext("Created"),
-                     gettext("Created by")])
+    writer.writerow([gettext("Type"), gettext("Identifier"), gettext("Name"), gettext("Policy"), gettext("Scope"),
+                     gettext("Tags"), gettext("Enabled"), gettext("Package rule"), gettext("Comment"),
+                     gettext("Created"), gettext("Created by")])
     # in blocks: the names of their groups, Macs and tags read at once (a prefetch builds objects per rule), the
     # pks within the 2100 parameters of SQL Server
     for chunk in batched(queryset.iterator(chunk_size=EXPORT_CHUNK), EXPORT_CHUNK):
@@ -241,7 +241,7 @@ def rules_export(request):
         for rule in chunk:
             scope = everywhere if rule.is_global else ", ".join(groups.get(rule.pk, []) + machines.get(rule.pk, []))
             writer.writerow([csv_cell(value) for value in (
-                rule_types.get(rule.rule_type, rule.rule_type), rule.identifier,
+                rule_types.get(rule.rule_type, rule.rule_type), rule.identifier, rule.name,
                 policies.get(rule.policy, rule.policy), scope, ", ".join(tags.get(rule.pk, [])),
                 yes if rule.is_enabled else no,
                 rule.release_source.name if rule.release_source else "", rule.description,
@@ -395,7 +395,8 @@ def rule_suggestions(request):
         # ranked before the limit: the identifier itself first, then the ones starting with it, then the rest
         rank = Case(When(identifier__iexact=q, then=Value(0)), When(identifier__istartswith=q, then=Value(1)),
                     default=Value(2), output_field=IntegerField())
-        rules = list(Rule.objects.filter(Q(identifier__icontains=q) | Q(description__icontains=q)
+        rules = list(Rule.objects.filter(Q(identifier__icontains=q) | Q(name__icontains=q)
+                                         | Q(description__icontains=q)
                                          | rules_of(Rule.tags.through, tag__name__icontains=q))
                      .annotate(rank=rank).order_by("rank", "identifier", "pk")[:MAX_RULE_SUGGESTIONS])
         prefetch_related_objects(rules, groups_prefetch(), machines_prefetch())

@@ -3,7 +3,9 @@ default of the list.
 
 The filter bar (console/widgets/_filter_bar.html) shows each active filter as a chip; the facets describe them.
 """
+import json
 import operator
+import re
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from functools import reduce
@@ -26,6 +28,10 @@ FILTER_PAGES = {"rules": True, "events-blocked": True, "events-all": True, "mach
                 "file-access": True, "groups": True, "users": True, "tags": True, "requests": True, "ignored": True,
                 "my-requests": False}
 MAX_QUERY_LENGTH = 4000
+# the columns of a view (SavedFilter.layout): the keys are the data-col of the table headers
+MAX_LAYOUT_LENGTH = 4000
+MAX_LAYOUT_COLUMNS = 40
+COLUMN_KEY = re.compile(r"[a-z0-9-]{1,40}")
 # the time filters of the lists ("" = all time), and their days for date_range()
 TIME_PRESETS = [("1", _("24 hours")), ("7", _("7 days")), ("30", _("30 days")), ("365", _("1 year")),
                 ("", _("All time"))]
@@ -82,6 +88,35 @@ def filter_query(params, keep=()):
         if name not in NOT_FILTERS and name not in keep:
             query.setlist(name, values)
     return query.urlencode()
+
+
+def clean_layout(value):
+    """The column layout of a view, sent by the browser as JSON: only the parts and keys table.js uses, {} if it is
+    not one (the view then keeps the columns as they are)"""
+    if not value or len(value) > MAX_LAYOUT_LENGTH:
+        return {}
+    try:
+        data = json.loads(value)
+    except ValueError:
+        return {}
+    if not isinstance(data, dict) or not isinstance(data.get("order"), list):
+        return {}
+
+    def column_keys(values):
+        if not isinstance(values, list):
+            return []
+        keys = [value for value in values if isinstance(value, str) and COLUMN_KEY.fullmatch(value)]
+        return list(dict.fromkeys(keys))[:MAX_LAYOUT_COLUMNS]
+
+    merged = data.get("merged")
+    merged = {child: parent for child, parent in (merged.items() if isinstance(merged, dict) else [])
+              if isinstance(parent, str) and child != parent
+              and COLUMN_KEY.fullmatch(child) and COLUMN_KEY.fullmatch(parent)}
+    # one level only: a column is merged into one that is shown on its own
+    merged = dict(list({child: parent for child, parent in merged.items() if parent not in merged}.items())
+                  [:MAX_LAYOUT_COLUMNS])
+    return {"order": column_keys(data["order"]), "merged": merged, "hidden": column_keys(data.get("hidden")),
+            "known": column_keys(data.get("known"))}
 
 
 def remember_filters(request, page, keep=()):
@@ -294,6 +329,9 @@ def filter_bar(request, page, facets, hidden=(), keep=(), placeholder=""):
     default = next((view for view in views if view.is_default and view.query), None)
     kept = {name: params.getlist(name) for name in keep if name in params}
     active_view = next((view for view in views if canonical_query(view.query) == canonical), None)
+    # the columns of the view shown (console/table.js), and whether the list is at its built-in defaults
+    view_layout = {"id": active_view.pk if active_view else None, "layout": active_view.layout if active_view else {},
+                   "standard": is_standard and not active_view}
     return {"bar": {
         "page": page, "q": q, "placeholder": placeholder, "hidden": hidden_pairs, "chips": chips,
         # "Reset all" leads there
@@ -301,6 +339,7 @@ def filter_bar(request, page, facets, hidden=(), keep=(), placeholder=""):
         "reset_url": _url(request, kept, "reset=1"), "query": canonical, "views": views,
         "active_view": active_view, "default_view": default,
         "standard_url": _url(request, kept, "standard=1"), "standard_active": is_standard and not active_view,
+        "view_layout": view_layout,
     }}
 
 

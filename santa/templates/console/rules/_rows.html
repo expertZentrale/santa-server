@@ -28,13 +28,13 @@
     <button class="button primary" data-confirm-when="action=delete" data-confirm="{% translate 'Delete the selected rules?' %}">{% translate "Apply" %}</button>
     <button type="button" class="bulkbar-clear" data-clear-selection aria-label="{% translate 'Clear selection' %}" title="{% translate 'Clear selection (Esc)' %}">×</button>
   </div>
-  <table class="table" data-table="rules" data-optional="comment created expires">
+  <table class="table" data-table="rules" data-optional="name created expires" data-merged="comment:identifier created-by:created">
     <thead><tr><th class="select"><input type="checkbox" id="select-all-rules" data-select-all aria-label="{% translate 'Select all' %}"></th>
-      {% sort_th _("Identifier") "identifier" %}<th data-col="comment">{% translate "Comment" %}</th>{% sort_th _("Type") "type" %}{% sort_th _("Policy") "policy" %}<th data-col="scope">{% translate "Scope" %}</th>
-      <th data-col="tags">{% translate "Tags" %}</th>{% sort_th _("Created") "created" %}<th data-col="expires">{% translate "Expires" %}</th><th data-col="origin">{% translate "Origin" %}</th>{% sort_th _("Enabled") "enabled" %}<th class="row-actions" aria-label="{% translate 'Actions' %}"></th></tr></thead>
+      {% sort_th _("Identifier") "identifier" %}{% sort_th _("Name") "name" %}<th data-col="comment">{% translate "Comment" %}</th>{% sort_th _("Type") "type" %}{% sort_th _("Policy") "policy" %}<th data-col="scope">{% translate "Scope" %}</th>
+      <th data-col="tags">{% translate "Tags" %}</th>{% sort_th _("Created") "created" %}<th data-col="created-by">{% translate "Created by" %}</th><th data-col="expires">{% translate "Expires" %}</th><th data-col="origin">{% translate "Origin" %}</th>{% sort_th _("Enabled") "enabled" %}<th class="row-actions" aria-label="{% translate 'Actions' %}"></th></tr></thead>
     <tbody>
     {% for rule in page %}{% include "console/rules/_row.html" %}{% empty %}
-      {% if skeleton %}{% include "console/_skeleton_rows.html" with columns=12 select=True %}{% else %}<tr class="empty"><td colspan="12">{% translate "No rules for these filters." %}</td></tr>{% endif %}
+      {% if skeleton %}{% include "console/_skeleton_rows.html" with columns=14 select=True %}{% else %}<tr class="empty"><td colspan="14">{% translate "No rules for these filters." %}</td></tr>{% endif %}
     {% endfor %}
     </tbody>
   </table>

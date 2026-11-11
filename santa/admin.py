@@ -258,16 +258,16 @@ class MachineAdmin(admin.ModelAdmin):
 class RuleAdmin(admin.ModelAdmin):
     form = RuleAdminForm
     change_list_template = "admin/santa/rule/change_list.html"
-    list_display = ("identifier_short", "rule_type", "policy", "scope", "is_enabled", "description", "tag_list",
-                    "release_source", "created_at")
+    list_display = ("identifier_short", "name", "rule_type", "policy", "scope", "is_enabled", "description",
+                    "tag_list", "release_source", "created_at")
     list_filter = ("is_enabled", "expires_at", "tags", "policy", "rule_type", "is_global", "groups", "release_source")
-    search_fields = ("identifier", "description", "tags__name")
+    search_fields = ("identifier", "name", "description", "tags__name")
     filter_horizontal = ("groups", "tags")
     autocomplete_fields = ("machines",)
     readonly_fields = ("release_source", "release_version", "created_by", "created_at", "updated_at")
     actions = ["enable_rules", "disable_rules", "add_groups", "add_tag", "remove_tag"]
     fieldsets = (
-        (None, {"fields": ("rule_type", "identifier", "policy", "description", "tags")}),
+        (None, {"fields": ("rule_type", "identifier", "name", "policy", "description", "tags")}),
         ("Scope", {"fields": ("is_global", "groups", "machines", "is_enabled", "expires_at")}),
         ("Block message / CEL", {"classes": ("collapse",), "fields": ("custom_msg", "custom_url", "cel_expr")}),
         ("Info", {"fields": ("release_source", "release_version", "created_by", "created_at", "updated_at")}),

@@ -1,19 +1,20 @@
-{% load console i18n %}<table class="table" data-table="requests">
-  <thead><tr>{% sort_th _("Request") "request" %}{% sort_th _("Kind") "kind" %}{% sort_th _("Requester") "requester" %}<th>{% translate "Mac" %}</th>{% sort_th _("Created") "created" %}{% sort_th _("Status") "status" %}<th class="row-actions" aria-label="{% translate 'Actions' %}"></th></tr></thead>
+{% load console i18n %}<table class="table" data-table="requests" data-merged="justification:request">
+  <thead><tr>{% sort_th _("Request") "request" %}<th data-col="justification">{% translate "Justification" %}</th>{% sort_th _("Kind") "kind" %}{% sort_th _("Requester") "requester" %}<th data-col="mac">{% translate "Mac" %}</th>{% sort_th _("Created") "created" %}{% sort_th _("Status") "status" %}<th class="row-actions" aria-label="{% translate 'Actions' %}"></th></tr></thead>
   <tbody>
   {% for r in page %}
     <tr>
-      <td>{% url 'console:request' r.pk as request_url %}<a class="strong" href="{{ request_url }}" hx-get="{{ request_url }}" hx-target="#drawer">{{ r.title }}</a><small class="muted">{{ r.justification|truncatechars:90 }}</small></td>
-      <td>{{ r.get_kind_display }}</td>
-      <td>{{ r.requester.get_full_name|default:r.requester.get_username }}</td>
-      <td>{{ r.machine.hostname|default:"–" }}</td>
-      <td>{{ r.created_at|date:"d.m.Y H:i" }}</td>
-      <td><span class="badge {% if r.status == 'APPROVED' %}ok{% elif r.status == 'DENIED' %}bad{% elif r.status == 'PENDING' %}info{% endif %}">{{ r.get_status_display }}</span></td>
+      <td data-col="request">{% url 'console:request' r.pk as request_url %}<a class="strong" href="{{ request_url }}" hx-get="{{ request_url }}" hx-target="#drawer">{{ r.title }}</a></td>
+      <td data-col="justification"><span class="cell-line" title="{{ r.justification }}">{{ r.justification|truncatechars:90 }}</span></td>
+      <td data-col="kind">{{ r.get_kind_display }}</td>
+      <td data-col="requester">{{ r.requester.get_full_name|default:r.requester.get_username }}</td>
+      <td data-col="mac">{{ r.machine.hostname|default:"–" }}</td>
+      <td data-col="created">{{ r.created_at|date:"d.m.Y H:i" }}</td>
+      <td data-col="status"><span class="badge {% if r.status == 'APPROVED' %}ok{% elif r.status == 'DENIED' %}bad{% elif r.status == 'PENDING' %}info{% endif %}">{{ r.get_status_display }}</span></td>
       <td class="row-actions"><button type="button" class="icon-button row-menu-button" popovertarget="row-menu-request-{{ r.pk }}" aria-haspopup="menu" title="{% translate 'Actions' %}" aria-label="{% translate 'Actions' %}: {{ r.title }}">{% include "console/icons/more.svg" %}</button>
         <div id="row-menu-request-{{ r.pk }}" class="row-menu" popover role="menu"><a class="menu-item" role="menuitem" href="{% url 'console:request' r.pk %}" hx-get="{% url 'console:request' r.pk %}" hx-target="#drawer">{% translate "Review" %}</a></div></td>
     </tr>
   {% empty %}
-    {% if skeleton %}{% include "console/_skeleton_rows.html" with columns=7 %}{% else %}<tr class="empty"><td colspan="7">{% translate "No requests." %}</td></tr>{% endif %}
+    {% if skeleton %}{% include "console/_skeleton_rows.html" with columns=8 %}{% else %}<tr class="empty"><td colspan="8">{% translate "No requests." %}</td></tr>{% endif %}
   {% endfor %}
   </tbody>
 </table>

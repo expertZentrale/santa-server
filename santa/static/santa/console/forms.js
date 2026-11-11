@@ -9,16 +9,19 @@
     root.querySelectorAll("textarea").forEach(fitTextarea);
   }
 
-  // data-show-when="policy=BLOCKLIST|CEL", data-show-when="parent" (not empty), data-hide-when="is_global"
+  // data-show-when="policy=BLOCKLIST|CEL", data-show-when="existing_rule!=3|7" (none of them),
+  // data-show-when="parent" (not empty), data-hide-when="is_global"
   function updateConditional(root) {
     root.querySelectorAll("[data-show-when], [data-hide-when]").forEach((element) => {
       // a row of a formset decides by its own fields (downloads-3-url_from), the others by the whole form
       const form = element.closest("[data-formset-row]") || element.closest("form") || document;
       let visible = true;
       if (element.dataset.showWhen) {
-        const [name, values] = element.dataset.showWhen.split("=");
+        const [condition, values] = element.dataset.showWhen.split("=");
+        const not = condition.endsWith("!");
+        const name = not ? condition.slice(0, -1) : condition;
         visible = values === undefined ? Boolean(controlValue(form, name))
-          : values.split("|").includes(controlValue(form, name));
+          : values.split("|").includes(controlValue(form, name)) !== not;
       }
       if (element.dataset.hideWhen) {
         visible = visible && !controlValue(form, element.dataset.hideWhen);

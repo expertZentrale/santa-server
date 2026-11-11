@@ -79,7 +79,7 @@ class IgnoredInTheConsoleTestCase(ConsoleBase):
         self.assertContains(response, "Updater &lt;b&gt;noise&lt;/b&gt;")
         self.assertContains(response, f"by {self.admin.get_username()} on")
         response = self.client.get(reverse("console:events"), {"rows": "now", "resolved": "ignored"})
-        self.assertContains(response, '<small class="muted ignore-note" title="Updater &lt;b&gt;noise&lt;/b&gt;">')
+        self.assertContains(response, '<span class="ignore-note" title="Updater &lt;b&gt;noise&lt;/b&gt;">')
 
     def test_the_lists_leave_them_out_also_with_new_events(self):
         self.assertEqual(self.apps(), ["other"])

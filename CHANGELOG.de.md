@@ -6,6 +6,34 @@
 
 ## [Unreleased]
 
+### Hinzugefügt
+
+- **Namen für Regeln.** Eine Regel kann neben ihrem Identifier einen Namen haben, z. B. „Microsoft-Apps“ für eine
+  Team ID. Er ist der Titel der Regel, eine optionale Spalte *Name* der Regelliste, Teil der Suche (auch in den
+  Regeln eines Macs und im Admin), des CSV-Exports und des Konfigurationsexports. Eine Regel, die bei der Freigabe
+  einer Anfrage entsteht, bekommt den Titel der Anfrage als Namen.
+- **Spalten verschieben und zusammenführen.** In jeder Liste der Konsole eine Spaltenüberschrift vor oder hinter
+  eine andere ziehen, um sie zu verschieben, oder auf die Mitte einer anderen, um ihre Werte unter deren Werten zu
+  zeigen, wie den Kommentar unter dem Identifier. Die Überschrift nennt dann beide, ihr × zeigt die Spalte wieder
+  einzeln. Das Menü *Spalten* kann dasselbe mit Knöpfen, für die Tastatur und Touchscreens. Jeder Wert, der bisher
+  unter einem anderen stand, ist jetzt eine solche zusammengeführte Spalte und lässt sich einzeln zeigen: Kommentar
+  und Ersteller einer Regel, Pfad, Gruppe, Team ID und letzter Mac der Ereignisse, Seriennummer und macOS eines Macs,
+  die Begründung einer Anfrage, Pakete, Beschreibung, Richtlinie und letzte Prüfung einer Paketregel, die
+  Beschreibung einer Gruppe oder Dateizugriffsregel, die E-Mail eines Benutzers sowie Art und Ersteller einer
+  ignorierten App. Wo auch immer die Hauptspalte (Identifier, Datei, Name …) steht, öffnet ein Doppelklick die
+  Zeile, und der Text der ersten sichtbaren Spalte ist ihr Link.
+- **Ansichten behalten die Spalten.** Eine gespeicherte Ansicht behält jetzt auch Reihenfolge, Zusammenführungen
+  und sichtbare Spalten der Liste und stellt sie wieder her, wenn sie gewählt wird. Früher gespeicherte Ansichten
+  lassen die Spalten, wie sie sind.
+
+### Geändert
+
+- **Bestehende Regel bei der Freigabe einer Anfrage erweitern.** *Bestehende Regel, aktiviert und ihr
+  Geltungsbereich erweitert* lässt den Geltungsbereich der Regel standardmäßig, wie er ist, und bietet nur an, was
+  hinzukommt (der Mac des Anfragenden, Gruppen oder alle Macs). Für eine Regel, die schon für alle Macs gilt, wird
+  nichts angeboten; es sieht also nicht mehr so aus, als würde die Regel auf eine Gruppe beschränkt. Eine Freigabe
+  ohne Änderung des Geltungsbereichs setzt voraus, dass die Regel für den Mac des Anfragenden gilt.
+
 ## [0.13.0] - 2026-10-23
 
 ### Hinzugefügt

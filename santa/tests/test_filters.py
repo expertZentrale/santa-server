@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -11,6 +12,7 @@ from santa.console.filters import (
     MAX_SAVED_FILTERS,
     TIME_DAYS,
     chosen,
+    clean_layout,
     date_range,
     filter_query,
     remember_filters,
@@ -122,6 +124,45 @@ class SavedFiltersTestCase(ConsoleBase):
         self.assertEqual(list(SavedFilter.objects.filter(is_default=True)), [second])
         self.assertFalse(SavedFilter.objects.get(pk=first.pk).is_default)
 
+    def test_a_view_keeps_the_columns(self):
+        url = reverse("console:rules")
+        layout = {"order": ["name", "identifier", "comment", "type"], "merged": {"comment": "identifier"},
+                  "hidden": ["created"], "known": ["name", "identifier", "comment", "type", "created"]}
+        self.client.post(reverse("save_filter"), {"page": "rules", "name": "Mine", "query": "q=&scope=global",
+                                                  "layout": json.dumps(layout)})
+        saved = SavedFilter.objects.get(name="Mine")
+        self.assertEqual(saved.layout, layout)
+        # shown with the view, for table.js
+        response = self.client.get(url, {"q": "", "scope": "global"})
+        self.assertEqual(response.context["bar"]["view_layout"], {"id": saved.pk, "layout": layout,
+                                                                  "standard": False})
+        self.assertContains(response, '<script id="view-layout" type="application/json">')
+        self.assertEqual(self.client.get(url, {"standard": "1"}).context["bar"]["view_layout"],
+                         {"id": None, "layout": {}, "standard": True})
+        # saved again under its name: the new columns
+        self.client.post(reverse("save_filter"), {"page": "rules", "name": "Mine", "query": "q=&scope=global",
+                                                  "layout": json.dumps({"order": ["type"]})})
+        saved.refresh_from_db()
+        self.assertEqual(saved.layout, {"order": ["type"], "merged": {}, "hidden": [], "known": []})
+        # without columns (no script, or a table without them): the view keeps the columns as they are
+        self.client.post(reverse("save_filter"), {"page": "rules", "name": "Mine", "query": "q=&scope=global"})
+        saved.refresh_from_db()
+        self.assertEqual(saved.layout, {})
+
+    def test_only_a_column_layout_is_stored(self):
+        self.assertEqual(clean_layout(""), {})
+        self.assertEqual(clean_layout("not json"), {})
+        self.assertEqual(clean_layout("[1, 2]"), {})
+        self.assertEqual(clean_layout(json.dumps({"order": "identifier"})), {})
+        self.assertEqual(clean_layout(json.dumps({"order": ["x"] * 3000})), {})
+        layout = clean_layout(json.dumps({
+            "order": ["identifier", "identifier", "<script>", "Name", 5, "comment", "type"],
+            "merged": {"comment": "identifier", "type": "type", "x": "comment", "bad key": "identifier", "y": 3},
+            "hidden": "created", "known": ["identifier"], "other": "dropped"}))
+        # unknown parts, odd keys, chains and self merges go
+        self.assertEqual(layout, {"order": ["identifier", "comment", "type"], "merged": {"comment": "identifier"},
+                                  "hidden": [], "known": ["identifier"]})
+
     def test_overwritten_and_deleted_default_views(self):
         url = reverse("console:rules")
         saved = SavedFilter.objects.create(user=self.admin, page="rules", name="Global", query="q=&scope=global",
@@ -142,7 +183,8 @@ class SavedFiltersTestCase(ConsoleBase):
         self.assertContains(response, 'aria-label="Use Standard as default"')
         response = self.client.get(url, {"standard": "1"})
         self.assertContains(response, "Reset all")
-        self.assertContains(response, f'<a href="{url}?standard=1" aria-current="true">Standard</a>', html=True)
+        self.assertContains(response, f'<a href="{url}?standard=1" data-view-choice="standard" aria-current="true">'
+                                      'Standard</a>', html=True)
         SavedFilter.objects.filter(is_default=True).update(is_default=False)
         self.assertNotContains(self.client.get(url), "Reset all")
 
@@ -156,7 +198,7 @@ class SavedFiltersTestCase(ConsoleBase):
         self.client.post(reverse("save_filter"), {"page": "rules", "name": "Global", "query": "scope=machines"})
         self.assertEqual(SavedFilter.objects.get().query, "scope=machines")
         response = self.client.get(url, {"q": ""})
-        self.assertContains(response, '<a href="?scope=machines">Global</a>', html=True)
+        self.assertContains(response, f'<a href="?scope=machines" data-view-choice="{saved.pk}">Global</a>', html=True)
         self.assertContains(response, 'id="save-filter-form"')
         # an empty name, the limit
         self.client.post(reverse("save_filter"), {"page": "rules", "name": " ", "query": "q="})

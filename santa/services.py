@@ -66,7 +66,7 @@ def machines_prefetch(lookup="machines"):
 
 
 def allow_identifier(rule_type, identifier, policy, is_global, groups, user, description="", tags=(), machines=(),
-                     cel_expr="", expires_at=None):
+                     cel_expr="", expires_at=None, name=""):
     """Create the rule (of any policy, allow or block), or widen the scope of the manual rule that already exists
     for this identifier and policy (and, for CEL, the same expression). expires_at: see widen_rule.
 
@@ -80,7 +80,7 @@ def allow_identifier(rule_type, identifier, policy, is_global, groups, user, des
     created = rule is None
     if created:
         rule = Rule(rule_type=rule_type, identifier=identifier, policy=policy, created_by=user,
-                    description=description[:500], cel_expr=cel_expr if policy == Policy.CEL else "")
+                    name=name[:200], description=description[:500], cel_expr=cel_expr if policy == Policy.CEL else "")
         rule.full_clean(exclude=["groups", "machines"])
     widen_rule(rule, is_global, groups, machines, user, tags, expires_at=expires_at)
     return rule, created
@@ -206,12 +206,12 @@ def _matching_rules(identifiers_of):
 
 
 def existing_rules(events, machines=None):
-    """The rules that already match the binaries of the events, by SHA-256: [{"rule", "applies", "cel"}]
+    """The rules that already match the binaries of the events, by SHA-256: [{"rule", "applies", "reaches", "cel"}]
 
     applies: the rule is enabled and reaches at least one Mac of the events (global, its group, the parent group
-    it is based on, or the Mac). machines: these Macs instead of the ones of the events (the Macs of a requester,
-    when the event is of another Mac). cel: what the expression of a Team ID rule with "only signing IDs starting
-    with" does with the signing ID (True allows, False blocks; None: no such rule).
+    it is based on, or the Mac); reaches: the same, enabled or not. machines: these Macs instead of the ones of the
+    events (the Macs of a requester, when the event is of another Mac). cel: what the expression of a Team ID rule
+    with "only signing IDs starting with" does with the signing ID (True allows, False blocks; None: no such rule).
     """
     events_of = {}
     for event in events:
@@ -233,9 +233,9 @@ def existing_rules(events, machines=None):
             rule_groups[group_ids] = with_parent_groups(group_ids, "inherit_rules")
         groups = rule_groups[group_ids]
         signing_id = next((event.signing_id for event in events_of[sha] if event.signing_id), "")
-        result[sha] = [{"rule": rule, "applies": rule.is_active and (
-            rule.is_global or any(group.pk in groups for group in rule.groups.all())
-            or any(machine.pk in machine_ids for machine in rule.machines.all())),
+        reaches = {rule.pk: rule.is_global or any(group.pk in groups for group in rule.groups.all())
+                   or any(machine.pk in machine_ids for machine in rule.machines.all()) for rule in rules}
+        result[sha] = [{"rule": rule, "applies": rule.is_active and reaches[rule.pk], "reaches": reaches[rule.pk],
             "cel": prefix_decision(rule, signing_id),
             # the prefix "Add signing ID" proposes (cel.suggested_prefix), when the rule leaves it out
             "prefix": suggested_prefix(rule, signing_id) if prefix_decision(rule, signing_id) is False else None}

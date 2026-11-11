@@ -40,6 +40,7 @@
           <td class="select">{% if rule.on_mac and perms.santa.change_rule %}<input type="checkbox" name="rules" value="{{ rule.pk }}" aria-label="{% translate 'Select rule' %} {{ rule.pk }}">{% endif %}</td>
           <td>{% url 'console:rule' rule.pk as rule_url %}<div class="identifier-cell"><a class="mono identifier" href="{{ rule_url }}" hx-get="{{ rule_url }}" hx-target="#drawer" title="{{ rule.identifier }}">{{ rule.identifier }}</a>
             {% include "console/_copy.html" with value=rule.identifier %}</div>
+            {% if rule.name %}<small class="cell-line strong" title="{{ rule.name }}">{{ rule.name }}</small>{% endif %}
             {% if rule.description %}<small class="muted cell-line" title="{{ rule.description }}">{{ rule.description }}</small>{% endif %}</td>
           <td>{{ rule.get_rule_type_display }}</td>
           <td><span class="badge {{ rule.policy|policy_class }}">{{ rule.get_policy_display }}</span></td>

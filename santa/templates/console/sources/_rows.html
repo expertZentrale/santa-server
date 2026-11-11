@@ -1,25 +1,26 @@
-{% load console i18n %}<table class="table" data-table="package-rules">
-  <thead><tr>{% sort_th _("Package rule") "name" %}{% sort_th _("Catalog") "kind" %}<th>{% translate "Latest versions" %}</th><th>{% translate "Rules" %}</th><th>{% translate "Scope" %}</th>{% sort_th _("Status") "checked" %}<th class="row-actions" aria-label="{% translate 'Actions' %}"></th></tr></thead>
+{% load console i18n %}<table class="table" data-table="package-rules" data-merged="packages:name description:name policy:rules last-check:checked">
+  <thead><tr>{% sort_th _("Package rule") "name" %}<th data-col="packages">{% translate "Packages" %}</th><th data-col="description">{% translate "Description" %}</th>{% sort_th _("Catalog") "kind" %}<th data-col="latest-versions">{% translate "Latest versions" %}</th><th data-col="rules">{% translate "Rule type" %}</th><th data-col="policy">{% translate "Policy" %}</th><th data-col="scope">{% translate "Scope" %}</th>{% sort_th _("Status") "checked" %}<th data-col="last-check">{% translate "Last check" %}</th><th class="row-actions" aria-label="{% translate 'Actions' %}"></th></tr></thead>
   <tbody>
   {% for source in page %}
     <tr{% if not source.is_enabled %} class="disabled"{% endif %}>
-      <td>{% url 'console:source' source.pk as source_url %}<a class="strong" href="{{ source_url }}" hx-get="{{ source_url }}" hx-target="#drawer">{{ source.name }}</a>
-        <small class="muted">{% blocktranslate count count=source.identifiers|length %}{{ count }} package{% plural %}{{ count }} packages{% endblocktranslate %}</small>
-        {% if source.description %}<div class="small muted">{{ source.description|truncatechars:120 }}</div>{% endif %}</td>
+      <td>{% url 'console:source' source.pk as source_url %}<a class="strong" href="{{ source_url }}" hx-get="{{ source_url }}" hx-target="#drawer">{{ source.name }}</a></td>
+      <td data-col="packages">{% blocktranslate count count=source.identifiers|length %}{{ count }} package{% plural %}{{ count }} packages{% endblocktranslate %}</td>
+      <td data-col="description">{% if source.description %}<span class="cell-line" title="{{ source.description }}">{{ source.description|truncatechars:120 }}</span>{% endif %}</td>
       <td>{{ source.get_kind_display }}</td>
       <td class="small">{% for identifier, version in source.latest|slice:":4" %}
         <div>{% with parts=identifier|package_label:source.kind %}<span class="mono" title="{{ identifier }}">{{ parts.title|truncatechars:32 }}</span>{% endwith %} {% if version %}<strong>{{ version.version|truncatechars:20 }}</strong>
           {% if version.auto_enable_pending %}<span class="badge info">{% blocktranslate with date=version.auto_enable_at|date:"d.m." %}on {{ date }}{% endblocktranslate %}</span>{% endif %}{% else %}<span class="muted">{% translate "not checked" %}</span>{% endif %}</div>
         {% endfor %}{% if source.latest|length > 4 %}<span class="muted">{% blocktranslate with count=source.latest|length|add:"-4" %}+{{ count }} more{% endblocktranslate %}</span>{% endif %}</td>
-      <td class="small">{{ source.get_rule_type_display }}<br><span class="badge {{ source.policy|policy_class }}">{{ source.get_policy_display }}</span></td>
+      <td class="small">{{ source.get_rule_type_display }}</td>
+      <td><span class="badge {{ source.policy|policy_class }}">{{ source.get_policy_display }}</span></td>
       <td>{% if source.is_global %}<span class="chip small">{% translate "All Macs" %}</span>{% else %}{% for group in source.groups.all %}<span class="chip small">{{ group.name }}</span>{% empty %}<span class="badge bad">{% translate "no scope" %}</span>{% endfor %}{% endif %}</td>
-      <td>{% if source.check %}<span class="badge info" title="{{ source.check.by }}">{% translate "being checked" %}</span>{% elif not source.last_checked_at %}<span class="muted">{% translate "never checked" %}</span>{% elif source.last_error %}<span class="badge bad" title="{{ source.last_error }}">{% translate "error" %}</span>{% else %}<span class="badge ok">ok</span>{% endif %}
-        {% if source.last_checked_at %}<small class="muted">{% blocktranslate with since=source.last_checked_at|timesince %}{{ since }} ago{% endblocktranslate %}</small>{% endif %}</td>
+      <td>{% if source.check %}<span class="badge info" title="{{ source.check.by }}">{% translate "being checked" %}</span>{% elif not source.last_checked_at %}<span class="muted">{% translate "never checked" %}</span>{% elif source.last_error %}<span class="badge bad" title="{{ source.last_error }}">{% translate "error" %}</span>{% else %}<span class="badge ok">ok</span>{% endif %}</td>
+      <td>{% if source.last_checked_at %}{% blocktranslate with since=source.last_checked_at|timesince %}{{ since }} ago{% endblocktranslate %}{% endif %}</td>
       <td class="row-actions"><button type="button" class="icon-button row-menu-button" popovertarget="row-menu-source-{{ source.pk }}" aria-haspopup="menu" title="{% translate 'Actions' %}" aria-label="{% translate 'Actions' %}: {{ source.name }}">{% include "console/icons/more.svg" %}</button>
         <div id="row-menu-source-{{ source.pk }}" class="row-menu" popover role="menu">{% if perms.santa.change_releasesource %}<a class="menu-item" role="menuitem" href="{% url 'console:source_edit' source.pk %}" hx-get="{% url 'console:source_edit' source.pk %}" hx-target="#drawer">{% translate "Edit" %}</a>{% endif %}{% if perms.santa.change_releasesource and source.check %}<form method="post" action="{% url 'console:source_check_cancel' source.pk %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="menu-item danger" role="menuitem">{% translate "Stop the check" %}</button></form>{% elif perms.santa.change_releasesource %}<form method="post" action="{% url 'console:source_check' source.pk %}" data-progress>{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="menu-item" role="menuitem">{% translate "Check now" %}</button></form>{% endif %}{% if perms.santa.change_releasesource and perms.santa.delete_rule %}<a class="menu-item" role="menuitem" href="{% url 'console:source_cleanup' source.pk %}" hx-get="{% url 'console:source_cleanup' source.pk %}" hx-target="#drawer">{% translate "Clean up" %}</a>{% endif %}<a class="menu-item" role="menuitem" href="{% url 'console:history' 'releasesource' source.pk %}" hx-get="{% url 'console:history' 'releasesource' source.pk %}" hx-target="#drawer">{% translate "History" %}</a></div></td>
     </tr>
   {% empty %}
-    {% if skeleton %}{% include "console/_skeleton_rows.html" with columns=7 %}{% else %}<tr class="empty"><td colspan="7">{% translate "No package rules yet." %}</td></tr>{% endif %}
+    {% if skeleton %}{% include "console/_skeleton_rows.html" with columns=11 %}{% else %}<tr class="empty"><td colspan="11">{% translate "No package rules yet." %}</td></tr>{% endif %}
   {% endfor %}
   </tbody>
 </table>
