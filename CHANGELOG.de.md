@@ -6,6 +6,14 @@
 
 ## [Unreleased]
 
+### Behoben
+
+- **Listen springen nicht mehr, wenn die Seitenleiste schließt.** Wurde die Seitenleiste geschlossen (Klick daneben,
+  Escape, ×, Zurück), sprang die Liste an die Stelle zurück, an der sie beim Öffnen stand. Und ein Doppelklick auf
+  eine andere Zeile bei offener Seitenleiste ging im Browserverlauf einen Schritt zu weit zurück: Die Liste wurde
+  neu geladen, an einer anderen Scrollposition. Jetzt bleibt die Liste, wo sie ist, und der Doppelklick öffnet die
+  andere Zeile.
+
 ## [0.14.0] - 2026-11-11
 
 ### Hinzugefügt
