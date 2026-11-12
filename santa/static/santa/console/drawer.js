@@ -15,6 +15,15 @@
   let reloadAfterBack = false;
   // a press that started in the drawer: selecting text and letting go next to it doesn't close it
   let pressedInside = false;
+  // a step back through the history that hasn't arrived yet (popstate): the two clicks of a double-click come before
+  // it, a second step would go one entry too far (the page before, or another state of the list)
+  let goingBack = false;
+
+  function goBack(steps) {
+    if (goingBack) return;
+    goingBack = true;
+    history.go(-steps);
+  }
 
   function getDrawer() {
     return document.getElementById("drawer");
@@ -88,7 +97,7 @@
   // × and Escape: back to the entry of the page, the drawer closes there (popstate)
   function closeDrawer() {
     if (shown > 0 && currentState()) {
-      history.go(-shown);
+      goBack(shown);
     } else {
       hideDrawer(getDrawer());
     }
@@ -147,12 +156,17 @@
   const here = () => window.location.pathname + window.location.search;
   let pageUrl = here();
   document.addEventListener("santa:page", () => {
+    goingBack = false;
     kept.clear();
     shown = 0;
     chain = 0;
   });
+  window.addEventListener("pagehide", () => {
+    history.scrollRestoration = "auto";
+  });
   document.addEventListener("htmx:pushedIntoHistory", () => {
     pageUrl = here();
+    history.scrollRestoration = "auto";
     history.replaceState({ index: 0, chain: 0 }, "");
   });
   // Before it pushes the next page, htmx marks the entry it leaves as its own ({htmx: true}): the view of the drawer
@@ -160,6 +174,7 @@
   let leaving = null;
   document.addEventListener("htmx:beforeHistorySave", () => {
     leaving = currentState();
+    history.scrollRestoration = "auto";
   });
   document.addEventListener("htmx:beforeHistoryUpdate", () => {
     if (leaving) history.replaceState(leaving, "");
@@ -167,6 +182,7 @@
   });
 
   window.addEventListener("popstate", (event) => {
+    goingBack = false;
     // an entry of htmx: it restores that page itself
     if (event.state?.htmx) {
       pageUrl = here();
@@ -281,6 +297,11 @@
       [...kept.keys()].forEach((key) => { if (key >= index) kept.delete(key); });
       shown = index;
       chain = pending === "start" ? index : chain;
+      // Back and Forward between the page and the views of its drawer leave the page where it is: the browser would
+      // scroll it back to where it was when the view opened. Set on the entry of the page, the new one inherits it;
+      // not "auto" again on the way back, Forward and Back again would scroll it. Only once the page is left (a
+      // reload, another page) its entry restores the position again.
+      history.scrollRestoration = "manual";
       history.pushState({ drawer: url, index, chain }, "");
     } else if (pending === "replace") {
       history.replaceState({ drawer: url, index: shown, chain }, "");
@@ -300,7 +321,7 @@
       htmx.ajax("GET", open, { target: "#drawer", headers: { "X-Drawer-Replace": "1" } });
     } else if (shown > chain && currentState()) {
       reloadAfterBack = true;
-      history.back();
+      goBack(1);
     } else {
       // the page again, without this view: a Back after the reload doesn't open the saved form again
       if (currentState()) history.replaceState({ index: shown }, "");
@@ -318,9 +339,9 @@
     pressedInside = false;
     // × closes the drawer; "Cancel" of a view opened from another one goes back to it
     const close = event.target.closest("[data-drawer-close]");
-    if (close && shown > chain && !close.closest(".drawer-tools")) history.back();
+    if (close && shown > chain && !close.closest(".drawer-tools")) goBack(1);
     else if (close) closeDrawer();
-    if (event.target.closest("[data-drawer-back]")) history.back();
+    if (event.target.closest("[data-drawer-back]")) goBack(1);
     // a click next to the open drawer closes it, except on what opens another one, and the top bar (its menus, a press
     // that missed a link), the toasts and the banners (data-keeps-drawer); a link of the top bar loads another page
     const drawer = getDrawer();

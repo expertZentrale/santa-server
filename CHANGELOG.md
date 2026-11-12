@@ -6,6 +6,13 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Lists no longer jump when the drawer closes.** Closing the drawer (a click next to it, Escape, ×, Back) left
+  the list scrolled back to where it was when the drawer opened. And a double-click on another row while the drawer
+  was open went one step too far back in the browser history: the list loaded again, at another scroll position.
+  The list now stays where it is, and the double-click opens the other row.
+
 ## [0.14.0] - 2026-11-11
 
 ### Added
