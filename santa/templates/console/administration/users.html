@@ -6,7 +6,7 @@
 {% include "console/administration/_tabs.html" with help=help action_url=add_url action_label=add_label %}
 {% include "console/widgets/_filter_bar.html" %}
 <table class="table" data-table="users" data-merged="email:user">
-  <thead><tr>{% sort_th _("User") "user" %}<th data-col="email">{% translate "E-mail" %}</th>{% sort_th _("Name") "name" %}<th>{% translate "Account" %}</th><th>{% translate "Roles" %}</th><th>{% translate "Console" %}</th>{% sort_th _("Last sign-in") "login" %}<th class="row-actions" aria-label="{% translate 'Actions' %}"></th></tr></thead>
+  <thead><tr>{% sort_th _("User") "user" %}<th data-col="email">{% translate "E-mail" %}</th>{% sort_th _("Name") "name" %}<th data-col="account">{% translate "Account" %}</th><th data-col="roles">{% translate "Roles" %}</th><th data-col="console">{% translate "Console" %}</th>{% sort_th _("Last sign-in") "login" %}<th class="row-actions" aria-label="{% translate 'Actions' %}"></th></tr></thead>
   <tbody>
   {% for u in page %}
     <tr{% if not u.is_active %} class="disabled"{% endif %}>

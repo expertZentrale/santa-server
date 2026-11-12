@@ -14,13 +14,13 @@ class Tables(HTMLParser):
 
     def __init__(self):
         super().__init__()
-        self.tables, self.part, self.row = [], None, None
+        self.tables, self.part, self.row, self.header = [], None, None, None
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
         if tag == "table" and "data-table" in attrs:
             self.tables.append({"name": attrs["data-table"], "merged": attrs.get("data-merged", ""), "head": [],
-                                "rows": []})
+                                "rows": [], "unkeyed": []})
         elif not self.tables:
             return
         elif tag in ("thead", "tbody"):
@@ -32,12 +32,21 @@ class Tables(HTMLParser):
                 self.tables[-1]["rows"].append(self.row)
         elif tag == "th" and self.part == "thead":
             self.tables[-1]["head"].append(attrs.get("data-col"))
+            classes = (attrs.get("class") or "").split()
+            self.header = None if attrs.get("data-col") or {"select", "row-actions"} & set(classes) else []
         elif tag == "td" and self.row is not None:
             self.row.append(attrs.get("data-col"))
+
+    def handle_data(self, data):
+        if self.header is not None:
+            self.header.append(data.strip())
 
     def handle_endtag(self, tag):
         if tag == "table" and self.tables:
             self.part = None
+        elif tag == "th" and self.header is not None:
+            self.tables[-1]["unkeyed"].append("".join(self.header))
+            self.header = None
 
 
 def tables_of(response):
@@ -96,3 +105,22 @@ class MergedColumnsTestCase(ConsoleBase):
                 skeleton = tables_of(response).get(name)
                 if skeleton and skeleton["rows"]:
                     self.assertEqual(len(skeleton["rows"][0]), len(skeleton["head"]))
+
+    def test_every_column_has_a_key_of_its_own(self):
+        """The layout stored in the browser and in the saved views names the columns by their data-col: a key made
+        from the header text (columns.js, the fallback) would change with the language"""
+        lists = ("console:events", "console:machines", "console:requests", "console:sources",
+                 "console:file_access_rules", "console:groups", "console:admin_users", "console:admin_ignored",
+                 "console:rules", "console:admin_tags", "console:admin_roles", "console:admin_sign_in_groups")
+        seen = set()
+        for url_name in lists:
+            for params in ({"q": ""}, {"q": "", "view": "all"}):
+                response = self.client.get(reverse(url_name), params)
+                for name, table in tables_of(response).items():
+                    seen.add(name)
+                    with self.subTest(name):
+                        self.assertEqual(table["unkeyed"], [])
+                        keys = [key for key in table["head"] if key]
+                        self.assertEqual(len(keys), len(set(keys)))
+        self.assertEqual(seen, {"blocked-apps", "events", "macs", "requests", "package-rules", "file-access", "groups",
+                                "users", "ignored-apps", "rules", "tags", "roles", "sign-in-groups"})

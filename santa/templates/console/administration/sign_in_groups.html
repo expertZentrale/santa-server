@@ -5,7 +5,7 @@
 {% include "console/administration/_tabs.html" with action_url=add_url action_label=add_label %}
 <p class="muted small">{% translate "The groups of your identity provider that give roles. Only the groups listed here count: the other groups in the token are ignored and not stored. They apply at the next sign-in." %}</p>
 <table class="table" data-table="sign-in-groups">
-  <thead><tr><th>{% translate "Sign-in group" %}</th><th>{% translate "Value in the groups claim" %}</th><th>{% translate "Roles" %}</th><th>{% translate "Console" %}</th><th class="num">{% translate "Members" %}</th><th class="row-actions" aria-label="{% translate 'Actions' %}"></th></tr></thead>
+  <thead><tr><th data-col="sign-in-group">{% translate "Sign-in group" %}</th><th data-col="value-in-the-groups-claim">{% translate "Value in the groups claim" %}</th><th data-col="roles">{% translate "Roles" %}</th><th data-col="console">{% translate "Console" %}</th><th data-col="members" class="num">{% translate "Members" %}</th><th class="row-actions" aria-label="{% translate 'Actions' %}"></th></tr></thead>
   <tbody>
   {% for group in sign_in_groups %}
     <tr>

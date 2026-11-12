@@ -12,7 +12,7 @@
 </div>
 {% include "console/widgets/_filter_bar.html" %}
 <table class="table" data-table="groups" data-merged="parent:name description:name">
-  <thead><tr>{% sort_th _("Group") "name" %}<th data-col="parent">{% translate "Based on" %}</th><th data-col="description">{% translate "Description" %}</th><th>{% translate "Mode" %}</th>{% sort_th _("Macs") "macs" "num" %}{% sort_th _("Rules") "rules" "num" %}{% sort_th _("Last sync") "sync" %}<th class="row-actions" aria-label="{% translate 'Actions' %}"></th></tr></thead>
+  <thead><tr>{% sort_th _("Group") "name" %}<th data-col="parent">{% translate "Based on" %}</th><th data-col="description">{% translate "Description" %}</th><th data-col="mode">{% translate "Mode" %}</th>{% sort_th _("Macs") "macs" "num" %}{% sort_th _("Rules") "rules" "num" %}{% sort_th _("Last sync") "sync" %}<th class="row-actions" aria-label="{% translate 'Actions' %}"></th></tr></thead>
   <tbody>
   {% for group in page %}
     <tr>

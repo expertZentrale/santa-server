@@ -8,7 +8,7 @@
 </div>
 {% include "console/widgets/_filter_bar.html" %}
 <table class="table" data-table="file-access" data-merged="description:name">
-  <thead><tr>{% sort_th _("Rule") "name" %}<th data-col="description">{% translate "Description" %}</th>{% sort_th _("Rule type") "type" %}<th>{% translate "Paths" %}</th><th class="num">{% translate "Processes" %}</th><th>{% translate "Mode" %}</th><th>{% translate "Scope" %}</th>{% sort_th _("Changed") "changed" %}<th class="row-actions" aria-label="{% translate 'Actions' %}"></th></tr></thead>
+  <thead><tr>{% sort_th _("Rule") "name" %}<th data-col="description">{% translate "Description" %}</th>{% sort_th _("Rule type") "type" %}<th data-col="paths">{% translate "Paths" %}</th><th data-col="processes" class="num">{% translate "Processes" %}</th><th data-col="mode">{% translate "Mode" %}</th><th data-col="scope">{% translate "Scope" %}</th>{% sort_th _("Changed") "changed" %}<th class="row-actions" aria-label="{% translate 'Actions' %}"></th></tr></thead>
   <tbody>
   {% for rule in page %}
     <tr{% if not rule.is_enabled %} class="disabled"{% endif %}>
