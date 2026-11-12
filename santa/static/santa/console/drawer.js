@@ -161,6 +161,9 @@
     shown = 0;
     chain = 0;
   });
+  window.addEventListener("pagehide", () => {
+    history.scrollRestoration = "auto";
+  });
   document.addEventListener("htmx:pushedIntoHistory", () => {
     pageUrl = here();
     history.scrollRestoration = "auto";
@@ -171,6 +174,7 @@
   let leaving = null;
   document.addEventListener("htmx:beforeHistorySave", () => {
     leaving = currentState();
+    history.scrollRestoration = "auto";
   });
   document.addEventListener("htmx:beforeHistoryUpdate", () => {
     if (leaving) history.replaceState(leaving, "");
@@ -196,8 +200,6 @@
       return;
     }
     showState(currentState());
-    // back on the page itself: a reload or Back from another page restores its scroll position again
-    if (!currentState()?.drawer) history.scrollRestoration = "auto";
   });
 
   // what the next swap into the drawer does to the history: a new entry, or none
@@ -296,7 +298,9 @@
       shown = index;
       chain = pending === "start" ? index : chain;
       // Back and Forward between the page and the views of its drawer leave the page where it is: the browser would
-      // scroll it back to where it was when the view opened. Set on the entry of the page, the new one inherits it.
+      // scroll it back to where it was when the view opened. Set on the entry of the page, the new one inherits it;
+      // not "auto" again on the way back, Forward and Back again would scroll it. Only once the page is left (a
+      // reload, another page) its entry restores the position again.
       history.scrollRestoration = "manual";
       history.pushState({ drawer: url, index, chain }, "");
     } else if (pending === "replace") {
