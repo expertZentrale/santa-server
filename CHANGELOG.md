@@ -6,6 +6,33 @@
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-11
+
+### Added
+
+- **Names for rules.** A rule can have a name besides its identifier, e.g. "Microsoft apps" for a Team ID. It is
+  the title of the rule, an optional column *Name* of the rules list, part of the search (also in the rules of a
+  Mac and the admin), the CSV export and the configuration export. A rule created when approving a request gets the
+  title of the request as its name.
+- **Move and merge columns.** In every list of the console, drag a column header before or after another one to
+  move it, or onto the middle of another one to show its values below that one's, as the comment below the
+  identifier. The header then names both, and its × shows the column on its own again. The *Columns* menu does the
+  same with buttons, for the keyboard and touch screens. Every value shown below another one so far is such a merged
+  column now and can be shown on its own: the comment and creator of a rule, the path, group, Team ID and last Mac
+  of the events, the serial number and macOS of a Mac, the justification of a request, the packages, description,
+  policy and last check of a package rule, the description of a group or file access rule, the e-mail of a user,
+  and the kind and creator of an ignored app. Wherever the main column (identifier,
+  file, name …) is, a double-click on a row opens it, and the text of the first column shown is its link.
+- **Views keep the columns.** A saved view now keeps the order, merges and visible columns of the list too, and
+  brings them back when it is chosen. Views saved before keep the columns as they are.
+
+### Changed
+
+- **Extending an existing rule when approving a request.** *Existing rule, enabled and its scope extended* keeps
+  the scope of the rule as it is by default and only offers what to add (the Mac of the requester, groups or all
+  Macs). For a rule that applies to all Macs already nothing is offered, so it no longer looks as if the rule would
+  be limited to a group. Approving with the scope unchanged needs the rule to apply to the Mac of the requester.
+
 ## [0.13.0] - 2026-10-23
 
 ### Added
@@ -526,7 +553,8 @@
   docker/setup-buildx-action 4, docker/metadata-action 6.
 - Python packages: hiredis 3.4.2, tzdata 2026.4.
 
-[Unreleased]: https://github.com/expertZentrale/santa-server/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/expertZentrale/santa-server/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/expertZentrale/santa-server/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/expertZentrale/santa-server/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/expertZentrale/santa-server/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/expertZentrale/santa-server/compare/v0.10.0...v0.11.0

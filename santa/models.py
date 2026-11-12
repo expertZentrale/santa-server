@@ -927,6 +927,8 @@ class Rule(models.Model):
                                   help_text=_("Shown in the block dialog"))
     custom_url = models.URLField(max_length=800, blank=True, help_text=_("Opened from the block dialog"))
     cel_expr = models.TextField(_("CEL expression"), blank=True)
+    name = models.CharField(max_length=200, blank=True,
+                            help_text=_("A name to find the rule by, only shown in the console"))
     description = models.CharField(max_length=500, blank=True)
     tags = models.ManyToManyField(Tag, blank=True, related_name="rules",
                                   help_text=_("Only to sort and find the rules, no effect on the Macs"))
@@ -1362,6 +1364,9 @@ class SavedFilter(models.Model):
     page = models.CharField(max_length=32)
     name = models.CharField(max_length=100)
     query = models.TextField()
+    # the columns of the table: {"order": [keys], "merged": {key: key}, "hidden": [keys], "known": [keys]}
+    # (filters.clean_layout, console/table.js); empty for views saved before, which keep the columns as they are
+    layout = models.JSONField(default=dict, blank=True)
     # the view the list opens with (from the menu, "Reset all"); at most one per user and list, kept by
     # views_profile.default_filter (no filtered unique constraint on SQL Server)
     is_default = models.BooleanField(default=False)

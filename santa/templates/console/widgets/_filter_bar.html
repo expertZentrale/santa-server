@@ -12,10 +12,10 @@ filters.{% endcomment %}
         <div class="picker-panel">
           {# the built-in defaults of the list; the star marks the view the list opens with (menu, "Reset all") #}
           <div class="saved-filter{% if bar.standard_active %} current{% endif %}">
-            <a href="{{ bar.standard_url }}"{% if bar.standard_active %} aria-current="true"{% endif %}>{% translate "Standard" %}</a>
+            <a href="{{ bar.standard_url }}" data-view-choice="standard"{% if bar.standard_active %} aria-current="true"{% endif %}>{% translate "Standard" %}</a>
             {% include "console/widgets/_default_view_button.html" with pk="" name=_("Standard") is_default=bar.default_view|yesno:"0,1" %}</div>
           {% for view in bar.views %}<div class="saved-filter{% if view == bar.active_view %} current{% endif %}">
-            <a href="?{{ view.query }}"{% if view == bar.active_view %} aria-current="true"{% endif %}>{{ view.name }}</a>
+            <a href="?{{ view.query }}" data-view-choice="{{ view.pk }}"{% if view == bar.active_view %} aria-current="true"{% endif %}>{{ view.name }}</a>
             {% include "console/widgets/_default_view_button.html" with pk=view.pk name=view.name is_default=view.is_default|yesno:"1,0" %}
             <details class="rename-view"><summary class="icon-button" title="{% translate 'Rename' %}" aria-label="{% translate 'Rename' %} {{ view.name }}">{% include "console/icons/pencil.svg" %}</summary>
               <div class="rename-view-form"><input name="name" form="rename-filter-{{ view.pk }}" autocomplete="off" value="{{ view.name }}" maxlength="100" required aria-label="{% translate 'New name' %}">
@@ -27,7 +27,7 @@ filters.{% endcomment %}
             <input name="name" form="save-filter-form" autocomplete="off" maxlength="100" placeholder="{% translate 'Name of the view' %}" aria-label="{% translate 'Name of the view' %}" required>
             <button class="button" form="save-filter-form">{% translate "Save current view" %}</button>
           </div>
-          <small class="muted">{% translate "An existing name is overwritten with the current filter." %}</small>
+          <small class="muted">{% translate "A view keeps the filters, the sort order and the columns. An existing name is overwritten." %}</small>
         </div>
       </details>
     </div>
@@ -90,7 +90,10 @@ filters.{% endcomment %}
 </form>
 <form id="save-filter-form" method="post" action="{% url 'save_filter' %}" hidden>{% csrf_token %}
   <input type="hidden" name="page" value="{{ bar.page }}"><input type="hidden" name="query" value="{{ bar.query }}">
+  {# the columns of the table, filled in by table.js when the form is sent #}
+  <input type="hidden" name="layout" value="" data-view-layout-field>
   <input type="hidden" name="next" value="{{ request.get_full_path }}"></form>
+{{ bar.view_layout|json_script:"view-layout" }}
 <form id="default-filter-form" method="post" action="{% url 'default_filter' %}" hidden>{% csrf_token %}
   <input type="hidden" name="page" value="{{ bar.page }}"><input type="hidden" name="next" value="{{ request.get_full_path }}"></form>
 <form id="delete-filter-form" method="post" hidden>{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"></form>

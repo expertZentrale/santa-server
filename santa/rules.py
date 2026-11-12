@@ -13,7 +13,7 @@ KEY_FIELDS = ("pk", "rule_type", "identifier", "policy")
 # what the sync sends (Rule.santa_payload)
 SYNC_FIELDS = (*KEY_FIELDS, "custom_msg", "custom_url", "cel_expr")
 # what the console sorts and searches the rules of a Mac by
-LIST_FIELDS = (*KEY_FIELDS, "description", "created_at")
+LIST_FIELDS = (*KEY_FIELDS, "name", "description", "created_at")
 
 
 def _scoped_querysets(machine):

@@ -187,7 +187,9 @@ class ConsoleRulesTestCase(ConsoleBase):
         Rule.objects.create(rule_type=RuleType.SIGNINGID, identifier=long_id, is_global=True, description="teams")
         response = self.client.get(reverse("console:rules"))
         self.assertContains(response, '<span class="muted">UBF8T346G9:</span>' + long_id.split(":")[1])
-        self.assertContains(response, 'data-table="rules" data-optional="comment created expires"')
+        self.assertContains(response,
+                            'data-table="rules" data-optional="name created expires" '
+                            'data-merged="comment:identifier created-by:created"')
         self.assertContains(response, '<th data-col="identifier"')
         self.assertContains(response, '<td data-col="created"')
 
@@ -225,14 +227,14 @@ class ConsoleRulesTestCase(ConsoleBase):
         response = self.client.get(reverse("console:rules_export"))
         self.assertEqual(response["Content-Type"], "text/csv; charset=utf-8")
         content = response.content.decode("utf-8")
-        self.assertTrue(content.startswith("﻿Type,Identifier,Policy"))
+        self.assertTrue(content.startswith("﻿Type,Identifier,Name,Policy"))
         # all pages, and no formulas for the spreadsheet
         self.assertEqual(len(content.strip().splitlines()), 63)
         self.assertIn("'=HYPERLINK()", content)
         # the filters of the list
         content = self.client.get(reverse("console:rules_export"), {"policy": Policy.BLOCKLIST}).content.decode()
         self.assertEqual(len(content.strip().splitlines()), 2)
-        self.assertIn("ABCDE12345,Block,Development", content)
+        self.assertIn("ABCDE12345,,Block,Development", content)
         self.client.force_login(User.objects.create_user("viewer", is_staff=True))
         self.assertEqual(self.client.get(reverse("console:rules_export")).status_code, 403)
 
@@ -615,7 +617,7 @@ class ConsoleEventsTestCase(ConsoleBase):
         response = self.client.get(reverse("console:events"))
         rule_url = reverse("console:rule", args=(rule.pk,))
         self.assertContains(response, f'href="{rule_url}" hx-get="{rule_url}" hx-target="#drawer"')
-        self.assertContains(response, f">{path}</small>")
+        self.assertContains(response, f'<span class="cell-path" title="{path}">{path}</span>')
         self.assertContains(response, '<td class="row-actions">')
 
     def test_create_rules_without_js(self):

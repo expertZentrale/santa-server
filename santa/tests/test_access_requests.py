@@ -315,7 +315,7 @@ class AdminRequestTestCase(AdminRequestBase):
         rule.groups.add(self.sales)
         access_request = self.event_request()
         self.client.post(reverse("console:request_approve", args=(access_request.pk,)), {
-            "result": "extend", "existing_rule": rule.pk, "scope": "groups", "groups": [self.dev.pk]})
+            "result": "extend", "existing_rule": rule.pk, "added_scope": "groups", "added_groups": [self.dev.pk]})
         access_request.refresh_from_db()
         rule.refresh_from_db()
         self.assertEqual(access_request.result_rule, rule)
@@ -323,6 +323,60 @@ class AdminRequestTestCase(AdminRequestBase):
         self.assertEqual(set(rule.groups.all()), {self.dev, self.sales})
         self.assertEqual(Event.objects.get().resolution_rule, rule)
         self.assertTrue(LogEntry.objects.filter(object_id=str(rule.pk)).exists())
+
+    def test_extending_keeps_the_scope_by_default(self):
+        # a disabled rule of the group of the requester: enabled, nothing added
+        rule = Rule.objects.create(rule_type=RuleType.TEAMID, identifier="ABCDE12345", is_enabled=False)
+        rule.groups.add(self.dev)
+        access_request = self.event_request()
+        form = self.client.get(reverse("console:request", args=(access_request.pk,))).context["approve_form"]
+        self.assertEqual(form["added_scope"].value(), "keep")
+        self.client.post(reverse("console:request_approve", args=(access_request.pk,)), {
+            "result": "extend", "existing_rule": rule.pk, "added_scope": "keep"})
+        rule.refresh_from_db()
+        self.assertEqual((rule.is_enabled, rule.is_global, list(rule.groups.all()), list(rule.machines.all())),
+                         (True, False, [self.dev], []))
+        self.assertEqual(LogEntry.objects.get(object_id=str(rule.pk)).change_message,
+                         f"Enabled for access request {access_request.pk}")
+
+    def test_extending_a_global_rule_never_narrows_it(self):
+        rule = Rule.objects.create(rule_type=RuleType.TEAMID, identifier="ABCDE12345", is_global=True,
+                                   is_enabled=False)
+        access_request = self.event_request()
+        response = self.client.get(reverse("console:request", args=(access_request.pk,)))
+        # the choice of a scope is hidden for it, it says why
+        self.assertContains(response, f'data-show-when="existing_rule!={rule.pk}"')
+        self.assertContains(response, "The rule applies to all Macs already: its scope stays as it is.")
+        # groups sent anyway (e.g. chosen before another rule was picked): not added
+        self.client.post(reverse("console:request_approve", args=(access_request.pk,)), {
+            "result": "extend", "existing_rule": rule.pk, "added_scope": "groups", "added_groups": [self.sales.pk]})
+        rule.refresh_from_db()
+        self.assertEqual((rule.is_enabled, rule.is_global, list(rule.groups.all())), (True, True, []))
+
+    def test_extending_without_scope_must_reach_the_requester(self):
+        rule = Rule.objects.create(rule_type=RuleType.TEAMID, identifier="ABCDE12345")
+        rule.groups.add(self.sales)
+        access_request = self.event_request()
+        response = self.client.post(reverse("console:request_approve", args=(access_request.pk,)), {
+            "result": "extend", "existing_rule": rule.pk, "added_scope": "keep"})
+        self.assertContains(response, "The rule doesn&#x27;t apply to the Mac of the requester")
+        access_request.refresh_from_db()
+        self.assertEqual(access_request.status, AccessRequest.Status.PENDING)
+
+    def test_extending_from_a_page_loaded_before(self):
+        # the form of the old page sent the scope to add as "scope"
+        rule = Rule.objects.create(rule_type=RuleType.TEAMID, identifier="ABCDE12345")
+        rule.groups.add(self.sales)
+        access_request = self.event_request()
+        self.client.post(reverse("console:request_approve", args=(access_request.pk,)), {
+            "result": "extend", "existing_rule": rule.pk, "scope": "groups", "groups": [self.dev.pk]})
+        self.assertEqual(set(rule.groups.all()), {self.dev, self.sales})
+
+    def test_a_new_rule_is_named_after_the_request(self):
+        access_request = self.event_request()
+        self.client.post(reverse("console:request_approve", args=(access_request.pk,)), {
+            "result": "rule", "rule_type": RuleType.SIGNINGID, "policy": Policy.ALLOWLIST, "scope": "machines"})
+        self.assertEqual(Rule.objects.get().name, "tool")
 
     def test_approve_event_as_it_is_only_with_a_rule_that_allows_it(self):
         disabled = Rule.objects.create(rule_type=RuleType.TEAMID, identifier="ABCDE12345", is_global=True,

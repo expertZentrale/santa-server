@@ -177,6 +177,8 @@
     badge.hidden = !count;
   });
   document.addEventListener("click", (event) => {
+    // a button the click replaced (the ↑/↓ of the column chooser draw its list again) was inside, not outside
+    if (!event.target.isConnected) return;
     document.querySelectorAll("[data-picker][open]").forEach((picker) => {
       if (!picker.contains(event.target)) picker.open = false;
     });

@@ -440,7 +440,7 @@ def _allow_for_request(request, access_request, form, identifiers):
             data["groups"] if data["scope"] == SCOPE_GROUPS else [], request.user,
             f"{access_request.title} (request of {access_request.requester})", form.all_tags(),
             machines=machines if data["scope"] == SCOPE_MACHINES else [], cel_expr=form.cel_expr_for(identifier),
-            expires_at=data.get("expires_at"),
+            expires_at=data.get("expires_at"), name=access_request.title,
         )
         (log_addition if created else log_change)(request.user, rule, f"Access request {access_request.pk}")
         rules.append(rule)
@@ -464,8 +464,9 @@ def _approve_event(request, access_request, form):
     rule = data["existing_rule"] if data["result"] != ApproveEventForm.NONE else None
     if data["result"] in (ApproveEventForm.EXTEND, ApproveEventForm.SIGNING_ID):
         require_perms(request, "change_rule")
-        machines = _requester_machines(access_request)
-        if data["scope"] == SCOPE_MACHINES and not machines:
+        is_global, groups, requester_mac = form.added()
+        machines = _requester_machines(access_request) if requester_mac else []
+        if requester_mac and not machines:
             raise ValidationError(gettext("The Mac of the requester is not known, choose groups or all Macs."))
         added = ""
         if data["result"] == ApproveEventForm.SIGNING_ID:
@@ -476,10 +477,10 @@ def _approve_event(request, access_request, form):
             except SigningIdError as e:
                 raise ValidationError(str(e)) from e
             added = f"Signing ID prefix {prefix} added, " if prefix else ""
-        widen_rule(rule, data["scope"] == SCOPE_GLOBAL, data["groups"] if data["scope"] == SCOPE_GROUPS else [],
-                   machines if data["scope"] == SCOPE_MACHINES else [], request.user,
-                   expires_at=data.get("expires_at"))
-        log_change(request.user, rule, f"{added}Scope extended for access request {access_request.pk}")
+        widen_rule(rule, is_global, groups, machines, request.user, expires_at=data.get("expires_at"))
+        scope_added = is_global or groups or machines
+        log_change(request.user, rule, f"{added}{'Scope extended' if scope_added else 'Enabled'} for access request "
+                                       f"{access_request.pk}")
     if access_request.file_sha256:
         resolve_binary_events(access_request.file_sha256, _requester_machines(access_request), request.user, rule)
     access_request.result_rule = rule

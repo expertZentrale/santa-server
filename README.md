@@ -345,12 +345,17 @@ niedriger Ebene und den Verlauf jeder Änderung.
 dunkel), Sprache, Abmelden. Im Profil gibt es außerdem die Zeitzone (Standard: die des Browsers). Die Auswahl wird im
 Profil des Benutzers gespeichert. Auf dem Smartphone liegt die Navigation hinter der Menü-Schaltfläche.
 
-**Listen**: Klicken Sie auf eine Spaltenüberschrift zum Sortieren, erneut zum Umkehren. Ein Klick auf eine Zeile
-wählt sie aus, Strg-Klick fügt eine hinzu oder entfernt sie, Umschalt-Klick wählt einen Bereich. Die Aktionen für die
-Auswahl erscheinen unten im Fenster; Esc hebt die Auswahl auf.
-*Ansichten* speichert den aktuellen Filter unter einem Namen. Der Stern macht eine Ansicht zur Standardansicht der Liste
-(oder *Standard*, die eingebauten Filter): Die Liste öffnet sich aus dem Menü damit, und *Alle zurücksetzen* führt
-dorthin zurück.
+**Listen**: Klicken Sie auf eine Spaltenüberschrift zum Sortieren, erneut zum Umkehren. Ein Doppelklick auf eine Zeile
+öffnet sie (wie Enter), ein Klick wählt sie aus, Strg-Klick fügt eine hinzu oder entfernt sie, Umschalt-Klick wählt
+einen Bereich. Die Aktionen für die Auswahl erscheinen unten im Fenster; Esc hebt die Auswahl auf.
+*Ansichten* speichert den aktuellen Filter, die Sortierung und die Spalten unter einem Namen. Der Stern macht eine
+Ansicht zur Standardansicht der Liste (oder *Standard*, die eingebauten Filter und Spalten): Die Liste öffnet sich aus
+dem Menü damit, und *Alle zurücksetzen* führt dorthin zurück.
+*Spalten* blendet Spalten ein und aus. Eine Spaltenüberschrift lässt sich vor oder hinter eine andere ziehen, oder auf
+die Mitte einer anderen: Dann stehen ihre Werte unter deren Werten (wie der Kommentar unter dem Identifier), die
+Überschrift nennt beide, und ihr × zeigt die Spalte wieder einzeln. Im Menü *Spalten* geht dasselbe mit ↑/↓ und
+*Unter …*, auch per Tastatur und auf dem Smartphone. Steht die Hauptspalte (Identifier, Datei, Name …) nicht mehr
+vorn, öffnet auch der Text der ersten Spalte den Eintrag. Breiten, Reihenfolge und Spalten merkt sich der Browser.
 
 **Seitenleiste**: Ereignisse, Regeln, Paketregeln, Dateizugriffsregeln, Anfragen, Macs, Gruppen, alles unter
 *Administration* und der Verlauf öffnen sich in einer Leiste rechts, auch zum Anlegen und Bearbeiten. Nach dem
@@ -431,6 +436,9 @@ Löschen unter *Administration* → *Tags*.
 **Ausführungsregeln**: Reiter je Regeltyp, Filter für Richtlinie, Geltungsbereich, Tag, Herkunft (manuell oder
 Paketregel) und Zustand. Regeln, die Paketregeln angelegt haben, können nur aktiviert oder deaktiviert werden; ändern
 Sie stattdessen ihre Paketregel.
+Eine Regel kann neben ihrem Identifier einen **Namen** haben (z. B. „Microsoft-Apps“ für eine Team ID): Er ist ihr
+Titel, die optionale Spalte *Name* und wird mit durchsucht. Bei der Freigabe einer Anfrage bekommt eine neue Regel
+den Titel der Anfrage als Namen.
 Eine manuelle Regel kann ein **Ablaufdatum** haben (*Läuft ab*: 1 Tag, 7 Tage, 30 Tage oder ein Datum; Standard: nie),
 im Regelformular, als Sammelaktion (*Ablauf setzen* / *Ablauf entfernen*), beim Anlegen aus Ereignissen (einzeln und
 für mehrere) und aus einer hochgeladenen Datei und beim Freigeben einer Anfrage (*Erlaubt*: z. B. für 7 Tage). Ab dann bekommen die Macs sie nicht mehr und entfernen sie bei ihrer nächsten Synchronisierung;
@@ -606,8 +614,8 @@ bestehende Paketregel, jedes Paket für sich; bei *Sonstiges* gleich eine neue A
 hochgeladener App, oder eine Paketregel; als Richtlinie Erlauben, Compiler erlauben oder ein CEL-Ausdruck, bei Team-ID-Regeln
 auch per Signing-ID-Präfix; die Pakete mit der Suche in den Katalogen) oder lehnen mit einer Notiz ab. Erlaubt schon
 eine Regel das blockierte Binary (z. B. eine Team-ID-Regel, die nach der Blockierung angelegt wurde), genehmigen sie
-*Auf meinem Mac blockiert* mit dieser *bestehenden Regel*, auf Wunsch um den Geltungsbereich erweitert, oder ganz *ohne
-Regel*; die offenen Ereignisse des Binarys auf den Macs des Anfragenden werden als erledigt markiert.
+*Auf meinem Mac blockiert* mit dieser *bestehenden Regel*, auf Wunsch aktiviert und um den Mac des Anfragenden,
+Gruppen oder alle Macs erweitert (der bisherige Geltungsbereich bleibt immer), oder ganz *ohne Regel*; die offenen Ereignisse des Binarys auf den Macs des Anfragenden werden als erledigt markiert.
 
 Um den Blockierdialog mit dem Formular zu verbinden, setzen Sie die *URL im Blockierdialog* der Gruppe auf
 `https://<host>/request/new/?sha256=%file_sha%` und den Text der Schaltfläche z. B. auf `Zugang anfragen`.
@@ -1084,10 +1092,17 @@ and the history of every change.
 The choices are saved in the profile of the user. On phones the
 navigation is behind the menu button.
 
-**Lists**: click a column header to sort, again to reverse. A click on a row selects it, Ctrl-click adds or removes
-one, Shift-click selects a range. The actions for the selection appear at the bottom of the window; Esc clears it.
-*Views* saves the current filter under a name. The star makes a view the default of the list (or *Standard*, the
-built-in filters): the list opens with it from the menu, and *Reset all* goes back to it.
+**Lists**: click a column header to sort, again to reverse. A double-click on a row opens it (as Enter), a click
+selects it, Ctrl-click adds or removes one, Shift-click selects a range. The actions for the selection appear at the
+bottom of the window; Esc clears it.
+*Views* saves the current filter, sort order and columns under a name. The star makes a view the default of the
+list (or *Standard*, the built-in filters and columns): the list opens with it from the menu, and *Reset all* goes back
+to it.
+*Columns* shows and hides columns. Drag a column header before or after another one, or onto the middle of another
+one: its values are then shown below that one's (as the comment below the identifier), the header names both, and its
+× shows the column on its own again. In the *Columns* menu ↑/↓ and *Under …* do the same, also with the keyboard and
+on phones. When the main column (identifier, file, name …) is no longer at the front, the text of the first column
+opens the entry too. The browser remembers widths, order and columns.
 
 **Side panel**: events, rules, package rules, file access rules, requests, Macs, groups, everything under
 *Administration* and the history open in a panel on the right, also to create and edit them. After saving, the list
@@ -1161,6 +1176,8 @@ uploaded again.
 
 **Execution rules**: tabs per rule type, filters for policy, scope, tag, origin (manual or package rule) and state.
 Rules created by package rules can only be enabled or disabled; change their package rule instead.
+A rule can have a **name** besides its identifier (e.g. "Microsoft apps" for a Team ID): it is its title, the optional
+column *Name*, and part of the search. When approving a request, a new rule gets the title of the request as its name.
 A manual rule can have an **expiry date** (*Expires*: 1 day, 7 days, 30 days or a date; default: never), in the rule
 form, as a bulk action (*Set expiry* / *Remove expiry*), when creating rules from events (one or several) and from an
 uploaded file, and when approving a request (*Allowed*: e.g. for 7 days).
@@ -1329,7 +1346,8 @@ all Macs; packages into a new or an existing package rule, each package on its o
 right away, by identifier or uploaded app, or a package rule; as the policy allow, allow compiler or a CEL expression, for
 Team ID rules also by signing ID prefix; the packages with the search of the catalogs) or deny with a note. When a
 rule allows the blocked binary already (e.g. a Team ID rule created after the block), they approve *Blocked on my Mac*
-with this *existing rule*, with the scope widened if wanted, or with *no rule*; the open events of the binary on the
+with this *existing rule*, if wanted enabled and extended by the requester's Mac, groups or all Macs (its scope so far
+always stays), or with *no rule*; the open events of the binary on the
 requester's Macs are marked resolved.
 
 To link the block dialog to the form, set the group's *block dialog URL* to

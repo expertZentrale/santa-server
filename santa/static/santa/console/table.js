@@ -2,7 +2,7 @@
 (function () {
   "use strict";
 
-  const { rem } = SantaConsole;
+  const { rem, columns } = SantaConsole;
 
   // Selection and bulk bar of the lists: the bar floats at the bottom, the table never moves
   function rowBoxes(form) {
@@ -82,6 +82,21 @@
         wrapper.className = "table-scroll";
         table.before(wrapper);
         wrapper.append(table);
+      }
+      // the rows that came after the layout was set (a page, live updates, a row swapped after its switch)
+      columns.layoutRows(table);
+      if (table._layout) {
+        // by column: the order is the user's, merged columns name both ("Identifier / Comment")
+        table.querySelectorAll("tbody tr").forEach((row) => {
+          [...row.children].forEach((cell) => {
+            const key = cell.dataset.col;
+            if (key) cell.setAttribute("data-label", columns.groupLabel(table, key, table._hidden));
+            else if (!cell.hasAttribute("data-label")) cell.setAttribute("data-label", "");
+          });
+        });
+        // the entry link in the first column shown, wherever the main column is now
+        columns.placeRowLinks(table, table._hidden);
+        return;
       }
       const labels = [...table.querySelectorAll("thead th")].map((th) => th.textContent.trim());
       table.querySelectorAll("tbody tr").forEach((row) => {
@@ -189,18 +204,34 @@
   }
 
   // optional columns added after a browser stored its choice (it knew the others): hidden there too, as by default
-  const LATER_OPTIONAL = new Set(["path", "group", "teamid", "expires"]);
+  const LATER_OPTIONAL = new Set(["expires", "name"]);
 
   function hiddenColumns(table, settings) {
     const optional = (table.dataset.optional || "").split(" ").filter(Boolean);
     if (!settings.hidden) return new Set(optional);
     const known = settings.known ? new Set(settings.known) : null;
-    return new Set([...settings.hidden,
-                    ...optional.filter((key) => (known ? !known.has(key) : LATER_OPTIONAL.has(key)))]);
+    let hidden = settings.hidden;
+    // stored before columns could be merged: the comment, path, group and Team ID were hidden as columns of their
+    // own but shown under another one; merged by default now, they stay shown there
+    if (!settings.merged) hidden = hidden.filter((key) => !columns.defaultLayout(table).merged[key]);
+    return new Set([...hidden, ...optional.filter((key) => (known ? !known.has(key) : LATER_OPTIONAL.has(key)))]);
+  }
+
+  // the order and merges of the user (or of a view), else the ones of the list. A column added to the list after
+  // they were stored gets its default merge (e.g. the e-mail under the user), not a place of its own.
+  function storedLayout(table, settings) {
+    if (!settings.order) return columns.defaultLayout(table);
+    const merged = { ...(settings.merged || {}) };
+    const known = new Set(settings.known || settings.order);
+    Object.entries(columns.defaultLayout(table).merged).forEach(([child, parent]) => {
+      if (!known.has(child) && !(child in merged)) merged[child] = parent;
+    });
+    return { order: settings.order, merged };
   }
 
   function applyHidden(table, settings) {
     const hidden = hiddenColumns(table, settings);
+    table._hidden = hidden;
     let style = document.getElementById(`table-style-${table.dataset.table}`);
     if (!style) {
       style = document.createElement("style");
@@ -208,16 +239,18 @@
       document.head.append(style);
     }
     const selector = `table[data-table="${table.dataset.table}"]`;
-    // nth-child: also for rows that come later (live updates, toggles)
-    style.textContent = tableColumns(table).filter((column) => hidden.has(column.key))
-      .map((column) => `${selector} tr:not(.empty) > :nth-child(${column.index + 1}) { display: none; }`).join("\n");
-    table.dataset.shown = tableColumns(table).filter((column) => !hidden.has(column.key))
-      .map((column) => column.key).join(" ");
-    // the row "nothing found" spans the columns shown: spanning the hidden ones too made the table wider than its
-    // header
-    const shown = table.tHead.rows[0].cells.length
-      - tableColumns(table).filter((column) => hidden.has(column.key)).length;
+    // by key: also for rows that come later (live updates, toggles), wherever the column is now
+    style.textContent = [...hidden].filter((key) => /^[a-z0-9-]+$/.test(key))
+      .map((key) => `${selector} tr > [data-col="${key}"], ${selector} .merged-part[data-col="${key}"], `
+                    + `${selector} .merged-label[data-col="${key}"] { display: none; }`).join("\n");
+    table.dataset.shown = columns.keys(table).filter((key) => !hidden.has(key)).join(" ");
+    // the row "nothing found" and the grey rows span the columns shown: spanning the hidden ones too made the table
+    // wider than its header
+    const shown = [...table.tHead.rows[0].cells].filter((th) => !hidden.has(th.dataset.col)).length;
     table.querySelectorAll(":scope > tbody > tr.empty > td").forEach((td) => { td.colSpan = shown; });
+    table.querySelectorAll(":scope > tbody > tr.skeleton").forEach((row) => {
+      while (row.cells.length > shown) row.lastElementChild.remove();
+    });
     return hidden;
   }
 
@@ -315,26 +348,140 @@
   // the column chooser shows at most this many columns without scrolling (the rules have 9)
   const MAX_COLUMN_ROWS = 9;
 
+  function smallButton(text, label, data, disabled) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "icon-button small";
+    button.textContent = text;
+    button.title = label;
+    button.setAttribute("aria-label", label);
+    Object.assign(button.dataset, data);
+    button.disabled = disabled;
+    return button;
+  }
+
+  // The entries of the column chooser, in the order of the table: shown or not, one step up / down, and under which
+  // column it is shown (the same as dragging the headers, for keyboards and touch screens)
+  function columnOptions(table, texts) {
+    const layout = table._layout;
+    const hidden = table._hidden || new Set();
+    const tops = columns.tops(layout);
+    return layout.order.map((key) => {
+      const parent = layout.merged[key] || "";
+      const siblings = parent ? columns.children(layout, parent) : tops;
+      const index = siblings.indexOf(key);
+      const name = columns.labelOf(table, key);
+      const option = document.createElement("div");
+      option.className = parent ? "column-option merged" : "column-option";
+      option.dataset.columnOption = key;
+      const label = document.createElement("label");
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      // not sent with any form: an id, so the browser knows the field
+      box.id = `columns-${table.dataset.table || "table"}-${key}`;
+      box.checked = !hidden.has(key);
+      box.dataset.columnKey = key;
+      const text = document.createElement("span");
+      text.className = "column-name";
+      text.textContent = name;
+      text.title = name;
+      label.append(box, text);
+      const select = document.createElement("select");
+      select.dataset.columnParent = "";
+      select.setAttribute("aria-label", `${texts.showBelow || "Show below"}: ${name}`);
+      select.title = texts.showBelow || "Show below";
+      select.append(new Option(texts.ownColumn || "Own column", ""));
+      tops.filter((top) => top !== key).forEach((top) => {
+        select.append(new Option(`${texts.below || "Under"} ${columns.labelOf(table, top)}`, top, false, top === parent));
+      });
+      option.append(label,
+                    smallButton("↑", `${texts.moveUp || "Move up"}: ${name}`, { columnMove: "-1" }, index === 0),
+                    smallButton("↓", `${texts.moveDown || "Move down"}: ${name}`, { columnMove: "1" },
+                                index === siblings.length - 1),
+                    select);
+      return option;
+    });
+  }
+
+  // The saved views keep the columns too (the filter bar's view-layout): a view chosen in the views, or one that is
+  // not the one shown last, brings its columns; "Standard" after a view the list's own. Changed after that, the
+  // columns stay so in this browser until the view is saved again.
+  function syncView(table, settings) {
+    if (table.closest("#drawer")) return;
+    const element = document.getElementById("view-layout");
+    if (!element) return;
+    let data = null;
+    let chosen = null;
+    try {
+      data = JSON.parse(element.textContent);
+      chosen = sessionStorage.getItem("santa.view-chosen");
+      sessionStorage.removeItem("santa.view-chosen");
+    } catch (error) {
+      if (!data) return;
+    }
+    const current = settings.view ?? null;
+    if (data.id) {
+      if (data.id === current && chosen !== String(data.id)) return;
+      settings.view = data.id;
+      // a view saved before the columns were part of it keeps the columns as they are
+      const layout = data.layout || {};
+      if (Array.isArray(layout.order)) {
+        settings.order = layout.order;
+        settings.merged = layout.merged || {};
+        settings.hidden = layout.hidden || [];
+        settings.known = layout.known || layout.order;
+      }
+      saveTableSettings(table, settings);
+    } else if (data.standard && (current || chosen === "standard")) {
+      ["order", "merged", "hidden", "known", "view"].forEach((name) => delete settings[name]);
+      saveTableSettings(table, settings);
+    }
+  }
+
+  // the columns of the list as they are now, for "Save current view"
+  function currentLayout(table) {
+    const layout = table._layout || columns.defaultLayout(table);
+    return { order: layout.order, merged: layout.merged, hidden: [...(table._hidden || [])],
+             known: columns.keys(table) };
+  }
+
+  document.addEventListener("click", (event) => {
+    const link = event.target.closest?.("[data-view-choice]");
+    if (!link) return;
+    try {
+      sessionStorage.setItem("santa.view-chosen", link.dataset.viewChoice);
+    } catch (error) {
+      // blocked storage: the view brings its columns when it isn't the one shown last
+    }
+  });
+
+  // before htmx sends the form (capture: its own listener is on the form)
+  document.addEventListener("submit", (event) => {
+    const field = event.target.querySelector?.('input[name="layout"][data-view-layout-field]');
+    if (!field) return;
+    const table = [...document.querySelectorAll("main table[data-table][data-table-ready]")]
+      .find((candidate) => !candidate.closest("#drawer, .rows-loading"));
+    field.value = table ? JSON.stringify(currentLayout(table)) : "";
+  }, true);
+
   function setupTable(table) {
     if (table.dataset.tableReady || !table.tHead) return;
     table.dataset.tableReady = "1";
     const texts = document.getElementById("table-texts")?.dataset || {};
     const settings = tableSettings(table);
+    // the keys of the columns, before anything is moved
+    columns.markup(table);
+    syncView(table, settings);
     if (table.closest(".rows-loading")) {
       // the grey rows while the list loads: the columns as shown last (or as the user set them), so the real table
       // takes the same place
+      columns.apply(table, storedLayout(table, settings), texts);
       applyHidden(table, settings);
       if (!applyRememberedLayout(table)) applyWidths(table, settings);
       return;
     }
-    [...table.tHead.rows[0].cells].forEach((th) => {
-      const name = th.textContent.trim();
-      // a column without a name (e.g. the buttons) can't be chosen or resized: it would be an empty entry
-      if (!th.dataset.col && !th.classList.contains("select") && name) {
-        th.dataset.col = name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || `col${th.cellIndex}`;
-      }
-    });
-    tableColumns(table).forEach(({ th, key }) => {
+    // every column gets its handle, also the ones merged into another now: they keep it when split again
+    columns.markup(table).filter((column) => column.key).forEach(({ th, key }) => {
       const handle = document.createElement("span");
       handle.className = "col-resize";
       handle.tabIndex = 0;
@@ -388,7 +535,10 @@
         handle.addEventListener("pointerup", up);
       });
     });
+    columns.apply(table, storedLayout(table, settings), texts);
     applyHidden(table, settings);
+    // labelled before the layout (onInit): again, by column
+    labelTables(table);
     applyWidths(table, settings);
     // phone <-> desktop (a resized window, a rotated tablet): measured again in the new layout
     cardLayout.addEventListener("change", () => {
@@ -409,18 +559,8 @@
     // the list scrolls, the reset stays at the bottom
     const list = document.createElement("div");
     list.className = "picker-list";
-    const hidden = applyHidden(table, settings);
-    tableColumns(table).forEach(({ th, key }) => {
-      const label = document.createElement("label");
-      const box = document.createElement("input");
-      box.type = "checkbox";
-      // not sent with any form: an id, so the browser knows the field
-      box.id = `columns-${table.dataset.table || "table"}-${key}`;
-      box.checked = !hidden.has(key);
-      box.dataset.columnKey = key;
-      label.append(box, ` ${th.textContent.trim()}`);
-      list.append(label);
-    });
+    const renderList = () => list.replaceChildren(...columnOptions(table, texts));
+    renderList();
     const footer = document.createElement("div");
     footer.className = "picker-footer";
     const resetAll = document.createElement("button");
@@ -436,11 +576,15 @@
       if (!picker.open) return;
       list.style.maxHeight = "none";
       list.style.overflowY = "hidden";
-      const height = list.getBoundingClientRect().height;
+      // the height of the whole list: on phones the menu has a height of its own (filterbar.js), it squeezes the list
+      const height = list.scrollHeight;
       const style = getComputedStyle(list);
       const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
-      const row = list.querySelector("label")?.getBoundingClientRect().height || 2.4 * rem();
-      const room = window.innerHeight - list.getBoundingClientRect().top - footer.getBoundingClientRect().height - rem();
+      const row = list.querySelector(".column-option")?.getBoundingClientRect().height || 2.4 * rem();
+      const footerHeight = footer.getBoundingClientRect().height;
+      let room = window.innerHeight - list.getBoundingClientRect().top - footerHeight - rem();
+      const panelMax = parseFloat(getComputedStyle(panel).maxHeight);
+      if (panelMax) room = Math.min(room, panelMax - footerHeight - 2);
       const limit = Math.max(3 * row + padding, Math.min(MAX_COLUMN_ROWS * row + padding, room));
       if (height <= limit + 0.5) {
         list.style.maxHeight = "none";
@@ -450,22 +594,59 @@
       }
     });
     picker.append(summary, panel);
-    panel.addEventListener("change", (event) => {
-      const box = event.target.closest("[data-column-key]");
-      if (!box) return;
-      settings.hidden = [...panel.querySelectorAll("[data-column-key]")].filter((other) => !other.checked)
-        .map((other) => other.dataset.columnKey);
-      settings.known = tableColumns(table).map((column) => column.key);
+    // a new order or merge (chooser, dragged header, × of a merged one): stored, and the chooser follows it
+    const changeLayout = (layout, focusKey = null, focusControl = null) => {
+      settings.order = layout.order;
+      settings.merged = layout.merged;
+      settings.hidden = [...hiddenColumns(table, settings)];
+      settings.known = columns.keys(table);
+      columns.apply(table, layout, texts);
       applyHidden(table, settings);
+      labelTables(table);
+      applyWidths(table, settings);
+      updateFits(table);
+      saveTableSettings(table, settings);
+      renderList();
+      // the focus stays on the button or field that was used, now at the place of its column
+      if (focusKey && focusControl) {
+        const option = list.querySelector(`[data-column-option="${focusKey}"]`);
+        const control = option?.querySelector(focusControl);
+        (control && !control.disabled ? control : option?.querySelector("input"))?.focus();
+      }
+    };
+    columns.enableDrag(table, (layout) => changeLayout(layout));
+    panel.addEventListener("change", (event) => {
+      const parent = event.target.closest("[data-column-parent]");
+      if (parent) {
+        const key = parent.closest("[data-column-option]").dataset.columnOption;
+        changeLayout(columns.setParent(table, table._layout, key, parent.value), key, "[data-column-parent]");
+        return;
+      }
+      const box = event.target.closest("input[data-column-key]");
+      if (!box) return;
+      settings.hidden = [...panel.querySelectorAll("input[data-column-key]")].filter((other) => !other.checked)
+        .map((other) => other.dataset.columnKey);
+      settings.known = columns.keys(table);
+      applyHidden(table, settings);
+      labelTables(table);
       applyWidths(table, settings);
       updateFits(table);
       saveTableSettings(table, settings);
     });
+    panel.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-column-move]");
+      if (!button) return;
+      const key = button.closest("[data-column-option]").dataset.columnOption;
+      const direction = Number(button.dataset.columnMove);
+      changeLayout(columns.step(table, table._layout, key, direction), key, `[data-column-move="${direction}"]`);
+    });
     resetAll.addEventListener("click", () => {
       Object.keys(settings).forEach((name) => delete settings[name]);
       saveTableSettings(table, settings);
-      const defaults = applyHidden(table, settings);
-      panel.querySelectorAll("[data-column-key]").forEach((box) => { box.checked = !defaults.has(box.dataset.columnKey); });
+      columns.apply(table, columns.defaultLayout(table), texts);
+      applyHidden(table, settings);
+      labelTables(table);
+      renderList();
       applyWidths(table, settings);
       updateFits(table);
     });
@@ -533,7 +714,8 @@
       return;
     } else if (event.key === "Enter") {
       event.preventDefault();
-      row.querySelector("a[hx-get]")?.click();
+      // the entry, not the first link of the row (that may be another one now, e.g. the Mac of an event)
+      columns.openRow(row);
       return;
     }
     if (next) {
@@ -569,7 +751,27 @@
     return window.matchMedia("(hover: none)").matches;
   }
 
+  // the first column shown as the link of the entry (columns.placeRowLinks): its own link opens it in the drawer;
+  // with a modifier key or the middle button the browser opens the href (a new tab)
   document.addEventListener("click", (event) => {
+    const link = event.target.closest?.("a.row-open");
+    if (!link || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    event.stopPropagation();
+    columns.openRow(link.closest("tr"));
+  }, true);
+
+  // a double-click opens the row (a click selects it, like files)
+  document.addEventListener("dblclick", (event) => {
+    const row = event.target.closest?.("table[data-table] tbody tr");
+    if (!row || row.matches(".empty, .skeleton") || event.target.closest(INTERACTIVE)) return;
+    window.getSelection()?.removeAllRanges();
+    columns.openRow(row);
+  });
+
+  document.addEventListener("click", (event) => {
+    // the second click of a double-click: the row stays selected, the double-click opens it
+    if (event.detail > 1 && !event.target.closest?.(INTERACTIVE)) return;
     const clearButton = event.target.closest("[data-clear-selection]");
     if (clearButton) clearSelection(clearButton.closest("[data-select-form]"));
     const form = event.target.closest("[data-select-form]");
@@ -603,7 +805,9 @@
 
   // no text selection while shift- or ctrl-clicking the rows
   document.addEventListener("mousedown", (event) => {
-    if ((event.shiftKey || event.ctrlKey || event.metaKey) && event.target.closest("[data-select-form] tbody")
+    // a double-click doesn't select a word either
+    if ((event.shiftKey || event.ctrlKey || event.metaKey || event.detail > 1)
+        && event.target.closest("table[data-table] tbody, [data-select-form] tbody")
         && !event.target.closest(INTERACTIVE)) {
       event.preventDefault();
     }
@@ -673,5 +877,5 @@
   });
   window.addEventListener("pagehide", rememberAll);
 
-  SantaConsole.table = { rowBoxes, updateSelection, updateAllSelections, labelTables, setupRowFocus };
+  SantaConsole.table = { rowBoxes, updateSelection, updateAllSelections, labelTables, setupRowFocus, currentLayout };
 })();

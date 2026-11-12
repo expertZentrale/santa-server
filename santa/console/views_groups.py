@@ -240,10 +240,11 @@ def machine_rules(machine, effective, params):
         rows.setdefault(row[0], (MACHINE, row))
     level = MACHINE_RULE_SCOPES.get(params.get("rules"))
     q = params.get("q", "").strip().lower()
-    description, created_at = LIST_FIELDS.index("description"), LIST_FIELDS.index("created_at")
+    name, description = LIST_FIELDS.index("name"), LIST_FIELDS.index("description")
+    created_at = LIST_FIELDS.index("created_at")
     result = [(rule_level, row, row[0] in winners) for rule_level, row in rows.values()
               if (level is None or rule_level == level)
-              and (not q or q in row[2].lower() or q in row[description].lower())]
+              and (not q or q in row[2].lower() or q in row[name].lower() or q in row[description].lower())]
     result.sort(key=lambda item: (-item[0], -item[1][created_at].timestamp(), -item[1][0]))
     return result
 

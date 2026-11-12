@@ -92,7 +92,27 @@ a.badge:hover { text-decoration: none; filter: brightness(.95); outline: 1px sol
 /* the column chooser: the list scrolls, its reset stays at the bottom */
 .columns-picker .picker-panel { display: flex; flex-direction: column; max-height: none; overflow: visible; padding: 0; }
 /* (its height: table.js, the same limit on every page) */
-.picker-list { display: grid; overflow-y: auto; overscroll-behavior: contain; padding: .3rem; }
+.picker-list { display: grid; row-gap: .3rem; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: .3rem; }
+/* a column in the chooser: shown or not, up / down, under which column; the merged ones indented under theirs */
+.columns-picker .picker-panel { width: 24rem; max-width: calc(100vw - 2rem); }
+.column-option { display: grid; grid-template-columns: minmax(0, 1fr) auto auto minmax(5rem, 9rem); align-items: center;
+  gap: .2rem; padding-right: .3rem; border-radius: var(--radius-sm); }
+.column-option:hover { background: var(--surface-2); }
+.column-option > label { min-width: 0; }
+.column-option > label:hover { background: none; }
+.column-option .column-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.column-option.merged > label { padding-left: 1.4rem; }
+.column-option > .icon-button.small { font-size: .9rem; }
+.column-option > .icon-button:disabled { opacity: .3; cursor: default; }
+.column-option > select { width: 100%; min-width: 0; font-size: .8rem; padding-block: .15rem; }
+/* phones: "show below" in a line of its own, under the name, so the names keep their room */
+@media (max-width: 45em) {
+  .column-option { grid-template-columns: minmax(0, 1fr) auto auto; padding-bottom: .4rem; }
+  /* the menu is as high as the window allows (filterbar.js): its list scrolls in it, the reset stays below */
+  .filter-tools .columns-picker.picker.down .picker-panel { overflow: hidden; }
+  .column-option > select { grid-column: 1 / -1; margin-left: 2.4rem; width: calc(100% - 2.4rem); }
+  .column-option.merged > select { margin-left: 3.8rem; width: calc(100% - 3.8rem); }
+}
 .picker-footer { border-top: 1px solid var(--border); padding: .3rem; }
 
 /* The identifier is cut at the width of its column, the full text is in the title */
@@ -101,12 +121,29 @@ a.badge:hover { text-decoration: none; filter: brightness(.95); outline: 1px sol
 .table[data-table="rules"] th[data-col="identifier"] { width: 26rem; }
 /* the rules of a Mac: no column widths to set, the identifier keeps a width of its own (the whole one in its title) */
 .mac-rules .identifier-cell { max-width: 22rem; }
-/* with the column "Comment" shown, the comment is not repeated under the identifier */
-.table[data-shown~="comment"] .description-inline { display: none; }
-/* the same for the path, the group and the Team ID of the events: under the file, the Mac, the Signing ID until
-   their column is shown */
-.table[data-shown~="path"] .path-inline, .table[data-shown~="group"] .group-inline,
-.table[data-shown~="teamid"] .teamid-inline { display: none; }
+/* Merged columns (table.js): the values of a column under the one it was dropped on, smaller and grey like the
+   comment under the identifier; the header names both, with a × to split them again */
+.table .merged-part { display: block; margin-top: .15rem; font-size: .85em; color: var(--muted); min-width: 0; }
+.table .merged-part.empty { display: none; }
+.table th .merged-label { white-space: nowrap; }
+.table th .merged-label a.sort { color: inherit; }
+.table th .merge-split { border: 0; background: none; color: inherit; font: inherit; line-height: 1; cursor: pointer;
+  padding: .1rem .25rem; margin-left: .1rem; border-radius: var(--radius); }
+.table th .merge-split:hover, .table th .merge-split:focus-visible { background: var(--surface); color: var(--text); }
+/* The first column shown opens the entry when its main column (identifier, file, name …) was moved, merged or hidden
+   (table.js): a link like the others, in the accent color */
+.table a.row-open { color: var(--accent); text-decoration: none; }
+.table a.row-open:hover, .table a.row-open:focus-visible { text-decoration: underline; text-underline-offset: .15em; }
+/* Moving a header: the column dragged, and where it goes (before, after, or under the one below the pointer) */
+.table th.col-dragging { opacity: .5; }
+.table th[data-col] { cursor: grab; }
+.table th[data-col]:has(.col-resize:hover) { cursor: auto; }
+.col-drop-marker { position: fixed; z-index: 50; pointer-events: none; border-radius: .15rem; background: var(--accent); }
+.col-drop-marker.merge { background: color-mix(in srgb, var(--accent) 18%, transparent); border: 2px solid var(--accent); }
+.col-drag-ghost { position: fixed; z-index: 51; pointer-events: none; padding: .3rem .6rem; border-radius: var(--radius);
+  background: var(--surface); border: 1px solid var(--accent); box-shadow: 0 .3rem 1rem rgb(0 0 0 / .15);
+  font-size: .8rem; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
+body.col-drag-active, body.col-drag-active * { cursor: grabbing !important; user-select: none; }
 
 /* Keyboard: the row with the focus */
 [data-select-form] tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }

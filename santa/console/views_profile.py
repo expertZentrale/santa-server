@@ -9,7 +9,7 @@ from .. import notifications
 from ..models import SavedFilter, UserProfile
 from ..services import set_default_filter
 from ..users import gravatar_url, profile_for
-from .filters import FILTER_PAGES, MAX_QUERY_LENGTH, MAX_SAVED_FILTERS, filter_query
+from .filters import FILTER_PAGES, MAX_QUERY_LENGTH, MAX_SAVED_FILTERS, clean_layout, filter_query
 from .forms import ProfileForm
 from .utils import safe_next
 
@@ -77,7 +77,8 @@ def save_filter(request):
         messages.error(request, translation.gettext("At most %(count)s saved views per list. Delete one first.")
                        % {"count": MAX_SAVED_FILTERS})
         return redirect(back)
-    SavedFilter.objects.update_or_create(user=request.user, page=page, name=name, defaults={"query": query})
+    SavedFilter.objects.update_or_create(user=request.user, page=page, name=name,
+                                         defaults={"query": query, "layout": clean_layout(request.POST.get("layout"))})
     messages.success(request, translation.gettext("View “%(name)s” saved.") % {"name": name})
     return redirect(back)
 

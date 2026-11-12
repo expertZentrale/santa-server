@@ -4,6 +4,7 @@
   <section class="card"><h2>{% translate "Target" %}</h2>
     {% include "console/_field.html" with field=form.rule_type %}
     {% include "console/_field.html" with field=form.identifier %}
+    {% include "console/_field.html" with field=form.name %}
     {% if not rule %}<div hx-get="{% url 'console:rules_existing' %}" hx-include="closest form" hx-target="this" hx-swap="innerHTML"
          hx-trigger="change from:[name='identifier'], change from:[name='rule_type'], keyup changed delay:400ms from:[name='identifier']"
          aria-live="polite"></div>{% endif %}

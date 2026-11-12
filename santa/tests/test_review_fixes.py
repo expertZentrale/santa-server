@@ -89,7 +89,7 @@ class RequestReviewTestCase(ConsoleBase):
         rule.groups.add(self.sales)
         access_request = self.event_request()
         response = self.client.post(reverse("console:request_approve", args=(access_request.pk,)), {
-            "result": "extend", "existing_rule": rule.pk, "scope": "groups", "groups": [self.dev.pk]})
+            "result": "extend", "existing_rule": rule.pk, "added_scope": "groups", "added_groups": [self.dev.pk]})
         self.assertContains(response, "comes from the package rule tools")
         self.assertEqual(list(rule.groups.all()), [self.sales])
 

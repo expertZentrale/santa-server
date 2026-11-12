@@ -2,8 +2,8 @@
   <td class="select"><input type="checkbox" name="rules" value="{{ rule.pk }}" aria-label="{% translate 'Select rule' %} {{ rule.pk }}"></td>
   <td data-col="identifier">{% url 'console:rule' rule.pk as rule_url %}{% with parts=rule|identifier_parts %}
     <div class="identifier-cell"><a class="mono strong identifier" href="{{ rule_url }}" hx-get="{{ rule_url }}" hx-target="#drawer" title="{{ rule.identifier }}">{% if parts.0 %}<span class="muted">{{ parts.0 }}</span>{% endif %}{{ parts.1 }}</a>
-    {% include "console/_copy.html" with value=rule.identifier %}</div>{% endwith %}
-    {% if rule.description %}<small class="muted cell-line description-inline" title="{{ rule.description }}">{{ rule.description }}</small>{% endif %}</td>
+    {% include "console/_copy.html" with value=rule.identifier %}</div>{% endwith %}</td>
+  <td data-col="name"><span class="cell-line" title="{{ rule.name }}">{{ rule.name }}</span></td>
   <td data-col="comment"><span class="cell-line" title="{{ rule.description }}">{{ rule.description }}</span></td>
   <td data-col="type">{{ rule.get_rule_type_display }}</td>
   <td data-col="policy"><span class="badge {{ rule.policy|policy_class }}">{{ rule.get_policy_display }}</span></td>
@@ -11,7 +11,8 @@
     {% for group in rule.groups.all %}<span class="chip small">{{ group.name }}</span>{% endfor %}
     {% for machine in rule.machines.all %}{% url 'console:machine' machine.pk as machine_url %}<a class="chip small mac" href="{{ machine_url }}" hx-get="{{ machine_url }}" hx-target="#drawer">{{ machine.hostname|default:machine.serial_number }}</a>{% endfor %}{% endif %}</td>
   <td data-col="tags">{% for tag in rule.tags.all %}<span class="tag">{{ tag.name }}</span>{% endfor %}</td>
-  <td data-col="created" class="nowrap">{{ rule.created_at|date:"d.m.Y H:i" }}{% if rule.created_by %}<small class="muted">{{ rule.created_by.get_full_name|default:rule.created_by.get_username }}</small>{% endif %}</td>
+  <td data-col="created" class="nowrap">{{ rule.created_at|date:"d.m.Y H:i" }}</td>
+  <td data-col="created-by">{% if rule.created_by %}{{ rule.created_by.get_full_name|default:rule.created_by.get_username }}{% endif %}</td>
   <td data-col="expires" class="nowrap">{% if rule.expires_at %}{% if rule.is_expired %}<span class="badge bad" title="{% translate 'Removed from the Macs, deleted soon' %}">{% translate "expired" %}</span>{% else %}{{ rule.expires_at|date:"d.m.Y H:i" }}{% endif %}{% else %}<span class="muted">–</span>{% endif %}</td>
   <td data-col="origin">{% if rule.release_source %}{% url 'console:source' rule.release_source_id as source_url %}<a href="{{ source_url }}" hx-get="{{ source_url }}" hx-target="#drawer">{{ rule.release_source.name }}</a>{% else %}<span class="muted">{% translate "manual" %}</span>{% endif %}</td>
   <td data-col="enabled"{% if perms.santa.change_rule %} class="toggle"{% endif %}>{% if perms.santa.change_rule %}

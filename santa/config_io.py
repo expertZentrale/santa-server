@@ -58,7 +58,7 @@ FILE_ACCESS_RULE_FIELDS = (
 FILE_ACCESS_PROCESS_FIELDS = ("signing_id", "team_id", "platform_binary", "binary_path", "cdhash",
                               "certificate_sha256")
 RULE_KEY_FIELDS = ("rule_type", "identifier", "policy")
-RULE_FIELDS = ("custom_msg", "custom_url", "cel_expr", "description", "is_global", "is_enabled", "expires_at")
+RULE_FIELDS = ("name", "custom_msg", "custom_url", "cel_expr", "description", "is_global", "is_enabled", "expires_at")
 
 
 def legacy_usb(item):
