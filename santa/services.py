@@ -117,6 +117,8 @@ def widen_rule(rule, is_global, groups, machines, user, tags=(), expires_at=None
 
 
 def resolve_events(rule, user):
+    """The open events of the binaries the rule covers: a block rule decided them; an allow rule only the ones it
+    allows on their Mac now, as Santa decides there (a more specific block rule still wins)"""
     identifier_field = EVENT_IDENTIFIER_FIELDS[rule.rule_type]
     events = Event.objects.filter(resolved_at__isnull=True, **{identifier_field: rule.identifier})
     # a Team ID rule of signing ID prefixes allows only those binaries of the team, the others stay blocked
@@ -125,7 +127,10 @@ def resolve_events(rule, user):
                                          for prefix in prefixes]))
     if not rule.is_global:
         events = events.filter(Q(group__in=rule.groups.all()) | Q(machine__in=rule.machines.all()))
-    return events.update(resolved_at=timezone.now(), resolved_by=user, resolution_rule=rule)
+    if rule.policy in (Policy.BLOCKLIST, Policy.SILENT_BLOCKLIST):
+        return events.update(resolved_at=timezone.now(), resolved_by=user, resolution_rule=rule)
+    return (resolve_allowed_events(events.filter(NEEDS_RULE).select_related("machine"), user)
+            + events.exclude(NEEDS_RULE).update(resolved_at=timezone.now(), resolved_by=user, resolution_rule=rule))
 
 
 def any_of_q(conditions):
@@ -323,7 +328,10 @@ def resolve_allowed_events(events, user=None):
     if not events:
         return 0
     found = _matching_rules({event.pk: _event_identifiers(event) for event in events})
-    groups = Group.objects.in_bulk({event.machine.group_id for event in events})
+    groups = {}
+    # SQL Server: at most 2100 parameters per query
+    for chunk in chunked(sorted({event.machine.group_id for event in events})):
+        groups.update(Group.objects.in_bulk(chunk))
     allowed_by = {}
     for event in events:
         allowed, rule = _decision_on(event.machine, groups.get(event.machine.group_id), found[event.pk],

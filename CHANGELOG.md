@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-13
+
 ### Added
 
 - **Rename a view in its row.** The pencil turns the name of a saved view into a field in the same row; Enter
@@ -610,7 +612,8 @@
   docker/setup-buildx-action 4, docker/metadata-action 6.
 - Python packages: hiredis 3.4.2, tzdata 2026.4.
 
-[Unreleased]: https://github.com/expertZentrale/santa-server/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/expertZentrale/santa-server/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/expertZentrale/santa-server/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/expertZentrale/santa-server/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/expertZentrale/santa-server/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/expertZentrale/santa-server/compare/v0.11.0...v0.12.0

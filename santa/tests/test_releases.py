@@ -226,6 +226,35 @@ class ReleaseSourceTestCase(ReleaseSourceBase):
         self.assertEqual(version.binary_count, 2)
         self.assertEqual(sync_release_source(source, fake_session(routes)), [])
 
+    def test_a_build_with_a_failed_file_is_collected_again(self):
+        source = ReleaseSource.objects.create(name="git", kind=ReleaseSource.Kind.HOMEBREW_FORMULA, identifier="git",
+                                              asset_pattern="^arm64_", is_global=True, auto_approve=True)
+
+        def bottle(name):
+            return tar_gz({"git/2.56.1/bin/git": build_macho(identifier=name, team_id="", adhoc=True)})
+
+        files = {"arm64_sequoia": bottle("git-a"), "arm64_sonoma": bottle("git-b")}
+        formula = {"versions": {"stable": "2.56.1"}, "revision": 0, "bottle": {"stable": {"files": {
+            name: {"url": f"https://ghcr.example/{name}", "sha256": hashlib.sha256(data).hexdigest()}
+            for name, data in files.items()}}}}
+        routes = {"https://formulae.brew.sh/api/formula/git.json": FakeResponse(formula),
+                  **{f"https://ghcr.example/{name}": FakeResponse(content=data) for name, data in files.items()}}
+        [version] = sync_release_source(source, fake_session(routes))
+        self.assertEqual(Rule.objects.filter(release_source=source).count(), 2)
+        # built again; one of the new files can't be checked (it doesn't match its hash) this time
+        rebuilt = {"arm64_sequoia": bottle("git-a2"), "arm64_sonoma": bottle("git-b2")}
+        for name, data in rebuilt.items():
+            formula["bottle"]["stable"]["files"][name]["sha256"] = hashlib.sha256(data).hexdigest()
+        routes["https://ghcr.example/arm64_sequoia"] = FakeResponse(content=rebuilt["arm64_sequoia"])
+        routes["https://ghcr.example/arm64_sonoma"] = FakeResponse(content=b"broken")
+        self.assertEqual(sync_release_source(source, fake_session(routes)), [version])
+        self.assertEqual(Rule.objects.filter(release_source=source).count(), 3)
+        # the fingerprint stays: the next check collects the build again and adds the missing file
+        routes["https://ghcr.example/arm64_sonoma"] = FakeResponse(content=rebuilt["arm64_sonoma"])
+        self.assertEqual(sync_release_source(source, fake_session(routes)), [version])
+        self.assertEqual(Rule.objects.filter(release_source=source).count(), 4)
+        self.assertEqual(sync_release_source(source, fake_session(routes)), [])
+
     def test_a_version_recorded_before_is_checked_once_for_another_build(self):
         """The versions recorded before the hashes of the bottles were: the current one is downloaded once"""
         source = ReleaseSource.objects.create(name="git", kind=ReleaseSource.Kind.HOMEBREW_FORMULA, identifier="git",

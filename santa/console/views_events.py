@@ -301,10 +301,14 @@ def blocked_app(request, sha256, part):
     # the newest first, sorted here: "TOP n ... ORDER BY execution_time" lets SQL Server walk the time index of all
     # events until it found n of this binary (seconds on a large table); all of the binary through its own index
     # is fast, as for the Macs and users
-    times = sorted(events.values_list("execution_time", "pk"), reverse=True)
-    if not times:
+    times = []
+    if part == "events":
+        times = sorted(events.values_list("execution_time", "pk"), reverse=True)
+        newest = Event.objects.only("file_name", "file_path").get(pk=times[0][1]) if times else None
+    else:
+        newest = events.order_by("-execution_time").only("file_name", "file_path").first()
+    if newest is None:
         raise Http404
-    newest = Event.objects.only("file_name", "file_path").get(pk=times[0][1])
     context = {"sha256": sha256.lower(), "part": part, "newest": newest, "limit": APP_PART_ROWS,
                "app_parts": [("events", gettext("Blocks")), ("macs", gettext("Macs")), ("users", gettext("Users"))],
                # the filters of the list, for the tabs of the drawer and the link to the whole list
@@ -362,13 +366,19 @@ def event_updates(request):
 @staff_required
 def event_detail(request, pk):
     require_perms(request, "view_event")
+    return _render_event(request, pk)
+
+
+def _render_event(request, pk, form=None):
+    """The event in the drawer (or as a page); form: the rule form as sent, with its errors"""
     event = get_object_or_404(Event.objects.select_related("machine", "group", "resolution_rule", "resolved_by"),
                               pk=pk)
     same_binary = (Event.objects.select_related("machine").filter(file_sha256=event.file_sha256)
                                 .exclude(pk=event.pk).order_by("-execution_time")[:20])
     template = "console/events/_detail.html" if is_htmx(request) else "console/events/detail.html"
     matches = existing_rules([event]).get(event.file_sha256, [])
-    return render(request, template, {"event": event, "same_binary": same_binary, "form": event_rule_form([[event]]),
+    return render(request, template, {"event": event, "same_binary": same_binary,
+                                      "form": form or event_rule_form([[event]]),
                                       "ignores": ignores_of(event),
                                       "requests": event.access_requests.select_related("requester"),
                                       "matches": matches,
@@ -512,7 +522,8 @@ def event_create_rule(request, pk):
     event = get_object_or_404(Event.objects.select_related("machine", "group"), pk=pk)
     form = event_rule_form([[event]], request.POST)
     if not form.is_valid():
-        messages.error(request, "; ".join(f"{k}: {' '.join(v)}" for k, v in form.errors.items()))
+        # the event again with the form as sent and its errors
+        return _render_event(request, event.pk, form)
     else:
         data = form.cleaned_data
         rule, created = rule_from_event(request.user, event, data["rule_type"], data["policy"], data["scope"],

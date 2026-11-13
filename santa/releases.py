@@ -2231,7 +2231,8 @@ def _add_new_build(session, source, identifier, release, existing, fingerprint, 
     """A recorded version of a formula or cask with other files: Homebrew built it again (a new bottle under the same
     version). The Macs that installed it since run other binaries: their rules are added to the version, with its
     approval; the rules of the earlier build stay for the Macs that have it. The dependencies stay as they are.
-    Returns the binaries of the build that weren't in the version yet."""
+    Returns (the binaries of the build that weren't in the version yet, the errors of its other files): with errors
+    the fingerprint stays, so the next check collects the build again (the files added stay added)."""
     if collected is not None:
         binaries, errors = [b for b in collected[0] if not b.dependency], collected[1]
     else:
@@ -2255,12 +2256,13 @@ def _add_new_build(session, source, identifier, release, existing, fingerprint, 
             earlier = [] if existing.notes == NO_EXECUTABLES_NOTE else (existing.notes or "").splitlines()
             existing.notes = "\n".join([f"{b.asset}: {b.path} {b.info.sha256}" for b in new] + earlier)[:10000]
             existing.binary_count += len({b.info.sha256 for b in new})
-        existing.fingerprint = fingerprint
+        if not errors:
+            existing.fingerprint = fingerprint
         existing.save(update_fields=["fingerprint", "notes", "binary_count"])
     if new:
         logger.info("Release source %s: %s version %s built again, %s new binaries",
                     source.name, identifier, existing.version, len(new))
-    return new
+    return new, list(errors)
 
 
 def _record_release(session, source, identifier, release, collected=None, progress=None):
@@ -2280,8 +2282,9 @@ def _record_release(session, source, identifier, release, collected=None, progre
             return None, []
         if source.kind in BUILD_KINDS:
             # announced like a new version: its new binaries may wait for an approval
-            new = _add_new_build(session, source, identifier, release, existing, fingerprint, collected, progress)
-            return (existing if new else None), []
+            new, errors = _add_new_build(session, source, identifier, release, existing, fingerprint, collected,
+                                         progress)
+            return (existing if new else None), errors
         replaced = existing
     if replaced:
         versions = versions.exclude(pk=replaced.pk)
