@@ -112,6 +112,22 @@ def delete_filter(request, pk):
 
 @login_required
 @require_POST
+def update_filter(request, pk):
+    """A saved view gets the current filter and columns of its list, under its name"""
+    saved_filter = get_object_or_404(SavedFilter, pk=pk, user=request.user)
+    query = filter_query(QueryDict(request.POST.get("query", "").lstrip("?")))
+    if len(query) > MAX_QUERY_LENGTH:
+        messages.error(request, translation.gettext("This view is too long to save."))
+    else:
+        saved_filter.query = query
+        saved_filter.layout = clean_layout(request.POST.get("layout"))
+        saved_filter.save(update_fields=["query", "layout"])
+        messages.success(request, translation.gettext("View “%(name)s” updated.") % {"name": saved_filter.name})
+    return redirect(safe_next(request, "home"))
+
+
+@login_required
+@require_POST
 def rename_filter(request, pk):
     saved_filter = get_object_or_404(SavedFilter, pk=pk, user=request.user)
     name = request.POST.get("name", "").strip()[:100]

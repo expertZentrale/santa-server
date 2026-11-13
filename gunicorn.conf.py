@@ -1,10 +1,11 @@
 """gunicorn settings of the image (gunicorn reads ./gunicorn.conf.py from /code by itself).
 
 Workers, threads, worker class, timeout and max requests come from the GUNICORN_* environment variables (the
-configuration table of the README). Bind, logging, the heartbeat directory, the graceful timeout and the control
-socket are fixed here. Flags on the command line still win over this file.
+configuration table of the README). Bind, logging, the heartbeat and metrics directories, the graceful timeout and
+the control socket are fixed here. Flags on the command line still win over this file.
 """
 import os
+import shutil
 import sys
 
 from gunicorn.glogging import Logger
@@ -65,6 +66,35 @@ class SyncTokenRedactingLogger(Logger):
 
 
 logger_class = SyncTokenRedactingLogger
+
+
+def metrics_enabled():
+    """As METRICS_ENABLED of santa_server/settings.py"""
+    value = os.environ.get("METRICS_ENABLED", "").strip()
+    return not value or value.lower() in ("1", "true", "yes", "on")
+
+
+# Each worker keeps its own metrics, and a scrape reaches only one of them: their counters would seem to jump back
+# and forth. In this directory every worker writes its values, and /metrics sums them up (prometheus_client's
+# multiprocess mode, django_prometheus' export uses it by itself).
+METRICS_DIR = "/dev/shm/santa-metrics"
+
+
+def on_starting(server):
+    """In the master, before the workers start (they get the variable): an empty directory, nothing of a last run"""
+    if not metrics_enabled():
+        return
+    directory = os.environ.setdefault("PROMETHEUS_MULTIPROC_DIR", METRICS_DIR)
+    shutil.rmtree(directory, ignore_errors=True)
+    os.makedirs(directory)
+
+
+def child_exit(server, worker):
+    """A worker ended (restarted after max_requests, or stopped): its gauges go, its counters stay in the sums"""
+    if os.environ.get("PROMETHEUS_MULTIPROC_DIR"):
+        from prometheus_client import multiprocess
+
+        multiprocess.mark_process_dead(worker.pid)
 
 
 def post_worker_init(worker):

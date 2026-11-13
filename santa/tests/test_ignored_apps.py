@@ -281,6 +281,45 @@ class EventsBulkTestCase(ConsoleBase):
         # without JavaScript: back to the list
         self.assertEqual(self.bulk("resolve", htmx=False).status_code, 302)
 
+    def test_one_event_resolved_and_opened_again_from_its_drawer(self):
+        event = Event.objects.get()
+        url = reverse("console:event", args=(event.pk,))
+        detail = self.client.get(url, headers={"HX-Request": "true"})
+        self.assertContains(detail, f'hx-post="{reverse("console:events_resolve")}"')
+        self.assertContains(detail, "Mark resolved")
+        # the row of buttons right after the facts: its space above (drawer.css .facts + .facts-actions)
+        self.assertRegex(detail.content.decode(), r'</dl>\s*<div class="actions facts-actions">')
+        response = self.client.post(reverse("console:events_resolve"), {"ids": event.pk, "event": event.pk},
+                                    headers={"HX-Request": "true"})
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(json.loads(response["HX-Trigger"])["drawerSaved"], {"open": url})
+        event.refresh_from_db()
+        self.assertEqual(event.resolved_by, self.admin)
+        detail = self.client.get(url, headers={"HX-Request": "true"})
+        self.assertContains(detail, f'hx-post="{reverse("console:events_reopen")}"')
+        self.assertContains(detail, "by admin")
+        self.client.post(reverse("console:events_reopen"), {"ids": event.pk, "event": event.pk},
+                         headers={"HX-Request": "true"})
+        event.refresh_from_db()
+        self.assertIsNone(event.resolved_at)
+        self.assertIsNone(event.resolved_by)
+
+    def test_the_row_menus_resolve_one_event_or_binary(self):
+        event = Event.objects.get()
+        rows = self.client.get(reverse("console:events"), {"view": "all", "rows": "now"}).content.decode()
+        self.assertIn(f'hx-vals=\'{{"ids": "{event.pk}", "shas": ""}}\'', rows)
+        rows = self.client.get(reverse("console:events"), {"view": "blocked", "rows": "now"}).content.decode()
+        self.assertIn(f'"shas": "{SHA_A}", "resolved": "open"', rows)
+
+    def test_resolving_one_event_needs_the_permission(self):
+        event = Event.objects.get()
+        viewer = User.objects.create_user("viewer", is_staff=True)
+        viewer.user_permissions.add(*Permission.objects.filter(codename="view_event"))
+        self.client.force_login(viewer)
+        self.assertNotContains(self.client.get(reverse("console:event", args=(event.pk,))), "Mark resolved")
+        self.assertEqual(self.client.post(reverse("console:events_resolve"), {"ids": event.pk}).status_code, 403)
+        self.assertEqual(self.client.post(reverse("console:events_reopen"), {"ids": event.pk}).status_code, 403)
+
     def test_an_unknown_action(self):
         self.assertEqual(self.bulk("delete", htmx=False).status_code, 302)
 

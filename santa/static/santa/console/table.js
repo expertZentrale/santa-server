@@ -650,8 +650,10 @@
       applyWidths(table, settings);
       updateFits(table);
     });
-    const tools = document.querySelector("main [data-table-tools]");
-    const filters = document.querySelector("main form.filters");
+    // a table of the drawer: its chooser above it, not in the filter bar of the list behind
+    const inMain = !!table.closest("main");
+    const tools = inMain ? document.querySelector("main [data-table-tools]") : null;
+    const filters = inMain ? document.querySelector("main form.filters") : null;
     const slot = tools?.querySelector(".columns-picker[data-placeholder]");
     if (slot) {
       // the place kept for it while the rows loaded
@@ -676,6 +678,8 @@
   }
 
   window.addEventListener("resize", () => document.querySelectorAll("table[data-table]").forEach(updateFits));
+  // the drawer dragged wider or narrower (drawer.js): its tables
+  document.addEventListener("drawerResized", () => document.querySelectorAll("#drawer table[data-table]").forEach(updateFits));
 
   // Keyboard in selectable tables: ↑/↓, Home/End move between rows, Space selects (Shift: a range), Enter opens
   function focusableRows(form) {

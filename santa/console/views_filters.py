@@ -37,6 +37,29 @@ def machine_choices(params, limit=MAX_LOOKUP_VALUES):
     return [(pk, machine_label(found[int(pk)]) if int(pk) in found else pk) for pk in pks]
 
 
+def machine_options(params, limit=MAX_LOOKUP_VALUES):
+    """The list of a Mac filter as the chip opens: the chosen Macs, ticked, then the first others; as filter_macs
+    answers its search, so the list doesn't wait for it (only the chosen ones until it came back)"""
+    pks = [int(value) for value in chosen(params, "machine")[:limit] if value.isdigit()]
+    return _machine_options(pks, Machine.objects.only(*LABEL_FIELDS).order_by("hostname", "serial_number"))
+
+
+def _machine_options(pks, machines):
+    found = Machine.objects.only(*LABEL_FIELDS).in_bulk(pks) if pks else {}
+    chosen_rows = [(pk, machine_label(found[pk]), found[pk].primary_user) if pk in found else (pk, str(pk), "")
+                   for pk in pks]
+    hits = [(machine.pk, machine_label(machine), machine.primary_user)
+            for machine in machines.exclude(pk__in=pks)[:LOOKUP_LIMIT]]
+    return _options(chosen_rows, hits)
+
+
+def _options(chosen, hits):
+    """chosen and hits: [(value, label, note)]; [(value, label, note, checked)], the hits without the chosen ones"""
+    values = {str(value) for value, _label, _note in chosen}
+    return ([(value, label, note, True) for value, label, note in chosen]
+            + [(value, label, note, False) for value, label, note in hits if str(value) not in values])
+
+
 def _name(request):
     name = request.GET.get("name", "")
     return name if name in LOOKUP_NAMES else LOOKUP_NAMES[0]
@@ -47,11 +70,7 @@ def _chosen(request):
     return list(dict.fromkeys(value for value in request.GET.getlist(_name(request)) if value))[:MAX_LOOKUP_VALUES]
 
 
-def _render(request, chosen, hits):
-    """chosen and hits: [(value, label, note)]; the hits without the chosen ones"""
-    values = {str(value) for value, _label, _note in chosen}
-    options = [(value, label, note, True) for value, label, note in chosen]
-    options += [(value, label, note, False) for value, label, note in hits if str(value) not in values]
+def _render(request, options):
     return render(request, "console/widgets/_lookup_options.html", {"options": options, "name": _name(request)})
 
 
@@ -64,12 +83,7 @@ def filter_macs(request):
     if q:
         machines = machines.filter(Q(hostname__icontains=q) | Q(serial_number__icontains=q)
                                    | Q(primary_user__icontains=q))
-    pks = [int(value) for value in _chosen(request) if value.isdigit()]
-    found = Machine.objects.only(*LABEL_FIELDS).in_bulk(pks) if pks else {}
-    chosen = [(pk, machine_label(found[pk]), found[pk].primary_user) if pk in found else (pk, str(pk), "")
-              for pk in pks]
-    return _render(request, chosen, [(machine.pk, machine_label(machine), machine.primary_user)
-                                     for machine in machines.exclude(pk__in=pks)[:LOOKUP_LIMIT]])
+    return _render(request, _machine_options([int(value) for value in _chosen(request) if value.isdigit()], machines))
 
 
 @staff_required
@@ -92,5 +106,5 @@ def filter_users(request):
         values = values.filter(**{f"{field}__icontains": q})
     chosen = _chosen(request)
     users = values.exclude(**{f"{field}__in": chosen}).order_by(field).values_list(field, flat=True).distinct()
-    return _render(request, [(user, user, "") for user in chosen],
-                   [(user, user, "") for user in users[:LOOKUP_LIMIT]])
+    return _render(request, _options([(user, user, "") for user in chosen],
+                                     [(user, user, "") for user in users[:LOOKUP_LIMIT]]))

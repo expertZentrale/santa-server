@@ -299,7 +299,7 @@ class RuleAdmin(admin.ModelAdmin):
     @admin.action(description="Enable / approve the selected rules")
     def enable_rules(self, request, queryset):
         rules = list(queryset)
-        count, _ = set_rules_enabled(queryset, True)
+        count, _ = set_rules_enabled(queryset, True, request.user)
         for rule in rules:
             self.log_change(request, rule, "Enabled")
         self.message_user(request, f"{count} rule(s) enabled.")
