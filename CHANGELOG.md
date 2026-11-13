@@ -6,7 +6,57 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Rename a view in its row.** The pencil turns the name of a saved view into a field in the same row; Enter
+  saves, Escape or × keeps the old name.
+- **Width of the side panel.** Drag the left edge of the side panel (or press ←/→ on it) to make it wider or
+  narrower; the browser keeps the width for every side panel. A double-click on the edge gives the usual widths
+  back.
+- **Resolve a single event.** *Mark resolved* and *Open again* are in the event's drawer and in the menu of its row
+  (for a blocked app: all its open events), not only in the bar of a selection.
+
+### Changed
+
+- **Side panel: a double-click on a row and a new view.** With the side panel open, a double-click on a row of a
+  list shows that row in it; the panel no longer closes and opens again. A new view in the open panel slides in a
+  little from the side (from the left for Back), so the change is visible; less movement for those who reduce
+  motion in their system.
+- **Allow as package checks each package on its own.** After saving, every package is checked by a request of its
+  own, one after the other, and the drawer lists each one with its result or error. A long check, a server restart
+  or a proxy that gives up only stops that package: the others go on, and it can be tried again (the scheduled check
+  takes it anyway). The result of the binaries follows at the end and can be checked again. Before, a check that took
+  too long stopped the whole action without a result and left the events open.
+- **Update a saved view in one click.** In *Views*, the save icon of a view stores the current filters, sort order
+  and columns under its name, and after changing the view opened last the menu offers *Save changes to "…"*. Before,
+  the name had to be typed in again.
+- **The Mac filter shows the other Macs right away.** Opened again after a Mac was chosen, the filter lists the
+  chosen Macs and the first others at once, without waiting for its search, and asks again every time it opens.
+  The owner of a Mac is shown below its name, the same for every Mac.
+
 ### Fixed
+
+- **Views menu.** The view shown gets its check mark also when its link spells a filter differently (e.g. all
+  statuses as `resolved=all`), with room between the mark and the name. The menu stays open after choosing the
+  default view, renaming, saving or deleting a view.
+- **Blocks of an app.** The list of the blocks of an app (its drawer from the blocked apps) opens in a fraction of a
+  second also when there are many events; it took several seconds before. Its path column lines up with the other
+  columns, and the columns of its three tables can be resized and chosen as in the lists. Opened as a page, the box
+  of the table grows with it, and in the side panel a wide table has one scrollbar instead of two.
+- **Metrics of all workers.** `/metrics` returned only the values of the Gunicorn worker that answered the scrape, so
+  the counters seemed to jump back and forth and rates and percentiles were wrong. Now it returns the sum of all
+  workers, also of the ones restarted in the meantime. The `process_*` metrics are no longer there: take CPU and
+  memory from the metrics of the container.
+- **Events are resolved once a rule allows them.** An event the Mac uploaded after the rule was created (it uploads at
+  its next sync, before it gets the rule) stayed open, and so did the events of a package rule approved later. Now an
+  event is resolved as soon as a rule allows its binary on its Mac: when it is uploaded, when a rule or a package
+  version is enabled (also by the automatic approval and the scheduled check). The event shows "automatically" and the
+  rule. Creating a rule in the event's drawer stays on the event and says when the rule doesn't reach its Mac.
+- **New Homebrew builds of the same version are allowed.** Homebrew sometimes builds a version again (another commit
+  of the formula, a new bottle under the same version), with other binaries. The server recorded a version only
+  once and blocked the binaries of the newer build. Now it sees the changed bottle hashes: the version gets the rules
+  of the new binaries too, approved like the version, and the rules of the earlier build stay. Versions recorded before
+  are downloaded once again at the next check. Casks uploaded again under the same version are handled the same way.
 
 - **Lists no longer jump when the drawer closes.** Closing the drawer (a click next to it, Escape, ×, Back) left
   the list scrolled back to where it was when the drawer opened. And a double-click on another row while the drawer

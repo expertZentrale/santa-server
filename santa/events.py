@@ -1,7 +1,8 @@
 import logging
 from datetime import datetime, timezone
 
-from .models import Event
+from .models import NEEDS_RULE, Event
+from .services import chunked, resolve_allowed_events
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,11 @@ def store_events(machine, events):
             known.add(key)
             to_create.append(event)
     Event.objects.bulk_create(to_create, batch_size=100)
+    # A rule created before the Mac uploaded the event (it uploads at its next sync, before it gets the rule):
+    # resolved right away. SQL Server returns no keys from a bulk insert: read back by binary.
+    for chunk in chunked(sorted({event.file_sha256 for event in to_create})):
+        resolve_allowed_events(Event.objects.filter(NEEDS_RULE, machine=machine, resolved_at__isnull=True,
+                                                    file_sha256__in=chunk).select_related("machine"))
     logger.info("Machine %s: %s event(s) stored, %s duplicate(s)",
                 machine.machine_id, len(to_create), len(new_events) - len(to_create))
     return to_create

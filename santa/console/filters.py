@@ -179,6 +179,9 @@ class Facet:
     lookup_url: str = ""
     mode_name: str = ""
     max_values: int = 0
+    # lookup: the list as the chip opens, [(value, label, note, ticked)] (views_filters.machine_options); else the
+    # chosen ones only, until the search answered
+    options: list = field(default_factory=list)
 
     def __post_init__(self):
         # compared with the strings of the query
@@ -328,14 +331,16 @@ def filter_bar(request, page, facets, hidden=(), keep=(), placeholder=""):
     views = list(SavedFilter.objects.filter(user=request.user, page=page))
     default = next((view for view in views if view.is_default and view.query), None)
     kept = {name: params.getlist(name) for name in keep if name in params}
-    active_view = next((view for view in views if canonical_query(view.query) == canonical), None)
+    # a view as this bar would write it (its values too: "resolved=all" is "resolved=", all of them)
+    saved = {view.pk: _bar_query(facets, QueryDict(view.query), hidden) for view in views}
+    active_view = next((view for view in views if saved[view.pk] == canonical), None)
     # the columns of the view shown (console/table.js), and whether the list is at its built-in defaults
     view_layout = {"id": active_view.pk if active_view else None, "layout": active_view.layout if active_view else {},
                    "standard": is_standard and not active_view}
     return {"bar": {
         "page": page, "q": q, "placeholder": placeholder, "hidden": hidden_pairs, "chips": chips,
         # "Reset all" leads there
-        "is_default": canonical_query(default.query) == canonical if default else is_standard,
+        "is_default": saved[default.pk] == canonical if default else is_standard,
         "reset_url": _url(request, kept, "reset=1"), "query": canonical, "views": views,
         "active_view": active_view, "default_view": default,
         "standard_url": _url(request, kept, "standard=1"), "standard_active": is_standard and not active_view,
@@ -343,9 +348,11 @@ def filter_bar(request, page, facets, hidden=(), keep=(), placeholder=""):
     }}
 
 
-def canonical_query(query):
-    """A saved query in the order of filter_bar(), to compare it with the current filter"""
-    params = QueryDict(query)
-    pairs = [("q", params.get("q", ""))] + [(name, value) for name, values in params.lists() if name != "q"
-                                            for value in values]
+def _bar_query(facets, params, hidden):
+    """The query filter_bar() writes for these parameters (its order and values), to compare a saved view with it"""
+    pairs = [("q", params.get("q", ""))] + [(name, value) for name in hidden for value in params.getlist(name)]
+    for facet in facets:
+        value = _state(facet, params)
+        if _restricts(facet, value) or (facet.kind != "fixed" and facet.name in params):
+            pairs += _pairs(facet, value, params)
     return _encode(pairs)

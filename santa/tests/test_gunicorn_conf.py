@@ -1,8 +1,13 @@
 import importlib.util
+import os
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, override_settings
 
 CONF_FILE = Path(__file__).resolve().parents[2] / "gunicorn.conf.py"
 
@@ -43,3 +48,49 @@ class GunicornConfTestCase(SimpleTestCase):
             with self.subTest(name=name, value=value), self.assertRaises(SystemExit) as raised:
                 load_conf({name: value})
             self.assertIn(name, str(raised.exception.code))
+
+
+WORKER = """
+from prometheus_client import Counter
+Counter("santa_test_worker_requests", "Requests of a worker").inc({count})
+"""
+
+
+class MultiprocessMetricsTestCase(SimpleTestCase):
+    """Every gunicorn worker writes its metrics into one directory, /metrics sums them up"""
+
+    def setUp(self):
+        self.directory = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, self.directory, True)
+
+    def test_on_starting_sets_and_empties_the_directory(self):
+        directory = os.path.join(self.directory, "metrics")
+        os.makedirs(directory)
+        Path(directory, "counter_1.db").write_bytes(b"old")
+        conf = load_conf({})
+        with patch.dict("os.environ", {}, clear=True), patch.object(conf, "METRICS_DIR", directory):
+            conf.on_starting(None)
+            self.assertEqual(os.environ["PROMETHEUS_MULTIPROC_DIR"], directory)
+        self.assertEqual(os.listdir(directory), [])
+
+    def test_no_directory_without_metrics(self):
+        conf = load_conf({})
+        with patch.dict("os.environ", {"METRICS_ENABLED": "false"}, clear=True):
+            conf.on_starting(None)
+            self.assertNotIn("PROMETHEUS_MULTIPROC_DIR", os.environ)
+
+    def run_worker(self, count):
+        environ = {**os.environ, "PROMETHEUS_MULTIPROC_DIR": self.directory}
+        subprocess.run([sys.executable, "-c", WORKER.format(count=count)], env=environ, check=True)
+
+    @override_settings(METRICS_ENABLED=True)
+    def test_the_export_sums_the_workers_also_after_they_ended(self):
+        self.run_worker(2)
+        self.run_worker(3)
+        conf = load_conf({})
+        with patch.dict("os.environ", {"PROMETHEUS_MULTIPROC_DIR": self.directory}):
+            # a worker that ended: its counters stay in the sum
+            conf.child_exit(None, SimpleNamespace(pid=os.getpid()))
+            response = self.client.get("/metrics")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("santa_test_worker_requests_total 5.0", response.content.decode())

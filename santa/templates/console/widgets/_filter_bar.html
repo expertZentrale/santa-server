@@ -17,12 +17,16 @@ filters.{% endcomment %}
           {% for view in bar.views %}<div class="saved-filter{% if view == bar.active_view %} current{% endif %}">
             <a href="?{{ view.query }}" data-view-choice="{{ view.pk }}"{% if view == bar.active_view %} aria-current="true"{% endif %}>{{ view.name }}</a>
             {% include "console/widgets/_default_view_button.html" with pk=view.pk name=view.name is_default=view.is_default|yesno:"1,0" %}
+            {% url 'update_filter' view.pk as update_url %}<button class="icon-button" form="update-filter-form" formaction="{{ update_url }}" title="{% blocktranslate with name=view.name %}Save the current filters and columns as “{{ name }}”{% endblocktranslate %}" aria-label="{% blocktranslate with name=view.name %}Save the current filters and columns as “{{ name }}”{% endblocktranslate %}">{% include "console/icons/save.svg" %}</button>
             <details class="rename-view"><summary class="icon-button" title="{% translate 'Rename' %}" aria-label="{% translate 'Rename' %} {{ view.name }}">{% include "console/icons/pencil.svg" %}</summary>
               <div class="rename-view-form"><input name="name" form="rename-filter-{{ view.pk }}" autocomplete="off" value="{{ view.name }}" maxlength="100" required aria-label="{% translate 'New name' %}">
-                <div class="actions"><button class="button primary" form="rename-filter-{{ view.pk }}">{% translate "Save" %}</button>
-                  <button type="button" class="button" data-rename-cancel>{% translate "Cancel" %}</button></div></div></details>
+                <button class="icon-button" form="rename-filter-{{ view.pk }}" title="{% translate 'Save' %}" aria-label="{% translate 'Save' %}">{% include "console/icons/check.svg" %}</button>
+                <button type="button" class="icon-button" data-rename-cancel title="{% translate 'Cancel' %}" aria-label="{% translate 'Cancel' %}">{% include "console/icons/x.svg" %}</button></div></details>
             <button class="icon-button" form="delete-filter-form" formaction="{% url 'delete_filter' view.pk %}" title="{% translate 'Delete' %}" aria-label="{% translate 'Delete' %} {{ view.name }}">{% include "console/icons/x.svg" %}</button></div>
           {% endfor %}
+          {# the view opened last in this tab, changed since (filterbar.js): its changes saved in one click #}
+          {% for view in bar.views %}{% if view != bar.active_view %}{% url 'update_filter' view.pk as update_url %}<div class="saved-filter-update" data-update-view="{{ view.pk }}" hidden>
+            <button class="button primary" form="update-filter-form" formaction="{{ update_url }}">{% blocktranslate with name=view.name %}Save changes to “{{ name }}”{% endblocktranslate %}</button></div>{% endif %}{% endfor %}
           <div class="saved-filter-new">
             <input name="name" form="save-filter-form" autocomplete="off" maxlength="100" placeholder="{% translate 'Name of the view' %}" aria-label="{% translate 'Name of the view' %}" required>
             <button class="button" form="save-filter-form">{% translate "Save current view" %}</button>
@@ -62,10 +66,10 @@ filters.{% endcomment %}
             <input type="hidden" name="{{ facet.name }}" value="">
             {# form="": not a field of the filter, only of its search (htmx sends it as q, with the ones ticked: they stay on top) #}
             <input type="search" name="q" form="" class="lookup-search" data-lookup-search autocomplete="off" placeholder="{% translate 'Search…' %}" aria-label="{% blocktranslate with label=facet.label %}Search: {{ label }}{% endblocktranslate %}"
-                   hx-get="{{ facet.lookup_url }}" hx-trigger="input changed delay:250ms, lookup-open once" hx-target="next .lookup-options" hx-swap="innerHTML"
+                   hx-get="{{ facet.lookup_url }}" hx-trigger="input changed delay:250ms, lookup-open" hx-target="next .lookup-options" hx-swap="innerHTML"
                    hx-include="next .lookup-options" hx-vals='{"name": "{{ facet.name }}"}'>
-            {# the chosen ones, ticked; the search adds the others below them #}
-            <div class="lookup-options" aria-live="polite">{% for value, label in facet.choices %}<label><input type="checkbox" name="{{ facet.name }}" value="{{ value }}" checked> {{ label }}</label>{% endfor %}</div>
+            {# the chosen ones, ticked, then the first others (or only the chosen ones until the search answered) #}
+            <div class="lookup-options" aria-live="polite">{% if facet.options %}{% include "console/widgets/_lookup_options.html" with options=facet.options name=facet.name %}{% else %}{% for value, label in facet.choices %}<label><input type="checkbox" name="{{ facet.name }}" value="{{ value }}" checked> <span class="lookup-label">{{ label }}</span></label>{% endfor %}{% endif %}</div>
             {% if chip.limited %}<p class="muted small" role="status">{% blocktranslate with count=facet.max_values %}At most {{ count }} at a time: only the first {{ count }} are used.{% endblocktranslate %}</p>{% endif %}
           {% else %}
             {% for value, label in facet.choices %}<label><input type="radio" name="{{ facet.name }}" value="{{ value }}"{% if value == chip.value %} checked{% endif %}> {{ label }}</label>{% endfor %}
@@ -94,6 +98,10 @@ filters.{% endcomment %}
   <input type="hidden" name="layout" value="" data-view-layout-field>
   <input type="hidden" name="next" value="{{ request.get_full_path }}"></form>
 {{ bar.view_layout|json_script:"view-layout" }}
+<form id="update-filter-form" method="post" hidden>{% csrf_token %}
+  <input type="hidden" name="query" value="{{ bar.query }}">
+  <input type="hidden" name="layout" value="" data-view-layout-field>
+  <input type="hidden" name="next" value="{{ request.get_full_path }}"></form>
 <form id="default-filter-form" method="post" action="{% url 'default_filter' %}" hidden>{% csrf_token %}
   <input type="hidden" name="page" value="{{ bar.page }}"><input type="hidden" name="next" value="{{ request.get_full_path }}"></form>
 <form id="delete-filter-form" method="post" hidden>{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"></form>

@@ -63,6 +63,21 @@
     return !!drawer.querySelector(":scope > [data-drawer-loading]");
   }
 
+  // Another view in the open drawer: its content comes in from the side it goes to (Back: from the left), the drawer
+  // itself stays; only replacing the content was easy to miss (drawer.css)
+  function showViewChange(drawer, direction) {
+    const panel = drawer.querySelector(":scope > .drawer-panel");
+    if (!panel) return;
+    const name = direction === "back" ? "drawer-view-back" : "drawer-view-in";
+    panel.classList.remove("drawer-view-in", "drawer-view-back");
+    panel.classList.add(name);
+    panel.addEventListener("animationend", () => panel.classList.remove(name), { once: true });
+  }
+  // how the next view swapped in shows: "in", "back", or nothing (the first one, a refresh, a form's answer)
+  let viewChange = null;
+  // the direction of a view of the history that comes from the server again (Back / Forward to a view not kept)
+  let restoreChange = null;
+
   function hideDrawer(drawer) {
     if (isLoading(drawer)) {
       // closed before its view came: it doesn't open again for it
@@ -124,6 +139,8 @@
       shown = state ? state.index : 0;
       return;
     }
+    const wasOpen = isOpen() && !isLoading(drawer);
+    const direction = state.index < shown ? "back" : "in";
     if (isOpen()) keepView(drawer);
     shown = state.index;
     chain = state.chain;
@@ -134,6 +151,7 @@
       drawer.classList.add("open");
       drawer.scrollTop = view.scroll;
       updateDrawerBack(drawer);
+      if (wasOpen) showViewChange(drawer, direction);
       drawer.querySelector("[data-drawer-title]")?.focus({ preventScroll: true });
       if (reloadAfterBack) {
         reloadAfterBack = false;
@@ -142,6 +160,7 @@
     } else if (state.drawer) {
       // from the server it is up to date anyway
       reloadAfterBack = false;
+      restoreChange = wasOpen ? direction : null;
       htmx.ajax("GET", state.drawer, { target: "#drawer", headers: { "X-Drawer-Restore": "1" } });
     } else {
       // the view of a POST is gone (reload): nothing to show
@@ -261,11 +280,20 @@
     if (event.detail.target !== drawer || !event.detail.shouldSwap) return;
     const config = event.detail.requestConfig || {};
     const headers = config.headers || {};
+    const wasOpen = isOpen() && !isLoading(drawer);
+    const restore = restoreChange;
+    restoreChange = null;
+    viewChange = null;
     if (headers["X-Drawer-Reload"] || headers["X-Drawer-Restore"]) {
+      // the same view fresh from the server: no change to show; one of the history: from its side
+      viewChange = headers["X-Drawer-Restore"] && wasOpen ? restore : null;
       pending = null;
       return;
     }
     if (headers["X-Drawer-Replace"]) {
+      // drawerSaved with another view to open (not the same one again, e.g. an event marked resolved)
+      const url = drawer.querySelector("[data-drawer-url]")?.dataset.drawerUrl;
+      viewChange = wasOpen && config.path && config.path !== url ? "in" : null;
       pending = "replace";
       return;
     }
@@ -275,6 +303,7 @@
       pending = null;
       return;
     }
+    viewChange = wasOpen ? "in" : null;
     pending = inside && isOpen() ? "push" : "start";
     if (isOpen()) keepView(drawer);
   });
@@ -309,6 +338,8 @@
     pending = null;
     updateDrawerBack(drawer);
     drawer.querySelector("[data-drawer-title]")?.focus({ preventScroll: true });
+    if (viewChange) showViewChange(drawer, viewChange);
+    viewChange = null;
   });
 
   // drawer_done(): back to the view before and update it, or the page again when there is none. With
@@ -318,7 +349,11 @@
     drawerSaved = true;
     const open = event.detail?.open;
     if (open) {
-      htmx.ajax("GET", open, { target: "#drawer", headers: { "X-Drawer-Replace": "1" } });
+      // the same view again (an event marked resolved): where it was; another one from its top
+      const same = drawer?.querySelector("[data-drawer-url]")?.dataset.drawerUrl === open;
+      const scroll = same ? drawer.scrollTop : 0;
+      htmx.ajax("GET", open, { target: "#drawer", headers: { "X-Drawer-Replace": "1" } })
+        .then(() => { getDrawer().scrollTop = scroll; });
     } else if (shown > chain && currentState()) {
       reloadAfterBack = true;
       goBack(1);
@@ -333,6 +368,14 @@
   document.addEventListener("pointerdown", (event) => {
     pressedInside = !!event.target.closest?.("#drawer");
   }, true);
+
+  // the time a double-click may take (the second click comes within it on most systems)
+  const DOUBLE_CLICK_MS = 300;
+  let closeTimer = null;
+  function cancelClose() {
+    clearTimeout(closeTimer);
+    closeTimer = null;
+  }
 
   document.addEventListener("click", (event) => {
     const wasInside = pressedInside;
@@ -351,8 +394,24 @@
     if (isOpen() && event.target.isConnected && !event.target.closest("#drawer")
         && !event.target.closest('[hx-target="#drawer"]') && !event.target.closest("[data-keeps-drawer]")
         && !selecting && !wasInside) {
-      closeDrawer();
+      // a row of a list: a double-click on it opens it in the drawer (table.js). Its first click doesn't close the
+      // drawer at once, else it would close and open again; the second click, or the row's view, keeps it
+      if (event.target.closest("table[data-table] tbody tr, [data-select-form] tbody tr")) {
+        cancelClose();
+        if (event.detail > 1) return;
+        closeTimer = setTimeout(() => {
+          closeTimer = null;
+          if (isOpen()) closeDrawer();
+        }, DOUBLE_CLICK_MS);
+      } else {
+        closeDrawer();
+      }
     }
+  });
+
+  // a view asked for meanwhile (the double-click, a link): the drawer stays open for it
+  document.addEventListener("htmx:beforeRequest", (event) => {
+    if (event.detail.target === getDrawer()) cancelClose();
   });
 
   // Escape closes the drawer, and only the drawer: table.js would clear the selection behind it
@@ -382,6 +441,101 @@
     if (isOpen()) reloadDrawerView(drawer);
   }
   document.addEventListener("drawerReload", reload);
+
+  // The width of the drawer: its left edge dragged, or ←/→ on it. One width for every view, stored per browser; until
+  // one is set, the details are narrower than the forms and package rules (drawer.css). Double-click (or Home) gives
+  // the usual widths back.
+  const WIDTH_KEY = "santa.drawer-width";
+
+  function storedWidth() {
+    try {
+      const width = JSON.parse(localStorage.getItem(WIDTH_KEY));
+      return typeof width === "number" ? width : null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function storeWidth(width) {
+    try {
+      if (width) localStorage.setItem(WIDTH_KEY, JSON.stringify(width));
+      else localStorage.removeItem(WIDTH_KEY);
+    } catch (error) {
+      // private window or blocked storage: the width lasts until the next page
+    }
+  }
+
+  function applyWidth(width) {
+    const style = document.documentElement.style;
+    ["--drawer-w", "--drawer-wide-w"].forEach((property) => {
+      if (width) style.setProperty(property, `min(${width}rem, 100vw)`);
+      else style.removeProperty(property);
+    });
+  }
+
+  applyWidth(storedWidth());
+
+  const MIN_WIDTH = 20;
+
+  function setWidth(width) {
+    const rem = SantaConsole.rem();
+    const most = window.innerWidth / rem - 2;
+    const value = Math.round(Math.max(MIN_WIDTH, Math.min(width, most)) * 10) / 10;
+    applyWidth(value);
+    // the tables of the drawer measure again (their scrollbar, the fit of their columns, table.js); not a resize of
+    // the window: the snow would set up its canvas again at every step, and flicker
+    document.dispatchEvent(new Event("drawerResized"));
+    return value;
+  }
+
+  const currentWidth = () => getDrawer().getBoundingClientRect().width / SantaConsole.rem();
+
+  function setUpResize(handle) {
+    if (handle.dataset.ready) return;
+    handle.dataset.ready = "1";
+    handle.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      handle.setPointerCapture(event.pointerId);
+      let width = currentWidth();
+      handle.classList.add("dragging");
+      document.body.classList.add("resizing-drawer");
+      const move = (moveEvent) => {
+        width = setWidth((window.innerWidth - moveEvent.clientX) / SantaConsole.rem());
+      };
+      const up = () => {
+        handle.removeEventListener("pointermove", move);
+        handle.removeEventListener("pointerup", up);
+        handle.removeEventListener("pointercancel", up);
+        handle.classList.remove("dragging");
+        document.body.classList.remove("resizing-drawer");
+        storeWidth(width);
+      };
+      handle.addEventListener("pointermove", move);
+      handle.addEventListener("pointerup", up);
+      handle.addEventListener("pointercancel", up);
+    });
+    const reset = () => {
+      applyWidth(null);
+      storeWidth(null);
+      document.dispatchEvent(new Event("drawerResized"));
+    };
+    handle.addEventListener("dblclick", reset);
+    handle.addEventListener("keydown", (event) => {
+      if (event.key === "Home") {
+        event.preventDefault();
+        reset();
+      } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        event.preventDefault();
+        // the edge moves with the arrow: left makes it wider
+        const step = (event.shiftKey ? 4 : 1) * (event.key === "ArrowLeft" ? 1 : -1);
+        storeWidth(setWidth(currentWidth() + step));
+      }
+    });
+  }
+
+  document.querySelectorAll("[data-drawer-resize]").forEach(setUpResize);
+  document.addEventListener("htmx:afterSettle", () => document.querySelectorAll("[data-drawer-resize]").forEach(setUpResize));
 
   SantaConsole.drawer = { isOpen, close: closeDrawer, reload };
 })();

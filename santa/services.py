@@ -16,6 +16,7 @@ from .cel import (
     suggested_prefix,
 )
 from .models import (
+    NEEDS_RULE,
     POLICY_PRECEDENCE,
     AccessRequest,
     AccessRequestPackage,
@@ -275,6 +276,11 @@ def _allowed_on(machine, group, rules, signing_id=""):
     (rules.effective_rule_objects: the most specific scope, then the strictest policy, per identifier), then the
     most specific rule type decides. Allowed only by an allow rule, or a CEL expression of signing ID prefixes that
     includes it; another CEL expression is not known to allow."""
+    return _decision_on(machine, group, rules, signing_id)[0]
+
+
+def _decision_on(machine, group, rules, signing_id=""):
+    """(allowed, the rule that decides it, None without one): see _allowed_on"""
     chosen = {}
     for rule in rules:
         if not rule.is_active:
@@ -294,9 +300,9 @@ def _allowed_on(machine, group, rules, signing_id=""):
         decisive = [rule for _rank, rule in chosen.values() if rule.rule_type == rule_type]
         if decisive:
             # several identifiers of one type (the CDHashes of the slices): the strictest
-            policies = [effective_policy(rule, signing_id) for rule in decisive]
-            return max(policies, key=POLICY_PRECEDENCE.__getitem__) in ALLOW_POLICIES
-    return False
+            rule = max(decisive, key=lambda rule: POLICY_PRECEDENCE[effective_policy(rule, signing_id)])
+            return effective_policy(rule, signing_id) in ALLOW_POLICIES, rule
+    return False, None
 
 
 def decisions_on(events):
@@ -307,6 +313,44 @@ def decisions_on(events):
     return {event.pk: _allowed_on(event.machine, groups.get(event.machine.group_id), found[event.pk],
                                   event.signing_id)
             for event in events}
+
+
+def resolve_allowed_events(events, user=None):
+    """Resolve the open events whose binary the rules allow on their own Mac now, as Santa decides there (a rule
+    created before the Mac uploaded the event, a package rule enabled later); with the rule that allows it.
+    events: with their machine. Returns the count."""
+    events = [event for event in events if event.resolved_at is None]
+    if not events:
+        return 0
+    found = _matching_rules({event.pk: _event_identifiers(event) for event in events})
+    groups = Group.objects.in_bulk({event.machine.group_id for event in events})
+    allowed_by = {}
+    for event in events:
+        allowed, rule = _decision_on(event.machine, groups.get(event.machine.group_id), found[event.pk],
+                                     event.signing_id)
+        if allowed:
+            allowed_by.setdefault(rule.pk, []).append(event.pk)
+    now = timezone.now()
+    return sum(Event.objects.filter(pk__in=chunk, resolved_at__isnull=True)
+                            .update(resolved_at=now, resolved_by=user, resolution_rule_id=rule_pk)
+               for rule_pk, pks in allowed_by.items() for chunk in chunked(pks))
+
+
+def resolve_events_of_rules(rules, user=None):
+    """resolve_allowed_events() for the open events of the binaries these rules match (rules just enabled). Only
+    the enabled rules that can allow: a block rule resolves nothing. Returns the count."""
+    identifiers = {}
+    for rule in rules:
+        if rule.is_enabled and rule.policy not in (Policy.BLOCKLIST, Policy.SILENT_BLOCKLIST):
+            identifiers.setdefault(rule.rule_type, set()).add(rule.identifier)
+    count = 0
+    for rule_type, values in identifiers.items():
+        field = EVENT_IDENTIFIER_FIELDS[rule_type]
+        for chunk in chunked(sorted(values)):
+            count += resolve_allowed_events(Event.objects.filter(NEEDS_RULE, resolved_at__isnull=True,
+                                                                 **{f"{field}__in": chunk})
+                                                         .select_related("machine"), user)
+    return count
 
 
 def decisions_for_machines(event, machines):
@@ -325,8 +369,9 @@ def is_allowed(matches):
                for match in matches)
 
 
-def set_rules_enabled(rules, enabled):
-    """Enable or disable the rules. Returns (count, the release versions whose automatic approval was cancelled)."""
+def set_rules_enabled(rules, enabled, user=None):
+    """Enable or disable the rules (enabled: the open events they allow now are resolved). Returns (count, the
+    release versions whose automatic approval was cancelled)."""
     cancelled = []
     if not enabled:
         # a release waiting for its auto approve delay must not enable them again
@@ -334,7 +379,12 @@ def set_rules_enabled(rules, enabled):
         for release_version in cancelled:
             release_version.auto_enable_pending = False
             release_version.save(update_fields=["auto_enable_pending"])
-    return rules.update(is_enabled=enabled), cancelled
+    # read before: a queryset of the disabled rules is empty after the update
+    pks = list(rules.values_list("pk", flat=True)) if enabled else []
+    count = rules.update(is_enabled=enabled)
+    for chunk in chunked(pks):
+        resolve_events_of_rules(Rule.objects.filter(pk__in=chunk), user)
+    return count, cancelled
 
 
 def set_rules_policy(rules, policy):

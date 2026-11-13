@@ -33,8 +33,8 @@ main .table-scroll.fits > .table:not(.compact) > thead th { position: sticky; to
 /* wider than the page (more columns, wider ones): the box scrolls only sideways, the page keeps the one vertical
    scrollbar. A box scrolling sideways holds no sticky header, table.js moves it under the top bar instead; the
    box's own scrollbar gives way to the one at the bottom of the window (.table-hscroll) */
-main .table-scroll.has-hscroll:not(.fits) { scrollbar-width: none; }
-main .table-scroll.has-hscroll:not(.fits)::-webkit-scrollbar { display: none; }
+.table-scroll.has-hscroll:not(.fits) { scrollbar-width: none; }
+.table-scroll.has-hscroll:not(.fits)::-webkit-scrollbar { display: none; }
 main .table-scroll:not(.fits) > .table:not(.compact) > thead th { position: relative; z-index: 2; }
 /* the scrollbar of a wide table at the bottom of the window while the table is on screen (above the pages, which
    stay there too, see .pagination), under it at its end. min-height: room for the scrollbars macOS shows only while

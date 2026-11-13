@@ -646,6 +646,30 @@ class ConsoleEventsTestCase(ConsoleBase):
         self.assertEqual(list(rule.machines.all()), [self.machine])
         self.assertEqual(rule.policy, Policy.BLOCKLIST)
 
+    def test_a_rule_from_the_drawer_resolves_the_event_and_shows_it_again(self):
+        event = self.make_event()
+        response = self.client.post(reverse("console:event_create_rule", args=(event.pk,)), {
+            "rule_type": RuleType.BINARY, "policy": Policy.ALLOWLIST, "scope": "groups", "groups": [self.dev.pk],
+            "include": SHA_A}, HTTP_HX_REQUEST="true")
+        self.assertEqual(response.status_code, 204)
+        url = reverse("console:event", args=(event.pk,))
+        self.assertEqual(json.loads(response["HX-Trigger"])["drawerSaved"], {"open": url})
+        event.refresh_from_db()
+        self.assertEqual(event.resolution_rule, Rule.objects.get())
+
+    def test_approving_a_package_rule_resolves_the_events_it_allows(self):
+        event = self.make_event()
+        source = ReleaseSource.objects.create(name="Brew", kind=ReleaseSource.Kind.HOMEBREW_FORMULA, identifier="git",
+                                              is_global=True)
+        version = ReleaseVersion.objects.create(source=source, identifier="git", version="2.56.1")
+        rule = Rule.objects.create(rule_type=RuleType.BINARY, identifier=SHA_A, is_global=True, is_enabled=False,
+                                   release_source=source, release_version=version)
+        event.refresh_from_db()
+        self.assertIsNone(event.resolved_at)
+        self.client.post(reverse("console:version_approve", args=(version.pk,)))
+        event.refresh_from_db()
+        self.assertEqual((event.resolution_rule, event.resolved_by), (rule, self.admin))
+
     def test_existing_rules(self):
         signed = self.make_event(signing_id="ABCDE12345:com.example.a", team_id="ABCDE12345")
         other = self.make_event(sha256=SHA_B, machine=self.other_machine, team_id="ABCDE12345")

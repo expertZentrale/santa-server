@@ -6,7 +6,63 @@
 
 ## [Unreleased]
 
+### Hinzugefügt
+
+- **Ansicht in ihrer Zeile umbenennen.** Der Stift macht den Namen einer gespeicherten Ansicht zu einem Feld in
+  derselben Zeile; Enter speichert, Esc oder × behält den alten Namen.
+- **Breite der Seitenleiste.** Den linken Rand der Seitenleiste ziehen (oder dort ←/→ drücken) macht sie breiter
+  oder schmaler; der Browser merkt sich die Breite für alle Seitenleisten. Ein Doppelklick auf den Rand stellt die
+  üblichen Breiten wieder her.
+- **Einzelnes Ereignis erledigen.** *Als erledigt markieren* und *Wieder öffnen* gibt es in der Seitenleiste des
+  Ereignisses und im Menü seiner Zeile (bei einer blockierten App: alle ihre offenen Ereignisse), nicht mehr nur in
+  der Leiste einer Auswahl.
+
+### Geändert
+
+- **Seitenleiste: Doppelklick auf eine Zeile und neue Ansicht.** Bei offener Seitenleiste zeigt ein Doppelklick
+  auf eine Zeile einer Liste diese Zeile darin; die Leiste schließt und öffnet sich nicht mehr dazwischen. Eine neue
+  Ansicht in der offenen Leiste gleitet ein Stück von der Seite herein (bei Zurück von links), damit der Wechsel zu
+  sehen ist; weniger Bewegung bei reduzierter Bewegung im System.
+- **„Als Paket erlauben“ prüft jedes Paket einzeln.** Nach dem Speichern wird jedes Paket in einer eigenen Anfrage
+  geprüft, eins nach dem anderen, und die Seitenleiste zeigt je Paket Ergebnis oder Fehler. Eine lange Prüfung, ein
+  Neustart des Servers oder ein Proxy, der aufgibt, stoppt nur dieses Paket: Die anderen laufen weiter, und es lässt
+  sich erneut versuchen (die geplante Prüfung übernimmt es ohnehin). Das Ergebnis der Binaries folgt am Ende und lässt
+  sich erneut prüfen. Bisher brach eine zu lange Prüfung die ganze Aktion ohne Ergebnis ab, und die Ereignisse blieben
+  offen.
+- **Gespeicherte Ansicht mit einem Klick aktualisieren.** In *Ansichten* speichert das Speichern-Symbol einer Ansicht
+  den aktuellen Filter, die Sortierung und die Spalten unter ihrem Namen, und nach Änderungen an der zuletzt
+  geöffneten Ansicht bietet das Menü *Änderungen in „…“ speichern* an. Bisher musste der Name erneut eingetippt
+  werden.
+- **Der Mac-Filter zeigt die anderen Macs sofort.** Nach der Wahl eines Macs wieder geöffnet, listet der Filter die
+  gewählten Macs und die ersten anderen sofort, ohne auf seine Suche zu warten, und fragt bei jedem Öffnen neu. Der
+  Besitzer eines Macs steht unter seinem Namen, bei allen Macs gleich.
+
 ### Behoben
+
+- **Menü der Ansichten.** Die angezeigte Ansicht bekommt ihr Häkchen auch, wenn ihr Link einen Filter anders
+  schreibt (z. B. alle Status als `resolved=all`), mit Abstand zwischen Häkchen und Name. Das Menü bleibt offen,
+  nachdem die Standardansicht gewählt oder eine Ansicht umbenannt, gespeichert oder gelöscht wurde.
+- **Blockierungen einer App.** Die Liste der Blockierungen einer App (ihre Seitenleiste in den blockierten Apps)
+  öffnet sich auch bei vielen Ereignissen in Sekundenbruchteilen; vorher dauerte es mehrere Sekunden. Die Spalte
+  „Pfad“ steht bündig mit den anderen Spalten, und die Spalten der drei Tabellen lassen sich wie in den Listen
+  verbreitern und auswählen. Als Seite geöffnet, wächst der Kasten der Tabelle mit ihr, und in der Seitenleiste hat
+  eine breite Tabelle eine Scrollbar statt zwei.
+- **Metriken aller Worker.** `/metrics` lieferte nur die Werte des Gunicorn-Workers, der den Abruf beantwortete; die
+  Zähler schienen deshalb hin und her zu springen, Raten und Perzentile stimmten nicht. Jetzt kommt die Summe aller
+  Worker, auch der zwischendurch neu gestarteten. Die `process_*`-Metriken gibt es nicht mehr: CPU und Speicher
+  kommen aus den Metriken des Containers.
+- **Ereignisse werden erledigt, sobald eine Regel sie erlaubt.** Ein Ereignis, das der Mac erst nach dem Anlegen der
+  Regel hochlud (er lädt beim nächsten Sync hoch, bevor er die Regel erhält), blieb offen, ebenso die Ereignisse einer
+  später freigegebenen Paketregel. Jetzt ist ein Ereignis erledigt, sobald eine Regel sein Binary auf seinem Mac
+  erlaubt: beim Hochladen, beim Aktivieren einer Regel oder Paketversion (auch durch die automatische Freigabe und die
+  geplante Prüfung). Das Ereignis zeigt „automatisch“ und die Regel. Eine Regel aus der Seitenleiste des Ereignisses
+  bleibt beim Ereignis und meldet, wenn sie seinen Mac nicht erreicht.
+- **Neue Homebrew-Builds derselben Version werden erlaubt.** Homebrew baut eine Version manchmal neu (ein weiterer
+  Commit der Formel, ein neues Bottle unter derselben Version), mit anderen Binaries. Der Server erfasste eine Version
+  nur einmal und blockierte die Binaries des neueren Builds. Jetzt erkennt er die geänderten Hashes der Bottles: Die
+  Version erhält zusätzlich die Regeln der neuen Binaries, freigegeben wie die Version, und die Regeln des früheren
+  Builds bleiben. Früher erfasste Versionen werden bei der nächsten Prüfung einmal neu geladen. Neu hochgeladene
+  Casks unter derselben Version werden genauso behandelt.
 
 - **Listen springen nicht mehr, wenn die Seitenleiste schließt.** Wurde die Seitenleiste geschlossen (Klick daneben,
   Escape, ×, Zurück), sprang die Liste an die Stelle zurück, an der sie beim Öffnen stand. Und ein Doppelklick auf

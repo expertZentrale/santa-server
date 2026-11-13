@@ -149,6 +149,32 @@ class SavedFiltersTestCase(ConsoleBase):
         saved.refresh_from_db()
         self.assertEqual(saved.layout, {})
 
+    def test_a_view_updated_without_typing_its_name(self):
+        saved = SavedFilter.objects.create(user=self.admin, page="rules", name="Mine", query="q=&scope=global")
+        other = SavedFilter.objects.create(user=self.admin, page="rules", name="Macs", query="q=&scope=machines")
+        update = reverse("update_filter", args=[saved.pk])
+        # the list changed since the view was opened: its button, and the one of every view in the menu
+        response = self.client.get(reverse("console:rules"), {"q": "", "scope": "groups"})
+        self.assertContains(response, f'data-update-view="{saved.pk}" hidden')
+        self.assertContains(response, f'formaction="{update}"')
+        self.assertContains(response, "Save changes to “Mine”")
+        self.assertContains(response, '<form id="update-filter-form" method="post" hidden>')
+        query = response.context["bar"]["query"]
+        layout = {"order": ["type"], "merged": {}, "hidden": [], "known": []}
+        response = self.client.post(update, {"query": query, "layout": json.dumps(layout),
+                                             "next": "/console/rules/?q=&scope=groups"})
+        self.assertRedirects(response, "/console/rules/?q=&scope=groups", fetch_redirect_response=False)
+        saved.refresh_from_db()
+        self.assertEqual((saved.name, saved.query, saved.layout), ("Mine", query, layout))
+        # shown now: no "Save changes" for it
+        response = self.client.get(reverse("console:rules"), {"q": "", "scope": "groups"})
+        self.assertNotContains(response, f'data-update-view="{saved.pk}"')
+        # only one's own views
+        other.user = User.objects.create_user("someone", is_staff=True)
+        other.save()
+        self.assertEqual(self.client.post(reverse("update_filter", args=[other.pk]), {"query": "q="}).status_code,
+                         404)
+
     def test_only_a_column_layout_is_stored(self):
         self.assertEqual(clean_layout(""), {})
         self.assertEqual(clean_layout("not json"), {})
@@ -397,11 +423,13 @@ class FilterBarTestCase(ConsoleBase):
         response = self.client.get(url, {"scope": ["global", "machines"], "q": ""})
         self.assertEqual(response.context["bar"]["active_view"].name, "Global and Macs")
         self.assertContains(response, 'aria-current="true">Global and Macs</a>')
-        # the buttons of the console: icons, Save and Cancel
+        # renaming in the row: the field where the name was, save (✓) and cancel (×) as icons
         view = SavedFilter.objects.get(name="Global and Macs")
-        self.assertContains(response, f'<div class="actions"><button class="button primary" '
-                                      f'form="rename-filter-{view.pk}">Save</button><button type="button" '
-                                      'class="button" data-rename-cancel>Cancel</button></div>', html=True)
+        self.assertContains(response, f'<button class="icon-button" form="rename-filter-{view.pk}" title="Save" '
+                                      'aria-label="Save">')
+        self.assertContains(response, '<button type="button" class="icon-button" data-rename-cancel title="Cancel" '
+                                      'aria-label="Cancel">')
+        self.assertContains(response, '<path d="M5 12.5l4.5 4.5L19 7.5"', count=2)
         self.assertContains(response, '<path d="M16 4l4 4L9 19', count=2)
         self.assertNotContains(response, "✎")
         self.assertIsNone(self.bar(url, q="", scope="global")["active_view"])

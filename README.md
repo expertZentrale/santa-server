@@ -121,6 +121,10 @@ Benutzer ohne Rechte; SQL Server und Redis laufen separat.
   `santa_db_connect_seconds` (Dauer des Aufbaus neuer Verbindungen) und je View (Labels `view`, `method`, `rows`)
   `santa_view_db_queries`, `santa_view_db_seconds` und `santa_view_db_connect_seconds`: Abfragen, ihre Zeit und
   der Verbindungsaufbau eines Requests. `METRICS_ENABLED=false` schaltet die Metriken ganz ab.
+  Die Worker von Gunicorn schreiben ihre Werte in ein gemeinsames Verzeichnis (`/dev/shm/santa-metrics`, oder
+  `PROMETHEUS_MULTIPROC_DIR`), und `/metrics` liefert ihre Summe, egal welcher Worker antwortet. Die
+  `process_*`-Metriken gibt es deshalb nicht; CPU und Speicher kommen aus den Metriken des Containers. Die Werte
+  beendeter Worker (nach `GUNICORN_MAX_REQUESTS`) bleiben bis zum Neustart des Containers in der Summe.
   Sie antworten vor der Host-Prüfung, für Probes. `/sync/…` muss für die Macs über HTTPS erreichbar sein; die Konsole
   (`/console/`), das Anfrageformular (`/request/`), `/login/`, `/oidc/…` und `/admin/` können auf Ihr Netz
   beschränkt werden.
@@ -350,7 +354,9 @@ Profil des Benutzers gespeichert. Auf dem Smartphone liegt die Navigation hinter
 einen Bereich. Die Aktionen für die Auswahl erscheinen unten im Fenster; Esc hebt die Auswahl auf.
 *Ansichten* speichert den aktuellen Filter, die Sortierung und die Spalten unter einem Namen. Der Stern macht eine
 Ansicht zur Standardansicht der Liste (oder *Standard*, die eingebauten Filter und Spalten): Die Liste öffnet sich aus
-dem Menü damit, und *Alle zurücksetzen* führt dorthin zurück.
+dem Menü damit, und *Alle zurücksetzen* führt dorthin zurück. Das Speichern-Symbol einer Ansicht überschreibt sie mit
+dem aktuellen Filter und den Spalten; nach Änderungen an der zuletzt geöffneten Ansicht bietet das Menü direkt
+*Änderungen in „…“ speichern* an.
 *Spalten* blendet Spalten ein und aus. Eine Spaltenüberschrift lässt sich vor oder hinter eine andere ziehen, oder auf
 die Mitte einer anderen: Dann stehen ihre Werte unter deren Werten (wie der Kommentar unter dem Identifier), die
 Überschrift nennt beide, und ihr × zeigt die Spalte wieder einzeln. Im Menü *Spalten* geht dasselbe mit ↑/↓ und
@@ -360,7 +366,9 @@ vorn, öffnet auch der Text der ersten Spalte den Eintrag. Breiten, Reihenfolge 
 **Seitenleiste**: Ereignisse, Regeln, Paketregeln, Dateizugriffsregeln, Anfragen, Macs, Gruppen, alles unter
 *Administration* und der Verlauf öffnen sich in einer Leiste rechts, auch zum Anlegen und Bearbeiten. Nach dem
 Speichern wird die Liste dahinter neu geladen. Zurück und Vor des Browsers (auch die Maustasten) wechseln zwischen den
-Ansichten der Leiste. Esc oder ein Klick daneben schließt sie, *Seite ↗* öffnet dasselbe als eigene Seite. *Verlauf*
+Ansichten der Leiste. Esc oder ein Klick daneben schließt sie, *Seite ↗* öffnet dasselbe als eigene Seite. Ihr linker
+Rand lässt sich ziehen: Die Breite merkt sich der Browser für alle Ansichten, ein Doppelklick auf den Rand stellt die
+üblichen wieder her. *Verlauf*
 zeigt jede Änderung an einer Regel, Paketregel, Dateizugriffsregel, Gruppe, einem Mac, einer Anmeldegruppe, Rolle,
 einem Tag oder Benutzer.
 
@@ -402,8 +410,9 @@ gehören zum Export der Konfiguration.
 zuerst: dieselbe Datei in einem schon erfassten Release, die Bundle-ID oder der App-Name in den Homebrew-Casks, der
 Installationspfad (`…/Cellar/redis/8.10.1/…` → Formel `redis`, `Caskroom`, `node_modules`, VS-Code-Erweiterungen; mit
 Prüfung im Katalog). Katalog, Paket und Ziel (neue oder bestehende Paketregel) lassen sich vor dem Speichern ändern.
-Danach werden die Paketregeln geprüft, und je Binary steht, ob es jetzt erlaubt ist; die erlaubten Ereignisse werden
-auf Wunsch als erledigt markiert.
+Danach wird jedes Paket in einer eigenen Anfrage geprüft, eins nach dem anderen, mit Ergebnis oder Fehler je Paket; ein
+abgebrochenes lässt sich erneut versuchen. Zum Schluss steht je Binary, ob es jetzt erlaubt ist, und die erlaubten
+Ereignisse sind erledigt.
 
 **Blockierte Software erlauben**: Apps oder Ereignisse auswählen → *Regeln anlegen…*. Jedes Binary erhält eine eigene
 Zeile: Regeltyp, Richtlinie, Geltungsbereich (die oben gewählten Gruppen, nur die Macs seiner Ereignisse oder alle
@@ -414,6 +423,11 @@ Macs), Tags und Beschreibung. *Auf alle Zeilen anwenden* setzt eine Spalte für 
 
 Gibt es für die Kennung schon eine manuelle Regel, wird deren Geltungsbereich erweitert, statt eine zweite Regel
 anzulegen. Die Ereignisse werden als erledigt markiert.
+
+**Ereignisse erledigen**: Ein Ereignis ist erledigt, sobald eine Regel sein Binary auf seinem Mac erlaubt: beim Anlegen
+der Regel, beim Freigeben einer Paketregel (auch durch die geplante Prüfung) und für Ereignisse, die ein Mac erst nach
+dem Anlegen der Regel hochlädt. Von Hand: im Ereignis oder im Zeilenmenü *Als erledigt markieren* bzw.
+*Wieder öffnen*, für mehrere über die Auswahl.
 
 Lässt eine Team-ID-Regel *Nur Signing IDs, die beginnen mit* die Signing ID eines Binarys aus (*Signing ID nicht
 enthalten*), fügen Sie sie stattdessen der Regel hinzu, im Drawer des Ereignisses, beim Anlegen der Regeln oder beim
@@ -585,6 +599,11 @@ Hinweise:
   `python manage.py sync_release_sources --rerecord-homebrew` lädt sie einmalig neu und ersetzt die Regeln ihrer
   Binaries; die Freigabe einer Version bleibt, wie sie war. Eine Version, die sich nicht mehr laden lässt, bleibt
   unverändert und wird genannt.
+- Baut Homebrew eine Version neu (ein neues Bottle unter derselben Version, z. B. nach einem weiteren Commit der
+  Formel), erkennt der Server das an den geänderten SHA-256 der Bottles: Die Version erhält zusätzlich die Regeln der
+  neuen Binaries, mit ihrer Freigabe, und wird wie eine neue Version gemeldet. Die Regeln des früheren Builds bleiben
+  für die Macs, die ihn installiert haben. Versionen aus der Zeit davor werden bei der nächsten Prüfung einmal neu
+  geladen.
 - Abgleich mit einem Test-Mac: `scripts/homebrew_installed_hashes.py` läuft auf dem Mac selbst (im Terminal, als der
   Benutzer, dem Homebrew gehört, Santa im Monitor-Modus). Es installiert Formeln und schreibt die Hashes der
   installierten Binaries in eine JSON-Datei; `--from-export <datei>` nimmt die Formeln aus dem Konfigurationsexport
@@ -883,6 +902,10 @@ separately.
   (time to open new connections) and per view (labels `view`, `method`, `rows`) `santa_view_db_queries`,
   `santa_view_db_seconds` and `santa_view_db_connect_seconds`: the queries of a request, their time and the
   connection it opened. `METRICS_ENABLED=false` switches the metrics off entirely.
+  The Gunicorn workers write their values into one directory (`/dev/shm/santa-metrics`, or
+  `PROMETHEUS_MULTIPROC_DIR`), and `/metrics` returns their sum, whichever worker answers. So there are no
+  `process_*` metrics; CPU and memory come from the metrics of the container. The values of finished workers (after
+  `GUNICORN_MAX_REQUESTS`) stay in the sum until the container restarts.
   They answer before the host check, for probes. `/sync/…` must be reachable by the Macs over HTTPS; the console
   (`/console/`), the request form (`/request/`), `/login/`, `/oidc/…` and `/admin/` can be limited to your network.
 - Put a TLS terminating proxy or ingress in front, and set `TRUST_X_FORWARDED_PROTO=1`.
@@ -1097,7 +1120,8 @@ selects it, Ctrl-click adds or removes one, Shift-click selects a range. The act
 bottom of the window; Esc clears it.
 *Views* saves the current filter, sort order and columns under a name. The star makes a view the default of the
 list (or *Standard*, the built-in filters and columns): the list opens with it from the menu, and *Reset all* goes back
-to it.
+to it. The save icon of a view overwrites it with the current filter and columns; after changes to the view opened
+last, the menu offers *Save changes to "…"* right away.
 *Columns* shows and hides columns. Drag a column header before or after another one, or onto the middle of another
 one: its values are then shown below that one's (as the comment below the identifier), the header names both, and its
 × shows the column on its own again. In the *Columns* menu ↑/↓ and *Under …* do the same, also with the keyboard and
@@ -1107,7 +1131,8 @@ opens the entry too. The browser remembers widths, order and columns.
 **Side panel**: events, rules, package rules, file access rules, requests, Macs, groups, everything under
 *Administration* and the history open in a panel on the right, also to create and edit them. After saving, the list
 behind it reloads. Back and Forward of the browser (also the mouse buttons) step through the views of the panel. Esc
-or a click next to it closes it, *Page ↗* opens the same as a page of its own. *History* shows every change of a rule,
+or a click next to it closes it, *Page ↗* opens the same as a page of its own. Its left edge can be dragged: the
+browser keeps the width for every view, a double-click on the edge gives the usual ones back. *History* shows every change of a rule,
 package rule, file access rule, group, Mac, sign-in group, role, tag or user.
 
 **Groups**: the Santa configuration of each group, its secret SyncBaseURL, the download of its configuration
@@ -1143,8 +1168,9 @@ entries are deleted by `cleanup_expired_rules`; they are part of the configurati
 console suggests per package where the binaries come from, the most reliable source first: the same file in a release
 recorded already, the bundle ID or the app name in the Homebrew casks, the install path (`…/Cellar/redis/8.10.1/…` →
 formula `redis`, `Caskroom`, `node_modules`, VS Code extensions; checked in the catalog). The catalog, the package
-and the target (a new or an existing package rule) can be changed before saving. Then the package rules are checked,
-and every binary shows whether it is allowed now; the allowed events are marked as resolved if wanted.
+and the target (a new or an existing package rule) can be changed before saving. Then each package is checked by a
+request of its own, one after the other, with its result or error; one that was cut off can be tried again. At the
+end every binary shows whether it is allowed now, and the allowed events are resolved.
 
 **Allow blocked software**: select apps or events → *Create rules…*. Every binary gets its own row: rule type,
 policy, scope (the groups chosen at the top, only the Macs of its events, or all Macs), tags and description.
@@ -1155,6 +1181,11 @@ policy, scope (the groups chosen at the top, only the Macs of its events, or all
 
 If a manual rule for the identifier already exists, its scope is widened instead of creating a second rule. The events
 are marked resolved.
+
+**Resolving events**: an event is resolved as soon as a rule allows its binary on its Mac: when the rule is created,
+when a package rule is approved (also by the scheduled check), and for events a Mac uploads only after the rule was
+created. By hand: *Mark resolved* or *Open again* in the event or in the menu of its row, for several through the
+selection.
 
 When a Team ID rule *Only signing IDs starting with* leaves out the signing ID of a binary (*signing ID not included*),
 add it to the rule instead, in the drawer of the event, when creating the rules or when approving a request. The
@@ -1319,6 +1350,10 @@ Notes:
   `python manage.py sync_release_sources --rerecord-homebrew` downloads them again once and replaces the rules of
   their binaries; the approval of a version stays as it was. A version that can't be downloaded any more stays
   unchanged and is named.
+- When Homebrew builds a version again (a new bottle under the same version, e.g. after another commit of the
+  formula), the server sees it by the changed SHA-256 of the bottles: the version gets the rules of the new binaries
+  too, with its approval, and is announced like a new version. The rules of the earlier build stay for the Macs that
+  installed it. Versions recorded before are downloaded once again at the next check.
 - Comparing with a test Mac: `scripts/homebrew_installed_hashes.py` runs on the Mac itself (in the Terminal, as the
   user who owns Homebrew, Santa in Monitor mode). It installs formulae and writes the hashes of the installed binaries
   to a JSON file; `--from-export <file>` adds the formulae of the configuration export.

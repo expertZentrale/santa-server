@@ -1,14 +1,15 @@
 """Blocked events → package rules: the package of each binary is suggested (package_detection.py), the administrator
 can change every suggestion, then the packages go into new or existing package rules, which are checked right away.
 At the end each binary shows whether a rule allows it now."""
-from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.utils import timezone
-from django.utils.translation import gettext, ngettext
+from django.http import Http404
+from django.shortcuts import get_object_or_404, render
+from django.utils.translation import gettext
+from django.views.decorators.http import require_POST
 
 from .. import catalog
-from ..models import Event
+from ..models import Event, ReleaseSource
 from ..package_detection import (
     SOURCE_APP_NAME,
     SOURCE_BUNDLE_ID,
@@ -18,13 +19,20 @@ from ..package_detection import (
     full_path,
     suggest_packages,
 )
-from ..progress import progress_for
-from ..releases import sync_release_source
-from ..services import add_packages_to_sources, chunked, decisions_on, existing_rules, packages_to_check
+from ..progress import AlreadyRunning, progress_for, run_source_check
+from ..releases import ReleaseError, sync_release_source
+from ..services import (
+    add_packages_to_sources,
+    chunked,
+    decisions_on,
+    existing_rules,
+    packages_to_check,
+    resolve_allowed_events,
+)
 from .forms import EventPackagesForm
 from .utils import log_addition, log_change, render_drawer, require_perms, staff_required
 from .views_events import events_by_ids, selected_events
-from .views_sources import check_added_packages
+from .views_sources import check_summary
 
 
 def _source_label(suggestion):
@@ -55,12 +63,13 @@ def _unmatched_suggestions(events):
     return list(rows.values())
 
 
-def _verify(events):
-    """After the check of the package rules: ([(event, allowed, matches, partly)] per binary, the pks of the events
-    whose own Mac allows it now). As Santa decides on each Mac (decisions_on: scope, policy, rule type), not just
-    "an allow rule exists": a block of a group still wins over a global allow."""
+def _verify(events, user):
+    """After the check of the package rules: [(event, allowed, matches, partly)] per binary. As Santa decides on each
+    Mac (decisions_on: scope, policy, rule type), not just "an allow rule exists": a block of a group still wins over
+    a global allow. The events whose own Mac allows the binary now are resolved (resolve_allowed_events)."""
     loaded = [event for chunk in chunked([event.pk for event in events])
               for event in Event.objects.select_related("machine").filter(pk__in=chunk)]
+    resolve_allowed_events(loaded, user)
     decisions = decisions_on(loaded)
     by_sha = {}
     for event in loaded:
@@ -70,42 +79,25 @@ def _verify(events):
     for sha, binary_events in by_sha.items():
         allowed = [decisions[event.pk] for event in binary_events]
         rows.append((binary_events[0], all(allowed), matches.get(sha, []), any(allowed) and not all(allowed)))
-    return rows, {pk for pk, allowed in decisions.items() if allowed}
+    return rows
 
 
-def _check_and_verify(request, progress, approved, form, new_sources, appended, sources_of):
-    # only what was added: a package appended to a big package rule doesn't check the whole list
-    for source, only in packages_to_check(new_sources, appended, sources_of).values():
-        check_added_packages(request, source, progress, only, sync_release_source)
-    # only the binaries of the packages chosen: the others were left out on purpose
-    chosen = list({event.pk: event for package, _target in approved
-                   for event in (package.suggestion.events if package.suggestion else [])}.values())
-    results, covered = _verify(chosen)
-    resolved = 0
-    if form.cleaned_data.get("resolve") and covered:
-        # the events of the Macs that allow it now, not every event of the binary
-        pks = [event.pk for event in chosen if event.pk in covered and event.resolved_at is None]
-        for chunk in chunked(pks):
-            resolved += Event.objects.filter(pk__in=chunk, resolved_at__isnull=True).update(
-                resolved_at=timezone.now(), resolved_by=request.user)
-    allowed_count = sum(1 for _event, allowed, _matches, _partly in results if allowed)
-    messages.success(request, ngettext(
-        "%(count)s package in package rules: %(allowed)s of %(binaries)s binary allowed now.",
-        "%(count)s packages in package rules: %(allowed)s of %(binaries)s binaries allowed now.",
-        len(approved)) % {"count": len(approved), "allowed": allowed_count, "binaries": len(results)})
-    return {"results": results, "saved_sources": list({s.pk: s for s in sources_of.values()}.values()),
-            "resolved_count": resolved}
+def _steps(new_sources, appended, sources_of):
+    """[(source, identifier)]: each package checked by a request of its own (events_packages_check), one after the
+    other: a long check, a worker restarted or a proxy that gives up stops only its own package"""
+    return [(source, identifier) for source, only in packages_to_check(new_sources, appended, sources_of).values()
+            for identifier in (source.identifiers if only is None else only)]
 
 
 @staff_required
 def events_packages(request):
     require_perms(request, "view_event", "add_releasesource", "change_releasesource", "add_rule")
     # from the start: the catalogs are asked before the first step, the page must see the request alive
-    with progress_for(request) as progress:
-        return _events_packages(request, progress)
+    with progress_for(request):
+        return _events_packages(request)
 
 
-def _events_packages(request, progress):
+def _events_packages(request):
     events = _selection(request)
     applying = request.method == "POST" and "apply" in request.POST
     suggestions, unmatched = suggest_packages(events)
@@ -128,6 +120,55 @@ def _events_packages(request, progress):
             # an identifier the catalog doesn't take (GitHub without owner/repo): nothing saved, the form again
             form.add_error(None, e.messages)
         else:
-            context.update(_check_and_verify(request, progress, approved, form, new_sources, appended, sources_of))
+            # only the binaries of the packages chosen: the others were left out on purpose
+            chosen = {event.pk for package, _target in approved
+                      for event in (package.suggestion.events if package.suggestion else [])}
+            context.update({"steps": _steps(new_sources, appended, sources_of), "chosen": sorted(chosen),
+                            "saved_sources": list({s.pk: s for s in sources_of.values()}.values())})
+            return render_drawer(request, "console/events/packages.html", "console/events/packages_drawer.html",
+                                 context)
     context["rows"] = [(*row, _source_label(row[0].suggestion)) for row in form.rows()]
     return render_drawer(request, "console/events/packages.html", "console/events/packages_drawer.html", context)
+
+
+@staff_required
+@require_POST
+def events_packages_check(request):
+    """One step of events_packages: the check of one package of a package rule, its result as a line of the list"""
+    require_perms(request, "view_event", "add_releasesource", "change_releasesource", "add_rule")
+    source = get_object_or_404(ReleaseSource, pk=request.POST.get("source"))
+    identifier = request.POST.get("identifier", "")
+    if identifier not in source.identifiers:
+        raise Http404
+    status, text = "ok", ""
+    with progress_for(request) as progress:
+        try:
+            with run_source_check(source, request.user, progress) as running:
+                new_versions = sync_release_source(source, progress=running, only=[identifier])
+        except AlreadyRunning:
+            status = "wait"
+            text = gettext("The package rule is being checked right now: its check takes this package too.")
+        except ReleaseError as e:
+            status, text = "bad", str(e)
+        else:
+            text = check_summary(source, new_versions) if new_versions else gettext("Up to date.")
+    return render(request, "console/events/_package_step.html",
+                  {"source": source, "identifier": identifier, "status": status, "text": text})
+
+
+@staff_required
+@require_POST
+def events_packages_verify(request):
+    """The last step of events_packages: each binary of the events, allowed now or not; the ones allowed resolved"""
+    require_perms(request, "view_event", "add_releasesource", "change_releasesource", "add_rule")
+    events = events_by_ids(request.POST.getlist("ids"))
+    results = _verify(events, request.user)
+    # also the ones the check resolved itself (its rules enabled right away)
+    resolved = sum(Event.objects.filter(pk__in=chunk, resolved_at__isnull=False).count()
+                   for chunk in chunked([event.pk for event in events]))
+    sources = ReleaseSource.objects.filter(pk__in=[pk for pk in request.POST.getlist("sources") if pk.isdigit()])
+    allowed_count = sum(1 for _event, allowed, _matches, _partly in results if allowed)
+    return render(request, "console/events/_package_results.html", {
+        "results": results, "events": events, "resolved_count": resolved, "event_count": len(events),
+        "allowed_count": allowed_count, "saved_sources": list(sources),
+        "in_drawer": request.POST.get("in_drawer") == "1"})

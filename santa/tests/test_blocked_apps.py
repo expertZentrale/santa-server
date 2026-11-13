@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from django.contrib.auth.models import User
 from django.urls import reverse
 
@@ -30,6 +32,29 @@ class BlockedAppDrawersTestCase(ConsoleBase):
         self.assertNotContains(response, ">old<")
         # all times: also the old one
         self.assertEqual(self.client.get(self.url("events", "?days=")).context["total"], 4)
+
+    def test_the_newest_blocks_first_and_at_most_the_limit(self):
+        with patch("santa.console.views_events.APP_PART_ROWS", 2):
+            response = self.client.get(self.url("events", "?days=7"), HTTP_HX_REQUEST="true")
+        self.assertEqual([event.executing_user for event in response.context["rows"]], ["someone", "jdoe"])
+        self.assertEqual(response.context["total"], 3)
+        self.assertEqual(response.context["newest"].pk, response.context["rows"][0].pk)
+        self.assertContains(response, "The newest 2 are shown.")
+
+    def test_the_tables_have_columns_like_the_lists(self):
+        # widths by dragging (table.js), and the path in its own span, so the cell stays a table cell
+        for part, key in [("events", "app-events"), ("macs", "app-macs"), ("users", "app-users")]:
+            with self.subTest(part=part):
+                self.assertContains(self.client.get(self.url(part), HTTP_HX_REQUEST="true"), f'data-table="{key}"')
+        events = self.client.get(self.url("events"), HTTP_HX_REQUEST="true")
+        self.assertContains(events, '<td data-col="path" class="mono small"><span class="cell-path"')
+        self.assertContains(events, '<section class="card">')
+        # as a page no card around the table: it grows out of the page as in the lists, a card would stay behind
+        page = self.client.get(self.url("events"))
+        self.assertContains(page, "<section>")
+        self.assertNotContains(page, '<section class="card">')
+        # the left edge of the drawer, to drag it wider or narrower (drawer.js)
+        self.assertContains(page, 'data-drawer-resize')
 
     def test_the_macs_and_the_users(self):
         macs = self.client.get(self.url("macs", "?days=7"), HTTP_HX_REQUEST="true")

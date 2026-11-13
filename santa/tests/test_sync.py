@@ -323,6 +323,26 @@ class SyncTestCase(SyncBase):
         self.assertEqual(stored.group, self.dev)
         self.assertTrue(stored.is_blocked)
 
+    def test_an_event_uploaded_after_its_rule_is_resolved(self):
+        """The Mac uploads the block at its next sync, before it gets the rule created meanwhile"""
+        self.preflight()
+        allow = Rule.objects.create(rule_type=RuleType.BINARY, identifier=SHA_A, policy=Policy.ALLOWLIST)
+        allow.groups.add(self.dev)
+        Rule.objects.create(rule_type=RuleType.BINARY, identifier=SHA_B, policy=Policy.ALLOWLIST, is_global=True)
+        # a block of the group wins over the global allow
+        Rule.objects.create(rule_type=RuleType.BINARY, identifier=SHA_B, policy=Policy.BLOCKLIST).groups.add(self.dev)
+        event = {"file_path": "/opt/homebrew/bin", "file_name": "colima", "execution_time": 1758800000,
+                 "decision": "BLOCK_UNKNOWN"}
+        self.post("eventupload", {"events": [{**event, "file_sha256": SHA_A},
+                                             {**event, "file_sha256": SHA_B, "execution_time": 1758800001},
+                                             {**event, "file_sha256": "c" * 64, "execution_time": 1758800002}]})
+        allowed = Event.objects.get(file_sha256=SHA_A)
+        self.assertIsNotNone(allowed.resolved_at)
+        self.assertEqual(allowed.resolution_rule, allow)
+        self.assertIsNone(allowed.resolved_by)
+        self.assertIsNone(Event.objects.get(file_sha256=SHA_B).resolved_at)
+        self.assertIsNone(Event.objects.get(file_sha256="c" * 64).resolved_at)
+
     def test_health(self):
         self.assertEqual(self.client.get("/health", HTTP_HOST="10.0.0.1").status_code, 200)
         self.assertEqual(self.client.get("/ready").status_code, 200)
