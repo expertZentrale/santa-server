@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=python:3.14-alpine3.23
+ARG BASE_IMAGE=python:3.15-alpine3.24
 FROM ${BASE_IMAGE}
 
 LABEL org.opencontainers.image.title="Santa Server" \

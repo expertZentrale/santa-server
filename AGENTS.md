@@ -35,7 +35,7 @@ Read this file before changing anything. If a request conflicts with these rules
 
 - **Django 6.0.x** (`Django>=6.0.8,<6.1`). django-prometheus doesn't support 6.1 yet. Don't upgrade past that
   without checking django-prometheus and mssql-django support.
-- **Python 3.14** on Alpine (`python:3.14-alpine3.23`; the base image is a build argument of the `Dockerfile`).
+- **Python 3.15** on Alpine (`python:3.15-alpine3.24`; the base image is a build argument of the `Dockerfile`).
   `Dockerfile` and `.devcontainer/Dockerfile` install the same apk packages, plus the development tools
   `git` and `gettext` in the devcontainer. Keep them in sync.
 - The image runs as an unprivileged user, `entrypoint.sh` stays generic (optional wait, migrations, `exec`).

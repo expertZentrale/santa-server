@@ -79,6 +79,10 @@
   blockierten Apps (Blockierungen, Macs, Benutzer) sind wie die übrigen Werte linksbündig, und die unter einer
   anderen angezeigten Spalten (Pfad, Team ID, Kommentar, E-Mail …) erscheinen wieder, umbrochen statt gekürzt.
 
+### Abhängigkeiten
+
+- Container-Image: Python 3.15 auf Alpine 3.24 (`python:3.15-alpine3.24`, vorher Python 3.14 auf Alpine 3.23).
+
 ## [0.14.0] - 2026-11-11
 
 ### Hinzugefügt
