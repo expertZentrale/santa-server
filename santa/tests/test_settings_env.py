@@ -80,7 +80,8 @@ class WebServerSettingsTestCase(SimpleTestCase):
         self.assertEqual((settings.GUNICORN_WORKERS, settings.GUNICORN_THREADS, settings.GUNICORN_WORKER_CLASS,
                           settings.GUNICORN_TIMEOUT, settings.GUNICORN_MAX_REQUESTS, settings.GUNICORN_ACCESS_LOG,
                           settings.LOG_LEVEL), (4, 8, "sync", 300, 0, False, "WARNING"))
-        self.assertEqual(settings.LOGGING["root"]["level"], "WARNING")
+        # applied when Django sets up logging (santa.log_config), not copied into LOGGING here
+        self.assertEqual(settings.LOGGING_CONFIG, "santa.log_config.configure")
 
     def test_invalid_values(self):
         for name, value in [("GUNICORN_WORKERS", "abc"), ("GUNICORN_WORKERS", "0"), ("GUNICORN_THREADS", "-1"),

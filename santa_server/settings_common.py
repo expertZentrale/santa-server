@@ -162,6 +162,8 @@ LOG_LEVEL = "INFO"
 # the messages are also kept for their user: the bell in the top bar of the console (message_storage.py)
 MESSAGE_STORAGE = "santa.message_storage.NotificationStorage"
 
+# santa.log_config sets the level LOG_LEVEL when Django sets up logging, after the whole settings module
+LOGGING_CONFIG = "santa.log_config.configure"
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,

@@ -99,7 +99,9 @@ logger_class = SyncTokenRedactingLogger
 
 
 def metrics_enabled():
-    return bool(setting("METRICS_ENABLED"))
+    """As the workers run: settings.py installs django_prometheus by METRICS_ENABLED while it is imported, a module
+    of the deployment that changes the setting afterwards doesn't change the apps (santa.checks warns)"""
+    return bool(setting("METRICS_ENABLED")) and "django_prometheus" in setting("INSTALLED_APPS")
 
 
 # Each worker keeps its own metrics, and a scrape reaches only one of them: their counters would seem to jump back

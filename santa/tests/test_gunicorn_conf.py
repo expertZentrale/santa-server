@@ -87,6 +87,32 @@ class GunicornConfTestCase(SimpleTestCase):
                                 cwd=CONF_FILE.parent)
         self.assertEqual(result.stdout.split(), ["None", "3", "error"], result.stderr)
 
+    def test_overridden_after_the_import(self):
+        """A settings module that sets the values after `from santa_server.settings import *`: gunicorn and Django's
+        own logs get the level; METRICS_ENABLED came too late for the apps, gunicorn follows them and a check warns"""
+        directory = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, directory, True)
+        Path(directory, "deploy_after_under_test.py").write_text(
+            "from santa_server.settings import *\n"
+            "LOG_LEVEL = 'ERROR'\n"
+            "GUNICORN_ACCESS_LOG = False\n"
+            "METRICS_ENABLED = not METRICS_ENABLED\n")
+        script = ("import importlib.util, logging; spec = importlib.util.spec_from_file_location('c', %r); "
+                  "m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m); "
+                  "import django; django.setup(); from django.conf import settings; from django.core import checks; "
+                  "print(m.accesslog, m.loglevel, logging.getLevelName(logging.getLogger().level), "
+                  "m.metrics_enabled() == ('django_prometheus' in settings.INSTALLED_APPS "
+                  "and settings.METRICS_ENABLED), "
+                  "[message.id for message in checks.run_checks() if message.id.startswith('santa.')])"
+                  % str(CONF_FILE))
+        environ = {**os.environ, **REQUIRED, "DJANGO_SETTINGS_MODULE": "deploy_after_under_test",
+                   "PYTHONPATH": os.pathsep.join([directory, str(CONF_FILE.parent)])}
+        for name in (*GUNICORN_SETTINGS, "METRICS_ENABLED"):
+            environ.pop(name, None)
+        result = subprocess.run([sys.executable, "-c", script], env=environ, capture_output=True, text=True,
+                                cwd=CONF_FILE.parent)
+        self.assertEqual(result.stdout.split(), ["None", "error", "ERROR", "True", "['santa.W001']"], result.stderr)
+
     def access_lines(self, path, status):
         from gunicorn.config import Config
         config = Config()
@@ -137,6 +163,13 @@ class MultiprocessMetricsTestCase(SimpleTestCase):
         with patch.dict("os.environ", {}, clear=True), override_settings(METRICS_ENABLED=False):
             conf.on_starting(None)
             self.assertNotIn("PROMETHEUS_MULTIPROC_DIR", os.environ)
+
+    def test_no_directory_when_the_apps_have_no_metrics(self):
+        # METRICS_ENABLED set after settings.py left django_prometheus out: the workers have no metrics
+        conf = load_conf()
+        values = {"METRICS_ENABLED": True, "INSTALLED_APPS": ["santa"]}
+        with patch.object(conf, "setting", values.get):
+            self.assertFalse(conf.metrics_enabled())
 
     def run_worker(self, count):
         environ = {**os.environ, "PROMETHEUS_MULTIPROC_DIR": self.directory}

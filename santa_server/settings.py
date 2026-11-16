@@ -3,7 +3,6 @@
 To set more (e.g. from a file rendered by a secret store), create santa_server/settings_local.py with
 `from .settings import *` and your overrides, and set DJANGO_SETTINGS_MODULE=santa_server.settings_local.
 """
-import copy
 import os
 from urllib.parse import urlsplit
 
@@ -68,16 +67,13 @@ GUNICORN_TIMEOUT = env_int("GUNICORN_TIMEOUT", GUNICORN_TIMEOUT)  # noqa: F405
 GUNICORN_MAX_REQUESTS = env_int("GUNICORN_MAX_REQUESTS", GUNICORN_MAX_REQUESTS, minimum=0)  # noqa: F405
 GUNICORN_ACCESS_LOG = env_bool("GUNICORN_ACCESS_LOG", GUNICORN_ACCESS_LOG)  # noqa: F405
 
-# the level of the server's logs, also of gunicorn's
+# the level of the server's logs (santa.log_config applies it), also of gunicorn's
 LOG_LEVEL = env("LOG_LEVEL", LOG_LEVEL).upper()  # noqa: F405
 if LOG_LEVEL not in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
     raise ImproperlyConfigured("LOG_LEVEL must be one of DEBUG, INFO, WARNING, ERROR, CRITICAL")
-# also on the handler: the "django" loggers have a level of their own (INFO) and would pass it otherwise. A copy:
-# the dict of settings_common stays as it is
-LOGGING = copy.deepcopy(LOGGING)  # noqa: F405
-LOGGING["root"]["level"] = LOGGING["handlers"]["console"]["level"] = LOG_LEVEL
 
-# Prometheus metrics on /metrics; off: nothing is collected, the plain backends are used
+# Prometheus metrics on /metrics; off: nothing is collected, the plain backends are used. Decided here, while the
+# settings are imported: only the environment variable can change it (santa.checks warns otherwise)
 METRICS_ENABLED = env_bool("METRICS_ENABLED", True)
 if not METRICS_ENABLED:
     INSTALLED_APPS = [app for app in INSTALLED_APPS if app != "django_prometheus"]  # noqa: F405
