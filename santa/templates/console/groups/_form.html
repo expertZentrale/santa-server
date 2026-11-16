@@ -23,10 +23,19 @@
   {% csrf_token %}
   {% if form.non_field_errors %}<div class="error">{{ form.non_field_errors }}</div>{% endif %}
   <fieldset class="plain"{% if not can_change %} disabled{% endif %}>
-  {% for title, help_text, fields in form.sections %}
-    <section class="card"><h2>{{ title }}</h2>
-      {% if help_text %}<p class="help small">{{ help_text }}</p>{% endif %}
-      {% for block in fields %}
+  {% for section in form.sections %}
+    {% ifchanged section.kind %}{% if section.kind == "sync" %}
+    <div class="form-part" id="part-sync"><h2 class="form-part-title">{% translate "At every sync" %}</h2>
+      <p class="help">{% translate "Santa gets these settings from the server at every sync: the Macs take a change at their next sync, the profile stays as it is." %}</p></div>
+    {% elif section.kind == "profile" %}
+    <div class="form-part" id="part-profile"><h2 class="form-part-title">{% translate "In the configuration profile" %}</h2>
+      <div class="callout warn">{% translate "Static: Santa reads these settings only from the configuration profile (.mobileconfig), the sync can't change them. After a change, download the profile again and replace it in your MDM." %}
+        {% if group and can_see_sync_token %}<a href="{% url 'console:group_profile' group.pk %}" data-download hx-boost="false">{% translate "Download configuration profile" %}</a>{% endif %}</div></div>
+    {% endif %}{% endifchanged %}
+    <section class="card"><h2>{{ section.title }}{% if section.kind == "sync" %} <span class="badge info small">{% translate "Every sync" %}</span>{% elif section.kind == "profile" %} <span class="badge warn small">{% translate "Profile" %}</span>{% endif %}</h2>
+      {% if section.help_text %}<p class="help small">{{ section.help_text }}</p>{% endif %}
+      {% if section.file_access and group and perms.santa.view_fileaccessrule %}<p class="small"><a href="{% url 'console:file_access_rules' %}?group={{ group.pk }}">{% blocktranslate count count=file_access_count %}{{ count }} file access rule in the profile{% plural %}{{ count }} file access rules in the profile{% endblocktranslate %}</a></p>{% endif %}
+      {% for block in section.blocks %}
         {% if block.key %}<div class="inheritable" data-setting data-saved-parent="{{ form.saved_parent }}">
           <div data-inherit-override{% if not block.has_parent %} hidden{% endif %}>{% include "console/_field.html" with field=block.override %}</div>
           <div class="inherited" data-inherited{% if not block.inherits %} hidden{% endif %}>

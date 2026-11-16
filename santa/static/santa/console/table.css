@@ -15,6 +15,8 @@
 .table tbody tr:last-child td, .table tbody tr:last-child th { border-bottom: 0; }
 .table tbody tr:hover { background: color-mix(in srgb, var(--surface-2) 60%, transparent); }
 .table tr.disabled td { opacity: .6; }
+/* events that are resolved (all of an app's): greyed, the status badge, the checkbox and the ⋯ stay as they are */
+.table tr.resolved td:not(.select):not(.row-actions):not([data-col="status"]) { opacity: .6; }
 .table tr.empty td { text-align: center; color: var(--muted); padding: 2rem; }
 .table .num { text-align: right; font-variant-numeric: tabular-nums; }
 .table .select { width: 2rem; }

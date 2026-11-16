@@ -6,6 +6,34 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Default view for everyone.** Administrators set what a list opens with for every user: *Use as default for
+  everyone* in *Views* makes the current filters, sort order and columns the *Standard* of the list. A user's own
+  default view still wins; *Built-in default for everyone* removes it. The role "Santa admins" gets the permission.
+
+### Changed
+
+- **Group configuration: at every sync or in the profile.** The group form is split into the settings the Macs get
+  at every sync and the ones only the configuration profile carries, each section marked *Every sync* or *Profile*.
+  The profile part says that a change needs the profile downloaded again and replaced in the MDM.
+- **File access rules are marked as static.** The form and the list say that the rules reach the Macs only through
+  the profile of the groups, and an existing rule names the groups whose profile contains it.
+- **Status of the events in the lists.** *All events* shows *open* or *resolved* (when and by whom in the tooltip),
+  *Blocked apps* has a *Status* column with the open and resolved events; resolved rows are greyed.
+- **Help of the lists.** The ⓘ of *Blocked apps* explains how the events are summarized (one row per binary, only the
+  events of the filters); *All events*, *Execution rules* and *Access requests* have their own.
+- **Toggle resolved.** In the bar of a selection, *Mark resolved* is now *Toggle resolved*: open events in the
+  selection are marked as resolved; when all of them are resolved already, they are open again. The menu of a
+  blocked app offers *Open again* when all its events are resolved, as the menu and the drawer of an event already
+  did.
+
+### Fixed
+
+- **Views with the same filters.** Views that differ only in their columns (shown, hidden, merged) now each bring
+  their own columns when chosen, also next to *Standard*. Before, the list always showed the first view with the same
+  filters, and the columns did not change.
+
 ## [0.15.0] - 2026-11-16
 
 ### Added

@@ -17,11 +17,13 @@ from django.utils import formats, timezone
 from django.utils.translation import gettext
 from django.utils.translation import gettext_lazy as _
 
-from ..models import SavedFilter
+from ..models import ListDefault, SavedFilter
 
 RANGE = "range"
-# the page of the list and its length are not part of a filter; standard: the built-in defaults of the list
-NOT_FILTERS = ("page", "per_page", "reset", "rows", "standard")
+# the page of the list and its length are not part of a filter; standard: the built-in defaults of the list;
+# saved_view: the view chosen in the views (views with the same filters differ in their columns)
+NOT_FILTERS = ("page", "per_page", "reset", "rows", "standard", "saved_view")
+STANDARD_VIEW = "standard"
 MAX_SAVED_FILTERS = 30
 # the lists with a filter bar (the page of filter_bar()), and whether they belong to the console (staff only)
 FILTER_PAGES = {"rules": True, "events-blocked": True, "events-all": True, "machines": True, "sources": True,
@@ -120,27 +122,47 @@ def clean_layout(value):
 
 
 def remember_filters(request, page, keep=()):
-    """The default view of a list: the saved filter the user chose as the default, else the built-in defaults.
+    """The default view of a list: the saved filter the user chose as the default, else the default the
+    administrators set for everyone (ListDefault), else the built-in defaults.
 
     Opened without a filter (e.g. from the menu) or with ?reset, the list redirects to the default view; ?standard
-    shows the built-in defaults whatever the default is. A submitted filter form always has a value (the search
-    field), so an empty filter means "not chosen". Returns the redirect or None.
+    shows the administrators' default, or the built-in defaults without one. A submitted filter form always has a
+    value (the search field), so an empty filter means "not chosen". Returns the redirect or None.
     """
     kept = {name: request.GET.getlist(name) for name in keep if name in request.GET}
+    shared = list_default(page)
     if "standard" in request.GET:
+        if shared and shared.query:
+            return redirect(_url(request, kept, _with_view(shared.query, STANDARD_VIEW)))
         return None
     default = default_view(request.user, page)
+    if default:
+        query = _with_view(default.query, default.pk)
+    else:
+        query = _with_view(shared.query, STANDARD_VIEW) if shared and shared.query else ""
     if "reset" in request.GET:
-        return redirect(_url(request, kept, default.query if default else ""))
-    if not filter_query(request.GET, keep) and default:
-        return redirect(_url(request, kept, default.query))
+        return redirect(_url(request, kept, query))
+    if not filter_query(request.GET, keep) and query:
+        return redirect(_url(request, kept, query))
     return None
 
 
+def _with_view(query, view):
+    """The query of a view, with the view it belongs to (saved_view): the bar shows that one, and its columns"""
+    params = QueryDict(query, mutable=True)
+    params["saved_view"] = str(view)
+    return params.urlencode()
+
+
 def default_view(user, page):
-    """The saved filter the user chose as the default of the list, or None (the built-in defaults). A view without
-    a query would redirect to itself."""
+    """The saved filter the user chose as the default of the list, or None. A view without a query would redirect
+    to itself."""
     return SavedFilter.objects.filter(user=user, page=page, is_default=True).exclude(query="").first()
+
+
+def list_default(page):
+    """The default the administrators set for everyone on this list, or None (the built-in defaults)"""
+    return ListDefault.objects.filter(page=page).first()
 
 
 def _url(request, kept, query):
@@ -333,18 +355,37 @@ def filter_bar(request, page, facets, hidden=(), keep=(), placeholder=""):
     kept = {name: params.getlist(name) for name in keep if name in params}
     # a view as this bar would write it (its values too: "resolved=all" is "resolved=", all of them)
     saved = {view.pk: _bar_query(facets, QueryDict(view.query), hidden) for view in views}
-    active_view = next((view for view in views if saved[view.pk] == canonical), None)
-    # the columns of the view shown (console/table.js), and whether the list is at its built-in defaults
+    # "Standard": the administrators' default for everyone when there is one, else the built-in defaults
+    shared = list_default(page)
+    if shared and shared.query:
+        is_standard = _bar_query(facets, QueryDict(shared.query), hidden) == canonical
+    # views with the same filters differ in their columns: the one chosen (saved_view) while its filters are shown,
+    # else "Standard" when it matches, else the first view that does
+    chosen_view = STANDARD_VIEW if "standard" in params else params.get("saved_view", "")
+    matching = [view for view in views if saved[view.pk] == canonical]
+    if chosen_view == STANDARD_VIEW and is_standard:
+        active_view = None
+    else:
+        active_view = next((view for view in matching if str(view.pk) == chosen_view), None) \
+            or next(iter(matching), None)
+    standard_active = is_standard and not active_view
+    # the columns of the view shown (console/table.js): a saved view's, or at "Standard" the administrators' (their
+    # time: a change of them reaches the browsers that show the old ones)
     view_layout = {"id": active_view.pk if active_view else None, "layout": active_view.layout if active_view else {},
-                   "standard": is_standard and not active_view}
+                   "standard": standard_active,
+                   "standard_layout": shared.layout if shared else {},
+                   "standard_stamp": shared.updated_at.isoformat() if shared else ""}
     return {"bar": {
         "page": page, "q": q, "placeholder": placeholder, "hidden": hidden_pairs, "chips": chips,
         # "Reset all" leads there
         "is_default": saved[default.pk] == canonical if default else is_standard,
         "reset_url": _url(request, kept, "reset=1"), "query": canonical, "views": views,
         "active_view": active_view, "default_view": default,
-        "standard_url": _url(request, kept, "standard=1"), "standard_active": is_standard and not active_view,
-        "view_layout": view_layout,
+        "standard_url": _url(request, kept, "standard=1"), "standard_active": standard_active,
+        "view_layout": view_layout, "list_default": shared,
+        # the console lists only (FILTER_PAGES), not the request form of the users
+        "can_set_list_default": FILTER_PAGES.get(page, False) and request.user.has_perm("santa.change_listdefault")
+                                and request.user.has_perm("santa.add_listdefault"),
     }}
 
 

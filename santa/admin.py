@@ -25,6 +25,7 @@ from .models import (
     FileAccessRule,
     Group,
     IgnoredApp,
+    ListDefault,
     Machine,
     ReleaseSource,
     ReleaseVersion,
@@ -698,6 +699,12 @@ class SignInGroupAdmin(admin.ModelAdmin):
     def delete_queryset(self, request, queryset):
         for obj in queryset:
             delete_sign_in_group(obj)
+
+
+@admin.register(ListDefault)
+class ListDefaultAdmin(admin.ModelAdmin):
+    list_display = ("page", "updated_by", "updated_at")
+    raw_id_fields = ("updated_by",)
 
 
 @admin.register(SavedFilter)

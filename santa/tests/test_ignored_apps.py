@@ -281,6 +281,23 @@ class EventsBulkTestCase(ConsoleBase):
         # without JavaScript: back to the list
         self.assertEqual(self.bulk("resolve", htmx=False).status_code, 302)
 
+    def test_the_bar_toggles_resolved(self):
+        other = self.make_event(file_name="tool", **SIGNED)
+        self.assertContains(self.client.get(reverse("console:events"), {"rows": "now"}), 'value="toggle_resolved"')
+        # one open event in the selection: the open ones are resolved
+        Event.objects.filter(pk=other.pk).update(resolved_at=timezone.now())
+        self.assertEqual(self.bulk("toggle_resolved", resolved="all").status_code, 204)
+        self.assertFalse(Event.objects.filter(resolved_at__isnull=True).exists())
+        self.assertEqual(Event.objects.filter(resolved_by=self.admin).count(), 1)
+        # all of them resolved: open again
+        self.bulk("toggle_resolved", resolved="all")
+        self.assertFalse(Event.objects.filter(resolved_at__isnull=False).exists())
+        # by id too ("All events")
+        ids = list(Event.objects.values_list("pk", flat=True))
+        self.client.post(reverse("console:events_bulk"), {"action": "toggle_resolved", "ids": ids},
+                         headers={"HX-Request": "true"})
+        self.assertEqual(Event.objects.filter(resolved_at__isnull=False).count(), 2)
+
     def test_one_event_resolved_and_opened_again_from_its_drawer(self):
         event = Event.objects.get()
         url = reverse("console:event", args=(event.pk,))
@@ -310,6 +327,36 @@ class EventsBulkTestCase(ConsoleBase):
         self.assertIn(f'hx-vals=\'{{"ids": "{event.pk}", "shas": ""}}\'', rows)
         rows = self.client.get(reverse("console:events"), {"view": "blocked", "rows": "now"}).content.decode()
         self.assertIn(f'"shas": "{SHA_A}", "resolved": "open"', rows)
+        # all its events resolved: the row of the app opens them again
+        Event.objects.update(resolved_at=timezone.now())
+        rows = self.client.get(reverse("console:events"), {"view": "blocked", "resolved": "resolved",
+                                                           "rows": "now"}).content.decode()
+        self.assertIn(f'hx-post="{reverse("console:events_reopen")}"', rows)
+        self.assertIn(f'"shas": "{SHA_A}", "resolved": "resolved"', rows)
+        self.client.post(reverse("console:events_reopen"), {"shas": SHA_A, "resolved": "resolved"},
+                         headers={"HX-Request": "true"})
+        self.assertIsNone(Event.objects.get().resolved_at)
+
+    def test_the_rows_show_the_status(self):
+        other = self.make_event(file_name="tool", **SIGNED)
+        url = reverse("console:events")
+        rows = self.client.get(url, {"rows": "now"}).content.decode()
+        self.assertIn("2 open", rows)
+        self.assertNotIn('class="resolved"', rows)
+        Event.objects.filter(pk=other.pk).update(resolved_at=timezone.now(), resolved_by=self.admin)
+        rows = self.client.get(url, {"rows": "now", "q": "", "resolved": ["open", "resolved"]}).content.decode()
+        self.assertIn("1 open", rows)
+        self.assertIn("1 resolved", rows)
+        # all of them resolved: the row is greyed
+        Event.objects.update(resolved_at=timezone.now())
+        rows = self.client.get(url, {"rows": "now", "q": "", "resolved": "resolved"}).content.decode()
+        self.assertIn('class="resolved"', rows)
+        rows = self.client.get(url, {"view": "all", "rows": "now", "q": "", "resolved": "resolved"}).content.decode()
+        self.assertEqual(rows.count('class="resolved"'), 2)
+        self.assertIn("by admin", rows)
+        Event.objects.filter(pk=other.pk).update(resolved_by=None)
+        rows = self.client.get(url, {"view": "all", "rows": "now", "q": "", "resolved": "resolved"}).content.decode()
+        self.assertIn("automatically: a rule allows it", rows)
 
     def test_resolving_one_event_needs_the_permission(self):
         event = Event.objects.get()
@@ -319,6 +366,8 @@ class EventsBulkTestCase(ConsoleBase):
         self.assertNotContains(self.client.get(reverse("console:event", args=(event.pk,))), "Mark resolved")
         self.assertEqual(self.client.post(reverse("console:events_resolve"), {"ids": event.pk}).status_code, 403)
         self.assertEqual(self.client.post(reverse("console:events_reopen"), {"ids": event.pk}).status_code, 403)
+        self.assertEqual(self.client.post(reverse("console:events_toggle_resolved"), {"ids": event.pk}).status_code,
+                         403)
 
     def test_an_unknown_action(self):
         self.assertEqual(self.bulk("delete", htmx=False).status_code, 302)

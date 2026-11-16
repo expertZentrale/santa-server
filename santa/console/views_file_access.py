@@ -102,6 +102,7 @@ def file_access_rule_form(request, pk=None):
             return drawer_done(request, "console:file_access_rules")
     return render_drawer(request, "console/file_access/form.html", "console/file_access/drawer_form.html", {
         "form": form, "formset": formset, "rule": rule, "can_change": can_change,
+        "profile_groups": affected_groups(rule) if rule else [],
     })
 
 

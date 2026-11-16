@@ -222,7 +222,8 @@ def events(request):
                             placeholder=gettext("File, signing ID, SHA-256, Mac, user…"))}
     deferred = defer_rows(request)
     if view == "all":
-        queryset, context["sort"] = sort_by(request, events.select_related("machine", "group"), EVENT_COLUMNS,
+        queryset, context["sort"] = sort_by(request, events.select_related("machine", "group", "resolved_by"),
+                                            EVENT_COLUMNS,
                                             "-time")
         page = None if deferred else paginate(request, queryset)
     else:
@@ -248,7 +249,9 @@ def blocked_apps(events):
                   .annotate(file_name=Max("file_name"), file_path=Max("file_path"),
                             block_count=Count("id", filter=Q(decision__startswith="BLOCK_")),
                             signing_id=Max("signing_id"), team_id=Max("team_id"),
-                            event_count=Count("id"), machine_count=Count("machine", distinct=True),
+                            event_count=Count("id"), open_count=Count("id", filter=Q(resolved_at__isnull=True)),
+                            resolved_count=Count("id", filter=Q(resolved_at__isnull=False)),
+                            machine_count=Count("machine", distinct=True),
                             user_count=Count("executing_user", distinct=True),
                             last_seen=Max("execution_time"), last_pk=Max("id")))
 
@@ -351,7 +354,8 @@ def event_updates(request):
     context = {"max_pk": max_pk, "view": request.GET.get("view", "blocked"), "params": request.GET,
                "app_filters": app_filters(request)}
     if context["view"] == "all":
-        context["events"] = list(new.select_related("machine", "group").order_by("-pk")[:UPDATE_ROWS_LIMIT])
+        context["events"] = list(new.select_related("machine", "group", "resolved_by")
+                                 .order_by("-pk")[:UPDATE_ROWS_LIMIT])
     else:
         shas = list(new.filter(NEEDS_RULE).values_list("file_sha256", flat=True).distinct())
         rows = []
@@ -735,16 +739,29 @@ def events_unignore(request):
     return _list_done(request)
 
 
-@staff_required
-@require_POST
-def events_resolve(request):
-    require_perms(request, "view_event", "change_event")
+def _resolve(request, events):
     count = 0
-    for chunk in chunked(event.pk for event in selected_events(request) if event.resolved_at is None):
+    for chunk in chunked(event.pk for event in events if event.resolved_at is None):
         count += Event.objects.filter(pk__in=chunk, resolved_at__isnull=True).update(
             resolved_at=timezone.now(), resolved_by=request.user)
     messages.success(request, ngettext("%(count)s event marked as resolved.", "%(count)s events marked as resolved.",
                                        count) % {"count": count})
+
+
+def _reopen(request, events):
+    count = 0
+    for chunk in chunked(event.pk for event in events if event.resolved_at is not None):
+        count += Event.objects.filter(pk__in=chunk, resolved_at__isnull=False).update(
+            resolved_at=None, resolved_by=None, resolution_rule=None)
+    messages.success(request, ngettext("%(count)s event is open again.", "%(count)s events are open again.",
+                                       count) % {"count": count})
+
+
+@staff_required
+@require_POST
+def events_resolve(request):
+    require_perms(request, "view_event", "change_event")
+    _resolve(request, selected_events(request))
     return _list_done(request)
 
 
@@ -753,12 +770,21 @@ def events_resolve(request):
 def events_reopen(request):
     """Resolved events open again (resolved by mistake, or by a rule that no longer allows them)"""
     require_perms(request, "view_event", "change_event")
-    count = 0
-    for chunk in chunked(event.pk for event in selected_events(request) if event.resolved_at is not None):
-        count += Event.objects.filter(pk__in=chunk, resolved_at__isnull=False).update(
-            resolved_at=None, resolved_by=None, resolution_rule=None)
-    messages.success(request, ngettext("%(count)s event is open again.", "%(count)s events are open again.",
-                                       count) % {"count": count})
+    _reopen(request, selected_events(request))
+    return _list_done(request)
+
+
+@staff_required
+@require_POST
+def events_toggle_resolved(request):
+    """The selection of the list: an open event in it → the open ones are resolved; all of them resolved already →
+    they are open again. Never both at once: a mixed selection would otherwise flip in two directions."""
+    require_perms(request, "view_event", "change_event")
+    events = selected_events(request)
+    if any(event.resolved_at is None for event in events):
+        _resolve(request, events)
+    else:
+        _reopen(request, events)
     return _list_done(request)
 
 
@@ -773,8 +799,9 @@ def _list_done(request):
     return redirect(safe_next(request, "console:events"))
 
 
-BULK_ACTIONS = {"create_rules": events_create_rules, "resolve": events_resolve, "ignore": events_ignore,
-                "unignore": events_unignore}
+# "resolve": a list loaded before the toggle still sends it
+BULK_ACTIONS = {"create_rules": events_create_rules, "toggle_resolved": events_toggle_resolved,
+                "resolve": events_resolve, "ignore": events_ignore, "unignore": events_unignore}
 
 
 @staff_required

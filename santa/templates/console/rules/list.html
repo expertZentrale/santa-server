@@ -3,6 +3,7 @@
 {% block content %}
 <div class="page-head">
   <h1>{% translate "Execution rules" %}</h1>
+  {% translate "A Mac takes the rule of the narrowest scope: Mac before group before global; on the same scope, block wins over allow. The Macs get changes at their next sync. Tags are only labels for this list." as help %}{% include "console/_help.html" with text=help %}
   <div class="actions">
     {# the list and the export need the same permission (view_rule) #}
     {% url 'console:rules_export' as export_url %}<a class="button" href="{{ export_url }}{% querystring page=None %}" download data-download hx-boost="false">{% translate "Export CSV" %}</a>

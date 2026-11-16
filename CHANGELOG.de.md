@@ -6,6 +6,38 @@
 
 ## [Unreleased]
 
+### Hinzugefügt
+
+- **Standardansicht für alle.** Administratoren legen fest, womit sich eine Liste für alle Benutzer öffnet: *Als
+  Standard für alle verwenden* unter *Ansichten* macht die aktuellen Filter, die Sortierung und die Spalten zum
+  *Standard* der Liste. Eine eigene Standardansicht eines Benutzers hat weiter Vorrang; *Eingebaute Voreinstellung
+  für alle* hebt sie auf. Die Rolle „Santa admins“ erhält die Berechtigung.
+
+### Geändert
+
+- **Gruppenkonfiguration: bei jeder Synchronisierung oder im Profil.** Das Gruppenformular trennt die Einstellungen,
+  die die Macs bei jeder Synchronisierung erhalten, von denen, die nur im Konfigurationsprofil stehen; jeder Abschnitt
+  ist mit *Jede Synchronisierung* oder *Profil* markiert. Der Profilteil sagt, dass eine Änderung ein neu
+  heruntergeladenes und im MDM ersetztes Profil braucht.
+- **Dateizugriffsregeln als statisch markiert.** Formular und Liste sagen, dass die Regeln nur über das Profil der
+  Gruppen auf die Macs kommen, und eine bestehende Regel nennt die Gruppen, in deren Profil sie steht.
+- **Status der Ereignisse in den Listen.** *Alle Ereignisse* zeigt *offen* oder *erledigt* (wann und von wem im
+  Tooltip), *Blockierte Apps* hat eine Spalte *Status* mit den offenen und erledigten Ereignissen; erledigte Zeilen
+  sind ausgegraut.
+- **Hilfe der Listen.** Das ⓘ von *Blockierte Apps* erklärt, wie die Ereignisse zusammengefasst werden (eine Zeile pro
+  Binary, nur die Ereignisse der Filter); *Alle Ereignisse*, *Ausführungsregeln* und *Zugriffsanfragen* haben eine
+  eigene.
+- **Erledigt umschalten.** In der Leiste einer Auswahl heißt *Als erledigt markieren* jetzt *Erledigt umschalten*:
+  Offene Ereignisse der Auswahl werden als erledigt markiert; sind alle schon erledigt, werden sie wieder geöffnet.
+  Das Menü einer blockierten App bietet *Wieder öffnen*, wenn alle ihre Ereignisse erledigt sind, wie schon Menü und
+  Seitenleiste eines Ereignisses.
+
+### Behoben
+
+- **Ansichten mit denselben Filtern.** Ansichten, die sich nur in ihren Spalten unterscheiden (angezeigt, ausgeblendet,
+  zusammengeführt), bringen beim Auswählen jetzt jeweils ihre eigenen Spalten mit, auch neben *Standard*. Bisher zeigte
+  die Liste immer die erste Ansicht mit denselben Filtern, und die Spalten änderten sich nicht.
+
 ## [0.15.0] - 2026-11-16
 
 ### Hinzugefügt

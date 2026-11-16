@@ -30,6 +30,7 @@ urlpatterns = [
     path("events/bulk/", views_events.events_bulk, name="events_bulk"),
     path("events/resolve/", views_events.events_resolve, name="events_resolve"),
     path("events/reopen/", views_events.events_reopen, name="events_reopen"),
+    path("events/toggle-resolved/", views_events.events_toggle_resolved, name="events_toggle_resolved"),
     path("events/ignore/", views_events.events_ignore, name="events_ignore"),
     path("events/unignore/", views_events.events_unignore, name="events_unignore"),
     path("events/packages/", views_event_packages.events_packages, name="events_packages"),
