@@ -6,7 +6,7 @@
 
 ## [Unreleased]
 
-## [0.15.0] - 2026-11-13
+## [0.15.0] - 2026-11-16
 
 ### Hinzugefügt
 
@@ -38,6 +38,10 @@
 - **Der Mac-Filter zeigt die anderen Macs sofort.** Nach der Wahl eines Macs wieder geöffnet, listet der Filter die
   gewählten Macs und die ersten anderen sofort, ohne auf seine Suche zu warten, und fragt bei jedem Öffnen neu. Der
   Besitzer eines Macs steht unter seinem Namen, bei allen Macs gleich.
+- **Ruhigere Protokolle.** Die Zustandsprüfungen und Metrikabrufe (`/health`, `/ready`, `/metrics`) schreiben nicht
+  mehr bei jedem Aufruf eine Zeile ins Protokoll, nur noch, wenn sie fehlschlagen. `LOG_LEVEL` (Standard `INFO`,
+  z. B. `WARNING` oder `ERROR`) legt fest, wie viel der Server protokolliert, `GUNICORN_ACCESS_LOG=false` schaltet
+  die Zeile je Anfrage ab.
 
 ### Behoben
 
@@ -71,6 +75,9 @@
   eine andere Zeile bei offener Seitenleiste ging im Browserverlauf einen Schritt zu weit zurück: Die Liste wurde
   neu geladen, an einer anderen Scrollposition. Jetzt bleibt die Liste, wo sie ist, und der Doppelklick öffnet die
   andere Zeile.
+- **Listen auf dem Handy.** In den Karten der Listen stehen Spaltenname und Wert auf einer Höhe, die Zahlen der
+  blockierten Apps (Blockierungen, Macs, Benutzer) sind wie die übrigen Werte linksbündig, und die unter einer
+  anderen angezeigten Spalten (Pfad, Team ID, Kommentar, E-Mail …) erscheinen wieder, umbrochen statt gekürzt.
 
 ## [0.14.0] - 2026-11-11
 

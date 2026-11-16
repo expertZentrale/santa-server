@@ -49,6 +49,35 @@ class GunicornConfTestCase(SimpleTestCase):
                 load_conf({name: value})
             self.assertIn(name, str(raised.exception.code))
 
+    def test_logging(self):
+        conf = load_conf({})
+        self.assertEqual((conf.accesslog, conf.loglevel), ("-", "info"))
+        conf = load_conf({"GUNICORN_ACCESS_LOG": "false", "LOG_LEVEL": "WARNING"})
+        self.assertEqual((conf.accesslog, conf.loglevel), (None, "warning"))
+        with self.assertRaises(SystemExit) as raised:
+            load_conf({"LOG_LEVEL": "loud"})
+        self.assertIn("LOG_LEVEL", str(raised.exception.code))
+
+    def access_lines(self, path, status):
+        from gunicorn.config import Config
+        config = Config()
+        config.set("accesslog", "-")
+        logger = load_conf({}).SyncTokenRedactingLogger(config)
+        environ = {"REQUEST_METHOD": "GET", "RAW_URI": path, "PATH_INFO": path, "SERVER_PROTOCOL": "HTTP/1.1"}
+        response = SimpleNamespace(status=status, sent=2, headers=[])
+        with patch.object(logger.access_log, "info") as info:
+            logger.access(response, SimpleNamespace(headers=[]), environ, SimpleNamespace(seconds=0, microseconds=1))
+        return info.call_count
+
+    def test_the_probes_answering_fine_are_not_in_the_access_log(self):
+        for path in ("/health", "/ready", "/metrics", "/metrics/"):
+            with self.subTest(path=path):
+                self.assertEqual(self.access_lines(path, "200 OK"), 0)
+        # a failing probe and every other request still are
+        self.assertEqual(self.access_lines("/ready", "503 Service Unavailable"), 1)
+        self.assertEqual(self.access_lines("/console/", "200 OK"), 1)
+        self.assertEqual(self.access_lines("/healthy", "200 OK"), 1)
+
 
 WORKER = """
 from prometheus_client import Counter

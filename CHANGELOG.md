@@ -6,7 +6,7 @@
 
 ## [Unreleased]
 
-## [0.15.0] - 2026-11-13
+## [0.15.0] - 2026-11-16
 
 ### Added
 
@@ -35,6 +35,9 @@
 - **The Mac filter shows the other Macs right away.** Opened again after a Mac was chosen, the filter lists the
   chosen Macs and the first others at once, without waiting for its search, and asks again every time it opens.
   The owner of a Mac is shown below its name, the same for every Mac.
+- **Quieter logs.** The health checks and metric scrapes (`/health`, `/ready`, `/metrics`) no longer write a line
+  to the log each time, only when they fail. `LOG_LEVEL` (default `INFO`; e.g. `WARNING` or `ERROR`) sets how much
+  the server logs, `GUNICORN_ACCESS_LOG=false` turns off the line per request.
 
 ### Fixed
 
@@ -64,6 +67,9 @@
   the list scrolled back to where it was when the drawer opened. And a double-click on another row while the drawer
   was open went one step too far back in the browser history: the list loaded again, at another scroll position.
   The list now stays where it is, and the double-click opens the other row.
+- **Lists on phones.** In the cards of the lists, the column name and its value are on the same line, the counts
+  of the blocked apps (blocks, Macs, users) are left-aligned like the other values, and the columns shown under
+  another one (path, Team ID, comment, e-mail, …) are shown again, wrapped instead of cut off.
 
 ## [0.14.0] - 2026-11-11
 

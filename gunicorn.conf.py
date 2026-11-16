@@ -10,7 +10,7 @@ import sys
 
 from gunicorn.glogging import Logger
 
-from santa.log_redaction import RedactSyncTokens, redact_sync_path
+from santa.log_redaction import RedactSyncTokens, is_quiet_request, redact_sync_path
 
 
 def env_int(name, default, minimum=1):
@@ -24,6 +24,22 @@ def env_int(name, default, minimum=1):
     if number is None or number < minimum:
         sys.exit(f"{name} must be a whole number >= {minimum}, not {value!r}")
     return number
+
+
+def env_bool(name, default):
+    value = os.environ.get(name, "").strip()
+    return default if not value else value.lower() in ("1", "true", "yes", "on")
+
+
+LOG_LEVELS = ("debug", "info", "warning", "error", "critical")
+
+
+def env_log_level():
+    """LOG_LEVEL, as santa_server/settings.py reads it for the Django loggers"""
+    value = os.environ.get("LOG_LEVEL", "").strip().lower() or "info"
+    if value not in LOG_LEVELS:
+        sys.exit(f"LOG_LEVEL must be one of {', '.join(LOG_LEVELS)}, not {value!r}")
+    return value
 
 
 bind = "0.0.0.0:8000"
@@ -45,17 +61,26 @@ worker_tmp_dir = "/dev/shm"
 # managed with signals by the platform
 control_socket_disable = True
 
-accesslog = "-"
+# the error log of gunicorn (worker starts, timeouts) at the level of the server's own logs
+loglevel = env_log_level()
+# one line per request; the probes and scrapes that answer fine are left out (SyncTokenRedactingLogger.access)
+accesslog = "-" if env_bool("GUNICORN_ACCESS_LOG", True) else None
 # the PID of the worker as <pid> (to find a restarted one) and the duration in ms
 access_log_format = '%(p)s %(h)s %(u)s %(t)s "%(r)s" %(s)s %(b)s %(M)sms "%(a)s"'
 
 
 class SyncTokenRedactingLogger(Logger):
-    """The sync URLs contain the token of the group, a secret: never in the access or error log"""
+    """The sync URLs contain the token of the group, a secret: never in the access or error log. The probes and
+    scrapes that answer fine don't get a line either."""
 
     def setup(self, cfg):
         super().setup(cfg)
         self.error_log.addFilter(RedactSyncTokens())
+
+    def access(self, resp, req, environ, request_time):
+        if is_quiet_request(environ.get("PATH_INFO"), getattr(resp, "status", "")):
+            return
+        super().access(resp, req, environ, request_time)
 
     def atoms(self, resp, req, environ, request_time):
         atoms = super().atoms(resp, req, environ, request_time)

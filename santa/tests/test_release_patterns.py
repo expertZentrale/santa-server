@@ -17,7 +17,7 @@ from django.test import RequestFactory, SimpleTestCase, TestCase, override_setti
 from django.urls import reverse
 from django.utils import timezone
 
-from santa.log_redaction import RedactSyncTokens, redact_sync_path
+from santa.log_redaction import QuietProbes, RedactSyncTokens, redact_sync_path
 from santa.models import Policy, ReleaseSource, ReleaseVersion, Rule, RuleType
 from santa.progress import Progress, progress_for, read_progress
 from santa.releases import (
@@ -687,6 +687,16 @@ class RedactionTestCase(SimpleTestCase):
                                    ("/sync/SeCrEt/postflight/ABC",), None)
         self.assertTrue(RedactSyncTokens().filter(record))
         self.assertEqual(record.getMessage(), "Not Found: /sync/***/postflight/ABC")
+
+    def test_runserver_leaves_out_the_probes_answering_fine(self):
+        def record(request_line, status):
+            return logging.LogRecord("django.server", logging.INFO, __file__, 1, '"%s" %s %s',
+                                     (request_line, status, 2), None)
+
+        self.assertFalse(QuietProbes().filter(record("GET /health HTTP/1.1", "200")))
+        self.assertFalse(QuietProbes().filter(record("GET /metrics?x=1 HTTP/1.1", 200)))
+        self.assertTrue(QuietProbes().filter(record("GET /ready HTTP/1.1", "503")))
+        self.assertTrue(QuietProbes().filter(record("GET /console/ HTTP/1.1", "200")))
 
     def test_the_gunicorn_access_log(self):
         from gunicorn.config import Config

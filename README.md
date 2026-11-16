@@ -93,6 +93,8 @@ Das Image (`santa_server/settings.py`) wird über Umgebungsvariablen konfigurier
 | `GUNICORN_WORKER_CLASS` | | Standard `gthread`; `sync` nur mit einem Thread je Worker |
 | `GUNICORN_TIMEOUT` | | Standard `120` Sekunden ohne Lebenszeichen, bevor ein Worker neu gestartet wird |
 | `GUNICORN_MAX_REQUESTS` | | Standard `1000`: ein Worker wird nach 1000 bis 1100 Anfragen ersetzt (zufällig bis +10 %), `0` = nie |
+| `GUNICORN_ACCESS_LOG` | | Standard `true`: eine Zeile je Anfrage auf stdout; `/health`, `/ready` und `/metrics` nur, wenn sie fehlschlagen. `false` schaltet das Zugriffsprotokoll ab |
+| `LOG_LEVEL` | | Standard `INFO`; `WARNING` oder `ERROR` für weniger Ausgabe (Server und gunicorn), `DEBUG` für mehr. Unabhängig von `DEBUG` |
 
 Für Einstellungen, die keine Variablen sind, oder Werte, die ein Secret Store in eine Datei schreibt: Legen Sie
 `santa_server/settings_local.py` mit `from .settings import *` und Ihren Änderungen an, binden Sie sie in den
@@ -874,6 +876,8 @@ The image (`santa_server/settings.py`) is configured with environment variables:
 | `GUNICORN_WORKER_CLASS` | | default `gthread`; `sync` only with one thread per worker |
 | `GUNICORN_TIMEOUT` | | default `120` seconds without a heartbeat before a worker is restarted |
 | `GUNICORN_MAX_REQUESTS` | | default `1000`: a worker is replaced after 1000 to 1100 requests (randomly up to +10 %), `0` = never |
+| `GUNICORN_ACCESS_LOG` | | default `true`: one line per request on stdout; `/health`, `/ready` and `/metrics` only when they fail. `false` turns the access log off |
+| `LOG_LEVEL` | | default `INFO`; `WARNING` or `ERROR` for less output (server and gunicorn), `DEBUG` for more. Independent of `DEBUG` |
 
 For settings that aren't variables, or values rendered into a file by a secret store: create
 `santa_server/settings_local.py` with `from .settings import *` and your overrides, mount it into the container and
