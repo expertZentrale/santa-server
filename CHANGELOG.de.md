@@ -37,6 +37,14 @@
 - **Ansichten mit denselben Filtern.** Ansichten, die sich nur in ihren Spalten unterscheiden (angezeigt, ausgeblendet,
   zusammengeführt), bringen beim Auswählen jetzt jeweils ihre eigenen Spalten mit, auch neben *Standard*. Bisher zeigte
   die Liste immer die erste Ansicht mit denselben Filtern, und die Spalten änderten sich nicht.
+- **gunicorn-Einstellungen im Einstellungsmodul.** `GUNICORN_ACCESS_LOG`, `LOG_LEVEL` und die übrigen
+  `GUNICORN_*`-Werte (Worker, Threads, Worker-Klasse, Timeout, maximale Anfragen) wirken jetzt auch, wenn das
+  Deployment sie in seinem eigenen Einstellungsmodul setzt (`DJANGO_SETTINGS_MODULE`, beliebiger Name), nicht nur
+  als Umgebungsvariablen des Containers. Bisher ignorierte gunicorn sie dort, z. B. blieb das Zugriffsprotokoll an.
+  Ein nach `from santa_server.settings import *` gesetztes `LOG_LEVEL` gilt auch für die eigenen Logs des Servers.
+  `METRICS_ENABLED` muss weiterhin eine Umgebungsvariable sein (im Modul: `os.environ` vor dem Import);
+  `manage.py check` warnt, wenn es zu spät gesetzt wird, und die gunicorn-Worker folgen den Metriken, die Django
+  tatsächlich geladen hat.
 
 ## [0.15.0] - 2026-11-16
 

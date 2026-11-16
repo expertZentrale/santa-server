@@ -33,6 +33,13 @@
 - **Views with the same filters.** Views that differ only in their columns (shown, hidden, merged) now each bring
   their own columns when chosen, also next to *Standard*. Before, the list always showed the first view with the same
   filters, and the columns did not change.
+- **gunicorn settings in the settings module.** `GUNICORN_ACCESS_LOG`, `LOG_LEVEL` and the other `GUNICORN_*`
+  values (workers, threads, worker class, timeout, max requests) now also take effect when the deployment sets them
+  in its own settings module (`DJANGO_SETTINGS_MODULE`, any name), not only as environment variables of the
+  container. Before, gunicorn ignored them there, e.g. the access log stayed on. `LOG_LEVEL` set after
+  `from santa_server.settings import *` also applies to the server's own logs. `METRICS_ENABLED` still has to be an
+  environment variable (in the module: `os.environ` before the import); `manage.py check` warns when it is set
+  too late, and the gunicorn workers follow the metrics Django actually loaded.
 
 ## [0.15.0] - 2026-11-16
 

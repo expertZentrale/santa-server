@@ -25,6 +25,19 @@ def env_bool(name, default=False):
     return default if value is None else value.lower() in ("1", "true", "yes", "on")
 
 
+def env_int(name, default, minimum=1):
+    value = env(name)
+    if value is None:
+        return default
+    try:
+        number = int(value)
+    except ValueError:
+        number = None
+    if number is None or number < minimum:
+        raise ImproperlyConfigured(f"{name} must be a whole number >= {minimum}, not {value!r}")
+    return number
+
+
 def env_list(name, default=()):
     value = env(name)
     return list(default) if value is None else [item.strip() for item in value.split(",") if item.strip()]
@@ -46,14 +59,21 @@ if env_bool("TRUST_X_FORWARDED_PROTO"):
     USE_X_FORWARDED_HOST = True
 SESSION_COOKIE_SECURE = CSRF_COOKIE_SECURE = env_bool("SECURE_COOKIES", not DEBUG)
 
-# the level of the server's logs (gunicorn.conf.py reads the same variable for gunicorn's error log)
-LOG_LEVEL = env("LOG_LEVEL", "INFO").upper()
+# the web server (gunicorn.conf.py reads these settings, so a settings module of the deployment can set them too)
+GUNICORN_WORKER_CLASS = env("GUNICORN_WORKER_CLASS", GUNICORN_WORKER_CLASS)  # noqa: F405
+GUNICORN_WORKERS = env_int("GUNICORN_WORKERS", GUNICORN_WORKERS)  # noqa: F405
+GUNICORN_THREADS = env_int("GUNICORN_THREADS", GUNICORN_THREADS)  # noqa: F405
+GUNICORN_TIMEOUT = env_int("GUNICORN_TIMEOUT", GUNICORN_TIMEOUT)  # noqa: F405
+GUNICORN_MAX_REQUESTS = env_int("GUNICORN_MAX_REQUESTS", GUNICORN_MAX_REQUESTS, minimum=0)  # noqa: F405
+GUNICORN_ACCESS_LOG = env_bool("GUNICORN_ACCESS_LOG", GUNICORN_ACCESS_LOG)  # noqa: F405
+
+# the level of the server's logs (santa.log_config applies it), also of gunicorn's
+LOG_LEVEL = env("LOG_LEVEL", LOG_LEVEL).upper()  # noqa: F405
 if LOG_LEVEL not in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
     raise ImproperlyConfigured("LOG_LEVEL must be one of DEBUG, INFO, WARNING, ERROR, CRITICAL")
-# also on the handler: the "django" loggers have a level of their own (INFO) and would pass it otherwise
-LOGGING["root"]["level"] = LOGGING["handlers"]["console"]["level"] = LOG_LEVEL  # noqa: F405
 
-# Prometheus metrics on /metrics; off: nothing is collected, the plain backends are used
+# Prometheus metrics on /metrics; off: nothing is collected, the plain backends are used. Decided here, while the
+# settings are imported: only the environment variable can change it (santa.checks warns otherwise)
 METRICS_ENABLED = env_bool("METRICS_ENABLED", True)
 if not METRICS_ENABLED:
     INSTALLED_APPS = [app for app in INSTALLED_APPS if app != "django_prometheus"]  # noqa: F405

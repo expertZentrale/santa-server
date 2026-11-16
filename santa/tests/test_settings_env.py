@@ -32,6 +32,9 @@ class ImageSettingsTestCase(SimpleTestCase):
 
     def test_defaults(self):
         settings = load_settings(REQUIRED)
+        self.assertEqual((settings.GUNICORN_WORKERS, settings.GUNICORN_THREADS, settings.GUNICORN_WORKER_CLASS,
+                          settings.GUNICORN_TIMEOUT, settings.GUNICORN_MAX_REQUESTS, settings.GUNICORN_ACCESS_LOG,
+                          settings.LOG_LEVEL), (2, None, "gthread", 120, 1000, True, "INFO"))
         self.assertFalse(settings.DEBUG)
         self.assertTrue(settings.SESSION_COOKIE_SECURE)
         self.assertFalse(hasattr(settings, "SECURE_PROXY_SSL_HEADER"))
@@ -64,3 +67,24 @@ class ImageSettingsTestCase(SimpleTestCase):
                          ("client", "https://idp.example.com/token"))
         self.assertEqual(settings.OIDC_USERNAME_CLAIMS, ["email", "sub"])
         self.assertEqual(settings.OIDC_ROLES_CLAIM, "realm_access.roles")
+
+
+class WebServerSettingsTestCase(SimpleTestCase):
+    """The values of gunicorn are Django settings: gunicorn.conf.py reads them, also from a deployment's module"""
+
+    def test_variables(self):
+        settings = load_settings({**REQUIRED, "GUNICORN_WORKERS": "4", "GUNICORN_THREADS": "8",
+                                  "GUNICORN_WORKER_CLASS": "sync", "GUNICORN_TIMEOUT": "300",
+                                  "GUNICORN_MAX_REQUESTS": "0", "GUNICORN_ACCESS_LOG": "false",
+                                  "LOG_LEVEL": "warning"})
+        self.assertEqual((settings.GUNICORN_WORKERS, settings.GUNICORN_THREADS, settings.GUNICORN_WORKER_CLASS,
+                          settings.GUNICORN_TIMEOUT, settings.GUNICORN_MAX_REQUESTS, settings.GUNICORN_ACCESS_LOG,
+                          settings.LOG_LEVEL), (4, 8, "sync", 300, 0, False, "WARNING"))
+        # applied when Django sets up logging (santa.log_config), not copied into LOGGING here
+        self.assertEqual(settings.LOGGING_CONFIG, "santa.log_config.configure")
+
+    def test_invalid_values(self):
+        for name, value in [("GUNICORN_WORKERS", "abc"), ("GUNICORN_WORKERS", "0"), ("GUNICORN_THREADS", "-1"),
+                            ("GUNICORN_MAX_REQUESTS", "-5"), ("LOG_LEVEL", "loud")]:
+            with self.subTest(name=name, value=value), self.assertRaisesMessage(ImproperlyConfigured, name):
+                load_settings({**REQUIRED, name: value})
