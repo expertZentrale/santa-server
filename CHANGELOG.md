@@ -71,6 +71,10 @@
   of the blocked apps (blocks, Macs, users) are left-aligned like the other values, and the columns shown under
   another one (path, Team ID, comment, e-mail, …) are shown again, wrapped instead of cut off.
 
+### Dependencies
+
+- Container image: Python 3.15 on Alpine 3.24 (`python:3.15-alpine3.24`, before Python 3.14 on Alpine 3.23).
+
 ## [0.14.0] - 2026-11-11
 
 ### Added
