@@ -6,6 +6,14 @@
 
 ## [Unreleased]
 
+### Behoben
+
+- **gunicorn-Einstellungen im Einstellungsmodul.** `GUNICORN_ACCESS_LOG`, `LOG_LEVEL` und die übrigen
+  `GUNICORN_*`-Werte (Worker, Threads, Worker-Klasse, Timeout, maximale Anfragen) sowie `METRICS_ENABLED` für die
+  Metriken der Worker wirken jetzt auch, wenn das Deployment sie in seinem eigenen Einstellungsmodul setzt
+  (`DJANGO_SETTINGS_MODULE`, beliebiger Name), nicht nur als Umgebungsvariablen des Containers. Bisher ignorierte
+  gunicorn sie dort, z. B. blieb das Zugriffsprotokoll an.
+
 ## [0.15.0] - 2026-11-16
 
 ### Hinzugefügt

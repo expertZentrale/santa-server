@@ -148,6 +148,17 @@ RELEASE_UNPACK_TIMEOUT = 120
 # packages a package rule with "allow the dependencies" resolves per release, the direct and the indirect ones
 RELEASE_MAX_DEPENDENCIES = 200
 
+# The web server of the image (gunicorn.conf.py reads them from these settings): workers, threads (None = 1 for the
+# sync worker, else 4), worker class, timeout in seconds, requests until a worker is replaced (0 = never), the line
+# per request, and the level of the logs (also of Django's)
+GUNICORN_WORKERS = 2
+GUNICORN_THREADS = None
+GUNICORN_WORKER_CLASS = "gthread"
+GUNICORN_TIMEOUT = 120
+GUNICORN_MAX_REQUESTS = 1000
+GUNICORN_ACCESS_LOG = True
+LOG_LEVEL = "INFO"
+
 # the messages are also kept for their user: the bell in the top bar of the console (message_storage.py)
 MESSAGE_STORAGE = "santa.message_storage.NotificationStorage"
 

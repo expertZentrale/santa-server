@@ -6,6 +6,14 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **gunicorn settings in the settings module.** `GUNICORN_ACCESS_LOG`, `LOG_LEVEL` and the other `GUNICORN_*`
+  values (workers, threads, worker class, timeout, max requests), and `METRICS_ENABLED` for the metrics of the
+  workers, now also take effect when the deployment sets them in its own settings module (`DJANGO_SETTINGS_MODULE`,
+  any name), not only as environment variables of the container. Before, gunicorn ignored them there, e.g. the
+  access log stayed on.
+
 ## [0.15.0] - 2026-11-16
 
 ### Added

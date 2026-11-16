@@ -9,60 +9,89 @@ from unittest.mock import patch
 
 from django.test import SimpleTestCase, override_settings
 
+from santa.tests.test_settings_env import REQUIRED
+from santa_server import settings_common
+
 CONF_FILE = Path(__file__).resolve().parents[2] / "gunicorn.conf.py"
 
 
-def load_conf(environ):
-    """Import gunicorn.conf.py (the gunicorn settings of the image) with these environment variables only"""
+def load_conf(**values):
+    """Import gunicorn.conf.py (the gunicorn settings of the image) with these Django settings, as settings_common.py
+    has them otherwise: the values of a test environment don't count"""
+    defaults = {name: getattr(settings_common, name) for name in GUNICORN_SETTINGS}
     spec = importlib.util.spec_from_file_location("gunicorn_conf_under_test", CONF_FILE)
     module = importlib.util.module_from_spec(spec)
-    with patch.dict("os.environ", environ, clear=True):
+    with override_settings(**{**defaults, **values}):
         spec.loader.exec_module(module)
     return module
 
 
+GUNICORN_SETTINGS = ("GUNICORN_WORKERS", "GUNICORN_THREADS", "GUNICORN_WORKER_CLASS", "GUNICORN_TIMEOUT",
+                     "GUNICORN_MAX_REQUESTS", "GUNICORN_ACCESS_LOG", "LOG_LEVEL")
+
+
 class GunicornConfTestCase(SimpleTestCase):
     def test_defaults(self):
-        conf = load_conf({})
+        conf = load_conf()
         self.assertEqual((conf.worker_class, conf.workers, conf.threads, conf.timeout),
                          ("gthread", 2, 4, 120))
         self.assertEqual((conf.max_requests, conf.max_requests_jitter), (1000, 100))
         self.assertEqual(conf.bind, "0.0.0.0:8000")
         self.assertTrue(conf.control_socket_disable)
 
-    def test_overrides(self):
-        conf = load_conf({"GUNICORN_WORKERS": "1", "GUNICORN_THREADS": "8", "GUNICORN_TIMEOUT": "300",
-                          "GUNICORN_MAX_REQUESTS": "0"})
+    def test_the_values_come_from_the_settings(self):
+        # set as variables or in the settings module of the deployment, whatever its name: both end up here
+        conf = load_conf(GUNICORN_WORKERS=1, GUNICORN_THREADS=8, GUNICORN_TIMEOUT=300, GUNICORN_MAX_REQUESTS=0)
         self.assertEqual((conf.workers, conf.threads, conf.timeout), (1, 8, 300))
         # 0 turns the recycling off, without jitter
         self.assertEqual((conf.max_requests, conf.max_requests_jitter), (0, 0))
 
     def test_sync_worker_gets_one_thread(self):
         # gunicorn would switch to gthread with more than one thread
-        self.assertEqual(load_conf({"GUNICORN_WORKER_CLASS": "sync"}).threads, 1)
-        self.assertEqual(load_conf({"GUNICORN_WORKER_CLASS": "sync", "GUNICORN_THREADS": "3"}).threads, 3)
+        self.assertEqual(load_conf(GUNICORN_WORKER_CLASS="sync").threads, 1)
+        self.assertEqual(load_conf(GUNICORN_WORKER_CLASS="sync", GUNICORN_THREADS=3).threads, 3)
 
     def test_invalid_values_stop_the_start(self):
-        for name, value in [("GUNICORN_WORKERS", "abc"), ("GUNICORN_WORKERS", "0"), ("GUNICORN_THREADS", "-1"),
-                            ("GUNICORN_MAX_REQUESTS", "-5")]:
+        # what settings.py doesn't check: values a settings module sets itself
+        for name, value in [("GUNICORN_WORKERS", "2"), ("GUNICORN_WORKERS", 0), ("GUNICORN_THREADS", -1),
+                            ("GUNICORN_MAX_REQUESTS", -5), ("GUNICORN_TIMEOUT", True), ("LOG_LEVEL", "loud")]:
             with self.subTest(name=name, value=value), self.assertRaises(SystemExit) as raised:
-                load_conf({name: value})
+                load_conf(**{name: value})
             self.assertIn(name, str(raised.exception.code))
 
     def test_logging(self):
-        conf = load_conf({})
+        conf = load_conf()
         self.assertEqual((conf.accesslog, conf.loglevel), ("-", "info"))
-        conf = load_conf({"GUNICORN_ACCESS_LOG": "false", "LOG_LEVEL": "WARNING"})
+        conf = load_conf(GUNICORN_ACCESS_LOG=False, LOG_LEVEL="WARNING")
         self.assertEqual((conf.accesslog, conf.loglevel), (None, "warning"))
-        with self.assertRaises(SystemExit) as raised:
-            load_conf({"LOG_LEVEL": "loud"})
-        self.assertIn("LOG_LEVEL", str(raised.exception.code))
+
+    def test_the_settings_module_of_the_deployment(self):
+        """A settings module under any name that sets the variables before it imports settings.py: gunicorn gets
+        them (before, gunicorn.conf.py read only the environment of the process)"""
+        directory = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, directory, True)
+        Path(directory, "deploy_conf_under_test.py").write_text(
+            "import os\n"
+            "os.environ['GUNICORN_ACCESS_LOG'] = 'false'\n"
+            "os.environ['GUNICORN_WORKERS'] = '3'\n"
+            "os.environ['LOG_LEVEL'] = 'ERROR'\n"
+            "from santa_server.settings import *\n")
+        script = ("import importlib.util; spec = importlib.util.spec_from_file_location('c', %r); "
+                  "m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m); "
+                  "print(m.accesslog, m.workers, m.loglevel)" % str(CONF_FILE))
+        environ = {**os.environ, **REQUIRED, "DJANGO_SETTINGS_MODULE": "deploy_conf_under_test",
+                   "PYTHONPATH": os.pathsep.join([directory, str(CONF_FILE.parent)])}
+        for name in GUNICORN_SETTINGS:
+            environ.pop(name, None)
+        result = subprocess.run([sys.executable, "-c", script], env=environ, capture_output=True, text=True,
+                                cwd=CONF_FILE.parent)
+        self.assertEqual(result.stdout.split(), ["None", "3", "error"], result.stderr)
 
     def access_lines(self, path, status):
         from gunicorn.config import Config
         config = Config()
         config.set("accesslog", "-")
-        logger = load_conf({}).SyncTokenRedactingLogger(config)
+        logger = load_conf().SyncTokenRedactingLogger(config)
         environ = {"REQUEST_METHOD": "GET", "RAW_URI": path, "PATH_INFO": path, "SERVER_PROTOCOL": "HTTP/1.1"}
         response = SimpleNamespace(status=status, sent=2, headers=[])
         with patch.object(logger.access_log, "info") as info:
@@ -96,15 +125,16 @@ class MultiprocessMetricsTestCase(SimpleTestCase):
         directory = os.path.join(self.directory, "metrics")
         os.makedirs(directory)
         Path(directory, "counter_1.db").write_bytes(b"old")
-        conf = load_conf({})
-        with patch.dict("os.environ", {}, clear=True), patch.object(conf, "METRICS_DIR", directory):
+        conf = load_conf()
+        with patch.dict("os.environ", {}, clear=True), patch.object(conf, "METRICS_DIR", directory), \
+                override_settings(METRICS_ENABLED=True):
             conf.on_starting(None)
             self.assertEqual(os.environ["PROMETHEUS_MULTIPROC_DIR"], directory)
         self.assertEqual(os.listdir(directory), [])
 
     def test_no_directory_without_metrics(self):
-        conf = load_conf({})
-        with patch.dict("os.environ", {"METRICS_ENABLED": "false"}, clear=True):
+        conf = load_conf()
+        with patch.dict("os.environ", {}, clear=True), override_settings(METRICS_ENABLED=False):
             conf.on_starting(None)
             self.assertNotIn("PROMETHEUS_MULTIPROC_DIR", os.environ)
 
@@ -116,7 +146,7 @@ class MultiprocessMetricsTestCase(SimpleTestCase):
     def test_the_export_sums_the_workers_also_after_they_ended(self):
         self.run_worker(2)
         self.run_worker(3)
-        conf = load_conf({})
+        conf = load_conf()
         with patch.dict("os.environ", {"PROMETHEUS_MULTIPROC_DIR": self.directory}):
             # a worker that ended: its counters stay in the sum
             conf.child_exit(None, SimpleNamespace(pid=os.getpid()))

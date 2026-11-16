@@ -3,6 +3,7 @@
 To set more (e.g. from a file rendered by a secret store), create santa_server/settings_local.py with
 `from .settings import *` and your overrides, and set DJANGO_SETTINGS_MODULE=santa_server.settings_local.
 """
+import copy
 import os
 from urllib.parse import urlsplit
 
@@ -23,6 +24,19 @@ def env(name, default=None, required=False):
 def env_bool(name, default=False):
     value = env(name)
     return default if value is None else value.lower() in ("1", "true", "yes", "on")
+
+
+def env_int(name, default, minimum=1):
+    value = env(name)
+    if value is None:
+        return default
+    try:
+        number = int(value)
+    except ValueError:
+        number = None
+    if number is None or number < minimum:
+        raise ImproperlyConfigured(f"{name} must be a whole number >= {minimum}, not {value!r}")
+    return number
 
 
 def env_list(name, default=()):
@@ -46,12 +60,22 @@ if env_bool("TRUST_X_FORWARDED_PROTO"):
     USE_X_FORWARDED_HOST = True
 SESSION_COOKIE_SECURE = CSRF_COOKIE_SECURE = env_bool("SECURE_COOKIES", not DEBUG)
 
-# the level of the server's logs (gunicorn.conf.py reads the same variable for gunicorn's error log)
-LOG_LEVEL = env("LOG_LEVEL", "INFO").upper()
+# the web server (gunicorn.conf.py reads these settings, so a settings module of the deployment can set them too)
+GUNICORN_WORKER_CLASS = env("GUNICORN_WORKER_CLASS", GUNICORN_WORKER_CLASS)  # noqa: F405
+GUNICORN_WORKERS = env_int("GUNICORN_WORKERS", GUNICORN_WORKERS)  # noqa: F405
+GUNICORN_THREADS = env_int("GUNICORN_THREADS", GUNICORN_THREADS)  # noqa: F405
+GUNICORN_TIMEOUT = env_int("GUNICORN_TIMEOUT", GUNICORN_TIMEOUT)  # noqa: F405
+GUNICORN_MAX_REQUESTS = env_int("GUNICORN_MAX_REQUESTS", GUNICORN_MAX_REQUESTS, minimum=0)  # noqa: F405
+GUNICORN_ACCESS_LOG = env_bool("GUNICORN_ACCESS_LOG", GUNICORN_ACCESS_LOG)  # noqa: F405
+
+# the level of the server's logs, also of gunicorn's
+LOG_LEVEL = env("LOG_LEVEL", LOG_LEVEL).upper()  # noqa: F405
 if LOG_LEVEL not in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
     raise ImproperlyConfigured("LOG_LEVEL must be one of DEBUG, INFO, WARNING, ERROR, CRITICAL")
-# also on the handler: the "django" loggers have a level of their own (INFO) and would pass it otherwise
-LOGGING["root"]["level"] = LOGGING["handlers"]["console"]["level"] = LOG_LEVEL  # noqa: F405
+# also on the handler: the "django" loggers have a level of their own (INFO) and would pass it otherwise. A copy:
+# the dict of settings_common stays as it is
+LOGGING = copy.deepcopy(LOGGING)  # noqa: F405
+LOGGING["root"]["level"] = LOGGING["handlers"]["console"]["level"] = LOG_LEVEL
 
 # Prometheus metrics on /metrics; off: nothing is collected, the plain backends are used
 METRICS_ENABLED = env_bool("METRICS_ENABLED", True)

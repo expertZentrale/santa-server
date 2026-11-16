@@ -98,7 +98,9 @@ Das Image (`santa_server/settings.py`) wird über Umgebungsvariablen konfigurier
 
 Für Einstellungen, die keine Variablen sind, oder Werte, die ein Secret Store in eine Datei schreibt: Legen Sie
 `santa_server/settings_local.py` mit `from .settings import *` und Ihren Änderungen an, binden Sie sie in den
-Container ein und setzen Sie `DJANGO_SETTINGS_MODULE=santa_server.settings_local`.
+Container ein und setzen Sie `DJANGO_SETTINGS_MODULE=santa_server.settings_local`. Der Name ist frei wählbar. Alle
+Variablen der Tabelle lassen sich auch dort setzen, auch die von gunicorn (`GUNICORN_*`, `LOG_LEVEL`): gunicorn
+liest sie aus demselben Einstellungsmodul.
 
 ### Betrieb
 
@@ -881,7 +883,8 @@ The image (`santa_server/settings.py`) is configured with environment variables:
 
 For settings that aren't variables, or values rendered into a file by a secret store: create
 `santa_server/settings_local.py` with `from .settings import *` and your overrides, mount it into the container and
-set `DJANGO_SETTINGS_MODULE=santa_server.settings_local`.
+set `DJANGO_SETTINGS_MODULE=santa_server.settings_local`. Any name works. Every variable of the table can be set
+there as well, also those of gunicorn (`GUNICORN_*`, `LOG_LEVEL`): gunicorn reads them from the same settings module.
 
 ### Deployment
 
