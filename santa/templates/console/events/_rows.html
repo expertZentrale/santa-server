@@ -7,7 +7,7 @@
     {# the button: the customizable select can shorten the chosen action ("…") and keep its arrow on a phone #}
     <select name="action" aria-label="{% translate 'Action' %}"><button><selectedcontent></selectedcontent></button>
       <option value="create_rules">{% translate "Create rules…" %}</option>
-      <option value="resolve">{% translate "Mark resolved" %}</option>
+      {% if perms.santa.change_event %}<option value="toggle_resolved" title="{% translate 'Open events in the selection: they are marked as resolved. All of them resolved already: they are open again.' %}">{% translate "Toggle resolved" %}</option>{% endif %}
       {% if perms.santa.add_ignoredapp and perms.santa.change_ignoredapp %}<option value="ignore">{% translate "Ignore…" %}</option>{% endif %}
       {% if perms.santa.delete_ignoredapp and "ignored" in resolved or perms.santa.delete_ignoredapp and resolved == "all" %}<option value="unignore">{% translate "Stop ignoring" %}</option>{% endif %}
     </select>
@@ -28,11 +28,11 @@
     <table class="table" data-table="blocked-apps" data-merged="app-path:program teamid:signing-id-team-id last-mac:last-at ignore-note:rules" data-live-updates="{% url 'console:event_updates' %}{% querystring page=None sort=None %}" data-after="{{ max_pk }}"{% if live_insert %} data-insert{% endif %}>
       <thead><tr><th class="select"><input type="checkbox" id="select-all-events-all" data-select-all aria-label="{% translate 'Select all' %}"></th>
         {% sort_th _("Program") "program" "grow" %}<th data-col="app-path">{% translate "Path" %}</th><th data-col="signing-id-team-id">{% translate "Signing ID" %}</th><th data-col="teamid">{% translate "Team ID" %}</th>{% sort_th _("Blocks") "blocks" "num" %}
-        {% sort_th _("Macs") "macs" "num" %}{% sort_th _("Users") "users" "num" %}{% sort_th _("Last seen") "last" %}<th data-col="last-at">{% translate "Last user" %}</th><th data-col="last-mac">{% translate "Last Mac" %}</th><th data-col="rules">{% translate "Rules / requests" %}</th><th data-col="ignore-note">{% translate "Ignore comment" %}</th><th class="row-actions" aria-label="{% translate 'Actions' %}"></th></tr></thead>
+        {% sort_th _("Macs") "macs" "num" %}{% sort_th _("Users") "users" "num" %}<th data-col="status">{% translate "Status" %}</th>{% sort_th _("Last seen") "last" %}<th data-col="last-at">{% translate "Last user" %}</th><th data-col="last-mac">{% translate "Last Mac" %}</th><th data-col="rules">{% translate "Rules / requests" %}</th><th data-col="ignore-note">{% translate "Ignore comment" %}</th><th class="row-actions" aria-label="{% translate 'Actions' %}"></th></tr></thead>
       <tbody>
       {% for row in page %}{% include "console/events/_app_row.html" %}
       {% empty %}
-        {% if skeleton %}{% include "console/_skeleton_rows.html" with columns=14 select=True %}{% else %}<tr class="empty"><td colspan="14">{% translate "Nothing blocked for these filters." %}</td></tr>{% endif %}
+        {% if skeleton %}{% include "console/_skeleton_rows.html" with columns=15 select=True %}{% else %}<tr class="empty"><td colspan="15">{% translate "Nothing blocked for these filters." %}</td></tr>{% endif %}
       {% endfor %}
       </tbody>
     </table>

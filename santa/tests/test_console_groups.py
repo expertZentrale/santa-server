@@ -8,6 +8,7 @@ from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
 
+from santa.console.forms import GroupForm
 from santa.models import Group, Machine, Policy, Rule, RuleType, SavedFilter
 from santa.rules import GROUP, MACHINE, effective_rules
 
@@ -31,10 +32,11 @@ class ConsoleGroupsTestCase(ConsoleBase):
         response = self.client.get(reverse("console:groups"), {"q": "", "mode": "MONITOR"})
         self.assertEqual([group.name for group in response.context["page"]], ["Development"])
         # the default view
-        SavedFilter.objects.create(user=self.admin, page="groups", name="Monitor", query="q=&mode=MONITOR",
-                                   is_default=True)
+        saved = SavedFilter.objects.create(user=self.admin, page="groups", name="Monitor", query="q=&mode=MONITOR",
+                                           is_default=True)
         self.assertRedirects(self.client.get(reverse("console:groups")),
-                             reverse("console:groups") + "?q=&mode=MONITOR", fetch_redirect_response=False)
+                             reverse("console:groups") + f"?q=&mode=MONITOR&saved_view={saved.pk}",
+                             fetch_redirect_response=False)
 
     def test_create_and_change_group(self):
         data = {"name": "Design", "client_mode": "LOCKDOWN", "batch_size": 100, "full_sync_interval": 600,
@@ -231,6 +233,39 @@ class ConsoleGroupsTestCase(ConsoleBase):
         self.assertContains(response, "Remounting needs at least one flag.")
         self.dev.refresh_from_db()
         self.assertEqual(self.dev.branding_company_logo, "")
+
+
+class GroupFormPartsTestCase(ConsoleBase):
+    """The group form shows what the Macs get at every sync and what only the configuration profile carries"""
+
+    def test_every_field_in_one_section_and_the_profile_ones_in_the_profile_part(self):
+        form = GroupForm(instance=self.dev)
+        sections = form.sections()
+        names = [name for _title, _help, _kind, section_names in GroupForm.SECTIONS for name in section_names]
+        self.assertEqual(sorted(names), sorted([*GroupForm.Meta.fields, *GroupForm.LOGO_LABELS]))
+        self.assertEqual(len(names), len(set(names)))
+        profile = {name for _title, _help, kind, section_names in GroupForm.SECTIONS if kind == "profile"
+                   for name in section_names}
+        # the fields whose change needs a new profile (profile_changed), and the file access rules
+        self.assertEqual(profile, {name for name in names if name.startswith(GroupForm.PROFILE_FIELDS)}
+                         | {"inherit_file_access_rules"})
+        kinds = [section["kind"] for section in sections]
+        # general first, then the sync part, then the profile part
+        self.assertEqual(kinds, sorted(kinds, key=[None, "sync", "profile"].index))
+
+    def test_the_page_names_the_parts(self):
+        response = self.client.get(reverse("console:group", args=(self.dev.pk,)))
+        self.assertContains(response, 'id="part-sync"')
+        self.assertContains(response, 'id="part-profile"')
+        self.assertContains(response, "download the profile again and replace it in your MDM")
+        self.assertContains(response, reverse("console:group_profile", args=(self.dev.pk,)), count=2)
+        # who may not see the sync URL doesn't get the profile either
+        viewer = User.objects.create_user("viewer", is_staff=True)
+        viewer.user_permissions.add(*Permission.objects.filter(codename="view_group"))
+        self.client.force_login(viewer)
+        response = self.client.get(reverse("console:group", args=(self.dev.pk,)))
+        self.assertContains(response, 'id="part-profile"')
+        self.assertNotContains(response, reverse("console:group_profile", args=(self.dev.pk,)))
 
 
 class GroupCountsTestCase(ConsoleBase):

@@ -1489,7 +1489,7 @@ class LogoField:
     def __init__(self, form, name):
         self.name = name
         self.label = form.LOGO_LABELS[name]
-        self.help_text = Group._meta.get_field(name).help_text
+        self.help_text = form.LOGO_HELP[name]
         self.file = form[f"{name}_file"]
         self.url = form[f"{name}_url"]
         self.clear = form[f"{name}_clear"]
@@ -1538,35 +1538,56 @@ class GroupForm(forms.ModelForm):
             "on_start_usb_options": _("Removable media mounted when Santa starts"),
             "branding_company_name": _("Company name"),
         }
+        # without "Profile only." / "Sent at every sync.": the section of the field says it (the admin keeps the
+        # texts of the model)
+        help_texts = {
+            "event_detail_url": _("Button in the block dialog, e.g. a ticket form of your IT team. Santa replaces "
+                                  "placeholders such as %file_sha%, %machine_id% and %username% (see the Santa "
+                                  "docs)."),
+            "event_detail_text": _("e.g. “Request access”."),
+            "unknown_block_message": _("Shown when an unknown binary is blocked in lockdown, e.g. how to ask for "
+                                       "access. Empty = Santa's default text."),
+            "banned_block_message": _("Shown when a binary is blocked by a block rule. Empty = Santa's default "
+                                      "text."),
+            "enable_bad_signature_protection": _("Also block, in monitor mode, the binaries with a broken code "
+                                                 "signature (tampered files), unless a rule allows them."),
+            "file_access_block_message": _("Shown when a file access rule blocks, unless the rule has its own "
+                                           "message. Empty = Santa's default text."),
+            "on_start_usb_options": _("What Santa does with the removable media already mounted when it starts, "
+                                      "when they are blocked or remounted. Empty = leave them."),
+            "branding_company_name": _("Your company name in the dialogs and messages of Santa, only when no "
+                                       "company logo is set."),
+        }
 
     LOGO_LABELS = {"branding_company_logo": _("Company logo"),
                    "branding_company_logo_dark": _("Company logo in dark mode")}
+    LOGO_HELP = {"branding_company_logo": _("Shown instead of the company name: with a logo, Santa doesn't show "
+                                            "the name (84 × 28 points)."),
+                 "branding_company_logo_dark": _("The logo in dark mode. Empty = the logo above.")}
 
-    # the sections of the form page, like in the admin
+    # the sections of the form page: the general ones, then what the Macs get at every sync, then what only the
+    # configuration profile carries (kind "sync" / "profile": a badge on the section, profile.html explains it)
     SECTIONS = [
-        (_("Group"), "", ("name", "description")),
+        (_("Group"), "", None, ("name", "description")),
         (_("Based on"), _("A group based on another one takes its settings, except the ones it sets itself (Own "
-                          "value). Its own rules win over the inherited ones, so it can allow more."),
-         ("parent", "inherit_rules", "inherit_file_access_rules")),
-        (_("Santa configuration"), _("Sent to the Macs at every sync."), ("client_mode", "batch_size",
-                                                                           "full_sync_interval")),
+                          "value). Its own rules win over the inherited ones, so it can allow more."), None,
+         ("parent", "inherit_rules")),
+        (_("Santa configuration"), "", "sync", ("client_mode", "batch_size", "full_sync_interval")),
         (_("Path regexes"), _("One per line, combined into one regex for Santa. Rules always win over the regexes."),
-         ("allowed_path_regex", "blocked_path_regex")),
-        (_("Advanced"), "", ("enable_transitive_rules", "enable_bundles", "enable_all_event_upload")),
-        (_("Removable media"), _("Sent at every sync, no profile change needed."),
+         "sync", ("allowed_path_regex", "blocked_path_regex")),
+        (_("Advanced"), "", "sync", ("enable_transitive_rules", "enable_bundles", "enable_all_event_upload")),
+        (_("Removable media"), "", "sync",
          ("removable_media_action", "removable_media_remount_flags", "encrypted_removable_media_action",
           "encrypted_removable_media_remount_flags")),
-        (_("File access"), _("The file access rules are in the profile of the group, the override is sent at "
-                             "every sync."),
-         ("override_file_access_action",)),
-        (_("Block dialog"), _("Sent at every sync, no profile change needed."),
-         ("event_detail_url", "event_detail_text")),
-        (_("Profile only"), _("Only in the .mobileconfig: after a change, download the profile again and "
-                              "replace it in your MDM."),
-         ("unknown_block_message", "banned_block_message", "enable_bad_signature_protection",
-          "file_access_block_message", "on_start_usb_options")),
-        (_("Branding"), _("Profile only, Santa 2026.1 and newer: after a change, download the profile again and "
-                          "replace it in your MDM. The company name only shows without a logo."),
+        (_("Block dialog"), "", "sync", ("event_detail_url", "event_detail_text")),
+        (_("File access override"), _("Overrides the action of all file access rules of the profile, e.g. to "
+                                      "switch them off at once."), "sync", ("override_file_access_action",)),
+        (_("File access rules"), _("The rules of the File access tab that apply to the group, as FileAccessPolicy "
+                                   "in the profile."), "profile", ("inherit_file_access_rules",)),
+        (_("Block messages"), "", "profile",
+         ("unknown_block_message", "banned_block_message", "file_access_block_message")),
+        (_("Protection"), "", "profile", ("enable_bad_signature_protection", "on_start_usb_options")),
+        (_("Branding"), _("Santa 2026.1 and newer. The company name only shows without a logo."), "profile",
          ("branding_company_name", "branding_company_logo", "branding_company_logo_dark")),
     ]
     # a change of these needs a new profile (the logo fields: _file, _url, _clear)
@@ -1695,7 +1716,7 @@ class GroupForm(forms.ModelForm):
         return values
 
     def sections(self):
-        """[(title, help text, blocks)]: a block is one setting (inherited or not) or a field of the group"""
+        """[{title, help_text, kind, blocks}]: a block is one setting (inherited or not) or a field of the group"""
         inherited = set(self.inherited_settings())
         has_parent = bool(self["parent"].value())
         setting_of = {name: key for key, names in Group.INHERITABLE_SETTINGS.items() for name in names}
@@ -1704,7 +1725,7 @@ class GroupForm(forms.ModelForm):
             return (LogoField(self, name) if name in self.LOGO_LABELS else self[name], self.SHOW_WHEN.get(name, ""))
 
         sections = []
-        for title, help_text, names in self.SECTIONS:
+        for title, help_text, kind, names in self.SECTIONS:
             blocks = []
             for name in names:
                 key = setting_of.get(name)
@@ -1716,7 +1737,8 @@ class GroupForm(forms.ModelForm):
                     blocks[-1].update({
                         "override": self[f"override_{key}"], "inherits": key in inherited, "has_parent": has_parent,
                         "values": self.inherited_values(key) if self.instance.parent_id else []})
-            sections.append((title, help_text, blocks))
+            sections.append({"title": title, "help_text": help_text, "kind": kind, "blocks": blocks,
+                             "file_access": "inherit_file_access_rules" in names})
         return sections
 
     def saved_parent(self):

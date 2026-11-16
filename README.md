@@ -359,6 +359,9 @@ Ansicht zur Standardansicht der Liste (oder *Standard*, die eingebauten Filter u
 dem Menü damit, und *Alle zurücksetzen* führt dorthin zurück. Das Speichern-Symbol einer Ansicht überschreibt sie mit
 dem aktuellen Filter und den Spalten; nach Änderungen an der zuletzt geöffneten Ansicht bietet das Menü direkt
 *Änderungen in „…“ speichern* an.
+Administratoren (Berechtigung für die Standardansichten der Listen) legen mit *Als Standard für alle verwenden* fest,
+womit sich eine Liste für alle öffnet: Filter, Sortierung und Spalten werden zu *Standard*. Eine eigene Standardansicht
+eines Benutzers hat Vorrang; *Eingebaute Voreinstellung für alle* hebt die Festlegung wieder auf.
 *Spalten* blendet Spalten ein und aus. Eine Spaltenüberschrift lässt sich vor oder hinter eine andere ziehen, oder auf
 die Mitte einer anderen: Dann stehen ihre Werte unter deren Werten (wie der Kommentar unter dem Identifier), die
 Überschrift nennt beide, und ihr × zeigt die Spalte wieder einzeln. Im Menü *Spalten* geht dasselbe mit ↑/↓ und
@@ -1126,6 +1129,9 @@ bottom of the window; Esc clears it.
 list (or *Standard*, the built-in filters and columns): the list opens with it from the menu, and *Reset all* goes back
 to it. The save icon of a view overwrites it with the current filter and columns; after changes to the view opened
 last, the menu offers *Save changes to "…"* right away.
+Administrators (permission for the default views of the lists) set what a list opens with for everyone with *Use as
+default for everyone*: the filters, sort order and columns become *Standard*. A user's own default view wins;
+*Built-in default for everyone* removes it again.
 *Columns* shows and hides columns. Drag a column header before or after another one, or onto the middle of another
 one: its values are then shown below that one's (as the comment below the identifier), the header names both, and its
 × shows the column on its own again. In the *Columns* menu ↑/↓ and *Under …* do the same, also with the keyboard and

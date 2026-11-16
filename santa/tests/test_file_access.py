@@ -34,6 +34,16 @@ class FileAccessTestCase(ConsoleBase):
         self.ssh.processes.create(signing_id="com.openssh.ssh", platform_binary=True)
         self.ssh.processes.create(team_id="EQHXZ8M8AV", signing_id="com.google.Chrome")
 
+    def test_the_form_says_it_is_in_the_profile(self):
+        response = self.client.get(reverse("console:file_access_rule_add"))
+        self.assertContains(response, "Static in the configuration profile.")
+        self.assertNotContains(response, "In the profiles of:")
+        response = self.client.get(reverse("console:file_access_rule", args=(self.ssh.pk,)))
+        self.assertContains(response, "In the profiles of:")
+        self.assertContains(response, f'href="{reverse("console:group", args=(self.dev.pk,))}"')
+        self.assertContains(self.client.get(reverse("console:file_access_rules")),
+                            "Static in the configuration profile.")
+
     def test_validation(self):
         rule = FileAccessRule(name="SSH keys", paths="relative/path\n/Users/**/x",
                               block_message="x" * 2049)

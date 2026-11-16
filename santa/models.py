@@ -1380,6 +1380,29 @@ class SavedFilter(models.Model):
         return f"{self.name} ({self.page}, {self.user})"
 
 
+class ListDefault(models.Model):
+    """The view a console list opens with for everyone, set by an administrator: its filters, sort order and columns.
+
+    A user's own default view (SavedFilter.is_default) wins over it; without either, the list's built-in defaults.
+    """
+
+    # the list (filters.FILTER_PAGES), one default each
+    page = models.CharField(max_length=32, unique=True)
+    query = models.TextField(blank=True)
+    # the columns, as SavedFilter.layout
+    layout = models.JSONField(default=dict, blank=True)
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+                                   related_name="+")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["page"]
+        verbose_name = "list default"
+
+    def __str__(self):
+        return self.page
+
+
 class SignInGroup(models.Model):
     """A group of the OpenID Connect provider (in OIDC_GROUPS_CLAIM) whose members get roles at sign-in.
 

@@ -1,7 +1,8 @@
 {% extends "console/base.html" %}{% load console i18n %}
 {% block title %}{% translate "Requests" %}{% endblock %}
 {% block content %}
-<div class="page-head"><h1>{% translate "Access requests" %}</h1></div>
+<div class="page-head"><h1>{% translate "Access requests" %}</h1>
+  {% translate "Users ask on the request form for a blocked app, a package or something else. Approving creates or extends the rule (for a package: the package rule) for the Macs of the requester, groups or all Macs; the Macs get it at their next sync. By default only the pending requests are shown." as help %}{% include "console/_help.html" with text=help %}</div>
 {% include "console/widgets/_filter_bar.html" %}
 {% include "console/_rows.html" %}
 {% endblock %}

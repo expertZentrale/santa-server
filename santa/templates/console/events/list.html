@@ -4,7 +4,7 @@
 {% block content %}
 <div class="page-head">
   <h1>{% translate "Events" %}</h1>
-  {% translate "Blocked apps: the programs Santa blocked, and the unknown ones that ran in monitor mode (lockdown would block them). One row per program." as help %}{% include "console/_help.html" with text=help %}
+  {% if view == "all" %}{% translate "Every event the Macs uploaded. Resolved: a rule allows the binary now (resolved automatically) or someone marked it. Events of ignored apps only show with the status Ignored." as help %}{% else %}{% translate "A summary of the events: one row per binary (SHA-256), over all Macs and users, with the blocks and the unknown programs that ran in monitor mode (lockdown would block them). Only the events of the filters count, by default those of the last 7 days that are open. An app disappears when all its events are resolved or it is ignored; a new version of it is a row of its own." as help %}{% endif %}{% include "console/_help.html" with text=help %}
   <div class="tabs" role="tablist">
     <a href="?view=blocked" role="tab" {% if view != "all" %}class="active" aria-selected="true"{% endif %}>{% translate "Blocked apps" %}</a>
     <a href="?view=all" role="tab" {% if view == "all" %}class="active" aria-selected="true"{% endif %}>{% translate "All events" %}</a>
