@@ -1,6 +1,9 @@
 {% load i18n %}<form method="post" class="stack" action="{{ request.get_full_path }}"{% if in_drawer %} hx-post="{{ request.get_full_path }}" hx-target="#drawer"{% endif %}>
   {% csrf_token %}
   {% if form.non_field_errors %}<div class="error">{{ form.non_field_errors }}</div>{% endif %}
+  <div class="callout warn"><strong>{% translate "Static in the configuration profile." %}</strong>
+    {% translate "Santa gets file access rules only through the profile of the groups (FileAccessPolicy), never at the sync. After saving, download the profile of these groups again and replace it in your MDM; until then the Macs keep the rules they have." %}
+    {% if rule %}<p class="small">{% if profile_groups %}{% translate "In the profiles of:" %} {% for group in profile_groups %}{% url 'console:group' group.pk as group_url %}<a class="chip small" href="{{ group_url }}" hx-get="{{ group_url }}" hx-target="#drawer">{{ group.name }}</a>{% endfor %}{% else %}{% translate "In no profile yet: it applies to no group." %}{% endif %}</p>{% endif %}</div>
   <fieldset class="plain"{% if not can_change %} disabled{% endif %}>
   <section class="card"><h2>{% translate "Rule" %}</h2>
     {% include "console/_field.html" with field=form.name %}
@@ -33,7 +36,8 @@
       {% include "console/_field.html" with field=form.enable_silent_tty_mode %}
     </div>
   </section>
-  <section class="card"><h2>{% translate "Scope" %}</h2>
+  <section class="card"><h2>{% translate "Scope" %} <span class="badge warn small">{% translate "Profile" %}</span></h2>
+    <p class="help small">{% translate "The profiles that get the rule: of all groups, or of the chosen ones and the groups based on them that inherit file access rules." %}</p>
     {% include "console/_field.html" with field=form.is_global %}
     <div data-hide-when="is_global">{% include "console/_field.html" with field=form.groups %}</div>
   </section>

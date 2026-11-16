@@ -425,16 +425,38 @@
       settings.view = data.id;
       // a view saved before the columns were part of it keeps the columns as they are
       const layout = data.layout || {};
+      if (Array.isArray(layout.order)) copyLayout(settings, layout);
+      saveTableSettings(table, settings);
+    } else if (data.standard) {
+      const layout = data.standard_layout || {};
       if (Array.isArray(layout.order)) {
-        settings.order = layout.order;
-        settings.merged = layout.merged || {};
-        settings.hidden = layout.hidden || [];
-        settings.known = layout.known || layout.order;
+        // the administrators' columns for everyone: once per change of them, then the user's own changes stay
+        if (current === "standard" && settings.standardStamp === data.standard_stamp && chosen !== "standard") return;
+        settings.view = "standard";
+        settings.standardStamp = data.standard_stamp;
+        copyLayout(settings, layout);
+        saveTableSettings(table, settings);
+      } else if (current || chosen === "standard") {
+        ["order", "merged", "hidden", "known", "view", "standardStamp"].forEach((name) => delete settings[name]);
+        saveTableSettings(table, settings);
       }
-      saveTableSettings(table, settings);
-    } else if (data.standard && (current || chosen === "standard")) {
-      ["order", "merged", "hidden", "known", "view"].forEach((name) => delete settings[name]);
-      saveTableSettings(table, settings);
+    }
+  }
+
+  function copyLayout(settings, layout) {
+    settings.order = layout.order;
+    settings.merged = layout.merged || {};
+    settings.hidden = layout.hidden || [];
+    settings.known = layout.known || layout.order;
+  }
+
+  // the columns the administrators set for everyone on this list, or null (the built-in ones)
+  function standardLayout() {
+    try {
+      const layout = JSON.parse(document.getElementById("view-layout")?.textContent || "{}").standard_layout;
+      return Array.isArray(layout?.order) ? layout : null;
+    } catch (error) {
+      return null;
     }
   }
 
@@ -642,8 +664,11 @@
     });
     resetAll.addEventListener("click", () => {
       Object.keys(settings).forEach((name) => delete settings[name]);
+      // back to the columns of "Standard": the administrators' for everyone, else the list's own
+      const standard = table.closest("#drawer") ? null : standardLayout();
+      if (standard) copyLayout(settings, standard);
       saveTableSettings(table, settings);
-      columns.apply(table, columns.defaultLayout(table), texts);
+      columns.apply(table, standard ? storedLayout(table, settings) : columns.defaultLayout(table), texts);
       applyHidden(table, settings);
       labelTables(table);
       renderList();

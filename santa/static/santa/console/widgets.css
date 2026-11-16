@@ -382,3 +382,15 @@ details.dependencies code { overflow-wrap: anywhere; }
 .add-signing-prefix { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; width: 100%; margin: .5rem 0 0; }
 .add-signing-prefix input { flex: 1 1 14rem; min-width: 0; }
 .binaries .add-signing-prefix { width: auto; margin: .25rem 0 0 2.2rem; }
+
+/* A note that must not be missed (e.g. "static in the configuration profile"): a box in the color of its kind */
+.callout { margin: 0 0 1rem; padding: .7rem .9rem; border-radius: var(--radius); border-left: .25rem solid var(--info);
+           background: var(--info-bg); overflow-wrap: anywhere; }
+.callout.warn { border-left-color: var(--warn); background: var(--warn-bg); }
+.callout > :last-child { margin-bottom: 0; }
+.callout a { font-weight: 600; }
+/* The parts of a long form (the group: at every sync / in the configuration profile): a heading between the cards */
+.form-part { margin: 1.5rem 0 0; }
+.form-part-title { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin: 0 0 .35rem; font-size: 1.15rem; }
+.form-part .help { margin: 0 0 .5rem; }
+.card > h2 .badge { vertical-align: .15em; margin-left: .35rem; }

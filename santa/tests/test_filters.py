@@ -2,7 +2,8 @@ import json
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from django.contrib.auth.models import User
+from django.contrib.admin.models import ADDITION, CHANGE, DELETION, LogEntry
+from django.contrib.auth.models import Permission, User
 from django.http import QueryDict
 from django.test import RequestFactory, SimpleTestCase
 from django.urls import resolve, reverse
@@ -17,7 +18,7 @@ from santa.console.filters import (
     filter_query,
     remember_filters,
 )
-from santa.models import AccessRequest, Machine, Policy, ReleaseSource, Rule, RuleType, SavedFilter
+from santa.models import AccessRequest, ListDefault, Machine, Policy, ReleaseSource, Rule, RuleType, SavedFilter
 
 from .test_console import SHA_A, SHA_B, ConsoleBase
 
@@ -56,19 +57,22 @@ class SavedFiltersTestCase(ConsoleBase):
         # without a default: the built-in defaults, a filter used before is not remembered
         self.client.get(url, {"q": "", "scope": "global"})
         self.assertEqual(self.client.get(url).status_code, 200)
-        SavedFilter.objects.create(user=self.admin, page="rules", name="Global", query="q=&scope=global",
-                                   is_default=True)
-        self.assertRedirects(self.client.get(url), f"{url}?q=&scope=global")
-        self.assertRedirects(self.client.get(url, {"q": "x", "reset": "1"}), f"{url}?q=&scope=global")
+        saved = SavedFilter.objects.create(user=self.admin, page="rules", name="Global", query="q=&scope=global",
+                                           is_default=True)
+        # with the view, so the bar shows it (and its columns), not another one with the same filters
+        self.assertRedirects(self.client.get(url), f"{url}?q=&scope=global&saved_view={saved.pk}")
+        self.assertRedirects(self.client.get(url, {"q": "x", "reset": "1"}),
+                             f"{url}?q=&scope=global&saved_view={saved.pk}")
         # Standard: the built-in defaults whatever the default is
         self.assertEqual(self.client.get(url, {"standard": "1"}).status_code, 200)
         # a filter of its own stays
         self.assertEqual(self.client.get(url, {"q": "", "scope": "machines"}).status_code, 200)
         # the tab is kept
         events = reverse("console:events")
-        SavedFilter.objects.create(user=self.admin, page="events-all", name="colima", query="q=colima&view=all",
-                                   is_default=True)
-        self.assertRedirects(self.client.get(events, {"view": "all"}), f"{events}?q=colima&view=all")
+        colima = SavedFilter.objects.create(user=self.admin, page="events-all", name="colima",
+                                            query="q=colima&view=all", is_default=True)
+        self.assertRedirects(self.client.get(events, {"view": "all"}),
+                             f"{events}?q=colima&view=all&saved_view={colima.pk}")
         self.assertEqual(self.client.get(events, {"view": "blocked"}).status_code, 200)
         # another user has their own
         other = User.objects.create_superuser("other", "other@example.com", "pw")
@@ -77,11 +81,11 @@ class SavedFiltersTestCase(ConsoleBase):
         self.assertRedirects(self.client.get(url, {"reset": "1"}), url)
 
     def test_the_default_view_never_redirects_to_another_site(self):
-        SavedFilter.objects.create(user=self.admin, page="rules", name="Global", query="q=x&scope=global",
-                                   is_default=True)
+        saved = SavedFilter.objects.create(user=self.admin, page="rules", name="Global", query="q=x&scope=global",
+                                           is_default=True)
+        location = f"/console/rules/?q=x&scope=global&saved_view={saved.pk}"
         # the path of the request is not used: a // path would be a URL of another host
-        for params, location in (({}, "/console/rules/?q=x&scope=global"),
-                                 ({"reset": "1"}, "/console/rules/?q=x&scope=global")):
+        for params in ({}, {"reset": "1"}):
             request = RequestFactory().get("//evil.example/console/rules/", params)
             request.user = self.admin
             request.resolver_match = resolve(reverse("console:rules"))
@@ -135,10 +139,11 @@ class SavedFiltersTestCase(ConsoleBase):
         # shown with the view, for table.js
         response = self.client.get(url, {"q": "", "scope": "global"})
         self.assertEqual(response.context["bar"]["view_layout"], {"id": saved.pk, "layout": layout,
-                                                                  "standard": False})
+                                                                  "standard": False, "standard_layout": {},
+                                                                  "standard_stamp": ""})
         self.assertContains(response, '<script id="view-layout" type="application/json">')
         self.assertEqual(self.client.get(url, {"standard": "1"}).context["bar"]["view_layout"],
-                         {"id": None, "layout": {}, "standard": True})
+                         {"id": None, "layout": {}, "standard": True, "standard_layout": {}, "standard_stamp": ""})
         # saved again under its name: the new columns
         self.client.post(reverse("save_filter"), {"page": "rules", "name": "Mine", "query": "q=&scope=global",
                                                   "layout": json.dumps({"order": ["type"]})})
@@ -148,6 +153,26 @@ class SavedFiltersTestCase(ConsoleBase):
         self.client.post(reverse("save_filter"), {"page": "rules", "name": "Mine", "query": "q=&scope=global"})
         saved.refresh_from_db()
         self.assertEqual(saved.layout, {})
+
+    def test_views_with_the_same_filters(self):
+        # they differ in their columns: the one chosen is shown, also when "Standard" has the same filters
+        url = reverse("console:rules")
+        first = SavedFilter.objects.create(user=self.admin, page="rules", name="First", query="q=",
+                                           layout={"order": ["type"]})
+        second = SavedFilter.objects.create(user=self.admin, page="rules", name="Second", query="q=",
+                                            layout={"order": ["identifier"]})
+        for params, view in (({"q": "", "saved_view": second.pk}, second), ({"q": "", "saved_view": first.pk}, first),
+                             ({"q": ""}, first), ({"q": "", "saved_view": "999"}, first)):
+            bar = self.client.get(url, params).context["bar"]
+            self.assertEqual((bar["active_view"], bar["view_layout"]["id"]), (view, view.pk))
+            self.assertFalse(bar["standard_active"])
+        for params in ({"standard": "1"}, {"q": "", "saved_view": "standard"}):
+            bar = self.client.get(url, params).context["bar"]
+            self.assertIsNone(bar["active_view"])
+            self.assertTrue(bar["standard_active"])
+        # chosen, but its filters changed since: no view
+        bar = self.client.get(url, {"q": "x", "saved_view": second.pk}).context["bar"]
+        self.assertIsNone(bar["active_view"])
 
     def test_a_view_updated_without_typing_its_name(self):
         saved = SavedFilter.objects.create(user=self.admin, page="rules", name="Mine", query="q=&scope=global")
@@ -224,7 +249,9 @@ class SavedFiltersTestCase(ConsoleBase):
         self.client.post(reverse("save_filter"), {"page": "rules", "name": "Global", "query": "scope=machines"})
         self.assertEqual(SavedFilter.objects.get().query, "scope=machines")
         response = self.client.get(url, {"q": ""})
-        self.assertContains(response, f'<a href="?scope=machines" data-view-choice="{saved.pk}">Global</a>', html=True)
+        self.assertContains(
+            response, f'<a href="?scope=machines&amp;saved_view={saved.pk}" data-view-choice="{saved.pk}">Global</a>',
+            html=True)
         self.assertContains(response, 'id="save-filter-form"')
         # an empty name, the limit
         self.client.post(reverse("save_filter"), {"page": "rules", "name": " ", "query": "q="})
@@ -474,3 +501,59 @@ class SavedFilterPagesTestCase(ConsoleBase):
         self.assertFalse(SavedFilter.objects.exists())
         self.client.post(reverse("save_filter"), {"page": "my-requests", "name": "x", "query": "q="})
         self.assertEqual(list(SavedFilter.objects.values_list("page", flat=True)), ["my-requests"])
+
+
+class ListDefaultTestCase(ConsoleBase):
+    """The default view the administrators set for everyone: a user's own default wins, then theirs, then the
+    built-in defaults"""
+
+    LAYOUT = {"order": ["identifier", "type"], "merged": {}, "hidden": ["created"], "known": ["identifier", "type"]}
+
+    def set_default(self, query="q=&scope=global", layout=None):
+        return self.client.post(reverse("set_list_default"), {
+            "page": "rules", "query": query, "layout": json.dumps(layout or self.LAYOUT),
+            "next": reverse("console:rules")})
+
+    def test_set_and_used_by_everyone(self):
+        url = reverse("console:rules")
+        self.assertRedirects(self.set_default(), url, fetch_redirect_response=False)
+        default = ListDefault.objects.get(page="rules")
+        self.assertEqual((default.query, default.layout, default.updated_by), ("q=&scope=global", self.LAYOUT,
+                                                                              self.admin))
+        self.assertTrue(LogEntry.objects.filter(object_id=str(default.pk), action_flag=ADDITION).exists())
+        self.set_default(query="q=&scope=machines")
+        self.assertTrue(LogEntry.objects.filter(object_id=str(default.pk), action_flag=CHANGE).exists())
+        # another user without a default of their own: the list opens with it, "Standard" is it, with its columns
+        viewer = User.objects.create_user("viewer", is_staff=True)
+        viewer.user_permissions.add(*Permission.objects.filter(codename="view_rule"))
+        self.client.force_login(viewer)
+        self.assertRedirects(self.client.get(url), f"{url}?q=&scope=machines&saved_view=standard")
+        self.assertRedirects(self.client.get(url, {"standard": "1"}), f"{url}?q=&scope=machines&saved_view=standard")
+        bar = self.client.get(url, {"q": "", "scope": "machines"}).context["bar"]
+        self.assertTrue(bar["standard_active"])
+        self.assertEqual(bar["view_layout"]["standard_layout"], self.LAYOUT)
+        self.assertTrue(bar["view_layout"]["standard_stamp"])
+        # without the permission: no buttons, and the views refuse
+        self.assertFalse(bar["can_set_list_default"])
+        self.assertEqual(self.set_default().status_code, 403)
+        self.assertEqual(self.client.post(reverse("clear_list_default"), {"page": "rules"}).status_code, 403)
+        # their own default view wins
+        mine = SavedFilter.objects.create(user=viewer, page="rules", name="Mine", query="q=&scope=global",
+                                          is_default=True)
+        self.assertRedirects(self.client.get(url), f"{url}?q=&scope=global&saved_view={mine.pk}")
+
+    def test_back_to_the_built_in_default(self):
+        url = reverse("console:rules")
+        self.set_default()
+        self.assertTrue(self.client.get(url, {"q": "", "scope": "global"}).context["bar"]["can_set_list_default"])
+        self.client.post(reverse("clear_list_default"), {"page": "rules"})
+        self.assertFalse(ListDefault.objects.exists())
+        self.assertTrue(LogEntry.objects.filter(action_flag=DELETION, object_repr="rules").exists())
+        self.assertEqual(self.client.get(url).status_code, 200)
+        self.assertIsNone(self.client.get(url, {"standard": "1"}).context["bar"]["list_default"])
+
+    def test_only_the_console_lists(self):
+        response = self.client.post(reverse("set_list_default"), {"page": "my-requests", "query": "q="},
+                                    follow=True)
+        self.assertContains(response, "Unknown list.")
+        self.assertFalse(ListDefault.objects.exists())
