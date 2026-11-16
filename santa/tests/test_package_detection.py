@@ -18,6 +18,8 @@ from santa.package_detection import (
     same_version,
     suggest_packages,
 )
+from santa.progress import AlreadyRunning
+from santa.releases import ReleaseError
 
 from .test_console import ConsoleBase
 
@@ -134,6 +136,18 @@ class SuggestTestCase(DetectionBase):
         self.assertNotIn(index_key, [call.args[0] for call in get.call_args_list])
 
 
+def apply_packages(client, data):
+    """Saved (events_packages), then each step as packages.js sends it, one after the other: the response of the
+    result of the binaries (events_packages_verify), or of the form when it wasn't saved"""
+    response = client.post(reverse("console:events_packages"), data)
+    if not response.context or "steps" not in response.context:
+        return response
+    for source, identifier in response.context["steps"]:
+        client.post(reverse("console:events_packages_check"), {"source": source.pk, "identifier": identifier})
+    return client.post(reverse("console:events_packages_verify"), {
+        "ids": response.context["chosen"], "sources": [source.pk for source in response.context["saved_sources"]]})
+
+
 class EventPackagesViewTestCase(DetectionBase):
     def setUp(self):
         super().setUp()
@@ -145,7 +159,7 @@ class EventPackagesViewTestCase(DetectionBase):
         return {"ids": self.ids, "apply": "1", "approve_0": "on", "kind_0": Kind.HOMEBREW_FORMULA,
                 "identifier_0": "redis", "target_0": "new", "new_name": "Datenbanken", "rule_type": RuleType.BINARY,
                 "policy": "ALLOWLIST", "groups": [self.dev.pk], "keep_versions": 3, "keep_unit": "VERSIONS",
-                "resolve": "on", **data}
+                **data}
 
     def fake_sync(self, allowed_shas=()):
         """The check of the package rule: rules for these binaries"""
@@ -168,10 +182,10 @@ class EventPackagesViewTestCase(DetectionBase):
 
     def test_a_new_package_rule_checked_and_verified(self):
         with self.fake_sync([SHA_REDIS]) as sync:
-            response = self.client.post(reverse("console:events_packages"), self.form_data())
+            response = apply_packages(self.client, self.form_data())
         source = ReleaseSource.objects.get(name="Datenbanken")
         self.assertEqual((source.kind, source.identifiers), (Kind.HOMEBREW_FORMULA, ["redis"]))
-        sync.assert_called_once_with(source, progress=ANY, only=None)
+        sync.assert_called_once_with(source, progress=ANY, only=["redis"])
         self.assertContains(response, "✓")
         self.assertContains(response, "✗")
         # only the event whose binary is allowed now is resolved
@@ -184,9 +198,8 @@ class EventPackagesViewTestCase(DetectionBase):
     def test_only_the_chosen_packages_are_verified(self):
         other = self.event("7" * 64, "/Users/x/Downloads", "pw-other")
         with self.fake_sync([SHA_REDIS]):
-            response = self.client.post(reverse("console:events_packages"),
-                                        self.form_data(ids=[*self.ids, other.pk], kind_1=Kind.GITHUB_RELEASE,
-                                                       identifier_1="", target_1="new"))
+            response = apply_packages(self.client, self.form_data(
+                ids=[*self.ids, other.pk], kind_1=Kind.GITHUB_RELEASE, identifier_1="", target_1="new"))
         self.assertContains(response, "redis-server")
         self.assertNotContains(response, "pw-other")
 
@@ -194,13 +207,44 @@ class EventPackagesViewTestCase(DetectionBase):
         target = ReleaseSource.objects.create(name="Brew", kind=Kind.HOMEBREW_FORMULA, identifier="git",
                                               is_global=True)
         with self.fake_sync():
-            self.client.post(reverse("console:events_packages"), self.form_data(
-                identifier_0="redis@7.2", target_0=str(target.pk), resolve=""))
+            apply_packages(self.client, self.form_data(identifier_0="redis@7.2", target_0=str(target.pk)))
         target.refresh_from_db()
         self.assertEqual(target.identifiers, ["git", "redis@7.2"])
         self.assertFalse(ReleaseSource.objects.filter(name="Datenbanken").exists())
         self.assertTrue(LogEntry.objects.filter(object_id=str(target.pk),
                                                 change_message__contains="redis@7.2").exists())
+
+    def test_each_package_checked_by_a_request_of_its_own(self):
+        response = self.client.post(reverse("console:events_packages"), self.form_data(), HTTP_HX_REQUEST="true")
+        # saved, nothing checked yet: the steps are in the drawer
+        source = ReleaseSource.objects.get(name="Datenbanken")
+        self.assertContains(response, "data-package-steps")
+        self.assertContains(response, f'hx-post="{reverse("console:events_packages_check")}"')
+        self.assertContains(response, f'<input type="hidden" name="source" value="{source.pk}">', html=True)
+        self.assertContains(response, f'hx-post="{reverse("console:events_packages_verify")}"')
+        self.assertContains(response, "data-refresh-on-close")
+        check = reverse("console:events_packages_check")
+        with self.fake_sync([SHA_REDIS]):
+            response = self.client.post(check, {"source": source.pk, "identifier": "redis"})
+        self.assertContains(response, "✓")
+        self.assertContains(response, "1 new version (8.10.1)")
+        self.assertNotContains(response, "data-pending")
+        # a failed check: its line says why, the other packages go on
+        with patch("santa.console.views_event_packages.sync_release_source",
+                   side_effect=ReleaseError("SHA-256 mismatch")):
+            response = self.client.post(check, {"source": source.pk, "identifier": "redis"})
+        self.assertContains(response, "✗")
+        self.assertContains(response, "SHA-256 mismatch")
+        # one running already (the scheduled job): it takes the package
+        with patch("santa.console.views_event_packages.run_source_check", side_effect=AlreadyRunning({})):
+            response = self.client.post(check, {"source": source.pk, "identifier": "redis"})
+        self.assertContains(response, "running elsewhere")
+        # only a package of the package rule
+        self.assertEqual(self.client.post(check, {"source": source.pk, "identifier": "git"}).status_code, 404)
+        response = self.client.post(reverse("console:events_packages_verify"),
+                                    {"ids": self.ids, "sources": [source.pk]})
+        self.assertContains(response, "1 of 2 binaries allowed now.")
+        self.assertContains(response, "1 of 2 events resolved.")
 
     def test_already_contained_and_a_wrong_catalog(self):
         target = ReleaseSource.objects.create(name="Brew", kind=Kind.HOMEBREW_FORMULA, identifier="redis",

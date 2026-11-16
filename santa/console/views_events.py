@@ -43,7 +43,7 @@ from .utils import (
     sort_by,
     staff_required,
 )
-from .views_filters import MAX_LOOKUP_VALUES, machine_choices
+from .views_filters import MAX_LOOKUP_VALUES, machine_choices, machine_options
 
 UPDATE_ROWS_LIMIT = 100
 EVENT_COLUMNS = {"time": "execution_time", "decision": "decision", "file": "file_name",
@@ -181,6 +181,7 @@ def event_facets(request, view):
         facets.append(Facet("sha256", gettext("Binary"), kind="fixed", text=f"{sha256[:12]}…"))
     facets += [
         Facet("machine", gettext("Mac"), kind="lookup", choices=machine_choices(params),
+              options=machine_options(params),
               lookup_url=reverse("console:filter_macs"), max_values=MAX_LOOKUP_VALUES),
         Facet("user", gettext("User"), kind="lookup",
               choices=[(user, user) for user in chosen(params, "user")[:MAX_LOOKUP_VALUES]],
@@ -297,7 +298,15 @@ def blocked_app(request, sha256, part):
     if part not in ("events", "macs", "users"):
         raise Http404
     events = filter_events(request, Event.objects.filter(NEEDS_RULE, file_sha256=sha256.lower()))
-    newest = events.order_by("-execution_time").only("file_name", "file_path").first()
+    # the newest first, sorted here: "TOP n ... ORDER BY execution_time" lets SQL Server walk the time index of all
+    # events until it found n of this binary (seconds on a large table); all of the binary through its own index
+    # is fast, as for the Macs and users
+    times = []
+    if part == "events":
+        times = sorted(events.values_list("execution_time", "pk"), reverse=True)
+        newest = Event.objects.only("file_name", "file_path").get(pk=times[0][1]) if times else None
+    else:
+        newest = events.order_by("-execution_time").only("file_name", "file_path").first()
     if newest is None:
         raise Http404
     context = {"sha256": sha256.lower(), "part": part, "newest": newest, "limit": APP_PART_ROWS,
@@ -305,8 +314,10 @@ def blocked_app(request, sha256, part):
                # the filters of the list, for the tabs of the drawer and the link to the whole list
                "query": request.GET.urlencode()}
     if part == "events":
-        context["total"] = events.count()
-        context["rows"] = events.select_related("machine", "group").order_by("-execution_time")[:APP_PART_ROWS]
+        context["total"] = len(times)
+        pks = [pk for _time, pk in times[:APP_PART_ROWS]]
+        context["rows"] = (Event.objects.filter(pk__in=pks).select_related("machine", "group").defer("raw")
+                                .order_by("-execution_time", "-pk"))
     elif part == "macs":
         rows = list(events.values("machine").annotate(count=Count("id"), last_seen=Max("execution_time"))
                     .order_by("-last_seen")[:APP_PART_ROWS])
@@ -355,13 +366,19 @@ def event_updates(request):
 @staff_required
 def event_detail(request, pk):
     require_perms(request, "view_event")
+    return _render_event(request, pk)
+
+
+def _render_event(request, pk, form=None):
+    """The event in the drawer (or as a page); form: the rule form as sent, with its errors"""
     event = get_object_or_404(Event.objects.select_related("machine", "group", "resolution_rule", "resolved_by"),
                               pk=pk)
     same_binary = (Event.objects.select_related("machine").filter(file_sha256=event.file_sha256)
                                 .exclude(pk=event.pk).order_by("-execution_time")[:20])
     template = "console/events/_detail.html" if is_htmx(request) else "console/events/detail.html"
     matches = existing_rules([event]).get(event.file_sha256, [])
-    return render(request, template, {"event": event, "same_binary": same_binary, "form": event_rule_form([[event]]),
+    return render(request, template, {"event": event, "same_binary": same_binary,
+                                      "form": form or event_rule_form([[event]]),
                                       "ignores": ignores_of(event),
                                       "requests": event.access_requests.select_related("requester"),
                                       "matches": matches,
@@ -505,7 +522,8 @@ def event_create_rule(request, pk):
     event = get_object_or_404(Event.objects.select_related("machine", "group"), pk=pk)
     form = event_rule_form([[event]], request.POST)
     if not form.is_valid():
-        messages.error(request, "; ".join(f"{k}: {' '.join(v)}" for k, v in form.errors.items()))
+        # the event again with the form as sent and its errors
+        return _render_event(request, event.pk, form)
     else:
         data = form.cleaned_data
         rule, created = rule_from_event(request.user, event, data["rule_type"], data["policy"], data["scope"],
@@ -513,7 +531,11 @@ def event_create_rule(request, pk):
                                         cel_expr=form.cel_expr_for(event), expires_at=data.get("expires_at"))
         message = gettext("Rule created: %(rule)s.") if created else gettext("Rule updated: %(rule)s.")
         messages.success(request, (message % {"rule": rule}) + " " + gettext("The Macs get it at their next sync."))
-    return redirect(safe_next(request, "console:events"))
+        event.refresh_from_db(fields=["resolved_at"])
+        if event.resolved_at is None:
+            messages.warning(request, gettext("The event stays open: the rule doesn't reach its Mac."))
+    # the event again, resolved: the drawer stays on it, the list behind it shows the change
+    return drawer_done(request, reverse("console:event", args=(event.pk,)), open_in_drawer=True)
 
 
 def _rows_for(events):
@@ -726,9 +748,26 @@ def events_resolve(request):
     return _list_done(request)
 
 
+@staff_required
+@require_POST
+def events_reopen(request):
+    """Resolved events open again (resolved by mistake, or by a rule that no longer allows them)"""
+    require_perms(request, "view_event", "change_event")
+    count = 0
+    for chunk in chunked(event.pk for event in selected_events(request) if event.resolved_at is not None):
+        count += Event.objects.filter(pk__in=chunk, resolved_at__isnull=False).update(
+            resolved_at=None, resolved_by=None, resolution_rule=None)
+    messages.success(request, ngettext("%(count)s event is open again.", "%(count)s events are open again.",
+                                       count) % {"count": count})
+    return _list_done(request)
+
+
 def _list_done(request):
     """After an action on the selection of the list: the list again. From the bar of the list (htmx, events_bulk):
-    drawer.js reloads the page behind the drawer, with the message."""
+    drawer.js reloads the page behind the drawer, with the message. From the drawer of an event (field event): the
+    event again."""
+    if (pk := request.POST.get("event", "")).isdigit():
+        return drawer_done(request, reverse("console:event", args=(int(pk),)), open_in_drawer=True)
     if is_htmx(request):
         return drawer_done(request, safe_next(request, "console:events"))
     return redirect(safe_next(request, "console:events"))

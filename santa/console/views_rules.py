@@ -59,7 +59,7 @@ from .utils import (
     sort_by,
     staff_required,
 )
-from .views_filters import machine_choices
+from .views_filters import machine_choices, machine_options
 
 RULE_COLUMNS = {"identifier": "identifier", "name": "name", "type": "rule_type", "policy": "policy",
                 "created": "created_at", "enabled": "is_enabled"}
@@ -166,6 +166,7 @@ def rules(request):
         Facet("expiry", gettext("Expiry"), choices=[("expires", gettext("Expires")),
                                                      ("expired", gettext("Expired, deleted soon"))]),
         Facet("machine", gettext("Mac"), kind="lookup", choices=machine_choices(request.GET, RULE_LOOKUP_VALUES),
+              options=machine_options(request.GET, RULE_LOOKUP_VALUES),
               lookup_url=reverse("console:filter_macs"), max_values=RULE_LOOKUP_VALUES),
         Facet("user", gettext("User"), kind="lookup",
               choices=[(user, user) for user in chosen(request.GET, "user")[:RULE_LOOKUP_VALUES]],
@@ -265,7 +266,7 @@ def rules_bulk(request):
     queryset = Rule.objects.filter(pk__in=rule_ids)
     rules_list = list(queryset)
     if action in ("enable", "disable"):
-        count, cancelled = set_rules_enabled(queryset, action == "enable")
+        count, cancelled = set_rules_enabled(queryset, action == "enable", request.user)
         log_change(request.user, rules_list, "Enabled" if action == "enable" else "Disabled")
         for release_version in cancelled:
             messages.warning(request, gettext("%(version)s: automatic approval cancelled.") % {
@@ -347,7 +348,7 @@ def rules_bulk(request):
 def rule_toggle(request, pk):
     require_perms(request, "view_rule", "change_rule")
     rule = get_object_or_404(Rule, pk=pk)
-    set_rules_enabled(Rule.objects.filter(pk=pk), not rule.is_enabled)
+    set_rules_enabled(Rule.objects.filter(pk=pk), not rule.is_enabled, request.user)
     rule.refresh_from_db()
     log_change(request.user, rule, "Enabled" if rule.is_enabled else "Disabled")
     if is_htmx(request):

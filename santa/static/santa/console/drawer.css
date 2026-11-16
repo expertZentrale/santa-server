@@ -10,6 +10,8 @@
 .ignore-detail { display: grid; justify-items: start; gap: .15rem; margin-bottom: .4rem; }
 .facts.inline { grid-template-columns: repeat(auto-fill, minmax(8rem, max-content) minmax(10rem, 1fr)); }
 
+/* the widths, or the ones set by dragging the left edge (drawer.js), never wider than the window */
+:root { --drawer-w: min(32.5rem, 100vw); --drawer-wide-w: min(47.5rem, 100vw); }
 .drawer {
   position: fixed;
   /* under the bottom border of the top bar, which lies above it: no hairline gap while it slides in (rounding),
@@ -17,7 +19,7 @@
   top: calc(var(--topbar-h) - 1px);
   right: 0;
   bottom: 0;
-  width: min(32.5rem, 100vw);
+  width: var(--drawer-w);
   background: var(--surface);
   border-left: 1px solid var(--border);
   border-top: 1px solid var(--border);
@@ -58,7 +60,7 @@
 .drawer-tools { display: flex; align-items: center; gap: .25rem; flex: none; margin: -.25rem -.5rem 0 0; }
 /* square buttons with only an icon (and a label for screen readers) */
 /* forms and package rules need more room than an event */
-.drawer:has(.drawer-panel.wide) { width: min(47.5rem, 100vw); }
+.drawer:has(.drawer-panel.wide) { width: var(--drawer-wide-w); }
 /* the cards of a page are plain sections in the drawer */
 .drawer .card { background: none; border: 0; padding: 0; margin: 0 0 1.5rem; }
 .drawer .card > h2 { font-size: 1rem; }
@@ -66,15 +68,40 @@
 .drawer .page-head { margin-bottom: 1rem; }
 /* tables of the drawer stay in it: not as wide as the page like in the main area */
 .drawer .table-scroll { width: auto; min-width: 0; max-width: none; margin-left: 0; transform: none; overflow-x: auto; }
+/* its scrollbar at the bottom of the drawer while the table is in view (table.js), the only one */
+.drawer .table-hscroll { bottom: 0; margin-left: 0; transform: none; }
 .detail-actions { margin-bottom: 1.25rem; }
 
+/* the left edge of the open drawer: drag it (or ←/→ when focused) for another width, double-click for the usual one */
+.drawer-resize { display: none; }
+.drawer.open + .drawer-resize {
+  display: block; position: fixed; top: calc(var(--topbar-h) - 1px); bottom: 0; right: calc(var(--drawer-w) - .375rem);
+  width: .75rem; cursor: col-resize; touch-action: none; z-index: 16;
+}
+.drawer.open:has(.drawer-panel.wide) + .drawer-resize { right: calc(var(--drawer-wide-w) - .375rem); }
+.drawer-resize::after { content: ""; position: absolute; top: 0; bottom: 0; left: calc(50% - 1px); width: 2px; }
+.drawer-resize:hover::after, .drawer-resize:focus-visible::after, .drawer-resize.dragging::after { background: var(--accent); }
+.drawer-resize:focus-visible { outline: none; }
+body.resizing-drawer { cursor: col-resize; user-select: none; }
+
 @media (max-width: 45em) {
+  .drawer.open + .drawer-resize { display: none; }
   .facts { grid-template-columns: minmax(0, 1fr); }
   .facts dt { margin-top: .4rem; }
 }
 
+/* another view in the open drawer (drawer.js): its content comes in from the side, the drawer stays where it is */
+@keyframes drawer-view-in { from { opacity: .3; transform: translateX(1.5rem); } }
+@keyframes drawer-view-back { from { opacity: .3; transform: translateX(-1.5rem); } }
+@keyframes drawer-view-fade { from { opacity: .3; } }
+.drawer-panel.drawer-view-in { animation: drawer-view-in .18s ease-out; }
+.drawer-panel.drawer-view-back { animation: drawer-view-back .18s ease-out; }
+/* the content moved aside a little: no scrollbar for that moment */
+.drawer:has(> .drawer-view-in, > .drawer-view-back) { overflow-x: hidden; }
+
 @media (prefers-reduced-motion: reduce) {
   .drawer, .drawer.open { transition: none; }
+  .drawer-panel.drawer-view-in, .drawer-panel.drawer-view-back { animation-name: drawer-view-fade; }
 }
 
 /* the parts of a blocked app (blocks, Macs, users) above their table */

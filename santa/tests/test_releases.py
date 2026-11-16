@@ -195,6 +195,82 @@ class ReleaseSourceTestCase(ReleaseSourceBase):
         source.refresh_from_db()
         self.assertIn("SHA-256 mismatch", source.last_error)
 
+    def test_a_formula_built_again_under_the_same_version_gets_the_new_hashes(self):
+        source = ReleaseSource.objects.create(name="git", kind=ReleaseSource.Kind.HOMEBREW_FORMULA, identifier="git",
+                                              asset_pattern="^arm64_", is_global=True, auto_approve=True)
+        first = tar_gz({"git/2.56.1/bin/git": build_macho(identifier="git", team_id="", adhoc=True)})
+        formula = {"versions": {"stable": "2.56.1"}, "revision": 0, "bottle": {"stable": {"files": {
+            "arm64_sequoia": {"url": "https://ghcr.example/git", "sha256": hashlib.sha256(first).hexdigest()}}}}}
+        routes = {"https://formulae.brew.sh/api/formula/git.json": FakeResponse(formula),
+                  "https://ghcr.example/git": FakeResponse(content=first)}
+        [version] = sync_release_source(source, fake_session(routes))
+        [old_rule] = Rule.objects.filter(release_source=source)
+        self.assertTrue(old_rule.is_enabled)
+        # the same check again: nothing downloaded
+        session = fake_session(routes)
+        self.assertEqual(sync_release_source(source, session), [])
+        self.assertNotIn("https://ghcr.example/git", [call.args[0] for call in session.get.call_args_list])
+
+        # Homebrew built the bottle again (a new commit of the formula, the same version): other binaries
+        rebuilt = tar_gz({"git/2.56.1/bin/git": build_macho(identifier="git-rebuilt", team_id="", adhoc=True)})
+        formula["bottle"]["stable"]["files"]["arm64_sequoia"]["sha256"] = hashlib.sha256(rebuilt).hexdigest()
+        routes["https://ghcr.example/git"] = FakeResponse(content=rebuilt)
+        self.assertEqual(sync_release_source(source, fake_session(routes)), [version])
+        rules = Rule.objects.filter(release_source=source)
+        # the earlier build stays allowed (Macs that installed it), the new one is added, approved like the version
+        self.assertEqual(rules.count(), 2)
+        self.assertTrue(all(rule.is_enabled and rule.release_version_id == version.pk for rule in rules))
+        self.assertIn(old_rule, rules)
+        self.assertEqual(ReleaseVersion.objects.filter(source=source).count(), 1)
+        version.refresh_from_db()
+        self.assertEqual(version.binary_count, 2)
+        self.assertEqual(sync_release_source(source, fake_session(routes)), [])
+
+    def test_a_build_with_a_failed_file_is_collected_again(self):
+        source = ReleaseSource.objects.create(name="git", kind=ReleaseSource.Kind.HOMEBREW_FORMULA, identifier="git",
+                                              asset_pattern="^arm64_", is_global=True, auto_approve=True)
+
+        def bottle(name):
+            return tar_gz({"git/2.56.1/bin/git": build_macho(identifier=name, team_id="", adhoc=True)})
+
+        files = {"arm64_sequoia": bottle("git-a"), "arm64_sonoma": bottle("git-b")}
+        formula = {"versions": {"stable": "2.56.1"}, "revision": 0, "bottle": {"stable": {"files": {
+            name: {"url": f"https://ghcr.example/{name}", "sha256": hashlib.sha256(data).hexdigest()}
+            for name, data in files.items()}}}}
+        routes = {"https://formulae.brew.sh/api/formula/git.json": FakeResponse(formula),
+                  **{f"https://ghcr.example/{name}": FakeResponse(content=data) for name, data in files.items()}}
+        [version] = sync_release_source(source, fake_session(routes))
+        self.assertEqual(Rule.objects.filter(release_source=source).count(), 2)
+        # built again; one of the new files can't be checked (it doesn't match its hash) this time
+        rebuilt = {"arm64_sequoia": bottle("git-a2"), "arm64_sonoma": bottle("git-b2")}
+        for name, data in rebuilt.items():
+            formula["bottle"]["stable"]["files"][name]["sha256"] = hashlib.sha256(data).hexdigest()
+        routes["https://ghcr.example/arm64_sequoia"] = FakeResponse(content=rebuilt["arm64_sequoia"])
+        routes["https://ghcr.example/arm64_sonoma"] = FakeResponse(content=b"broken")
+        self.assertEqual(sync_release_source(source, fake_session(routes)), [version])
+        self.assertEqual(Rule.objects.filter(release_source=source).count(), 3)
+        # the fingerprint stays: the next check collects the build again and adds the missing file
+        routes["https://ghcr.example/arm64_sonoma"] = FakeResponse(content=rebuilt["arm64_sonoma"])
+        self.assertEqual(sync_release_source(source, fake_session(routes)), [version])
+        self.assertEqual(Rule.objects.filter(release_source=source).count(), 4)
+        self.assertEqual(sync_release_source(source, fake_session(routes)), [])
+
+    def test_a_version_recorded_before_is_checked_once_for_another_build(self):
+        """The versions recorded before the hashes of the bottles were: the current one is downloaded once"""
+        source = ReleaseSource.objects.create(name="git", kind=ReleaseSource.Kind.HOMEBREW_FORMULA, identifier="git",
+                                              is_global=True, auto_approve=False)
+        version = ReleaseVersion.objects.create(source=source, identifier="git", version="2.56.1", binary_count=1)
+        bottle = tar_gz({"git/2.56.1/bin/git": build_macho(identifier="git", team_id="", adhoc=True)})
+        formula = {"versions": {"stable": "2.56.1"}, "revision": 0, "bottle": {"stable": {"files": {
+            "arm64_sequoia": {"url": "https://ghcr.example/git", "sha256": hashlib.sha256(bottle).hexdigest()}}}}}
+        routes = {"https://formulae.brew.sh/api/formula/git.json": FakeResponse(formula),
+                  "https://ghcr.example/git": FakeResponse(content=bottle)}
+        sync_release_source(source, fake_session(routes))
+        # not approved before: the rule waits for the approval of the version
+        self.assertFalse(Rule.objects.get(release_source=source).is_enabled)
+        version.refresh_from_db()
+        self.assertTrue(version.fingerprint)
+
     def test_homebrew_cask_with_a_disk_image(self):
         source = ReleaseSource.objects.create(name="tool", kind=ReleaseSource.Kind.HOMEBREW_CASK, identifier="tool",
                                               rule_type=RuleType.SIGNINGID, is_global=True)

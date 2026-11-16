@@ -1231,9 +1231,6 @@ class EventPackagesForm(ApprovePackagesForm):
     """The packages of blocked events: each suggestion can be changed before saving (on/off, catalog, identifier,
     package rule), into a new or an existing package rule of its catalog"""
 
-    resolve = forms.BooleanField(required=False, initial=True,
-                                 label=_("Mark the events as resolved once their binaries are allowed"))
-
     def __init__(self, *args, suggestions=(), **kwargs):
         packages = [EventPackage(pk=index, kind=item.kind, identifier=item.identifier, name=item.name,
                                  icon_url=item.icon_url, suggestion=item)

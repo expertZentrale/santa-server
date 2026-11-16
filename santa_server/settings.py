@@ -46,6 +46,13 @@ if env_bool("TRUST_X_FORWARDED_PROTO"):
     USE_X_FORWARDED_HOST = True
 SESSION_COOKIE_SECURE = CSRF_COOKIE_SECURE = env_bool("SECURE_COOKIES", not DEBUG)
 
+# the level of the server's logs (gunicorn.conf.py reads the same variable for gunicorn's error log)
+LOG_LEVEL = env("LOG_LEVEL", "INFO").upper()
+if LOG_LEVEL not in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
+    raise ImproperlyConfigured("LOG_LEVEL must be one of DEBUG, INFO, WARNING, ERROR, CRITICAL")
+# also on the handler: the "django" loggers have a level of their own (INFO) and would pass it otherwise
+LOGGING["root"]["level"] = LOGGING["handlers"]["console"]["level"] = LOG_LEVEL  # noqa: F405
+
 # Prometheus metrics on /metrics; off: nothing is collected, the plain backends are used
 METRICS_ENABLED = env_bool("METRICS_ENABLED", True)
 if not METRICS_ENABLED:

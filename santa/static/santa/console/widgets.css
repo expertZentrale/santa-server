@@ -361,6 +361,10 @@ details.dependencies code { overflow-wrap: anywhere; }
 .package-results { display: grid; gap: .6rem; margin: 0 0 1rem; }
 .package-results li { display: grid; gap: .2rem; padding: .6rem .75rem; border: 1px solid var(--border); border-left: .25rem solid var(--ok); border-radius: var(--radius); }
 .package-results li.bad { border-left-color: var(--bad); }
+/* Allow as package: a package still waiting for its check */
+.package-results li > .badge, .package-results li > .button { justify-self: start; }
+.package-results li.pending { border-left-color: var(--border); }
+.package-results li.pending .badge { color: var(--muted); }
 /* rules or package rules for the selected events (events/_allow_tabs.html) */
 .allow-tabs { margin: 0 0 1rem; }
 .allow-tabs .segmented button { font-size: .875rem; padding: .35rem .8rem; }

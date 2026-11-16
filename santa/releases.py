@@ -47,7 +47,7 @@ from .models import (
     pattern_lines,
 )
 from .progress import Cancelled, Progress
-from .services import chunked
+from .services import chunked, resolve_events_of_rules
 
 logger = logging.getLogger(__name__)
 
@@ -1928,6 +1928,9 @@ def create_release_rules(source, release_version, binaries, enabled=None, existi
     Rule.tags.through.objects.bulk_create(
         [Rule.tags.through(rule_id=rule.pk, tag_id=tag_id) for rule in created for tag_id in tag_ids],
         batch_size=LINK_BATCH)
+    if enabled:
+        # with their scope: the events the Macs uploaded before the package was approved
+        resolve_events_of_rules(created)
     return created
 
 
@@ -1948,6 +1951,7 @@ def enable_due_releases(source=None, now=None):
                 version.rules.update(is_enabled=True)
                 version.auto_enable_pending = False
                 version.save(update_fields=["auto_enable_pending"])
+                resolve_events_of_rules(version.rules.all())
             logger.info("Release source %s: version %s enabled after the delay", version.source, version.version)
             enabled.append(version)
     return enabled
@@ -2207,19 +2211,66 @@ def cleanup_release_source(source):
     return len(versions), rule_count + other_count
 
 
+# Homebrew builds a version again (a new bottle, a cask uploaded again): the same version, other files
+BUILD_KINDS = (ReleaseSource.Kind.HOMEBREW_FORMULA, ReleaseSource.Kind.HOMEBREW_CASK)
+
+
 def list_fingerprint(source, release):
-    """The download URLs of a version of a download list: the same name with other downloads (a row changed, the
-    list moved its files) is recorded again. Empty for the other catalogs."""
-    if source.kind != ReleaseSource.Kind.URL_LIST:
-        return ""
-    return hashlib.sha256("\n".join(sorted(asset.url for asset in release.assets)).encode()).hexdigest()
+    """The downloads of a version: the same name with other downloads is recorded again.
+    A download list: its download URLs (a row changed, the list moved its files), the version is replaced.
+    A formula or cask: the published hashes of its files (a new build), the version gets the rules of the new
+    files too (_add_new_build). Empty for the other catalogs, and without the hashes of all files (not known)."""
+    if source.kind == ReleaseSource.Kind.URL_LIST:
+        return hashlib.sha256("\n".join(sorted(asset.url for asset in release.assets)).encode()).hexdigest()
+    if source.kind in BUILD_KINDS and release.assets and all(asset.sha256 for asset in release.assets):
+        return hashlib.sha256("\n".join(sorted(asset.sha256 for asset in release.assets)).encode()).hexdigest()
+    return ""
+
+
+def _add_new_build(session, source, identifier, release, existing, fingerprint, collected=None, progress=None):
+    """A recorded version of a formula or cask with other files: Homebrew built it again (a new bottle under the same
+    version). The Macs that installed it since run other binaries: their rules are added to the version, with its
+    approval; the rules of the earlier build stay for the Macs that have it. The dependencies stay as they are.
+    Returns (the binaries of the build that weren't in the version yet, the errors of its other files): with errors
+    the fingerprint stays, so the next check collects the build again (the files added stay added)."""
+    if collected is not None:
+        binaries, errors = [b for b in collected[0] if not b.dependency], collected[1]
+    else:
+        [(binaries, errors)] = collect_many(session, source, [(release, "")], progress,
+                                            [progress_label(identifier, release)])
+    if getattr(errors, "retry", False):
+        raise RetryLater(f"Tried again at the next check: {'; '.join(errors)}"[:2000])
+    if errors and not binaries:
+        # tried again at the next check: the fingerprint stays
+        raise ReleaseError(f"{release.version}, built again: {' '.join(errors)}")
+    own = existing.rules.filter(release_dependency="")
+    known = set(existing.rules.values_list("rule_type", "identifier"))
+    new = [b for b in binaries if any(key not in known for key in rule_identifiers(source.rule_type, b.info))]
+    with transaction.atomic():
+        if new:
+            # as the version is approved; one without rules (no executable before) as a new version would be
+            enabled = own.filter(is_enabled=True).exists() if own.exists() else None
+            if enabled is None and existing.auto_enable_pending:
+                enabled = False
+            create_release_rules(source, existing, new, enabled=enabled, existing=known)
+            earlier = [] if existing.notes == NO_EXECUTABLES_NOTE else (existing.notes or "").splitlines()
+            existing.notes = "\n".join([f"{b.asset}: {b.path} {b.info.sha256}" for b in new] + earlier)[:10000]
+            existing.binary_count += len({b.info.sha256 for b in new})
+        if not errors:
+            existing.fingerprint = fingerprint
+        existing.save(update_fields=["fingerprint", "notes", "binary_count"])
+    if new:
+        logger.info("Release source %s: %s version %s built again, %s new binaries",
+                    source.name, identifier, existing.version, len(new))
+    return new, list(errors)
 
 
 def _record_release(session, source, identifier, release, collected=None, progress=None):
     """Download a release and create its version and rules. Return (the new ReleaseVersion or None, errors).
 
     collected: its (binaries, errors, dependency labels) of _collect_releases(), downloaded with others before.
-    A version of a download list whose downloads changed is replaced; it stays approved if it was.
+    A version of a download list whose downloads changed is replaced; it stays approved if it was. A formula or cask
+    built again gets the rules of its new files (_add_new_build): the version is returned when it got some.
     """
     versions = source.versions.filter(identifier=identifier)
     if not release.assets:
@@ -2227,8 +2278,13 @@ def _record_release(session, source, identifier, release, collected=None, progre
     fingerprint = list_fingerprint(source, release)
     replaced = None
     if release.version and (existing := versions.filter(version=release.version).first()):
-        if existing.fingerprint == fingerprint:
+        if existing.fingerprint == fingerprint or (source.kind in BUILD_KINDS and not fingerprint):
             return None, []
+        if source.kind in BUILD_KINDS:
+            # announced like a new version: its new binaries may wait for an approval
+            new, errors = _add_new_build(session, source, identifier, release, existing, fingerprint, collected,
+                                         progress)
+            return (existing if new else None), errors
         replaced = existing
     if replaced:
         versions = versions.exclude(pk=replaced.pk)
@@ -2400,8 +2456,10 @@ def _sync_kept_versions(session, source, identifier, errors, latest, progress=No
     releases = kept_releases(source, HISTORY[source.kind](session, source, identifier, limit, **options))
     new_versions = []
     # a version of a download list with other downloads under its name too (recorded again, _record_release)
+    # (a formula: the hashes of a new build; a version listed without its files is not known to have changed)
     missing = [release for release in releases if release.version not in known
-               or fingerprints[release.version] != list_fingerprint(source, release)][:MAX_KEPT_VERSIONS_PER_SYNC]
+               or ((fingerprint := list_fingerprint(source, release)) or source.kind not in BUILD_KINDS)
+               and fingerprints[release.version] != fingerprint][:MAX_KEPT_VERSIONS_PER_SYNC]
     if source.kind == ReleaseSource.Kind.HOMEBREW_FORMULA:
         for release in missing:
             # a bottle without its dependency versions: the ones of the current formula, in the versions of its day

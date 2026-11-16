@@ -6,6 +6,7 @@ from unittest.mock import patch
 from django.contrib.admin.models import ADDITION, CHANGE, LogEntry
 from django.contrib.auth.models import Group as AuthGroup
 from django.contrib.auth.models import Permission, User
+from django.contrib.messages import get_messages
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -645,6 +646,55 @@ class ConsoleEventsTestCase(ConsoleBase):
         rule = Rule.objects.get()
         self.assertEqual(list(rule.machines.all()), [self.machine])
         self.assertEqual(rule.policy, Policy.BLOCKLIST)
+
+    def test_a_rule_from_the_drawer_resolves_the_event_and_shows_it_again(self):
+        event = self.make_event()
+        response = self.client.post(reverse("console:event_create_rule", args=(event.pk,)), {
+            "rule_type": RuleType.BINARY, "policy": Policy.ALLOWLIST, "scope": "groups", "groups": [self.dev.pk],
+            "include": SHA_A}, HTTP_HX_REQUEST="true")
+        self.assertEqual(response.status_code, 204)
+        url = reverse("console:event", args=(event.pk,))
+        self.assertEqual(json.loads(response["HX-Trigger"])["drawerSaved"], {"open": url})
+        event.refresh_from_db()
+        self.assertEqual(event.resolution_rule, Rule.objects.get())
+
+    def test_an_allow_rule_a_more_specific_block_wins_over_leaves_the_event_open(self):
+        event = self.make_event()
+        block = Rule.objects.create(rule_type=RuleType.BINARY, identifier=SHA_A, policy=Policy.BLOCKLIST)
+        block.machines.add(self.machine)
+        response = self.client.post(reverse("console:event_create_rule", args=(event.pk,)), {
+            "rule_type": RuleType.BINARY, "policy": Policy.ALLOWLIST, "scope": "groups", "groups": [self.dev.pk],
+            "include": SHA_A}, HTTP_HX_REQUEST="true")
+        event.refresh_from_db()
+        # Santa decides by the scope first: the block of the Mac wins over the allow of its group
+        self.assertIsNone(event.resolved_at)
+        self.assertIn("The event stays open: the rule doesn't reach its Mac.",
+                      [str(message) for message in get_messages(response.wsgi_request)])
+
+    def test_an_invalid_rule_form_shows_its_errors_in_the_drawer(self):
+        event = self.make_event()
+        response = self.client.post(reverse("console:event_create_rule", args=(event.pk,)), {
+            "rule_type": RuleType.BINARY, "policy": "NOT_A_POLICY", "scope": "machines", "include": SHA_A,
+            "description": "kept as entered"}, HTTP_HX_REQUEST="true")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("HX-Trigger", response)
+        self.assertEqual(response.context["event"], event)
+        self.assertTrue(response.context["form"].errors)
+        self.assertContains(response, "kept as entered")
+        self.assertFalse(Rule.objects.exists())
+
+    def test_approving_a_package_rule_resolves_the_events_it_allows(self):
+        event = self.make_event()
+        source = ReleaseSource.objects.create(name="Brew", kind=ReleaseSource.Kind.HOMEBREW_FORMULA, identifier="git",
+                                              is_global=True)
+        version = ReleaseVersion.objects.create(source=source, identifier="git", version="2.56.1")
+        rule = Rule.objects.create(rule_type=RuleType.BINARY, identifier=SHA_A, is_global=True, is_enabled=False,
+                                   release_source=source, release_version=version)
+        event.refresh_from_db()
+        self.assertIsNone(event.resolved_at)
+        self.client.post(reverse("console:version_approve", args=(version.pk,)))
+        event.refresh_from_db()
+        self.assertEqual((event.resolution_rule, event.resolved_by), (rule, self.admin))
 
     def test_existing_rules(self):
         signed = self.make_event(signing_id="ABCDE12345:com.example.a", team_id="ABCDE12345")

@@ -156,7 +156,9 @@ LOGGING = {
     "disable_existing_loggers": False,
     "formatters": {"plain": {"format": "%(asctime)s %(levelname)s %(name)s %(message)s"}},
     # the sync URLs contain the token of the group: "Not Found: /sync/<token>/…" must not reach the logs
-    "filters": {"redact_sync_tokens": {"()": "santa.log_redaction.RedactSyncTokens"}},
+    "filters": {"redact_sync_tokens": {"()": "santa.log_redaction.RedactSyncTokens"},
+                # /health, /ready and /metrics answering fine: no line each (runserver; gunicorn.conf.py for gunicorn)
+                "quiet_probes": {"()": "santa.log_redaction.QuietProbes"}},
     "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "plain",
                              "filters": ["redact_sync_tokens"]}},
     "root": {"handlers": ["console"], "level": "INFO"},
@@ -164,7 +166,7 @@ LOGGING = {
         "django.db.backends": {"level": "WARNING"},
         # also before the handlers Django adds itself (runserver, DEBUG)
         "django.request": {"filters": ["redact_sync_tokens"]},
-        "django.server": {"filters": ["redact_sync_tokens"]},
+        "django.server": {"filters": ["redact_sync_tokens", "quiet_probes"]},
     },
 }
 

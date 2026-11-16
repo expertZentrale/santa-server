@@ -42,25 +42,78 @@
         if (!chip.open && changed) submit();
       });
     });
-    // renaming a view: the field gets the focus; Cancel closes it with the saved name, back to the pencil
+    // renaming a view: the name becomes the field, with its text selected; Enter saves, × or Escape closes it with the
+    // saved name, back to the pencil (Escape only that, not the menu)
     form.querySelectorAll("details.rename-view").forEach((rename) => {
       const input = rename.querySelector("input");
-      rename.addEventListener("toggle", () => {
-        if (rename.open) input.focus();
-        else input.value = input.defaultValue;
-      });
-      rename.querySelector("[data-rename-cancel]").addEventListener("click", () => {
+      const cancel = () => {
         rename.open = false;
         rename.querySelector("summary").focus();
+      };
+      rename.addEventListener("toggle", () => {
+        if (rename.open) {
+          input.focus();
+          input.select();
+        } else {
+          input.value = input.defaultValue;
+        }
+      });
+      rename.querySelector("[data-rename-cancel]").addEventListener("click", cancel);
+      input.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape") return;
+        event.preventDefault();
+        event.stopPropagation();
+        cancel();
       });
     });
+    showViewChanges(form);
     form.addEventListener("click", (event) => {
+      const choice = event.target.closest("[data-view-choice]");
+      if (choice) rememberView(choice.dataset.viewChoice);
       const item = event.target.closest("[data-open-facet]");
       if (!item) return;
       item.closest("details").open = false;
       // after the click: the document closes the pickers the click was not in
       requestAnimationFrame(() => openFacet(form, item.dataset.openFacet));
     });
+  }
+
+  // The view opened last on this list, in this tab: changed since (filters, sort order), "Save changes to …" in the
+  // menu of the views saves them under its name, without typing it again
+  function viewKey() {
+    const page = document.querySelector('#save-filter-form input[name="page"]')?.value;
+    return page ? `santa.view-base:${page}` : null;
+  }
+
+  function rememberView(choice) {
+    const key = viewKey();
+    try {
+      if (key) sessionStorage.setItem(key, choice);
+    } catch (error) {
+      // blocked storage: only the buttons of the views in the list
+    }
+  }
+
+  function showViewChanges(form) {
+    // the list shows a saved view (opened, saved or updated just now): it is the one changes go to
+    let shown = null;
+    try {
+      shown = JSON.parse(document.getElementById("view-layout")?.textContent || "null");
+    } catch (error) {
+      // no layout of the view: as without one
+    }
+    if (shown?.id) rememberView(String(shown.id));
+    else if (shown?.standard) rememberView("standard");
+    const key = viewKey();
+    let base = null;
+    try {
+      base = key && sessionStorage.getItem(key);
+    } catch (error) {
+      return;
+    }
+    // rendered only for the views other than the one shown (the list is not as that view any more)
+    const button = base && form.querySelector(`[data-update-view="${CSS.escape(base)}"]`);
+    if (button) button.hidden = false;
   }
 
   // A lookup (Mac, user) replaces its hits with each search, ticked as they were when it was sent: what was ticked
@@ -123,7 +176,10 @@
 
   document.addEventListener("htmx:beforeSwap", (event) => {
     if (event.detail.target !== document.body || !event.detail.shouldSwap) return;
-    const path = event.detail.pathInfo?.finalRequestPath || event.detail.pathInfo?.requestPath || "";
+    // where the answer came from: a form of the views (default, rename, save, delete) posts elsewhere and is sent back
+    // to the list, its menu stays open
+    const path = event.detail.xhr?.responseURL || event.detail.pathInfo?.finalRequestPath
+                 || event.detail.pathInfo?.requestPath || "";
     const samePage = new URL(path, window.location.href).pathname === window.location.pathname;
     const keys = [...document.querySelectorAll(MENUS)].map(menuKey).filter(Boolean);
     const focused = document.activeElement?.closest?.("details[open]");

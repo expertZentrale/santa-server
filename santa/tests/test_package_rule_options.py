@@ -908,6 +908,9 @@ class FasterChecksTestCase(ReleaseSourceBase):
                                               approve_kept_versions=True)
         for version in ("0.10.3", "0.10.2"):
             ReleaseVersion.objects.create(source=source, identifier="colima", version=version, binary_count=1)
+        # the current version with the hashes of its bottles: not built again
+        source.versions.filter(version="0.10.3").update(fingerprint=hashlib.sha256(
+            hashlib.sha256(current).hexdigest().encode()).hexdigest())
         # recorded by a check that ended
         source.last_checked_at = timezone.now()
         source.save()

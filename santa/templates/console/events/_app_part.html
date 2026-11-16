@@ -5,33 +5,34 @@
   <a href="{{ part_url }}?{{ query }}"{% if in_drawer %} hx-get="{{ part_url }}?{{ query }}" hx-target="#drawer"{% endif %}{% if key == part %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
 </nav>
 <p class="muted small">{% blocktranslate count count=total %}{{ count }} for the filters of the list.{% plural %}{{ count }} for the filters of the list.{% endblocktranslate %}{% if total > limit %} {% blocktranslate %}The newest {{ limit }} are shown.{% endblocktranslate %}{% endif %}</p>
-<section class="card">
+{# on the page no card: the table grows out of the page as in the lists, a card would stay behind #}
+<section{% if in_drawer %} class="card"{% endif %}>
   {% if part == "events" %}
-  <table class="table compact" data-app-part="events">
-    <thead><tr><th>{% translate "Time" %}</th><th>{% translate "Decision" %}</th><th>{% translate "Mac" %}</th><th>{% translate "User" %}</th><th>{% translate "Path" %}</th></tr></thead>
+  <table class="table compact" data-app-part="events" data-table="app-events">
+    <thead><tr><th data-col="time">{% translate "Time" %}</th><th data-col="decision">{% translate "Decision" %}</th><th data-col="mac">{% translate "Mac" %}</th><th data-col="user">{% translate "User" %}</th><th data-col="path" class="grow">{% translate "Path" %}</th></tr></thead>
     <tbody>{% for event in rows %}{% url 'console:event' event.pk as event_url %}{% url 'console:machine' event.machine_id as machine_url %}
-      <tr><td class="nowrap"><a href="{{ event_url }}"{% if in_drawer %} hx-get="{{ event_url }}" hx-target="#drawer"{% endif %}>{{ event.execution_time|date:"d.m.Y H:i" }}</a></td>
-        <td><span class="badge {% if event.decision|slice:':6' == 'BLOCK_' %}bad{% else %}warn{% endif %}">{{ event.decision }}</span></td>
-        <td><a href="{{ machine_url }}"{% if in_drawer %} hx-get="{{ machine_url }}" hx-target="#drawer"{% endif %}>{{ event.machine.hostname|default:event.machine.serial_number }}</a></td>
-        <td>{{ event.executing_user|default:"–" }}</td>
-        <td class="mono small cell-path" title="{{ event.file_path }}">{{ event.file_path }}</td></tr>
+      <tr><td data-col="time" class="nowrap"><a href="{{ event_url }}"{% if in_drawer %} hx-get="{{ event_url }}" hx-target="#drawer"{% endif %}>{{ event.execution_time|date:"d.m.Y H:i" }}</a></td>
+        <td data-col="decision"><span class="badge {% if event.decision|slice:':6' == 'BLOCK_' %}bad{% else %}warn{% endif %}">{{ event.decision }}</span></td>
+        <td data-col="mac"><a href="{{ machine_url }}"{% if in_drawer %} hx-get="{{ machine_url }}" hx-target="#drawer"{% endif %}>{{ event.machine.hostname|default:event.machine.serial_number }}</a></td>
+        <td data-col="user">{{ event.executing_user|default:"–" }}</td>
+        <td data-col="path" class="mono small"><span class="cell-path" title="{{ event.file_path }}">{{ event.file_path }}</span></td></tr>
     {% endfor %}</tbody>
   </table>
   {% elif part == "macs" %}
-  <table class="table compact" data-app-part="macs">
-    <thead><tr><th>{% translate "Mac" %}</th><th>{% translate "Group" %}</th><th>{% translate "User" %}</th><th class="num">{% translate "Blocks" %}</th><th>{% translate "Last seen" %}</th></tr></thead>
+  <table class="table compact" data-app-part="macs" data-table="app-macs">
+    <thead><tr><th data-col="mac">{% translate "Mac" %}</th><th data-col="group">{% translate "Group" %}</th><th data-col="user">{% translate "User" %}</th><th data-col="blocks" class="num">{% translate "Blocks" %}</th><th data-col="last-seen">{% translate "Last seen" %}</th></tr></thead>
     <tbody>{% for row in rows %}{% with machine=row.machine %}{% url 'console:machine' machine.pk as machine_url %}
-      <tr><td><a class="strong" href="{{ machine_url }}"{% if in_drawer %} hx-get="{{ machine_url }}" hx-target="#drawer"{% endif %}>{{ machine.hostname|default:machine.serial_number }}</a><small class="muted mono">{{ machine.serial_number }}</small></td>
-        <td>{{ machine.group.name }}</td><td>{{ machine.primary_user|default:"–" }}</td>
-        <td class="num">{{ row.count }}</td><td class="nowrap">{{ row.last_seen|date:"d.m.Y H:i" }}</td></tr>
+      <tr><td data-col="mac"><a class="strong" href="{{ machine_url }}"{% if in_drawer %} hx-get="{{ machine_url }}" hx-target="#drawer"{% endif %}>{{ machine.hostname|default:machine.serial_number }}</a><small class="muted mono">{{ machine.serial_number }}</small></td>
+        <td data-col="group">{{ machine.group.name }}</td><td data-col="user">{{ machine.primary_user|default:"–" }}</td>
+        <td data-col="blocks" class="num">{{ row.count }}</td><td data-col="last-seen" class="nowrap">{{ row.last_seen|date:"d.m.Y H:i" }}</td></tr>
     {% endwith %}{% endfor %}</tbody>
   </table>
   {% else %}
-  <table class="table compact" data-app-part="users">
-    <thead><tr><th>{% translate "User" %}</th><th class="num">{% translate "Blocks" %}</th><th class="num">{% translate "Macs" %}</th><th>{% translate "Last seen" %}</th></tr></thead>
+  <table class="table compact" data-app-part="users" data-table="app-users">
+    <thead><tr><th data-col="user">{% translate "User" %}</th><th data-col="blocks" class="num">{% translate "Blocks" %}</th><th data-col="macs" class="num">{% translate "Macs" %}</th><th data-col="last-seen">{% translate "Last seen" %}</th></tr></thead>
     <tbody>{% for row in rows %}
-      <tr><td>{% if row.executing_user %}<a class="strong" href="{% url 'console:events' %}?view=all&amp;sha256={{ sha256 }}&amp;user={{ row.executing_user|urlencode }}&amp;days=&amp;resolved=all" hx-boost="true">{{ row.executing_user }}</a>{% else %}<span class="muted">{% translate "(unknown)" %}</span>{% endif %}</td>
-        <td class="num">{{ row.count }}</td><td class="num">{{ row.machine_count }}</td><td class="nowrap">{{ row.last_seen|date:"d.m.Y H:i" }}</td></tr>
+      <tr><td data-col="user">{% if row.executing_user %}<a class="strong" href="{% url 'console:events' %}?view=all&amp;sha256={{ sha256 }}&amp;user={{ row.executing_user|urlencode }}&amp;days=&amp;resolved=all" hx-boost="true">{{ row.executing_user }}</a>{% else %}<span class="muted">{% translate "(unknown)" %}</span>{% endif %}</td>
+        <td data-col="blocks" class="num">{{ row.count }}</td><td data-col="macs" class="num">{{ row.machine_count }}</td><td data-col="last-seen" class="nowrap">{{ row.last_seen|date:"d.m.Y H:i" }}</td></tr>
     {% endfor %}</tbody>
   </table>
   {% endif %}

@@ -1,17 +1,20 @@
 {% load i18n %}{# Blocked events → package rules (views_event_packages.py): one suggestion per package, all of it can be changed #}
 {% url 'console:events_packages' as action %}
-{% if results %}
-<p>{% translate "The package rules were checked. Each binary of the events:" %}</p>
-<ul class="plain package-results">{% for event, allowed, matches, partly in results %}
-  <li class="{% if allowed %}ok{% else %}bad{% endif %}">
-    <span class="badge {% if allowed %}ok{% else %}bad{% endif %}">{% if allowed %}✓ {% translate "allowed" %}{% else %}✗ {% translate "not allowed" %}{% endif %}</span>
-    <strong>{{ event.file_name|default:_("(no name)") }}</strong>
-    <small class="muted mono binary-path">{{ event.file_path }}</small>
-    {% if allowed %}{% include "console/rules/_existing.html" with matches=matches compact=True %}{% elif partly %}<small class="help">{% translate "Allowed on some of the Macs only: on the others a more specific rule wins (a block of their group or of the Mac). Check the rules of the binary." %}</small>{% include "console/rules/_existing.html" with matches=matches compact=True %}{% else %}<small class="help">{% translate "No rule of the package rules covers this file: another version, another bottle, or Homebrew changed it when installing (relocation). Create a rule for it from the events." %}</small>{% endif %}
-  </li>{% endfor %}</ul>
-{% if resolved_count %}<p class="muted">{% blocktranslate count count=resolved_count %}{{ count }} event marked as resolved.{% plural %}{{ count }} events marked as resolved.{% endblocktranslate %}</p>{% endif %}
-<div class="actions">{% for source in saved_sources %}{% url 'console:source' source.pk as source_url %}<a class="button" href="{{ source_url }}"{% if in_drawer %} hx-get="{{ source_url }}" hx-target="#drawer"{% endif %}>{{ source.name }}</a>{% endfor %}
-  {% if in_drawer %}<button type="button" class="button primary" data-drawer-close>{% translate "Close" %}</button>{% else %}<a class="button primary" href="{% url 'console:events' %}">{% translate "Back to the events" %}</a>{% endif %}</div>
+{% if chosen %}
+{# saved: each package checked by a request of its own, one after the other (packages.js), then the binaries #}
+<div class="package-steps" data-package-steps data-checking="{% translate 'checking…' %}">
+  <p>{% translate "The packages were saved. Each one is checked now:" %}</p>
+  <ul class="plain package-results">{% for source, identifier in steps %}
+    {% include "console/events/_package_step.html" with status="pending" %}{% empty %}
+    <li class="muted">{% translate "Nothing new to check: the package rules know the packages already." %}</li>{% endfor %}</ul>
+  {% url 'console:events_packages_verify' as verify_url %}
+  <div class="package-verify" data-package-step data-pending hx-post="{{ verify_url }}" hx-trigger="package-step" hx-target="this" hx-swap="outerHTML" hx-include="this">
+    {% for pk in chosen %}<input type="hidden" name="ids" value="{{ pk }}">{% endfor %}
+    {% for source in saved_sources %}<input type="hidden" name="sources" value="{{ source.pk }}">{% endfor %}
+    {% if in_drawer %}<input type="hidden" name="in_drawer" value="1">{% endif %}
+    <p class="muted">{% translate "Then each binary of the events: allowed now or not." %}</p>
+  </div>
+</div>
 {% elif not events %}
 <p class="card empty">{% translate "Select events in the list." %}</p>
 {% else %}
@@ -65,7 +68,6 @@
       </div>
     </li>{% endwith %}{% endfor %}</ul>
   {% include "console/sources/_new_source_fields.html" with form=form %}
-  {% include "console/_field.html" with field=form.resolve %}
   <div class="actions"><button class="button primary" name="apply" value="1">{% translate "Add and check" %}</button>
     {% if in_drawer %}<button type="button" class="button" data-drawer-close>{% translate "Cancel" %}</button>{% else %}<a class="button" href="{% url 'console:events' %}">{% translate "Cancel" %}</a>{% endif %}</div>
 </form>

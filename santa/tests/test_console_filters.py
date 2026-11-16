@@ -35,6 +35,16 @@ class LookupFacetTestCase(ConsoleBase):
         SavedFilter.objects.create(user=self.admin, page="events-all", name="no test Mac", query=bar["query"])
         self.assertEqual(self.bar({"q": "", "machine": "1", "machine_not": "1"})["active_view"].name, "no test Mac")
 
+    def test_a_view_with_another_spelling_of_its_values_is_the_one_shown(self):
+        # "resolved=all" (an older link, a view saved from it): the bar writes "all" as "resolved=", in its order
+        query = "q=&view=blocked&days=7&resolved=all"
+        SavedFilter.objects.create(user=self.admin, page="events-blocked", name="7 days", query=query)
+        response = self.client.get(reverse("console:events") + "?" + query)
+        self.assertEqual(response.context["bar"]["query"], "q=&view=blocked&days=7&resolved=")
+        self.assertEqual(response.context["bar"]["active_view"].name, "7 days")
+        pk = response.context["bar"]["active_view"].pk
+        self.assertContains(response, f'data-view-choice="{pk}" aria-current="true"')
+
 
 class EventFiltersTestCase(ConsoleBase):
     def names(self, **params):
@@ -169,6 +179,19 @@ class LookupEndpointsTestCase(ConsoleBase):
         # the chip lists the chosen ones in the same place, once
         response = self.client.get(reverse("console:events"), {"view": "all", "machine": self.machine.pk})
         self.assertEqual(response.content.decode().count(f'name="machine" value="{self.machine.pk}"'), 1)
+
+    def test_the_chip_lists_the_others_without_waiting_for_the_search(self):
+        """Opened again after the filter applied: the chosen Mac, its owner, then the others, as the search answers"""
+        for url, params in ((reverse("console:events"), {"view": "all"}), (reverse("console:rules"), {"q": ""})):
+            html = self.client.get(url, {**params, "machine": self.machine.pk}).content.decode()
+            options = html[html.index('class="lookup-options"'):]
+            options = options[:options.index("</div>")]
+            self.assertLess(options.index(f'value="{self.machine.pk}" checked'),
+                            options.index(f'value="{self.other_machine.pk}"'))
+            self.assertIn('<span class="lookup-label">jdoe-mbp</span> <small class="muted">jdoe@example.com</small>',
+                          options)
+            # opened, it asks again each time
+            self.assertIn('hx-trigger="input changed delay:250ms, lookup-open"', html)
 
     def test_at_most_twenty(self):
         Machine.objects.bulk_create([Machine(machine_id=f"X{n}", serial_number=f"S{n}", hostname=f"lab-{n:02}",

@@ -1,0 +1,16 @@
+{% load i18n %}{# The last step of "Allow as package" (events_packages_verify): each binary of the events, allowed now or not #}
+<div class="package-verify" data-package-done>
+<p><strong>{% blocktranslate count count=results|length with allowed=allowed_count %}{{ allowed }} of {{ count }} binary allowed now.{% plural %}{{ allowed }} of {{ count }} binaries allowed now.{% endblocktranslate %}</strong>
+  {% blocktranslate count count=event_count with resolved=resolved_count %}{{ resolved }} of {{ count }} event resolved.{% plural %}{{ resolved }} of {{ count }} events resolved.{% endblocktranslate %}</p>
+<ul class="plain package-results">{% for event, allowed, matches, partly in results %}
+  <li class="{% if allowed %}ok{% else %}bad{% endif %}">
+    <span class="badge {% if allowed %}ok{% else %}bad{% endif %}">{% if allowed %}✓ {% translate "allowed" %}{% else %}✗ {% translate "not allowed" %}{% endif %}</span>
+    <strong>{{ event.file_name|default:_("(no name)") }}</strong>
+    <small class="muted mono binary-path">{{ event.file_path }}</small>
+    {% if allowed %}{% include "console/rules/_existing.html" with matches=matches compact=True %}{% elif partly %}<small class="help">{% translate "Allowed on some of the Macs only: on the others a more specific rule wins (a block of their group or of the Mac). Check the rules of the binary." %}</small>{% include "console/rules/_existing.html" with matches=matches compact=True %}{% else %}<small class="help">{% translate "No rule of the package rules covers this file: another version, another bottle, or Homebrew changed it when installing (relocation). Create a rule for it from the events." %}</small>{% endif %}
+  </li>{% endfor %}</ul>
+<div class="actions">{% for source in saved_sources %}{% url 'console:source' source.pk as source_url %}<a class="button" href="{{ source_url }}"{% if in_drawer %} hx-get="{{ source_url }}" hx-target="#drawer"{% endif %}>{{ source.name }}</a>{% endfor %}
+  {% url 'console:events_packages_verify' as verify_url %}<button type="button" class="button" hx-post="{{ verify_url }}" hx-target="closest .package-verify" hx-swap="outerHTML" hx-include="closest .package-verify">{% translate "Check the result again" %}</button>
+  {% if in_drawer %}<button type="button" class="button primary" data-drawer-close>{% translate "Close" %}</button>{% else %}<a class="button primary" href="{% url 'console:events' %}">{% translate "Back to the events" %}</a>{% endif %}</div>
+<div class="package-verify-again" hidden>{% for event in events %}<input type="hidden" name="ids" value="{{ event.pk }}">{% endfor %}{% for source in saved_sources %}<input type="hidden" name="sources" value="{{ source.pk }}">{% endfor %}{% if in_drawer %}<input type="hidden" name="in_drawer" value="1">{% endif %}</div>
+</div>

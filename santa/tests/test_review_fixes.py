@@ -11,7 +11,7 @@ from santa.progress import run_source_check
 from santa.services import decisions_for_machines, decisions_on, resolve_binary_events
 
 from .test_console import SHA_A, ConsoleBase
-from .test_package_detection import SHA_REDIS, DetectionBase
+from .test_package_detection import SHA_REDIS, DetectionBase, apply_packages
 
 
 class DecisionsTestCase(ConsoleBase):
@@ -119,7 +119,7 @@ class EventPackagesReviewTestCase(DetectionBase):
         return {"ids": ids, "apply": "1", "approve_0": "on", "kind_0": Kind.HOMEBREW_FORMULA,
                 "identifier_0": "redis", "target_0": "new", "new_name": "Datenbanken", "rule_type": RuleType.BINARY,
                 "policy": "ALLOWLIST", "groups": [self.dev.pk], "keep_versions": 3, "keep_unit": "VERSIONS",
-                "resolve": "on", **data}
+                **data}
 
     def test_only_the_events_of_the_macs_it_reaches_are_resolved(self):
         on_dev = self.event(SHA_REDIS, "/opt/homebrew/Cellar/redis/8.10.1/bin", "redis-server")
@@ -134,8 +134,7 @@ class EventPackagesReviewTestCase(DetectionBase):
             return []
 
         with patch("santa.console.views_event_packages.sync_release_source", side_effect=sync):
-            response = self.client.post(reverse("console:events_packages"),
-                                        self.form_data([on_sales.pk, on_dev.pk]))
+            response = apply_packages(self.client, self.form_data([on_sales.pk, on_dev.pk]))
         on_dev.refresh_from_db()
         on_sales.refresh_from_db()
         self.assertIsNotNone(on_dev.resolved_at)

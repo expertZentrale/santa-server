@@ -1,0 +1,10 @@
+{% load i18n %}{# One package of "Allow as package" (views_event_packages): waiting, checked (events_packages_check), or failed #}
+<li class="package-step {% if status == 'ok' %}ok{% elif status == 'pending' %}pending{% else %}bad{% endif %}"{% if status == "pending" %} data-package-step data-pending hx-post="{% url 'console:events_packages_check' %}" hx-trigger="package-step" hx-target="this" hx-swap="outerHTML" hx-include="this" data-progress{% endif %}>
+  {% if status == "pending" %}<input type="hidden" name="source" value="{{ source.pk }}"><input type="hidden" name="identifier" value="{{ identifier }}">{% endif %}
+  <span class="badge {% if status == 'ok' %}ok{% elif status == 'pending' %}{% else %}bad{% endif %}" data-step-status data-failed-text="{% translate 'no answer' %}">{% if status == "ok" %}✓ {% translate "checked" %}{% elif status == "pending" %}{% translate "waiting" %}{% elif status == "wait" %}{% translate "running elsewhere" %}{% else %}✗ {% translate "failed" %}{% endif %}</span>
+  <strong>{{ identifier }}</strong> <small class="muted">{{ source.name }}</small>
+  {% if text %}<small class="help prewrap">{{ text }}</small>{% endif %}
+  {# shown by packages.js when the request didn't come back (a worker restarted, the connection) #}
+  <small class="help" data-step-failed hidden>{% translate "The check didn't answer. The package is saved: the scheduled check takes it, or try again." %}</small>
+  {% if status == "pending" %}<button type="button" class="button small" data-step-retry hidden>{% translate "Try again" %}</button>{% endif %}
+</li>

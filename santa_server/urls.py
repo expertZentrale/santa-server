@@ -22,6 +22,7 @@ urlpatterns = [
     path("profile/filters/default/", views_profile.default_filter, name="default_filter"),
     path("profile/filters/<int:pk>/delete/", views_profile.delete_filter, name="delete_filter"),
     path("profile/filters/<int:pk>/rename/", views_profile.rename_filter, name="rename_filter"),
+    path("profile/filters/<int:pk>/update/", views_profile.update_filter, name="update_filter"),
     path("notifications/", views_notifications.notifications, name="notifications"),
     path("notifications/panel/", views_notifications.panel, name="notifications_panel"),
     path("notifications/unread/", views_notifications.unread, name="notifications_unread"),

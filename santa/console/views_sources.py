@@ -585,7 +585,7 @@ def version_set_enabled(request, pk, enabled):
     require_perms(request, "change_rule")
     version = get_object_or_404(ReleaseVersion.objects.select_related("source"), pk=pk)
     rules = list(version.rules.all())
-    set_rules_enabled(version.rules.all(), enabled)
+    set_rules_enabled(version.rules.all(), enabled, request.user)
     if enabled and version.auto_enable_pending:
         # approving skips the auto approve delay
         version.auto_enable_pending = False

@@ -42,18 +42,26 @@
 .saved-filter > a:hover { text-decoration: none; }
 .saved-filter > .icon-button, .rename-view > summary { align-self: center; }
 .saved-filter.current > a { font-weight: 600; }
-.saved-filter.current > a::before { content: "✓ "; }
+/* the mark of the view shown: its own box with room after it (a space at the start of a flex item is dropped) */
+.saved-filter.current > a::before { content: "✓"; flex: none; margin-right: .5rem; }
 .saved-filter:hover { background: var(--surface-2); }
 .rename-view > summary { list-style: none; }
 .rename-view > summary::-webkit-details-marker { display: none; }
-/* renaming: the field and its buttons below the name, the pencil gives way to them (Cancel closes it) */
-.rename-view[open] { flex-basis: 100%; order: 3; }
+/* renaming: the name becomes the field, in its row, with save and cancel; the other buttons give way (Escape or ×
+   gives the name back) */
+.rename-view[open] { flex: 1; min-width: 0; }
 .rename-view[open] > summary { display: none; }
-.saved-filter:has(.rename-view[open]) { flex-wrap: wrap; background: none; }
-.rename-view-form { display: grid; gap: .5rem; padding: .2rem .6rem .6rem; }
-.rename-view-form input { width: 100%; }
+.saved-filter:has(.rename-view[open]) > :not(.rename-view) { display: none; }
+.saved-filter:has(.rename-view[open]) { background: none; }
+.rename-view-form { display: flex; align-items: center; gap: .1rem; padding-left: .2rem; }
+/* as high as the row with the name: the menu doesn't move */
+.rename-view-form input { flex: 1; min-width: 0; padding-block: .3rem; }
 .saved-filter-new { display: flex; gap: .4rem; padding: .4rem .2rem; }
+.saved-filter-update { padding: .4rem .2rem 0; border-top: 1px solid var(--border); margin-top: .2rem; }
+.saved-filter-update .button { width: 100%; justify-content: center; white-space: normal; }
 .views-picker .picker-panel > .saved-filter-new { border-top: 1px solid var(--border); margin-top: .2rem; }
+/* below the button "Save changes to …": its line is enough */
+.views-picker .picker-panel:has(> .saved-filter-update:not([hidden])) > .saved-filter-new { border-top: 0; margin-top: 0; }
 .saved-filter-new input { flex: 1; min-width: 0; }
 .views-picker .picker-panel > small, .views-picker .picker-panel > p { padding: .2rem .6rem; margin: 0; }
 @media (max-width: 40em) {
@@ -79,7 +87,11 @@
 .lookup-mode label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }
 .lookup-search { width: 100%; margin: .3rem 0 .2rem; }
 .lookup-options { display: grid; max-height: 15rem; overflow-y: auto; }
-.lookup-options label small { margin-left: .3rem; }
+/* the name, the owner below it: the same column for every Mac, however long its name */
+.picker-panel .lookup-options label { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: .55rem; row-gap: .1rem; align-items: center; }
+.lookup-options label input { grid-row: span 2; }
+.lookup-options .lookup-label, .lookup-options label small { grid-column: 2; min-width: 0; }
+.lookup-options label small { font-size: .8em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .filter-chip-picker .picker-panel:has(.lookup-search) { min-width: min(20rem, calc(100vw - 2rem)); }
 .picker-panel .lookup-options label { white-space: normal; overflow-wrap: anywhere; }
 /* the star of the default view: filled on the default, faint on the others until hovered */
