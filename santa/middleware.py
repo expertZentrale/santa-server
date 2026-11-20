@@ -5,6 +5,7 @@ from django.conf import settings
 from django.db import connection
 from django.http import HttpResponse
 from django.utils import timezone, translation
+from django.utils.cache import patch_cache_control
 from django_prometheus.exports import ExportToDjangoView
 from prometheus_client import Histogram
 
@@ -123,6 +124,23 @@ class NotificationTriggerMiddleware:
         response = self.get_response(request)
         if getattr(request, "notifications_added", False) and request.headers.get("HX-Request") == "true":
             response["HX-Trigger"] = add_trigger(response.get("HX-Trigger", ""), "notificationsChanged")
+        return response
+
+
+class ConsoleCacheMiddleware:
+    """The pages of the console and the request form show the current state of one user: a browser or a proxy on the
+    way must not answer a request again with a copy (a drawer reloaded after saving would show the old state). A view
+    that sets its own Cache-Control keeps it."""
+
+    PATHS = ("/console/", "/request/")
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+        if request.path.startswith(self.PATHS) and "Cache-Control" not in response:
+            patch_cache_control(response, private=True, no_cache=True)
         return response
 
 

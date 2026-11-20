@@ -10,8 +10,7 @@
     <p class="muted mono small cell-path" title="{{ event.file_path }}">{{ event.file_path }}</p>
     <div class="field{% if kind.errors %} has-error{% endif %}"><span class="field-label">{% translate "Ignore by" %}</span>{{ kind }}
       {% for error in kind.errors %}<small class="error">{{ error }}</small>{% endfor %}</div>
-    <div data-show-when="{{ kind.html_name }}=PATH">{% include "console/_field.html" with field=path %}
-      <small class="help">{% translate "Every app in this folder and below it, e.g. the installers of a download folder." %}</small></div>
+    <div data-show-when="{{ kind.html_name }}=PATH">{% translate "Every app in this folder and below it, e.g. the installers of a download folder." as path_help %}{% include "console/_field.html" with field=path field_help=path_help %}</div>
   </section>
   {% endfor %}
   <section class="card">

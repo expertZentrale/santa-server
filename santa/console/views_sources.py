@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 
 from django.contrib import messages
 from django.core.cache import cache
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.http import HttpResponse, JsonResponse, QueryDict
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -14,7 +14,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST
 
 from .. import catalog
-from ..models import ReleaseSource, ReleaseVersion
+from ..models import ReleaseSource, ReleaseVersion, Rule, RuleType
 from ..progress import (
     SHUTDOWN,
     AlreadyRunning,
@@ -29,6 +29,7 @@ from ..releases import (
     LINUX_ONLY_ERROR,
     RULE_OUTSIDE_ASSET_PATTERN,
     ReleaseError,
+    apply_source_scope,
     cleanup_preview,
     cleanup_release_source,
     pattern_stale_versions,
@@ -40,7 +41,7 @@ from ..releases import (
     unwanted_prerelease,
     version_order,
 )
-from ..services import groups_prefetch, set_rules_enabled
+from ..services import chunked, groups_prefetch, machines_prefetch, set_rules_enabled
 from .filters import Facet, any_of, chosen, filter_bar, remember_filters
 from .forms import ReleaseSourceForm
 from .utils import (
@@ -80,7 +81,7 @@ def sources(request):
     require_perms(request, "view_releasesource")
     if remembered := remember_filters(request, "sources"):
         return remembered
-    queryset = ReleaseSource.objects.prefetch_related(groups_prefetch(), "versions")
+    queryset = ReleaseSource.objects.prefetch_related(groups_prefetch(), machines_prefetch(), "versions")
     if kinds := chosen(request.GET, "kind", ReleaseSource.Kind.values):
         queryset = queryset.filter(kind__in=kinds)
     statuses = {"error": ~Q(last_error=""), "disabled": Q(is_enabled=False)}
@@ -113,10 +114,11 @@ def source_detail(request, pk, defer=None):
     rows of a list): a rule with many packages opens at once. defer False: everything at once (an approval inside
     the tables, which stay where they are)."""
     require_perms(request, "view_releasesource")
-    source = get_object_or_404(ReleaseSource.objects.prefetch_related("groups", "tags"), pk=pk)
+    source = get_object_or_404(ReleaseSource.objects.prefetch_related("groups", "machines", "tags"), pk=pk)
     versions_only = rows_only(request)
     if defer is None:
-        defer = is_htmx(request) and not versions_only
+        # reloaded after a save (drawer.js): everything at once, a second request would show the old versions longer
+        defer = is_htmx(request) and not versions_only and not request.headers.get("X-Drawer-Reload")
     context = {"source": source, "defer_versions": defer}
     if not versions_only:
         unchecked = unchecked_identifiers(source)
@@ -132,7 +134,7 @@ def source_detail(request, pk, defer=None):
                         "removable": removable_packages(source)})
         response = render_drawer(request, "console/sources/detail.html", "console/sources/drawer_detail.html",
                                  context)
-    patch_vary_headers(response, [ROWS_HEADER, "HX-Request"])
+    patch_vary_headers(response, [ROWS_HEADER, "HX-Request", "X-Drawer-Reload"])
     return response
 
 
@@ -153,11 +155,12 @@ def _versions_context(source):
     """The versions per package, and what "Clean up" would delete"""
     versions = {}
     # what the table shows of the rules (tens of thousands with dependencies), not the rules: whether a version's
-    # rules are enabled, and its dependencies with executables (rules); the others are scripts, nothing to allow
-    with_rules = {}
-    for version_id, label in (source.rules.exclude(release_dependency="").order_by()
-                              .values_list("release_version_id", "release_dependency").distinct()):
-        with_rules.setdefault(version_id, set()).add(label)
+    # rules are enabled, and how many rules it has of its own and per dependency (dependencies without rules are
+    # scripts, nothing to allow); one grouped query for all versions
+    rule_counts = {}
+    for row in (source.rules.order_by().values("release_version_id", "release_dependency")
+                .annotate(count=Count("pk"))):
+        rule_counts.setdefault(row["release_version_id"], {})[row["release_dependency"]] = row["count"]
     # one query for all versions (an EXISTS per version is slow on SQL Server)
     enabled = set(source.rules.filter(is_enabled=True).order_by().values_list("release_version_id", flat=True)
                   .distinct())
@@ -167,14 +170,24 @@ def _versions_context(source):
     for version in sorted(source.versions.defer("notes"), key=version_order(source), reverse=True):
         version.rules_enabled = version.pk in enabled
         version.files = sorted(files.get(version.pk, ()))
-        version.dependency_rows = [(label, label in with_rules.get(version.pk, ())) for label in version.dependencies]
+        counts = rule_counts.get(version.pk, {})
+        version.own_rule_count = counts.get("", 0)
+        version.dependency_rule_count = sum(count for label, count in counts.items() if label)
+        version.dependency_rows = [(label, counts.get(label, 0)) for label in version.dependencies]
+        version.total_rule_count = version.own_rule_count + version.dependency_rule_count
         versions.setdefault(version.identifier, []).append(version)
     per_identifier = [(identifier, source.identifier_icons.get(identifier) or {}, versions.pop(identifier, []))
                       for identifier in source.identifiers]
     # versions of identifiers that were removed, deleted at the next check
     per_identifier += [(identifier, {}, items) for identifier, items in versions.items()]
+    # the note on the dependencies without executables, once per package (its heading)
+    with_dependencies = {identifier for identifier, _item, items in per_identifier
+                         if any(version.dependency_rows for version in items)}
     stale = {version.pk for version in stale_versions(source, check_filters=True)}
-    return {"per_identifier": per_identifier, "stale": stale, "stale_count": len(stale) + len(stale_rules(source))}
+    # a rule per binary: the counts of the dependencies are binaries, else rules (several binaries share one)
+    per_binary = source.rule_type in (RuleType.BINARY, RuleType.CDHASH)
+    return {"per_identifier": per_identifier, "stale": stale, "stale_count": len(stale) + len(stale_rules(source)),
+            "with_dependencies": with_dependencies, "rules_per_binary": per_binary}
 
 
 def removable_packages(source):
@@ -281,9 +294,16 @@ def source_form(request, pk=None):
             log_addition(request.user, source)
         else:
             log_change(request.user, source, changed_message(form))
-        if not source.is_global and not source.groups.exists():
-            messages.warning(request, gettext("%(source)s: no group and not global, its rules apply to no Mac.")
-                             % {"source": source})
+        if not created and (rescoped := apply_source_scope(source)):
+            # its rules follow the scope of the package rule, also the ones of a scope changed before
+            rules = [rule for chunk in chunked(rescoped) for rule in Rule.objects.filter(pk__in=chunk)]
+            log_change(request.user, rules, f"Scope of package rule {source.pk} applied")
+            messages.info(request, ngettext(
+                "%(count)s rule of the package rule got its new scope.",
+                "%(count)s rules of the package rule got its new scope.", len(rescoped)) % {"count": len(rescoped)})
+        if not source.has_scope:
+            messages.warning(request, gettext(
+                "%(source)s: no group, no Mac and not global, its rules apply to no Mac.") % {"source": source})
         if not created and (stale := len(stale_versions(source, check_filters=True))):
             # never deleted silently: the console shows them, "Clean up" deletes them
             messages.info(request, ngettext(

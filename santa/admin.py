@@ -36,13 +36,14 @@ from .models import (
     generate_sync_token,
 )
 from .profiles import base_profile, group_profile
-from .releases import ReleaseError, cleanup_release_source, find_binaries, sync_release_source
+from .releases import ReleaseError, apply_source_scope, cleanup_release_source, find_binaries, sync_release_source
 from .services import (
     UploadedBinary,
     allow_binaries,
     allow_identifier,
     binary_identifiers,
     can_see_sync_token,
+    chunked,
     groups_prefetch,
     related_count,
     request_clean_sync,
@@ -550,6 +551,7 @@ class ReleaseSourceAdmin(admin.ModelAdmin):
     list_filter = ("kind", "rule_type", "policy", "is_enabled", "auto_approve")
     search_fields = ("name", "identifier")
     filter_horizontal = ("groups", "tags")
+    autocomplete_fields = ("machines",)
     readonly_fields = ("last_checked_at", "last_error", "created_at", "updated_at")
     inlines = [ReleaseVersionInline]
     actions = ["check_now", "clean_up"]
@@ -563,8 +565,8 @@ class ReleaseSourceAdmin(admin.ModelAdmin):
         ("Which versions and files", {"fields": ("version_pattern", "asset_pattern", "binary_pattern", "macos_minimum",
                                                  "macos_nearest", "include_prereleases", "include_dependencies")}),
         ("Rules", {"fields": ("rule_type", "policy", "custom_msg", "custom_url", "cel_expr")}),
-        ("Scope", {"fields": ("is_global", "groups", "auto_approve", "auto_approve_delay_days", "keep_versions",
-                              "keep_unit", "approve_kept_versions", "tags", "description")}),
+        ("Scope", {"fields": ("is_global", "groups", "machines", "auto_approve", "auto_approve_delay_days",
+                              "keep_versions", "keep_unit", "approve_kept_versions", "tags", "description")}),
         ("Status", {"fields": ("last_checked_at", "last_error", "created_at", "updated_at")}),
     )
 
@@ -588,8 +590,14 @@ class ReleaseSourceAdmin(admin.ModelAdmin):
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)
         source = form.instance
-        if not source.is_global and not source.groups.exists():
-            self.message_user(request, f"{source}: no group and not global, its rules apply to no Mac.",
+        if change and (rescoped := apply_source_scope(source)):
+            for chunk in chunked(rescoped):
+                for rule in Rule.objects.filter(pk__in=chunk):
+                    self.log_change(request, rule, f"Scope of package rule {source.pk} applied")
+            self.message_user(request, f"{source}: {len(rescoped)} rules got the scope of the package rule.",
+                              messages.INFO)
+        if not source.has_scope:
+            self.message_user(request, f"{source}: no group, no Mac and not global, its rules apply to no Mac.",
                               messages.WARNING)
 
     @admin.action(description="Check for a new release now")

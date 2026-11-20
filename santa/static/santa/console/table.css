@@ -13,7 +13,11 @@
 .table td > input[type="checkbox"], .table th > input[type="checkbox"] { margin: 0; vertical-align: middle; }
 .table th { background: var(--surface-2); font-size: .8rem; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
 .table tbody tr:last-child td, .table tbody tr:last-child th { border-bottom: 0; }
-.table tbody tr:hover { background: color-mix(in srgb, var(--surface-2) 60%, transparent); }
+/* only a row that does something on a click: it opens an entry in the drawer (its link, a double-click, Enter) or
+   is selected; not an empty list, a loading row or a table that only shows (versions, preview, clean up) */
+.table[data-table] tbody tr:has(a[hx-target="#drawer"]):not(.empty, .skeleton):hover,
+.table tbody tr:has(td.select input):hover {
+  background: color-mix(in srgb, var(--surface-2) 60%, transparent); }
 .table tr.disabled td { opacity: .6; }
 /* events that are resolved (all of an app's): greyed, the status badge, the checkbox and the ⋯ stay as they are */
 .table tr.resolved td:not(.select):not(.row-actions):not([data-col="status"]) { opacity: .6; }
@@ -382,7 +386,6 @@ body:has(.drawer.open) .bulkbar.visible { opacity: 0; visibility: hidden; pointe
    replaced in place by the rows */
 .table tr.skeleton td { height: 3.1rem; }
 .table.compact tr.skeleton td { height: 2.4rem; }
-.table tr.skeleton:hover { background: none; }
 .skeleton-bar { display: block; width: 70%; max-width: 14rem; height: .75rem; border-radius: var(--radius-sm); background: var(--surface-2); animation: skeleton 1.6s ease-in-out infinite; }
 .skeleton-bar.short { width: 45%; height: .6rem; margin-top: .4rem; }
 .skeleton-card { display: grid; gap: .5rem; }

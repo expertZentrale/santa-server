@@ -1878,6 +1878,42 @@ RULE_BATCH = 100
 LINK_BATCH = 500
 
 
+def apply_source_scope(source):
+    """Give the rules of a package rule its scope (all Macs, its groups and Macs) again: they get it when they are
+    created, a later change of the package rule has to reach them too, or they stay with the old one (no group: no
+    Mac). Returns the pks of the rules whose scope changed."""
+    group_ids = set(source.groups.values_list("pk", flat=True))
+    machine_ids = set(source.machines.values_list("pk", flat=True))
+    rule_pks = list(source.rules.values_list("pk", flat=True))
+    group_links = Rule.groups.through.objects
+    machine_links = Rule.machines.through.objects
+    changed = set()
+    with transaction.atomic():
+        for chunk in chunked(rule_pks):
+            changed.update(source.rules.filter(pk__in=chunk).exclude(is_global=source.is_global)
+                           .values_list("pk", flat=True))
+            groups_of = {pk: set() for pk in chunk}
+            for rule_id, group_id in group_links.filter(rule_id__in=chunk).values_list("rule_id", "group_id"):
+                groups_of[rule_id].add(group_id)
+            changed.update(pk for pk, groups in groups_of.items() if groups != group_ids)
+            machines_of = {pk: set() for pk in chunk}
+            for rule_id, machine_id in machine_links.filter(rule_id__in=chunk).values_list("rule_id", "machine_id"):
+                machines_of[rule_id].add(machine_id)
+            changed.update(pk for pk, machines in machines_of.items() if machines != machine_ids)
+        changed_pks = sorted(changed)
+        for chunk in chunked(changed_pks):
+            Rule.objects.filter(pk__in=chunk).update(is_global=source.is_global, updated_at=timezone.now())
+            group_links.filter(rule_id__in=chunk).delete()
+            group_links.bulk_create([group_links.model(rule_id=pk, group_id=group_id)
+                                     for pk in chunk for group_id in group_ids], batch_size=LINK_BATCH)
+            machine_links.filter(rule_id__in=chunk).delete()
+            machine_links.bulk_create([machine_links.model(rule_id=pk, machine_id=machine_id)
+                                       for pk in chunk for machine_id in machine_ids], batch_size=LINK_BATCH)
+    if changed_pks:
+        logger.info("Release source %s: scope of %s rules updated", source.name, len(changed_pks))
+    return changed_pks
+
+
 def create_release_rules(source, release_version, binaries, enabled=None, existing=()):
     """enabled: None = as the source approves new versions; existing: (rule type, identifier) of rules the version has
     already, not created again. In batches: a version with its dependencies can have a thousand rules."""
@@ -1921,9 +1957,14 @@ def create_release_rules(source, release_version, binaries, enabled=None, existi
     # SQL Server returns no keys from a bulk insert: the new rules of the version, read back
     created = [rule for rule in release_version.rules.order_by("pk") if rule.pk not in before]
     group_ids = list(source.groups.values_list("pk", flat=True))
+    machine_ids = list(source.machines.values_list("pk", flat=True))
     tag_ids = list(source.tags.values_list("pk", flat=True))
     Rule.groups.through.objects.bulk_create(
         [Rule.groups.through(rule_id=rule.pk, group_id=group_id) for rule in created for group_id in group_ids],
+        batch_size=LINK_BATCH)
+    Rule.machines.through.objects.bulk_create(
+        [Rule.machines.through(rule_id=rule.pk, machine_id=machine_id)
+         for rule in created for machine_id in machine_ids],
         batch_size=LINK_BATCH)
     Rule.tags.through.objects.bulk_create(
         [Rule.tags.through(rule_id=rule.pk, tag_id=tag_id) for rule in created for tag_id in tag_ids],
@@ -2359,9 +2400,10 @@ def _release_of_version(session, source, identifier, version, latest):
     return _npm_release(identifier, response.json())
 
 
-def _add_dependencies(session, source, identifier, latest, errors, progress=None):
+def _add_dependencies(session, source, identifier, latest, errors, progress=None, keep_previous=()):
     """The dependencies of the versions recorded before the source allowed them (or before they were cleaned up, or
-    resolved again): they replace the ones the version had"""
+    resolved again): they replace the ones the version had. keep_previous: the pks of the versions that keep them and
+    get the new ones in addition (the current version, a dependency released anew)"""
     for version in source.versions.filter(identifier=identifier, dependencies_resolved=False).order_by(
             "-created_at")[:MAX_KEPT_VERSIONS_PER_SYNC]:
         if progress:
@@ -2400,9 +2442,10 @@ def _add_dependencies(session, source, identifier, latest, errors, progress=None
                     rule.release_files = [release_file(item.asset, item.asset_match, item.path, item.info.sha256)
                                           for item in same]
                     rule.save(update_fields=["release_dependency", "description", "release_files", "updated_at"])
+            keep = version.pk in keep_previous
             # only after a complete result: a dependency that failed doesn't take away what was allowed so far
-            obsolete = [] if warnings else [rule.pk for rule in previous
-                                             if (rule.rule_type, rule.identifier) not in binaries_of]
+            obsolete = [] if warnings or keep else [rule.pk for rule in previous
+                                                     if (rule.rule_type, rule.identifier) not in binaries_of]
             for chunk in chunked(obsolete):
                 Rule.objects.filter(pk__in=chunk).delete()
             # the dependencies follow the approval of the version: enabled when its own rules are (or it had none)
@@ -2417,8 +2460,12 @@ def _add_dependencies(session, source, identifier, latest, errors, progress=None
                      for file in rule.release_files} - own - {None, ""}
             version.binary_count = len(own) + len(added)
             version.dependency_binary_count = len(added)
+            # kept: the lines of the previous dependencies stay, the ones resolved now are written again
+            replaced_labels = included if keep else version.dependencies or []
+            if keep:
+                included = list(dict.fromkeys([*(version.dependencies or []), *included]))
             version.notes = "\n".join(filter(None, [
-                _without_dependency_notes(version.notes, version.dependencies or []),
+                _without_dependency_notes(version.notes, replaced_labels),
                 *[f"{b.dependency} – {b.asset}: {b.path} {b.info.sha256}" for b in binaries],
                 f"Dependencies: {', '.join(included)}" if included else "", *warnings]))[:10000]
             version.dependencies = included
@@ -2531,10 +2578,41 @@ def _sync_identifier(session, source, identifier, progress=None):
             errors.append(f"Older versions: {e}")
     if uses_dependencies(source):
         try:
-            _add_dependencies(session, source, identifier, release, errors, progress)
+            keep = _refresh_current_dependencies(session, source, identifier, release)
+            _add_dependencies(session, source, identifier, release, errors, progress, keep_previous=keep)
         except (ReleaseError, requests.RequestException, KeyError, ValueError) as e:
             errors.append(f"Dependencies: {e}")
     return new_versions, errors
+
+
+def _refresh_current_dependencies(session, source, identifier, release):
+    """The current version of a formula needs the current versions of its dependencies: Homebrew installs those, not
+    the ones of the day the version was recorded (colima stays, lima gets a new version). A version with a dependency
+    version it doesn't have yet is resolved again (_add_dependencies), keeping the rules of the ones it had: a Mac that
+    didn't upgrade them still runs them. Returns the pks of these versions."""
+    if source.kind != ReleaseSource.Kind.HOMEBREW_FORMULA or not release.version:
+        return set()
+    version = source.versions.filter(identifier=identifier, version=release.version).first()
+    if version is None or not version.dependencies:
+        # none resolved yet (or cleaned up): _add_dependencies resolves them as before
+        return set()
+    if version.dependencies_resolved:
+        warnings = Errors()
+        try:
+            # only the formulae, nothing downloaded: the bottles come when something changed
+            new = set(homebrew_dependencies(session, source, release, warnings)) - set(version.dependencies)
+        except (ReleaseError, requests.RequestException, KeyError, ValueError) as e:
+            # the version keeps what it has, asked again at the next check
+            logger.info("Release source %s: dependencies of %s not checked: %s", source.name, identifier, e)
+            return set()
+        if warnings or not new:
+            return set()
+        logger.info("Release source %s: %s %s has new dependency versions: %s", source.name, identifier,
+                    version.version, ", ".join(sorted(new)))
+        version.dependencies_resolved = False
+        version.save(update_fields=["dependencies_resolved"])
+    # also when a download failed the last time: the previous ones stay until the version itself goes
+    return {version.pk}
 
 
 PREVIEW_RELEASES = 5

@@ -1,0 +1,2 @@
+{% load i18n %}{# The help of a field behind an ⓘ in its label, opened under the label over the field: text (HTML of the form or of a template), extra (a second paragraph) #}
+<details class="help-tip field-help" data-picker><summary class="icon-button small" title="{% translate 'Help' %}" aria-label="{% translate 'Help' %}">{% include "console/icons/info.svg" %}</summary><div class="help-pop" role="note">{% if text %}{{ text|safe }}{% endif %}{% if text and extra %}<br>{% endif %}{% if extra %}{{ extra|safe }}{% endif %}</div></details>

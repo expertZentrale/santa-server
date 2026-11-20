@@ -6,6 +6,62 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Single Macs in the scope of a package rule.** Besides *All Macs* and groups, a package rule can name single Macs,
+  e.g. to try a tool on one Mac before its group gets it. Its rules take them like the groups, also the existing
+  ones when they change; the configuration export and import carry them by serial number.
+- **Suggestions for the Macs of a rule.** The Macs of a rule or package rule are chosen like the tags: a search by
+  hostname, serial number or user suggests the Macs, the chosen ones are chips with hostname and serial number.
+
+### Changed
+
+- **The binaries of every dependency, each its own list.** In the versions of a package rule, every dependency with
+  executables has a button with the number of its binaries (of its rules, if several binaries share one rule) that
+  opens the rules list with exactly these (the new filter *Dependency*). A version with dependencies shows *Own* and
+  *All* (own plus dependencies) under *Binaries*, each a link to its rules. The note on the dependencies without
+  executables is behind an ⓘ next to the package instead of under every version.
+- **More details on a rule of a package rule.** Its detail shows the type, the scope with the groups that get it
+  through inheritance (or the warning that it reaches no Mac), the package version with its approval and a link to
+  all its rules, the files of the release it allows, the tags and when it was created and changed.
+
+- **The default for everyone behind a gear.** In the *Views* menu of the lists, *Set the current view as Standard*
+  and *Back to the built-in Standard* are behind a gear marked *For all users*, with their explanation as a tooltip,
+  and both ask for a confirmation: no global change by mistake. A new view is saved with the save icon next to its
+  name, as the existing ones are.
+
+- **The help of the fields behind an ⓘ.** In every form of the console, the explanation of a field no longer stands
+  under it: an ⓘ after its label opens it (also on a phone and in a narrow drawer), and closes with a click elsewhere
+  or Escape.
+- **The versions of a package rule in a narrow drawer or on a phone.** The values of a version wrap onto new lines
+  instead of being cut off at the edge, and *N dependencies* is in a row of its own under the version, right above
+  the list it opens.
+- **The ⓘ of a field centered on its label.** It sat a few pixels too high next to the text.
+- **Even buttons on a phone.** The buttons at the top of a page or a detail are as wide as their text and equally
+  high in a row: a long one ("Check the new package") no longer wraps and pushes the others out of line.
+- **Hover only where a click does something.** A row is highlighted under the mouse only when it opens an entry or
+  can be selected, no longer in an empty list or in tables that only show (the versions of a package rule).
+
+### Fixed
+
+- **The change of the Macs of a rule in its history.** Saving a rule with changed Macs was logged as "No fields
+  changed".
+- **A changed scope of a package rule reaches its rules.** The rules of a package rule only got its groups (or *All
+  Macs*) when they were created: after a later change of the scope, the existing rules kept the old one, with no group
+  they reached no Mac (the binary shows "not for these Macs" and is blocked in Lockdown). Saving a package rule now
+  gives all its rules its scope, in the console, the admin and the configuration import, and the update gives the
+  rules of every package rule its current scope once.
+- **New versions of the dependencies of the current Homebrew version.** With *Allow the dependencies*, the
+  dependencies of a version were only looked up when it was recorded. Homebrew installs the current version of a
+  dependency, also when the formula itself stays the same (colima, a new lima): every check now looks for new
+  versions of the dependencies of the current version and allows them with it, following its approval. The rules of
+  the previous dependency versions stay for the Macs that didn't upgrade, until the version itself is deleted.
+- **The drawer after saving on a slow connection.** After saving a package rule the drawer went back to its view from
+  before the save and showed it unchanged until the new one came, on a slow connection for seconds (the added package
+  seemed missing). The old view is now dimmed while it reloads, and a package rule comes with its versions in one
+  request. The console and the request form are sent with `Cache-Control: private, no-cache`: neither a browser nor
+  a proxy answers them with a stored copy.
+
 ## [0.16.0] - 2026-11-16
 
 ### Added

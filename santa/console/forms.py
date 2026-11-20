@@ -9,6 +9,7 @@ from django.contrib.auth import password_validation
 from django.contrib.auth.models import Group as AuthGroup
 from django.contrib.auth.models import Permission, User
 from django.core.exceptions import NON_FIELD_ERRORS, ValidationError
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.text import format_lazy
 from django.utils.translation import gettext
@@ -166,12 +167,31 @@ APPROVAL_UNTIL_HELP = _("Then the rule is removed from the Macs and deleted. A r
                         "later end; one without an end stays so.")
 
 
+class MachinesWidget(forms.Textarea):
+    """The Macs as chips with a search (machines.js); the hidden textarea keeps them one per line, as the field reads
+    them. Without JS the textarea is all there is."""
+    template_name = "console/widgets/machines.html"
+
+    def get_context(self, name, value, attrs):
+        context = super().get_context(name, value, attrs)
+        names = [line.strip() for line in (context["widget"]["value"] or "").splitlines() if line.strip()]
+        found = {}
+        for chunk in chunked(names):
+            for machine in (Machine.objects.filter(Q(serial_number__in=chunk) | Q(hostname__in=chunk))
+                            .only("serial_number", "hostname")):
+                found.setdefault(machine.serial_number.lower(), machine)
+                if machine.hostname:
+                    found.setdefault(machine.hostname.lower(), machine)
+        context["widget"]["machines"] = [(name, found.get(name.lower())) for name in dict.fromkeys(names)]
+        return context
+
+
 class MachinesField(forms.CharField):
     """Macs by serial number or hostname, one per line or comma separated"""
 
     def __init__(self, **kwargs):
         kwargs.setdefault("required", False)
-        kwargs.setdefault("widget", forms.Textarea(attrs={"rows": 2, "placeholder": _("serial numbers or hostnames")}))
+        kwargs.setdefault("widget", MachinesWidget(attrs={"rows": 2}))
         super().__init__(**kwargs)
 
     def prepare_value(self, value):
@@ -360,7 +380,8 @@ class RuleForm(TagsMixin, forms.ModelForm):
         self.fields["is_enabled"].label = _("Enabled")
         self.fields["cel_expr"].widget.attrs["data-cel-suggestions"] = cel_suggestions_json()
         if self.instance.pk:
-            self.initial["machines"] = self.instance.machines.all()
+            # a list: a queryset would be read only after the save, the change log would see no change
+            self.initial["machines"] = list(self.instance.machines.all())
             # only the prefixes of its own team (an expression by hand can test another one)
             prefixes = parse_prefix_expression(self.instance.cel_expr, self.instance.identifier)
             if prefixes:
@@ -574,6 +595,7 @@ class BaseListSourceFormSet(forms.BaseFormSet):
 
 class ReleaseSourceForm(TagsMixin, forms.ModelForm):
     picked = forms.CharField(required=False, widget=forms.HiddenInput)
+    machines = MachinesField(label=_("Macs"))
 
     class Meta:
         model = ReleaseSource
@@ -581,7 +603,7 @@ class ReleaseSourceForm(TagsMixin, forms.ModelForm):
                   "list_version_key", "list_one_version", "list_name_key",
                   "version_pattern", "asset_pattern", "binary_pattern", "macos_minimum", "macos_nearest",
                   "include_prereleases", "rule_type", "policy", "cel_expr", "custom_msg", "custom_url", "is_global",
-                  "groups", "auto_approve",
+                  "groups", "machines", "auto_approve",
                   "auto_approve_delay_days", "keep_versions", "keep_unit", "approve_kept_versions",
                   "include_dependencies", "tags")
         widgets = {
@@ -632,6 +654,9 @@ class ReleaseSourceForm(TagsMixin, forms.ModelForm):
         self.fields["rule_type"].choices = rule_type_choices()
         self.fields["is_global"].label = _("All Macs (global)")
         self.fields["is_enabled"].label = _("Enabled")
+        if self.instance.pk:
+            # a list: a queryset would be read only after the save, the change log would see no change
+            self.initial["machines"] = list(self.instance.machines.all())
 
     def clean_picked(self):
         return clean_picked(self.cleaned_data["picked"])
@@ -920,7 +945,7 @@ class RequestOtherForm(forms.Form):
 
 
 def keep_versions_field():
-    # the help text is under the unit too (sources/_keep_fields.html)
+    # its help text: behind the ⓘ of its label, for the unit too (sources/_keep_fields.html)
     return forms.IntegerField(min_value=0, initial=3, required=False, label=_("Keep"))
 
 

@@ -11,22 +11,22 @@
     {% include "console/_field.html" with field=form.kind %}
     {# the identifiers: "List" for a download list, the help of the chosen catalog only #}
     {% with field=form.identifier %}<div class="field{% if field.errors %} has-error{% endif %}" data-field="identifier">
-      <label for="{{ field.id_for_label }}"><span data-show-when="kind=URL_LIST">{% translate "List" %}</span><span data-show-when="kind=GITHUB_RELEASE|HOMEBREW_FORMULA|HOMEBREW_CASK|URL|NPM_PACKAGE|VSCODE_EXTENSION|JETBRAINS_PLUGIN|">{{ field.label }}</span></label>
+      <label for="{{ field.id_for_label }}"><span data-show-when="kind=URL_LIST">{% translate "List" %}</span><span data-show-when="kind=GITHUB_RELEASE|HOMEBREW_FORMULA|HOMEBREW_CASK|URL|NPM_PACKAGE|VSCODE_EXTENSION|JETBRAINS_PLUGIN|">{{ field.label }}</span><details class="help-tip field-help" data-picker><summary class="icon-button small" title="{% translate 'Help' %}" aria-label="{% translate 'Help' %}">{% include "console/icons/info.svg" %}</summary><div class="help-pop" role="note">
+        <span class="help-line" data-show-when="kind=GITHUB_RELEASE|HOMEBREW_FORMULA|HOMEBREW_CASK|URL|NPM_PACKAGE|VSCODE_EXTENSION|JETBRAINS_PLUGIN|">{% translate "One per line, each one is checked on its own and keeps its own versions." %}</span>
+        <span class="help-line" data-show-when="kind=GITHUB_RELEASE">{% translate "GitHub: owner/repo (e.g. abiosoft/colima)." %}</span>
+        <span class="help-line" data-show-when="kind=HOMEBREW_FORMULA|HOMEBREW_CASK">{% translate "Homebrew: the name of the formula or cask, from a tap with its full name (e.g. hashicorp/tap/terraform)." %}</span>
+        <span class="help-line" data-show-when="kind=URL">{% translate "The full URL of the download." %}</span>
+        <span class="help-line" data-show-when="kind=URL_LIST">{% translate "The https URL of the JSON list, one per line: each one is checked on its own and keeps its own versions." %}</span>
+        <span class="help-line" data-show-when="kind=NPM_PACKAGE">{% translate "npm: the package name (e.g. @esbuild/darwin-arm64)." %}</span>
+        <span class="help-line" data-show-when="kind=VSCODE_EXTENSION">{% translate "VS Code: publisher.name (e.g. rust-lang.rust-analyzer)." %}</span>
+        <span class="help-line" data-show-when="kind=JETBRAINS_PLUGIN">{% translate "JetBrains: the plugin ID (e.g. com.intellij.plugins.watcher)." %}</span></div></details></label>
       {{ field|form_widget }}
-      <small class="help" data-show-when="kind=GITHUB_RELEASE|HOMEBREW_FORMULA|HOMEBREW_CASK|URL|NPM_PACKAGE|VSCODE_EXTENSION|JETBRAINS_PLUGIN|">{% translate "One per line, each one is checked on its own and keeps its own versions." %}</small>
-      <small class="help" data-show-when="kind=GITHUB_RELEASE">{% translate "GitHub: owner/repo (e.g. abiosoft/colima)." %}</small>
-      <small class="help" data-show-when="kind=HOMEBREW_FORMULA|HOMEBREW_CASK">{% translate "Homebrew: the name of the formula or cask, from a tap with its full name (e.g. hashicorp/tap/terraform)." %}</small>
-      <small class="help" data-show-when="kind=URL">{% translate "The full URL of the download." %}</small>
-      <small class="help" data-show-when="kind=URL_LIST">{% translate "The https URL of the JSON list, one per line: each one is checked on its own and keeps its own versions." %}</small>
-      <small class="help" data-show-when="kind=NPM_PACKAGE">{% translate "npm: the package name (e.g. @esbuild/darwin-arm64)." %}</small>
-      <small class="help" data-show-when="kind=VSCODE_EXTENSION">{% translate "VS Code: publisher.name (e.g. rust-lang.rust-analyzer)." %}</small>
-      <small class="help" data-show-when="kind=JETBRAINS_PLUGIN">{% translate "JetBrains: the plugin ID (e.g. com.intellij.plugins.watcher)." %}</small>
       {% for error in field.errors %}<small class="error">{{ error }}</small>{% endfor %}
     </div>{% endwith %}
     {# a download list: where the versions are, and its downloads as a table (ListSourceForm) #}
     <div data-show-when="kind=URL_LIST">
-      <small class="help after-field">{% translate "A JSON list with one entry per version (or per tool). The preview shows its entries with their fields: use them below." %}</small>
-      {% include "console/_field.html" with field=form.list_format %}
+      {% translate "A JSON list with one entry per version (or per tool). The preview shows its entries with their fields: use them below." as list_help %}
+      {% include "console/_field.html" with field=form.list_format field_help=list_help %}
       <div class="process-fields">
         {% include "console/_field.html" with field=form.list_entries %}
         {% include "console/_field.html" with field=form.list_version_key %}
@@ -34,8 +34,8 @@
       {% include "console/_field.html" with field=form.list_one_version %}
       <div data-show-when="list_one_version">{% include "console/_field.html" with field=form.list_name_key %}</div>
       {% with formset=form.downloads %}<div class="field" data-formset="{{ formset.prefix }}">
-        <span class="field-label">{% translate "Downloads" %}</span>
-        <small class="help">{% translate "One row per download. Rows with “Only for the entries with” give their download only to those entries." %}</small>
+        {% translate "One row per download. Rows with “Only for the entries with” give their download only to those entries." as downloads_help %}
+        <span class="field-label">{% translate "Downloads" %}{% include "console/_field_help.html" with text=downloads_help %}</span>
         {{ formset.management_form }}
         {% for error in formset.non_form_errors %}<div class="error">{{ error }}</div>{% endfor %}
         <div class="process-rows" data-formset-rows>
@@ -59,7 +59,7 @@
     {# while it runs, "Preview" is "Stop the preview" (checks.js); it goes on when the drawer is closed, the form shows it again #}
     <div class="actions"><button type="button" class="button" hx-post="{{ preview_url }}" hx-target="#source-preview" hx-swap="innerHTML" data-progress data-preview-button{% if draft.running %} hidden{% endif %}>{% translate "Preview" %}</button>
       <button type="button" class="button danger" data-preview-cancel data-cancel-url="{% url 'console:progress_cancel' '00000000-0000-0000-0000-000000000000' %}"{% if draft.running %} data-progress-id="{{ draft.progress_id }}"{% else %} hidden{% endif %}>{% translate "Stop the preview" %}</button>
-      <small class="help">{% translate "The latest releases of the packages: what the patterns take. Nothing is saved." %}</small></div>
+      {% translate "The latest releases of the packages: what the patterns take. Nothing is saved." as preview_help %}{% translate "Help" as help_label %}{% include "console/_help.html" with text=preview_help label=help_label %}</div>
     <div id="source-preview" aria-live="polite"{% if draft.running %} data-preview-pending="{{ draft.progress_url }}" data-result-url="{{ result_url }}"{% endif %}>
       {% if draft.running %}<p class="muted" aria-busy="true">{% translate "The preview is running…" %} <span data-preview-step></span></p>
       {% elif draft.died %}<p class="error">{% translate "The preview stopped without an answer from the server. Preview again." %}</p>
@@ -69,14 +69,15 @@
   <section class="card"><h2>{% translate "Rules" %}</h2>
     {% include "console/_field.html" with field=form.rule_type %}
     {% include "console/_field.html" with field=form.policy %}
-    <div data-show-when="policy=CEL">{% include "console/_field.html" with field=form.cel_expr %}</div>
+    <div data-show-when="policy=CEL">{% include "console/rules/_cel_help.html" with field=form.cel_expr %}</div>
     <div data-show-when="policy=BLOCKLIST|CEL">
       {% include "console/_field.html" with field=form.custom_msg %}
       {% include "console/_field.html" with field=form.custom_url %}</div>
   </section>
   <section class="card"><h2>{% translate "Scope" %}</h2>
     {% include "console/_field.html" with field=form.is_global %}
-    <div data-hide-when="is_global">{% include "console/_field.html" with field=form.groups %}</div>
+    <div data-hide-when="is_global">{% include "console/_field.html" with field=form.groups %}
+      {% include "console/_field.html" with field=form.machines %}</div>
   </section>
   <section class="card"><h2>{% translate "Approval" %}</h2>
     {% include "console/_field.html" with field=form.auto_approve %}

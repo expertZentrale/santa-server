@@ -209,3 +209,42 @@ class DrawerTestCase(ConsoleBase):
         other = Rule.objects.create(rule_type=RuleType.BINARY, identifier="c" * 64, is_global=True)
         self.assertNotContains(self.client.get(reverse("console:rule", args=(other.pk,))), "rule-delete-form")
         self.assertEqual(self.client.post(reverse("console:rule_delete", args=(other.pk,))).status_code, 403)
+
+
+class ConsoleCacheTestCase(ConsoleBase):
+    """A drawer reloaded after saving must come from the server, not from a cache on the way"""
+
+    def test_the_console_is_not_answered_from_a_cache(self):
+        source = ReleaseSource.objects.create(name="Colima", kind="GITHUB_RELEASE", identifier="abiosoft/colima",
+                                              is_global=True)
+        url = reverse("console:source", args=(source.pk,))
+        for headers in ({}, HTMX, {**HTMX, "HTTP_X_SANTA_ROWS": "1"}):
+            with self.subTest(headers=headers):
+                cache_control = self.client.get(url, **headers)["Cache-Control"]
+                self.assertIn("no-cache", cache_control)
+                self.assertIn("private", cache_control)
+
+    def test_a_view_keeps_its_own_cache_control(self):
+        # never_cache of the check status: no-store stays
+        source = ReleaseSource.objects.create(name="Colima", kind="GITHUB_RELEASE", identifier="abiosoft/colima",
+                                              is_global=True)
+        response = self.client.get(reverse("console:source_check_status", args=(source.pk,)), **HTMX)
+        self.assertIn("no-store", response["Cache-Control"])
+
+    def test_not_the_static_files_and_the_health_check(self):
+        self.assertNotIn("no-cache", self.client.get("/health").get("Cache-Control", ""))
+
+    def test_a_package_rule_reloaded_after_saving_comes_with_its_versions(self):
+        source = ReleaseSource.objects.create(name="Colima", kind="GITHUB_RELEASE", identifier="abiosoft/colima",
+                                              is_global=True)
+        ReleaseVersion.objects.create(source=source, identifier="abiosoft/colima", version="v0.10.3")
+        url = reverse("console:source", args=(source.pk,))
+        # opened: the versions come with a second request
+        opened = self.client.get(url, **HTMX)
+        self.assertContains(opened, "rows-loading")
+        self.assertNotContains(opened, "v0.10.3")
+        # reloaded after a save: at once, the old versions don't stay longer
+        reloaded = self.client.get(url, **HTMX, HTTP_X_DRAWER_RELOAD="1")
+        self.assertNotContains(reloaded, "rows-loading")
+        self.assertContains(reloaded, "v0.10.3")
+        self.assertIn("X-Drawer-Reload", reloaded["Vary"])

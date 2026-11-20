@@ -12,8 +12,7 @@
   {% include "console/_field.html" with field=form.policy %}
   <div data-show-when="policy=CEL">
     <div data-show-when="rule_type=TEAMID">{% include "console/_field.html" with field=form.signing_prefixes %}</div>
-    {% include "console/_field.html" with field=form.cel_expr %}
-    {% include "console/rules/_cel_help.html" %}</div>
+    {% include "console/rules/_cel_help.html" with field=form.cel_expr %}</div>
   {% include "console/_field.html" with field=form.scope %}
   <div data-show-when="scope=groups">{% include "console/_field.html" with field=form.groups %}</div>
   {% include "console/_field.html" with field=form.expires_at %}
@@ -32,7 +31,7 @@
     {% include "console/_field.html" with field=form.package_name %}
     {% include "console/_field.html" with field=form.package_rule_type %}
     {% include "console/_field.html" with field=form.package_policy %}
-    <div data-show-when="package_policy=CEL">{% include "console/_field.html" with field=form.package_cel_expr %}{% include "console/rules/_cel_help.html" %}</div>
+    <div data-show-when="package_policy=CEL">{% include "console/rules/_cel_help.html" with field=form.package_cel_expr %}</div>
     {% include "console/_field.html" with field=form.package_auto_approve %}
     {% include "console/_field.html" with field=form.package_is_global %}
     <div data-hide-when="package_is_global">{% include "console/_field.html" with field=form.package_groups %}</div>
@@ -43,9 +42,9 @@
 <div data-show-when="result=existing">
   {% if perms.santa.view_rule %}{% with field=form.rule_identifier %}
   <div class="field{% if field.errors %} has-error{% endif %}" data-field="{{ field.name }}" data-rule-search data-url="{% url 'console:rule_suggestions' %}">
-    <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+    {% translate "Search by identifier, description or tag, and pick the rule." as search_help %}
+    <label for="{{ field.id_for_label }}">{{ field.label }}{% include "console/_field_help.html" with text=search_help %}</label>
     <div class="combobox">{{ field }}<div class="suggestions" id="rule-suggestions" data-suggestions role="listbox" aria-label="{{ field.label }}"></div></div>
-    <small class="help">{% translate "Search by identifier, description or tag, and pick the rule." %}</small>
     {% for error in field.errors %}<small class="error">{{ error }}</small>{% endfor %}
   </div>
   {% endwith %}{% else %}{% include "console/_field.html" with field=form.rule_identifier %}{% endif %}

@@ -27,6 +27,7 @@ from .models import (
     Tag,
     legacy_list_sources,
 )
+from .releases import apply_source_scope
 
 FORMAT = "santa-server-config"
 # the models in the file: exporting needs their view permission, importing add / change / delete
@@ -199,8 +200,9 @@ def export_config():
     release_sources = [
         {"name": s.name, **{f: getattr(s, f) for f in RELEASE_SOURCE_FIELDS},
          "groups": sorted(g.name for g in s.groups.all()),
+         "machines": sorted(m.serial_number for m in s.machines.all()),
          "tags": sorted(t.name for t in s.tags.all())}
-        for s in ReleaseSource.objects.prefetch_related("groups", "tags").order_by("name")
+        for s in ReleaseSource.objects.prefetch_related("groups", "machines", "tags").order_by("name")
     ]
     rules = [
         {**{f: getattr(r, f) for f in RULE_KEY_FIELDS + RULE_FIELDS},
@@ -377,6 +379,17 @@ class _Importer:
             group.parent = parent
             if self.save(group, f"Group {group.name}"):
                 self.record("updated", group)
+    def resolve_machines(self, serial_numbers, label):
+        """The Macs by serial number; machines are never created, an unknown one is left out with a warning"""
+        machines = []
+        for serial_number in serial_numbers or []:
+            machine = Machine.objects.filter(serial_number=serial_number).first()
+            if machine is None:
+                self.warnings.append(f"{label}: machine {serial_number} unknown on the target, skipped")
+            else:
+                machines.append(machine)
+        return machines
+
     def import_release_sources(self):
         names = set()
         for index, item in enumerate(self.data.get("release_sources", [])):
@@ -398,8 +411,14 @@ class _Importer:
                 continue
             groups = self.resolve_groups(item.get("groups"), f"Release source {name}")
             changed = self.set_m2m(source.groups, groups) or changed
+            if "machines" in item:
+                machines = self.resolve_machines(item["machines"], f"Release source {name}")
+                changed = self.set_m2m(source.machines, machines) or changed
             if "tags" in item:
                 changed = self.set_m2m(source.tags, self.resolve_tags(item["tags"])) or changed
+            if not created:
+                # the rules it created already take a changed scope too
+                apply_source_scope(source)
             if changed:
                 self.record("created" if created else "updated", source)
             self.status("release_sources", index, item, created, changed)
@@ -442,13 +461,7 @@ class _Importer:
                 continue
             kept.add(rule.pk)
             groups = self.resolve_groups(item.get("groups"), label)
-            machines = []
-            for serial_number in item.get("machines") or []:
-                machine = Machine.objects.filter(serial_number=serial_number).first()
-                if machine is None:
-                    self.warnings.append(f"{label}: machine {serial_number} unknown on the target, skipped")
-                else:
-                    machines.append(machine)
+            machines = self.resolve_machines(item.get("machines"), label)
             changed = self.set_m2m(rule.groups, groups) or changed
             changed = self.set_m2m(rule.machines, machines) or changed
             if "tags" in item:

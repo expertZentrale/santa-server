@@ -26,7 +26,7 @@ from django.utils import timezone
 from santa import catalog, macho, semver
 from santa import releases as release_module
 from santa.console.views_sources import error_groups, removable_packages
-from santa.models import ReleaseSource, ReleaseVersion, Rule, RuleType, Tag
+from santa.models import Group, Machine, ReleaseSource, ReleaseVersion, Rule, RuleType, Tag
 from santa.progress import SHUTDOWN, SHUTTING_DOWN, Cancelled, Progress
 from santa.releases import (
     LINUX_ONLY_ERROR,
@@ -39,6 +39,7 @@ from santa.releases import (
     _ghcr_release,
     _ghcr_tags,
     _npm_platform_ok,
+    apply_source_scope,
     cleanup_preview,
     cleanup_release_source,
     collect_binaries,
@@ -52,6 +53,8 @@ from santa.releases import (
     sync_release_source,
     unchecked_identifiers,
 )
+from santa.rules import effective_rules
+from santa.services import existing_rules
 
 from .test_console import ConsoleBase
 from .test_package_sources import VSCodeTestCase
@@ -391,8 +394,34 @@ class DependenciesTestCase(ReleaseSourceBase):
         admin = User.objects.create_superuser("admin", "admin@example.com", "pw")
         self.client.force_login(admin)
         response = self.client.get(reverse("console:source", args=(source.pk,)))
-        self.assertContains(response, "3 dependencies")
-        self.assertContains(response, "executables allowed", count=2)
+        # the toggle right above its list, in the row under the version
+        self.assertContains(response, '<tr class="dependency-row"><td colspan="5"><details class="dependencies">'
+                                      "<summary>3 dependencies</summary>")
+        # the dependencies with executables: a button with their binaries (rule type Binary: one rule each)
+        version = source.versions.get()
+        self.assertContains(
+            response, f'href="/console/rules/?version={version.pk}&amp;dependency=dep-a%401.4.0">1 binary</a>')
+        self.assertContains(response, ">1 binary</a>", count=2)
+        # the note on the others: once, behind the ⓘ of the package
+        self.assertContains(response, "Dependencies without a button have no executable", count=1)
+        self.assertContains(response, 'aria-label="About the dependencies"', count=1)
+        # its own rules (none: the bin of the package is a script) and all of them
+        self.assertContains(response, f"?version={version.pk}&amp;dependency=-\">Own: 0</a>")
+        self.assertContains(response, f"?version={version.pk}\">All: 2</a>")
+
+    def test_the_dependencies_count_rules_when_binaries_share_them(self):
+        source = ReleaseSource.objects.create(name="tool", kind=ReleaseSource.Kind.NPM_PACKAGE, is_global=True,
+                                              identifier="@example/tool", include_dependencies=True,
+                                              rule_type=RuleType.SIGNINGID)
+        version = ReleaseVersion.objects.create(source=source, identifier="@example/tool", version="1.0.0",
+                                                dependencies=["dep-a@1.4.0"], dependencies_resolved=True)
+        Rule.objects.create(rule_type=RuleType.SIGNINGID, identifier="ABCDE12345:com.example.helper",
+                            release_source=source, release_version=version, release_dependency="dep-a@1.4.0")
+        admin = User.objects.create_superuser("admin", "admin@example.com", "pw")
+        self.client.force_login(admin)
+        response = self.client.get(reverse("console:source", args=(source.pk,)))
+        self.assertContains(response, "&amp;dependency=dep-a%401.4.0\">1 rule</a>")
+        self.assertNotContains(response, "1 binary")
 
     def test_without_the_option_no_dependencies(self):
         source = ReleaseSource.objects.create(name="tool", kind=ReleaseSource.Kind.NPM_PACKAGE, is_global=True,
@@ -743,6 +772,84 @@ class DependenciesTestCase(ReleaseSourceBase):
         self.assertTrue(Rule.objects.filter(pk=allowed.pk).exists())
         old.refresh_from_db()
         self.assertIn("Dependency lima", old.notes)
+
+    def new_lima(self, routes, version):
+        """formulae.brew.sh has a new current lima, colima stays"""
+        bottle = tar_gz({f"lima/{version}/bin/lima": unsigned(f"lima-{version}")})
+        routes["https://formulae.brew.sh/api/formula/lima.json"] = FakeResponse({
+            "versions": {"stable": version}, "revision": 0, "dependencies": [],
+            "bottle": {"stable": {"files": {"arm64_sequoia": {
+                "url": f"https://ghcr.example/lima-{version}", "sha256": hashlib.sha256(bottle).hexdigest()}}}}})
+        routes[f"https://ghcr.example/lima-{version}"] = FakeResponse(content=bottle)
+
+    def test_the_current_version_gets_a_new_version_of_a_dependency(self):
+        routes = self.homebrew_routes(colima={"0.10.3": ("2026-09-20T08:00:00Z", None)},
+                                      lima={"2.0": ("2026-09-10T08:00:00Z", {})})
+        source = self.colima_source(auto_approve=True)
+        [version] = sync_release_source(source, fake_session(routes))
+        self.assertEqual(version.dependencies, ["lima@2.0"])
+        old_sha = hashlib.sha256(unsigned("lima-2.0")).hexdigest()
+        new_sha = hashlib.sha256(unsigned("lima-2.1")).hexdigest()
+        # Homebrew installs the current lima with colima: it is allowed with it, the previous one stays
+        self.new_lima(routes, "2.1")
+        self.assertEqual(sync_release_source(source, fake_session(routes)), [])
+        version.refresh_from_db()
+        self.assertTrue(version.dependencies_resolved)
+        self.assertEqual(version.dependencies, ["lima@2.0", "lima@2.1"])
+        self.assertEqual(self.dependency_labels("0.10.3"), ["", "lima@2.0", "lima@2.1"])
+        rules = version.rules.filter(identifier__in=[old_sha, new_sha])
+        self.assertEqual(sorted(rules.values_list("is_enabled", flat=True)), [True, True])
+        self.assertEqual((version.binary_count, version.dependency_binary_count), (3, 2))
+        self.assertIn("lima@2.0 – ", version.notes)
+        self.assertIn("lima@2.1 – ", version.notes)
+        self.assertIn("Dependencies: lima@2.0, lima@2.1", version.notes)
+        # nothing new: no download again
+        session = fake_session(routes)
+        sync_release_source(source, session)
+        urls = [call.args[0] for call in session.get.call_args_list]
+        self.assertFalse([url for url in urls if url.startswith("https://ghcr.example/")])
+        self.assertEqual(self.dependency_labels("0.10.3"), ["", "lima@2.0", "lima@2.1"])
+
+    def test_a_new_dependency_version_follows_the_approval_of_the_version(self):
+        routes = self.homebrew_routes(colima={"0.10.3": ("2026-09-20T08:00:00Z", None)},
+                                      lima={"2.0": ("2026-09-10T08:00:00Z", {})})
+        source = self.colima_source(auto_approve=False)
+        [version] = sync_release_source(source, fake_session(routes))
+        self.new_lima(routes, "2.1")
+        sync_release_source(source, fake_session(routes))
+        self.assertFalse(version.rules.filter(release_dependency="lima@2.1", is_enabled=True).exists())
+        self.assertTrue(version.rules.filter(release_dependency="lima@2.1").exists())
+
+    def test_a_failed_download_of_the_new_dependency_keeps_the_previous_one(self):
+        routes = self.homebrew_routes(colima={"0.10.3": ("2026-09-20T08:00:00Z", None)},
+                                      lima={"2.0": ("2026-09-10T08:00:00Z", {})})
+        source = self.colima_source(auto_approve=True)
+        [version] = sync_release_source(source, fake_session(routes))
+        self.new_lima(routes, "2.1")
+        working = routes["https://ghcr.example/lima-2.1"]
+        routes["https://ghcr.example/lima-2.1"] = FailingResponse(503)
+        sync_release_source(source, fake_session(routes))
+        version.refresh_from_db()
+        self.assertFalse(version.dependencies_resolved)
+        self.assertEqual(self.dependency_labels("0.10.3"), ["", "lima@2.0"])
+        # the next check: the new one comes, the previous one still stays
+        routes["https://ghcr.example/lima-2.1"] = working
+        sync_release_source(source, fake_session(routes))
+        version.refresh_from_db()
+        self.assertTrue(version.dependencies_resolved)
+        self.assertEqual(self.dependency_labels("0.10.3"), ["", "lima@2.0", "lima@2.1"])
+
+    def test_the_dependencies_not_found_now_change_nothing(self):
+        routes = self.homebrew_routes(colima={"0.10.3": ("2026-09-20T08:00:00Z", None)},
+                                      lima={"2.0": ("2026-09-10T08:00:00Z", {})})
+        source = self.colima_source(auto_approve=True)
+        [version] = sync_release_source(source, fake_session(routes))
+        routes["https://formulae.brew.sh/api/formula/lima.json"] = FailingResponse(503)
+        sync_release_source(source, fake_session(routes))
+        version.refresh_from_db()
+        self.assertTrue(version.dependencies_resolved)
+        self.assertEqual(version.dependencies, ["lima@2.0"])
+        self.assertEqual(self.dependency_labels("0.10.3"), ["", "lima@2.0"])
 
     def test_without_a_tab_the_day_of_the_bottle_in_the_registry(self):
         # recorded as the current version (no date of its own): its bottle is of 2026-09-01, lima 2.0 came later
@@ -1369,6 +1476,8 @@ class BulkRulesTestCase(ReleaseSourceBase):
         source = self.github_source(asset_pattern="")
         tag = Tag.objects.create(name="tools")
         source.tags.add(tag)
+        machine = Machine.objects.create(machine_id="M1", serial_number="C02TEST", group=self.dev)
+        source.machines.add(machine)
         version = ReleaseVersion.objects.create(source=source, identifier="abiosoft/colima", version="v1")
         binaries = [FoundBinary(asset="tools.tar.gz", path=f"bin/tool{n}",
                                 info=macho.inspect(io.BytesIO(unsigned(f"tool{n}")))) for n in range(250)]
@@ -1380,6 +1489,134 @@ class BulkRulesTestCase(ReleaseSourceBase):
         links = Rule.groups.through.objects.filter(rule__release_version=version)
         self.assertEqual(links.filter(group=self.dev).count(), 250)
         self.assertEqual(Rule.tags.through.objects.filter(rule__release_version=version, tag=tag).count(), 250)
+        self.assertEqual(Rule.machines.through.objects.filter(rule__release_version=version, machine=machine).count(),
+                         250)
         # created again with the same binaries: nothing new
         existing = {(rule.rule_type, rule.identifier) for rule in rules}
         self.assertEqual(create_release_rules(source, version, binaries, existing=existing), [])
+
+
+class SourceScopeTestCase(ConsoleBase):
+    """The rules of a package rule follow its scope, also when it changes after they were created"""
+
+    def setUp(self):
+        super().setUp()
+        self.special = Group.objects.create(name="Development special", parent=self.dev)
+        self.special_machine = Machine.objects.create(machine_id="M3", serial_number="C02SPECIAL", hostname="special",
+                                                      group=self.special)
+        # created without a group: its rules reach no Mac
+        self.source = ReleaseSource.objects.create(name="colima", kind=ReleaseSource.Kind.GITHUB_RELEASE,
+                                                   identifier="abiosoft/colima", keep_versions=0)
+        version = ReleaseVersion.objects.create(source=self.source, identifier="abiosoft/colima", version="v1")
+        self.rule = Rule.objects.create(rule_type=RuleType.BINARY, identifier="a" * 64, release_source=self.source,
+                                        release_version=version, release_dependency="lima@2.3.0")
+        self.manual = Rule.objects.create(rule_type=RuleType.BINARY, identifier="b" * 64)
+        self.manual.groups.add(self.sales)
+
+    def identifiers(self, machine):
+        return {rule["identifier"] for rule in effective_rules(machine).values()}
+
+    def form_data(self, **changes):
+        return {"name": "colima", "kind": "GITHUB_RELEASE", "identifier": "abiosoft/colima", "rule_type": "BINARY",
+                "policy": "ALLOWLIST", "groups": [self.dev.pk], "keep_versions": "0", "keep_unit": "VERSIONS",
+                "auto_approve_delay_days": "0", **changes}
+
+    def test_a_scope_changed_later_reaches_the_rules(self):
+        self.assertNotIn("a" * 64, self.identifiers(self.special_machine))
+        self.source.groups.add(self.dev)
+        self.assertEqual(apply_source_scope(self.source), [self.rule.pk])
+        self.assertEqual(list(self.rule.groups.all()), [self.dev])
+        # the group based on it takes its rules
+        self.assertIn("a" * 64, self.identifiers(self.special_machine))
+        self.assertIn("a" * 64, self.identifiers(self.machine))
+        self.assertNotIn("a" * 64, self.identifiers(self.other_machine))
+        # nothing else to change; a rule of no package rule keeps its own scope
+        self.assertEqual(apply_source_scope(self.source), [])
+        self.assertEqual(list(self.manual.groups.all()), [self.sales])
+
+    def test_the_detail_of_a_rule_shows_its_scope(self):
+        url = reverse("console:rule", args=(self.rule.pk,))
+        # no scope: it reaches no Mac
+        self.assertContains(self.client.get(url), "No scope – reaches no Mac")
+        self.source.groups.add(self.dev)
+        apply_source_scope(self.source)
+        response = self.client.get(url)
+        self.assertNotContains(response, "No scope – reaches no Mac")
+        self.assertContains(response, f'href="{reverse("console:group", args=(self.dev.pk,))}"')
+        # the group based on it, through inheritance
+        self.assertEqual(response.context["inheriting"], [self.special])
+        self.assertContains(response, "Binary (SHA-256)")
+        self.assertContains(response, f"?version={self.rule.release_version_id}&amp;dependency=lima%402.3.0")
+
+    def test_the_versions_table_counts_the_rules_of_the_dependencies(self):
+        Rule.objects.create(rule_type=RuleType.BINARY, identifier="c" * 64, release_source=self.source,
+                            release_version=self.rule.release_version)
+        response = self.client.get(reverse("console:source", args=(self.source.pk,)))
+        version = self.rule.release_version
+        self.assertContains(response, f"?version={version.pk}&amp;dependency=-\">Own: 1</a>")
+        self.assertContains(response, f"?version={version.pk}\">All: 2</a>")
+
+    def test_all_macs_and_back(self):
+        self.source.is_global = True
+        self.source.save()
+        self.assertEqual(apply_source_scope(self.source), [self.rule.pk])
+        self.rule.refresh_from_db()
+        self.assertTrue(self.rule.is_global)
+        self.source.is_global = False
+        self.source.save()
+        self.source.groups.set([self.sales])
+        apply_source_scope(self.source)
+        self.rule.refresh_from_db()
+        self.assertFalse(self.rule.is_global)
+        self.assertEqual(list(self.rule.groups.all()), [self.sales])
+
+    def test_saving_in_the_console_gives_the_rules_the_scope(self):
+        response = self.client.post(reverse("console:source_edit", args=(self.source.pk,)), self.form_data(),
+                                    follow=True)
+        self.assertContains(response, "1 rule of the package rule got its new scope.")
+        self.assertEqual(list(self.rule.groups.all()), [self.dev])
+        self.assertTrue(LogEntry.objects.filter(object_id=str(self.rule.pk),
+                                                change_message__startswith="Scope of package rule").exists())
+        # the event of the Mac in the group based on it: the rule applies now
+        event = self.make_event(sha256="a" * 64, machine=self.special_machine)
+        [match] = existing_rules([event])["a" * 64]
+        self.assertTrue(match["applies"])
+
+    def test_single_macs_reach_the_rules(self):
+        self.source.machines.add(self.other_machine)
+        self.assertEqual(apply_source_scope(self.source), [self.rule.pk])
+        self.assertEqual(list(self.rule.machines.all()), [self.other_machine])
+        self.assertIn("a" * 64, self.identifiers(self.other_machine))
+        self.assertNotIn("a" * 64, self.identifiers(self.machine))
+        self.assertEqual(apply_source_scope(self.source), [])
+        self.source.machines.clear()
+        self.assertEqual(apply_source_scope(self.source), [self.rule.pk])
+        self.assertFalse(self.rule.machines.exists())
+
+    def test_saving_a_mac_in_the_console(self):
+        url = reverse("console:source_edit", args=(self.source.pk,))
+        # chips with the hostname and the serial number; the textarea keeps the serial numbers
+        self.source.machines.add(self.special_machine)
+        response = self.client.get(url)
+        self.assertContains(response, 'data-value="C02SPECIAL"')
+        self.assertContains(response, "<strong>special</strong><code>C02SPECIAL</code>", html=False)
+        # a Mac alone is a scope: no warning; by serial number or hostname
+        response = self.client.post(url, self.form_data(groups=[], machines="C02SPECIAL\nother"), follow=True)
+        self.assertNotContains(response, "its rules apply to no Mac")
+        self.assertEqual(set(self.source.machines.all()), {self.special_machine, self.other_machine})
+        self.assertEqual(set(self.rule.machines.all()), {self.special_machine, self.other_machine})
+        self.assertIn("machines", LogEntry.objects.filter(object_id=str(self.source.pk))
+                      .latest("action_time").get_change_message().lower())
+        response = self.client.post(url, self.form_data(groups=[], machines="unknown-mac"))
+        self.assertContains(response, "Unknown Mac: unknown-mac")
+
+    def test_without_groups_and_macs_a_warning(self):
+        response = self.client.post(reverse("console:source_edit", args=(self.source.pk,)),
+                                    self.form_data(groups=[]), follow=True)
+        self.assertContains(response, "no group, no Mac and not global, its rules apply to no Mac.")
+
+    def test_the_migration_repairs_the_rules(self):
+        self.source.groups.add(self.dev)
+        migration = importlib.import_module("santa.migrations.0043_apply_release_source_scope")
+        migration.apply_scopes(django_apps, None)
+        self.assertEqual(list(self.rule.groups.all()), [self.dev])

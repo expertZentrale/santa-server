@@ -109,6 +109,11 @@
 .patterns .chip { border-radius: var(--radius); padding: .2rem .35rem .2rem .5rem; max-width: 100%; }
 .patterns .chip-text { display: block; overflow-wrap: anywhere; font-size: .875em; }
 .patterns input { width: 100%; }
+/* the Macs of a rule or package rule (machines.js) */
+.machine-picker .chips { list-style: none; padding: 0; margin: 0 0 .4rem; display: flex; flex-wrap: wrap; gap: .4rem; }
+.machine-picker .chips:empty { display: none; }
+.machine-picker .chip { border-radius: var(--radius); padding: .25rem .35rem .25rem .5rem; max-width: 100%; }
+.machine-picker .chip-text, .machine-picker .chip-text > * { min-width: 0; overflow-wrap: anywhere; }
 .chip-text { display: grid; line-height: 1.2; }
 .chip-text code { color: var(--muted); font-size: .78em; }
 .chip-remove { border: 0; background: none; color: var(--muted); font-size: 1.1rem; cursor: pointer; padding: 0 .2rem; }
@@ -306,10 +311,45 @@ ol.history > li:last-child { border-bottom: 0; }
 .inheritable .inherited .pre { white-space: pre-wrap; }
 
 /* the dependencies of a version of a package rule (sources/_detail.html) */
-details.dependencies { font-weight: 400; margin-top: .25rem; }
-details.dependencies summary { cursor: pointer; color: var(--muted); }
-details.dependencies ul { margin: .35rem 0; }
-details.dependencies code { overflow-wrap: anywhere; }
+details.dependencies { font-weight: 400; }
+details.dependencies summary { cursor: pointer; color: var(--muted); width: max-content; }
+details.dependencies[open] > .dependency-list { margin-top: .4rem; }
+/* aligned at the top: the badges and buttons stay in line with the version */
+.table.versions td { vertical-align: top; }
+/* the dependencies of a version: a row of their own right under it, over the whole width, "N dependencies" right
+   above its list; no line between them, they belong to the version */
+.table.versions tr:has(+ tr.dependency-row) > td { border-bottom: 0; }
+.table.versions tr.dependency-row > td { padding-top: 0; }
+/* a tile per dependency: the name on the left, its button on the right */
+.dependency-list { grid-template-columns: repeat(auto-fill, minmax(min(16rem, 100%), 1fr)); gap: .4rem; }
+.dependency-list li { display: flex; align-items: center; justify-content: space-between; gap: .75rem; min-height: 2.4rem;
+  padding: .3rem .4rem .3rem .65rem; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface-2); }
+.dependency-list code { min-width: 0; overflow-wrap: anywhere; }
+.dependency-list .button { flex: none; }
+/* narrow (a narrow drawer, a phone): no columns, the values of a version wrap onto new lines instead of being cut
+   off; by the width of the card, not of the window, so the drawer gets it too */
+.versions-card { container-type: inline-size; }
+@container (max-width: 36rem) {
+  .table.versions thead { display: none; }
+  .table.versions, .table.versions tbody { display: block; width: 100%; }
+  .table.versions tbody tr { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .9rem; padding: .6rem .75rem;
+    border-top: 1px solid var(--border); }
+  .table.versions tbody tr:first-child { border-top: 0; }
+  .table.versions td { display: block; padding: 0; border: 0; white-space: normal; }
+  /* the version on a line of its own, the date, binaries, approval and action after it, its dependencies last */
+  .table.versions td:first-child { flex-basis: 100%; }
+  .table.versions td.version-binaries { display: flex; align-items: center; gap: .35rem; }
+  .table.versions td.version-binaries::before { content: attr(data-label) ":"; color: var(--muted); font-size: .85em; }
+  .table.versions tr.dependency-row { border-top: 0; padding-top: 0; }
+  .table.versions tr.dependency-row > td { flex-basis: 100%; }
+}
+/* own and all rules of a version: one control on one line */
+.rule-links { white-space: nowrap; vertical-align: top; }
+.rule-links a { padding: .15rem .55rem; font-size: .85em; color: var(--accent); }
+.rule-links a + a { border-left: 1px solid var(--control-border); }
+/* the note on the dependencies (sources/_versions.html): next to the package name, not like a page title */
+h2 .help-tip { margin-left: 0; font-weight: 400; }
 
 /* the import preview (administration/_config_preview.html): a card per list of the file, foldable */
 .preview-section > summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem .75rem; cursor: pointer; }

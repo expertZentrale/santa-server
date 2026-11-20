@@ -1,0 +1,17 @@
+{% load i18n %}{# The Macs of a rule or package rule as chips with a search (machines.js), one per line in the textarea #}
+<div class="machine-picker" data-machine-picker data-suggest-url="{% url 'console:machine_suggestions' %}">
+  <ul class="chips" data-chips>
+    {% for name, machine in widget.machines %}
+    <li class="chip" data-value="{{ machine.serial_number|default:name }}"><span class="chip-text">{% if machine %}<strong>{{ machine.hostname|default:machine.serial_number }}</strong>{% if machine.hostname %}<code>{{ machine.serial_number }}</code>{% endif %}{% else %}<strong>{{ name }}</strong>{% endif %}</span>
+      <button type="button" class="chip-remove" aria-label="{% translate 'Remove' %} {{ machine.hostname|default:name }}">×</button></li>
+    {% endfor %}
+  </ul>
+  <div class="combobox">
+    <input type="search" id="{{ widget.attrs.id|default:widget.name }}-search" data-search autocomplete="off" spellcheck="false"
+           role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="{{ widget.attrs.id|default:widget.name }}-suggestions"
+           aria-label="{% translate 'Add a Mac' %}" placeholder="{% translate 'Search a Mac: hostname, serial number or user' %}"
+           data-remove-label="{% translate 'Remove' %}">
+    <div class="suggestions" id="{{ widget.attrs.id|default:widget.name }}-suggestions" data-suggestions role="listbox"></div>
+  </div>
+  <textarea name="{{ widget.name }}" hidden{% include "django/forms/widgets/attrs.html" %}>{% if widget.value %}{{ widget.value }}{% endif %}</textarea>
+</div>

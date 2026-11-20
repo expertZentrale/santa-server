@@ -570,6 +570,6 @@ class UrlListFormTestCase(ConsoleBase):
         self.assertContains(response, '<div data-show-when="url_from=template">')
         # "List" instead of "Packages", and only the help of the chosen catalog
         self.assertContains(response, '<span data-show-when="kind=URL_LIST">List</span>')
-        self.assertContains(response, '<small class="help" data-show-when="kind=URL_LIST">The https URL of the JSON')
-        self.assertContains(response, '<small class="help" data-show-when="kind=GITHUB_RELEASE">GitHub: owner/repo')
+        self.assertContains(response, '<span class="help-line" data-show-when="kind=URL_LIST">The https URL')
+        self.assertContains(response, '<span class="help-line" data-show-when="kind=GITHUB_RELEASE">GitHub:')
         self.assertNotContains(response, "GitHub: owner/repo (e.g. abiosoft/colima) · Homebrew")

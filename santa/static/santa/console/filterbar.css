@@ -65,9 +65,12 @@
 .saved-filter-new input { flex: 1; min-width: 0; }
 /* "Standard (for everyone)": the note after the name */
 .saved-filter a small { margin-left: .3rem; font-weight: normal; }
-/* the default for everyone (administrators): below the user's own views */
-.saved-filter-everyone { display: flex; flex-wrap: wrap; gap: .4rem; padding: .5rem .2rem .2rem; margin-top: .3rem;
-                         border-top: 1px solid var(--border); }
+/* the default for everyone (administrators): a gear at the end of the menu, its actions in a popover over it */
+.views-everyone { display: flex; justify-content: flex-end; margin-top: .2rem; padding: .2rem;
+                  border-top: 1px solid var(--border); }
+.views-everyone-head { padding: .3rem .6rem .35rem; font-size: .75rem; color: var(--muted); text-transform: uppercase;
+                       letter-spacing: .03em; }
+.saved-filter-new { align-items: center; }
 .views-picker .picker-panel > small, .views-picker .picker-panel > p { padding: .2rem .6rem; margin: 0; }
 @media (max-width: 40em) {
   .filter-toolbar input[type="search"] { flex-basis: 100%; min-width: 0; max-width: none; }
