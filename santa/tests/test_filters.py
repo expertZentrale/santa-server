@@ -552,6 +552,26 @@ class ListDefaultTestCase(ConsoleBase):
         self.assertEqual(self.client.get(url).status_code, 200)
         self.assertIsNone(self.client.get(url, {"standard": "1"}).context["bar"]["list_default"])
 
+    def test_behind_the_gear_and_confirmed(self):
+        url = reverse("console:rules")
+        response = self.client.get(url, {"q": "", "scope": "global"})
+        self.assertContains(response, 'popovertarget="views-everyone-menu"', count=1)
+        self.assertContains(response, "Set the current view as Standard")
+        # nothing to go back to yet
+        self.assertNotContains(response, "Back to the built-in Standard")
+        self.assertRegex(response.content.decode(), r'id="list-default-form"[^>]* data-confirm="Use the current')
+        self.set_default()
+        response = self.client.get(url, {"q": "", "scope": "machines"})
+        self.assertContains(response, "Back to the built-in Standard")
+        self.assertRegex(response.content.decode(), r'id="clear-list-default-form"[^>]* data-confirm="Reset')
+        # the new view: saved with the icon of the views
+        self.assertContains(response, 'form="save-filter-form" title="Save current view: it keeps')
+        # without the permission: no gear
+        viewer = User.objects.create_user("viewer", is_staff=True)
+        viewer.user_permissions.add(*Permission.objects.filter(codename="view_rule"))
+        self.client.force_login(viewer)
+        self.assertNotContains(self.client.get(url, {"q": "", "scope": "global"}), "views-everyone")
+
     def test_only_the_console_lists(self):
         response = self.client.post(reverse("set_list_default"), {"page": "my-requests", "query": "q="},
                                     follow=True)

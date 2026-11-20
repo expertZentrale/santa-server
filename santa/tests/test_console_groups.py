@@ -9,7 +9,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from santa.console.forms import GroupForm
-from santa.models import Group, Machine, Policy, Rule, RuleType, SavedFilter
+from santa.models import Group, Machine, Policy, ReleaseSource, Rule, RuleType, SavedFilter
 from santa.rules import GROUP, MACHINE, effective_rules
 
 from .test_console import SHA_A, SHA_B, ConsoleBase
@@ -95,6 +95,40 @@ class ConsoleGroupsTestCase(ConsoleBase):
         self.client.force_login(self.user)
         self.assertEqual(self.client.get(reverse("console:group", args=(self.dev.pk,))).status_code, 403)
         self.assertEqual(self.client.get(reverse("console:group_profile", args=(self.dev.pk,))).status_code, 403)
+
+    def test_the_mac_of_a_package_rule_is_removed_there(self):
+        source = ReleaseSource.objects.create(name="colima", kind=ReleaseSource.Kind.GITHUB_RELEASE,
+                                              identifier="abiosoft/colima")
+        source.machines.add(self.machine)
+        rule = Rule.objects.create(rule_type=RuleType.BINARY, identifier=SHA_A, release_source=source)
+        rule.machines.add(self.machine)
+        response = self.client.post(reverse("console:machine_rules_remove", args=(self.machine.pk,)),
+                                    {"rules": [rule.pk]}, follow=True)
+        self.assertContains(response, "1 rule belongs to a package rule: remove the Mac in the package rule.")
+        self.assertEqual(list(rule.machines.all()), [self.machine])
+
+    def test_mac_suggestions(self):
+        url = reverse("console:machine_suggestions")
+        # by hostname, serial number or user
+        for q in ("jdoe-m", "c02tes", "jdoe@"):
+            response = self.client.get(url, {"q": q})
+            self.assertContains(response, 'data-value="C02TEST"')
+            self.assertNotContains(response, 'data-value="C02OTHER"')
+        self.assertContains(self.client.get(url, {"q": "nothing-like-it"}), "No Mac found")
+        # one letter: nothing yet
+        self.assertNotContains(self.client.get(url, {"q": "o"}), "suggestion")
+        self.client.force_login(self.user)
+        self.assertEqual(self.client.get(url, {"q": "jdoe"}).status_code, 403)
+
+    def test_the_macs_of_a_rule_are_logged_as_changed(self):
+        rule = Rule.objects.create(rule_type=RuleType.BINARY, identifier=SHA_A)
+        rule.machines.add(self.machine)
+        url = reverse("console:rule", args=(rule.pk,))
+        self.assertContains(self.client.get(url), "<strong>jdoe-mbp</strong><code>C02TEST</code>", html=False)
+        self.client.post(url, {"rule_type": "BINARY", "identifier": SHA_A, "policy": "ALLOWLIST",
+                               "machines": "C02OTHER", "is_enabled": "on"})
+        self.assertEqual(list(rule.machines.all()), [self.other_machine])
+        self.assertIn("machines", LogEntry.objects.filter(object_id=str(rule.pk)).latest("action_time").change_message)
 
     def test_machine_filters_and_detail(self):
         Machine.objects.filter(pk=self.other_machine.pk).update(last_postflight_at=timezone.now())

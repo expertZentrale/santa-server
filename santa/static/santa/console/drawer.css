@@ -8,7 +8,8 @@
 .facts dd { margin: 0; overflow-wrap: anywhere; }
 /* an ignore of the event: the badge, its comment and who ignored it, one below the other */
 .ignore-detail { display: grid; justify-items: start; gap: .15rem; margin-bottom: .4rem; }
-.facts.inline { grid-template-columns: repeat(auto-fill, minmax(8rem, max-content) minmax(10rem, 1fr)); }
+/* never wider than the drawer: at its narrowest a label and a value don't fit side by side at their usual minimum */
+.facts.inline { grid-template-columns: repeat(auto-fill, minmax(min(8rem, 40%), max-content) minmax(min(10rem, 55%), 1fr)); }
 
 /* the widths, or the ones set by dragging the left edge (drawer.js), never wider than the window */
 :root { --drawer-w: min(32.5rem, 100vw); --drawer-wide-w: min(47.5rem, 100vw); }

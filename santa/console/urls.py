@@ -90,6 +90,7 @@ urlpatterns = [
 
     path("macs/", views_groups.machines, name="machines"),
     path("macs/bulk/", views_groups.machines_bulk, name="machines_bulk"),
+    path("macs/suggestions/", views_groups.machine_suggestions, name="machine_suggestions"),
     path("macs/<int:pk>/", views_groups.machine_detail, name="machine"),
     path("macs/<int:pk>/mode/", views_groups.machine_mode, name="machine_mode"),
     path("macs/<int:pk>/clean-sync/", views_groups.machine_clean_sync, name="machine_clean_sync"),

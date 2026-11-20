@@ -6,6 +6,72 @@
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-20
+
+### Hinzugefügt
+
+- **Einzelne Macs im Geltungsbereich einer Paketregel.** Neben *Alle Macs* und Gruppen kann eine Paketregel einzelne
+  Macs nennen, z. B. um ein Tool auf einem Mac zu testen, bevor seine Gruppe es bekommt. Ihre Regeln übernehmen sie
+  wie die Gruppen, auch die bestehenden, wenn sie sich ändern; Export und Import der Konfiguration tragen sie über die
+  Seriennummer.
+- **Vorschläge für die Macs einer Regel.** Die Macs einer Regel oder Paketregel werden wie die Tags gewählt: Eine
+  Suche nach Hostname, Seriennummer oder Benutzer schlägt die Macs vor, die gewählten stehen als Chips mit Hostname
+  und Seriennummer da.
+
+### Geändert
+
+- **Die Binaries jeder Abhängigkeit, jeweils als eigene Liste.** In den Versionen einer Paketregel hat jede
+  Abhängigkeit mit ausführbaren Dateien einen Button mit der Anzahl ihrer Binaries (ihrer Regeln, wenn sich mehrere
+  Binaries eine Regel teilen), der die Regelliste mit genau diesen öffnet (der neue Filter *Abhängigkeit*). Eine
+  Version mit Abhängigkeiten zeigt unter *Binaries* *Eigene* und *Alle* (eigene plus Abhängigkeiten), jeweils als
+  Link auf ihre Regeln. Der Hinweis zu den Abhängigkeiten ohne ausführbare Datei steht hinter einem ⓘ neben dem
+  Paket statt unter jeder Version.
+- **Mehr Details zu einer Regel einer Paketregel.** Ihre Detailansicht zeigt den Typ, den Geltungsbereich mit den
+  Gruppen, die sie durch Vererbung bekommen (oder den Hinweis, dass sie keinen Mac erreicht), die Paketversion mit
+  ihrer Freigabe und einem Link zu all ihren Regeln, die Dateien des Releases, die sie erlaubt, die Tags und wann sie
+  angelegt und geändert wurde.
+
+- **Der Standard für alle hinter einem Zahnrad.** Im Menü *Ansichten* der Listen liegen *Aktuelle Ansicht als
+  Standard festlegen* und *Zurück zum eingebauten Standard* hinter einem Zahnrad mit der Überschrift *Für alle
+  Benutzer*, ihre Erklärung als Tooltip, und beide fragen nach einer Bestätigung: keine globale Änderung aus Versehen.
+  Eine neue Ansicht wird mit dem Speichern-Symbol neben ihrem Namen gespeichert, wie die vorhandenen.
+
+- **Die Hilfe der Felder hinter einem ⓘ.** In allen Formularen der Konsole steht die Erklärung eines Feldes nicht
+  mehr darunter: Ein ⓘ hinter seiner Beschriftung öffnet sie (auch auf dem Handy und im schmalen Drawer), ein Klick
+  daneben oder Escape schließt sie.
+- **Die Versionen einer Paketregel im schmalen Drawer oder auf dem Handy.** Die Werte einer Version brechen in neue
+  Zeilen um, statt am Rand abgeschnitten zu werden, und *N Abhängigkeiten* steht in einer eigenen Zeile unter der
+  Version, direkt über der Liste, die es öffnet.
+- **Das ⓘ eines Feldes mittig zu seiner Beschriftung.** Es saß ein paar Pixel zu hoch neben dem Text.
+- **Gleichmäßige Buttons auf dem Handy.** Die Buttons oben auf einer Seite oder einem Detail sind so breit wie ihr
+  Text und in einer Reihe gleich hoch: Ein langer („Das neue Paket prüfen“) bricht nicht mehr um und verschiebt die
+  anderen.
+- **Hover nur, wo ein Klick etwas tut.** Eine Zeile wird unter der Maus nur hervorgehoben, wenn sie einen Eintrag
+  öffnet oder ausgewählt werden kann, nicht mehr in einer leeren Liste oder in Tabellen, die nur anzeigen (die
+  Versionen einer Paketregel).
+
+### Behoben
+
+- **Die Änderung der Macs einer Regel in ihrem Verlauf.** Eine Regel mit geänderten Macs wurde als „No fields
+  changed“ protokolliert.
+- **Ein geänderter Geltungsbereich einer Paketregel erreicht ihre Regeln.** Die Regeln einer Paketregel bekamen ihre
+  Gruppen (oder *Alle Macs*) nur beim Anlegen: Nach einer späteren Änderung des Geltungsbereichs behielten die
+  bestehenden Regeln den alten, ohne Gruppe erreichten sie keinen Mac (das Binary zeigt „gilt nicht für diese Macs“
+  und wird im Lockdown blockiert). Das Speichern einer Paketregel gibt jetzt allen ihren Regeln ihren
+  Geltungsbereich, in der Konsole, im Admin und beim Konfigurationsimport, und das Update gibt den Regeln jeder
+  Paketregel einmal ihren aktuellen Geltungsbereich.
+- **Neue Versionen der Abhängigkeiten der aktuellen Homebrew-Version.** Mit *Abhängigkeiten erlauben* wurden die
+  Abhängigkeiten einer Version nur beim Erfassen ermittelt. Homebrew installiert die aktuelle Version einer
+  Abhängigkeit, auch wenn die Formel selbst gleich bleibt (colima, ein neues lima): Jede Prüfung sucht jetzt nach
+  neuen Versionen der Abhängigkeiten der aktuellen Version und erlaubt sie mit ihr, mit ihrer Freigabe. Die Regeln der
+  bisherigen Abhängigkeitsversionen bleiben für Macs ohne Upgrade, bis die Version selbst gelöscht wird.
+- **Der Drawer nach dem Speichern bei langsamer Verbindung.** Nach dem Speichern einer Paketregel ging der Drawer zur
+  Ansicht von vor dem Speichern zurück und zeigte sie unverändert, bis die neue kam, bei langsamer Verbindung
+  sekundenlang (das hinzugefügte Paket schien zu fehlen). Die alte Ansicht ist jetzt abgeblendet, solange sie neu lädt,
+  und eine Paketregel kommt mit ihren Versionen in einer Anfrage. Die Konsole und das Anfrageformular werden mit
+  `Cache-Control: private, no-cache` ausgeliefert: Weder ein Browser noch ein Proxy beantwortet sie mit einer
+  gespeicherten Kopie.
+
 ## [0.16.0] - 2026-11-16
 
 ### Hinzugefügt
@@ -710,7 +776,8 @@
   docker/setup-buildx-action 4, docker/metadata-action 6.
 - Python-Pakete: hiredis 3.4.2, tzdata 2026.4.
 
-[Unreleased]: https://github.com/expertZentrale/santa-server/compare/v0.16.0...HEAD
+[Unreleased]: https://github.com/expertZentrale/santa-server/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/expertZentrale/santa-server/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/expertZentrale/santa-server/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/expertZentrale/santa-server/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/expertZentrale/santa-server/compare/v0.13.0...v0.14.0

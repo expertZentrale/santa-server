@@ -1,14 +1,14 @@
 {% load console %}<div class="field{% if field.errors %} has-error{% endif %}{% if field.field.widget.input_type == 'checkbox' and not field.field.widget.allow_multiple_selected %} check{% endif %}" data-field="{{ field.name }}">
   {% if field.field.widget.input_type == "checkbox" and not field.field.widget.allow_multiple_selected %}
-    {{ field|as_switch }}<label for="{{ field.id_for_label }}">{{ field.label }}</label>
+    {# the ⓘ next to the label, not in it: no control in a label, nor its help in the name of the field #}
+    {{ field|as_switch }}<div class="field-head"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{% if field.help_text or field_help %}{% include "console/_field_help.html" with text=field.help_text extra=field_help %}{% endif %}</div>
   {% elif not field.id_for_label %}
     {# a group of radios or checkboxes: each choice has its own label, there is no one field for this one #}
-    <span class="field-label">{{ field.label }}</span>
+    <div class="field-head"><span class="field-label">{{ field.label }}</span>{% if field.help_text or field_help %}{% include "console/_field_help.html" with text=field.help_text extra=field_help %}{% endif %}</div>
     {{ field }}
   {% else %}
-    <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+    <div class="field-head"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{% if field.help_text or field_help %}{% include "console/_field_help.html" with text=field.help_text extra=field_help %}{% endif %}</div>
     {{ field|form_widget }}
   {% endif %}
-  {% if field.help_text %}<small class="help">{{ field.help_text|safe }}</small>{% endif %}
   {% for error in field.errors %}<small class="error">{{ error }}</small>{% endfor %}
 </div>

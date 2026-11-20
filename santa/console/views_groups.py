@@ -203,6 +203,22 @@ def filter_machines(request, machines):
     return machines
 
 
+MAX_MACHINE_SUGGESTIONS = 10
+
+
+@staff_required
+def machine_suggestions(request):
+    """Macs for a search text: the Macs of a rule or package rule (machines.js)"""
+    require_perms(request, "view_machine")
+    q = request.GET.get("q", "").strip()
+    machines = []
+    if len(q) >= 2:
+        machines = list(Machine.objects.filter(Q(hostname__icontains=q) | Q(serial_number__icontains=q)
+                                               | Q(primary_user__icontains=q))
+                        .select_related("group").order_by("hostname", "serial_number")[:MAX_MACHINE_SUGGESTIONS])
+    return render(request, "console/machines/_suggestions.html", {"machines": machines, "query": q})
+
+
 @staff_required
 def machines(request):
     require_perms(request, "view_machine")
@@ -299,6 +315,13 @@ def machine_rules_remove(request, pk):
     machine = get_object_or_404(Machine, pk=pk)
     rule_ids = [value for value in request.POST.getlist("rules") if value.isdigit()][:MAX_BULK]
     rules = list(machine.rules.filter(pk__in=rule_ids))
+    # the rules of a package rule take its scope: the Mac is removed there, or the next save gives it back
+    if packaged := [rule for rule in rules if rule.release_source_id]:
+        messages.warning(request, ngettext(
+            "%(count)s rule belongs to a package rule: remove the Mac in the package rule.",
+            "%(count)s rules belong to a package rule: remove the Mac in the package rule.",
+            len(packaged)) % {"count": len(packaged)})
+        rules = [rule for rule in rules if not rule.release_source_id]
     orphans = rules_only_for(machine, rules)
     if orphans and not request.user.has_perm("santa.delete_rule"):
         messages.warning(request, ngettext(

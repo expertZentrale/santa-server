@@ -197,6 +197,26 @@ class ConfigIOTestCase(TestCase):
         self.assertEqual(import_config(data)["changes"], [])
         self.assertEqual(Rule.objects.count(), 5)
 
+    def test_the_macs_of_a_release_source(self):
+        source = ReleaseSource.objects.get()
+        source.machines.add(self.machine)
+        data = json.loads(json.dumps(export_config()))
+        self.assertEqual(data["release_sources"][0]["machines"], ["C02TEST"])
+        source.machines.clear()
+        import_config(data)
+        self.assertEqual(list(source.machines.all()), [self.machine])
+        # its rules take them too
+        self.assertEqual(list(source.rules.get().machines.all()), [self.machine])
+        # an export from before: the Macs stay as they are
+        del data["release_sources"][0]["machines"]
+        self.assertEqual(import_config(data)["changes"], [])
+        self.assertEqual(list(source.machines.all()), [self.machine])
+        # unknown on the target: left out with a warning
+        data["release_sources"][0]["machines"] = ["C02GONE"]
+        report = import_config(data)
+        self.assertTrue(any("C02GONE unknown" in w for w in report["warnings"]))
+        self.assertFalse(source.machines.exists())
+
     def test_scope_changes_are_applied(self):
         data = export_config()
         rule_a = next(r for r in data["rules"] if r["identifier"] == SHA_A)

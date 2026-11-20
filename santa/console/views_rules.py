@@ -16,7 +16,7 @@ from django.utils.formats import date_format
 from django.utils.translation import gettext, ngettext
 from django.views.decorators.http import require_POST
 
-from ..models import Group, Machine, Policy, ReleaseVersion, Rule, RuleType, Tag
+from ..models import Group, Machine, Policy, ReleaseVersion, Rule, RuleType, Tag, with_child_groups
 from ..progress import progress_for
 from ..releases import ReleaseError, find_binaries
 from ..services import (
@@ -105,6 +105,14 @@ def filter_rules(request, rules):
     rules = in_range(rules, "created_at", start, end)
     if params.get("version", "").isdigit():
         rules = rules.filter(release_version_id=params["version"])
+    # set with the version by the links of the versions table: its own binaries, its dependencies, or one of them
+    if dependency := params.get("dependency", ""):
+        if dependency == OWN_BINARIES:
+            rules = rules.filter(release_dependency="")
+        elif dependency == ALL_DEPENDENCIES:
+            rules = rules.exclude(release_dependency="")
+        else:
+            rules = rules.filter(release_dependency=dependency)
     machines, exclude = lookup_values(params, "machine")
     if machines := [value for value in machines[:RULE_LOOKUP_VALUES] if value.isdigit()]:
         rules = _on_machines(rules, Machine.objects.filter(pk__in=machines), exclude)
@@ -117,6 +125,19 @@ def filter_rules(request, rules):
         rules = rules.filter(Q(identifier__icontains=q) | Q(name__icontains=q) | Q(description__icontains=q)
                              | rules_of(Rule.tags.through, tag__name__iexact=q))
     return rules
+
+
+# the values of the "dependency" filter of the rules besides a "name@version" label
+OWN_BINARIES = "-"
+ALL_DEPENDENCIES = "*"
+
+
+def dependency_filter_text(dependency):
+    if dependency == OWN_BINARIES:
+        return gettext("Own binaries, no dependencies")
+    if dependency == ALL_DEPENDENCIES:
+        return gettext("All dependencies")
+    return dependency
 
 
 # the values of a Mac or user filter of the rules: each goes into three subqueries (_on_machines), both filters
@@ -179,6 +200,9 @@ def rules(request):
         found = ReleaseVersion.objects.select_related("source").filter(pk=version).first()
         facets.append(Facet("version", gettext("Package version"), kind="fixed",
                             text=str(found) if found else version))
+    if dependency := request.GET.get("dependency", ""):
+        facets.append(Facet("dependency", gettext("Dependency"), kind="fixed",
+                            text=dependency_filter_text(dependency)))
     return render_list(request, "console/rules/list.html", "console/rules/_rows.html", {
         "page": page, "sort": sort, "params": request.GET, "policies": Policy.choices,
         "groups": groups,
@@ -404,6 +428,20 @@ def rule_suggestions(request):
     return render(request, "console/rules/_suggestions.html", {"rules": rules, "query": q})
 
 
+def _package_rule_context(rule):
+    """What the detail of a rule of a package rule shows: its scope with the groups that reach it through inheritance
+    (a rule without a scope reaches no Mac), its version and the other rules of it"""
+    groups = list(rule.groups.order_by("name"))
+    own = {group.pk for group in groups}
+    inheriting = [group for group in with_child_groups(groups, "inherit_rules") if group.pk not in own]
+    version = rule.release_version
+    return {
+        "rule": rule, "groups": groups, "inheriting": inheriting, "tags": list(rule.tags.order_by("name")),
+        "machines": list(rule.machines.all()),
+        "version_rule_count": version.rules.count() if version else 0,
+    }
+
+
 @staff_required
 def rule_form(request, pk=None):
     rule = get_object_or_404(Rule.objects.select_related("release_source", "release_version"), pk=pk) if pk else None
@@ -411,7 +449,7 @@ def rule_form(request, pk=None):
     if rule and rule.release_source_id:
         # the package rule owns them, only enable / disable here
         return render_drawer(request, "console/rules/package_rule.html", "console/rules/drawer_package_rule.html",
-                             {"rule": rule})
+                             _package_rule_context(rule))
     initial = {}
     if rule is None and request.GET.get("machine", "").isdigit():
         # "New rule" on the page of a Mac

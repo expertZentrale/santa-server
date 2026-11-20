@@ -1,5 +1,5 @@
-{% load i18n %}{# The description of a page, behind an ⓘ next to its title: text #}
+{% load i18n %}{# The description of a page, behind an ⓘ next to its title: text (label: of the button, else "About this page") #}
 <details class="help-tip" data-picker>
-  <summary class="icon-button" title="{% translate 'About this page' %}" aria-label="{% translate 'About this page' %}">{% include "console/icons/info.svg" %}</summary>
+  {% translate 'About this page' as about %}<summary class="icon-button" title="{{ label|default:about }}" aria-label="{{ label|default:about }}">{% include "console/icons/info.svg" %}</summary>
   <div class="help-pop" role="note">{{ text }}</div>
 </details>

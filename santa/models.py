@@ -720,6 +720,8 @@ class ReleaseSource(models.Model):
 
     is_global = models.BooleanField(default=False, help_text=_("Allow on every Mac"))
     groups = models.ManyToManyField(Group, blank=True, related_name="release_sources")
+    # single Macs, besides or instead of groups: copied to its rules like the groups
+    machines = models.ManyToManyField(Machine, blank=True, related_name="release_sources")
     auto_approve = models.BooleanField(
         default=True, help_text=_("Enable the rules of new releases automatically. Otherwise they wait for approval.")
     )
@@ -767,6 +769,11 @@ class ReleaseSource(models.Model):
 
     class Meta:
         ordering = ["name"]
+
+    @property
+    def has_scope(self):
+        """Global, or some groups or Macs: without them its rules reach no Mac"""
+        return self.is_global or self.groups.exists() or self.machines.exists()
 
     def __str__(self):
         return self.name

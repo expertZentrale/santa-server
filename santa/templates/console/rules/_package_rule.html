@@ -4,11 +4,32 @@
 </div>
 <section class="card">
   <p>{% url 'console:source' rule.release_source_id as source_url %}{% blocktranslate with name=rule.release_source.name version=rule.release_version.version %}Created by the package rule <a href="{{ source_url }}" hx-get="{{ source_url }}" hx-target="#drawer">{{ name }}</a> for version {{ version }}. Change the package rule to change it.{% endblocktranslate %}</p>
+  {% url 'console:rules' as rules_url %}
   <dl class="facts">
     <dt>{% translate "Identifier" %}</dt><dd class="mono">{{ rule.identifier }} {% include "console/_copy.html" with value=rule.identifier %}</dd>
+    <dt>{% translate "Type" %}</dt><dd>{{ rule.get_rule_type_display }}</dd>
     <dt>{% translate "Policy" %}</dt><dd><span class="badge {{ rule.policy|policy_class }}">{{ rule.get_policy_display }}</span></dd>
+    {# the scope of the package rule, copied to its rules: without one the rule reaches no Mac #}
+    <dt>{% translate "Scope" %}</dt><dd>{% if rule.is_global %}<span class="chip small">{% translate "All Macs" %}</span>
+      {% elif groups or machines %}{% for group in groups %}{% url 'console:group' group.pk as group_url %}<a class="chip small" href="{{ group_url }}" hx-get="{{ group_url }}" hx-target="#drawer">{{ group.name }}</a>{% endfor %}
+        {% for machine in machines %}{% url 'console:machine' machine.pk as machine_url %}<a class="chip small mac" href="{{ machine_url }}" hx-get="{{ machine_url }}" hx-target="#drawer">{{ machine.hostname|default:machine.serial_number }}</a>{% endfor %}
+        {% if inheriting %}<br><small class="muted">{% translate "Also through inheritance:" %}</small> {% for group in inheriting %}{% url 'console:group' group.pk as group_url %}<a class="chip small" href="{{ group_url }}" hx-get="{{ group_url }}" hx-target="#drawer">{{ group.name }}</a>{% endfor %}{% endif %}
+      {% else %}<span class="badge bad">{% translate "No scope – reaches no Mac" %}</span>{% endif %}
+      <br><small class="muted">{% translate "The scope of the package rule: change it there." %}</small></dd>
+    <dt>{% translate "Package version" %}</dt><dd>{{ rule.release_version.version }}
+      {% if rule.release_version.auto_enable_pending %}<span class="badge info">{% blocktranslate with date=rule.release_version.auto_enable_at|date:"d.m.Y H:i" %}automatic on {{ date }}{% endblocktranslate %}</span>{% endif %}
+      <br><a href="{{ rules_url }}?version={{ rule.release_version_id }}">{% blocktranslate count count=version_rule_count %}{{ count }} rule of this version{% plural %}All {{ count }} rules of this version{% endblocktranslate %}</a></dd>
+    {% if rule.release_dependency %}<dt>{% translate "Dependency" %}</dt><dd><span class="mono">{{ rule.release_dependency }}</span>
+      <br><a href="{{ rules_url }}?version={{ rule.release_version_id }}&amp;dependency={{ rule.release_dependency|urlencode }}">{% translate "Rules of this dependency" %}</a></dd>{% endif %}
+    {% if rule.release_files %}<dt>{% translate "Files" %}</dt><dd><ul class="plain release-files">{% for file in rule.release_files %}
+      <li><span class="mono">{{ file.path }}</span>{% if file.asset and file.asset != file.path %} <small class="muted">{% blocktranslate with asset=file.asset %}in {{ asset }}{% endblocktranslate %}</small>{% endif %}{% if rule.rule_type != "BINARY" and file.sha256 %}<br><small class="muted mono">SHA-256 {{ file.sha256 }}</small>{% endif %}</li>{% endfor %}</ul></dd>{% endif %}
     <dt>{% translate "Description" %}</dt><dd>{{ rule.description }}</dd>
-    {% if rule.release_dependency %}<dt>{% translate "Dependency" %}</dt><dd class="mono">{{ rule.release_dependency }}</dd>{% endif %}
+    {% if rule.custom_msg %}<dt>{% translate "Custom message" %}</dt><dd>{{ rule.custom_msg }}</dd>{% endif %}
+    {% if rule.custom_url %}<dt>{% translate "Custom URL" %}</dt><dd class="mono">{{ rule.custom_url }}</dd>{% endif %}
+    {% if rule.cel_expr %}<dt>{% translate "CEL expression" %}</dt><dd class="mono pre">{{ rule.cel_expr }}</dd>{% endif %}
+    {% if tags %}<dt>{% translate "Tags" %}</dt><dd>{% for tag in tags %}<span class="tag">{{ tag.name }}</span>{% endfor %}</dd>{% endif %}
     <dt>{% translate "Enabled" %}</dt><dd>{% if rule.is_enabled %}{% translate "yes" %}{% else %}{% translate "no – waiting for approval" %}{% endif %}</dd>
+    <dt>{% translate "Created" %}</dt><dd>{{ rule.created_at|date:"d.m.Y H:i" }}</dd>
+    <dt>{% translate "Changed" %}</dt><dd>{{ rule.updated_at|date:"d.m.Y H:i" }}</dd>
   </dl>
 </section>

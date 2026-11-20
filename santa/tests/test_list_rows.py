@@ -213,6 +213,22 @@ class VersionFilterTestCase(ConsoleBase):
         self.assertEqual([chip["facet"].name for chip in chips], ["version"])
         self.assertNotIn("version=", chips[0]["remove_url"])
 
+    def test_the_dependency_of_a_version_is_a_filter(self):
+        source = ReleaseSource.objects.create(name="Colima", kind=ReleaseSource.Kind.HOMEBREW_FORMULA,
+                                              identifier="colima", is_global=True)
+        version = ReleaseVersion.objects.create(source=source, identifier="colima", version="0.10.3")
+        for identifier, dependency in ((SHA_A, ""), ("c" * 64, "lima@2.3.0"), ("d" * 64, "qemu@9.0")):
+            Rule.objects.create(rule_type=RuleType.BINARY, identifier=identifier, is_global=True,
+                                release_source=source, release_version=version, release_dependency=dependency)
+        for dependency, expected, text in (("-", {SHA_A}, "Own binaries, no dependencies"),
+                                           ("*", {"c" * 64, "d" * 64}, "All dependencies"),
+                                           ("lima@2.3.0", {"c" * 64}, "lima@2.3.0")):
+            response = self.client.get(reverse("console:rules"), {"version": version.pk, "dependency": dependency})
+            self.assertEqual({rule.identifier for rule in response.context["page"]}, expected)
+            self.assertContains(response, text)
+            chips = [chip["facet"].name for chip in response.context["bar"]["chips"] if chip["active"]]
+            self.assertEqual(sorted(chips), ["dependency", "version"])
+
 
 class RowMenuTestCase(ConsoleBase):
     """Every list has a ⋯ menu per row with its actions"""

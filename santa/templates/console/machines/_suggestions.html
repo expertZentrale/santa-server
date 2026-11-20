@@ -1,0 +1,8 @@
+{% load i18n %}{# The Macs for a search text (machine_suggestions, machines.js) #}
+{% for machine in machines %}
+<button type="button" class="suggestion" role="option" id="machine-suggestion-{{ machine.pk }}" data-value="{{ machine.serial_number }}" data-label="{{ machine.hostname|default:machine.serial_number }}">
+  <span><span class="suggestion-title"><strong>{{ machine.hostname|default:machine.serial_number }}</strong>{% if machine.group %}<span class="chip small">{{ machine.group.name }}</span>{% endif %}</span>
+    <code>{{ machine.serial_number }}</code>{% if machine.primary_user %}<small>{{ machine.primary_user }}</small>{% endif %}</span>
+</button>
+{% empty %}{% if query|length >= 2 %}<div class="suggestion-note">{% blocktranslate %}No Mac found for “{{ query }}”.{% endblocktranslate %}</div>{% endif %}
+{% endfor %}

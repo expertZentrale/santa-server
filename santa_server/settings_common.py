@@ -36,6 +36,7 @@ MIDDLEWARE = [
     "santa.middleware.UserTimeZoneMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "santa.middleware.NotificationTriggerMiddleware",
+    "santa.middleware.ConsoleCacheMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "django_prometheus.middleware.PrometheusAfterMiddleware",
 ]

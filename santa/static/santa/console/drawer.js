@@ -128,7 +128,11 @@
       return;
     }
     const url = drawer.querySelector("[data-drawer-url]")?.dataset.drawerUrl;
-    if (url) htmx.ajax("GET", url, { target: "#drawer", headers: { "X-Drawer-Reload": "1" } });
+    if (!url) return;
+    // the view shown until then is the one from before the save: dimmed while the fresh one loads (a slow connection
+    // would show the old state for seconds, as if nothing was saved)
+    drawer.classList.add("loading");
+    htmx.ajax("GET", url, { target: "#drawer", headers: { "X-Drawer-Reload": "1" } });
   }
 
   function showState(state) {
