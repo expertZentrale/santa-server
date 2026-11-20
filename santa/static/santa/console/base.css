@@ -466,14 +466,15 @@ input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 form.stack { margin-bottom: 1rem; }
 .stack.compact .field { margin-bottom: .5rem; }
 .field { display: grid; gap: .25rem; margin-bottom: .9rem; }
-.field > label, .field > .field-label { font-weight: 600; }
-/* the help of a field: an ⓘ after its label (console/_field_help.html), opened under the label over the field, as
+.field > label, .field > .field-label, .field > .field-head > :is(label, .field-label, strong) { font-weight: 600; }
+/* the help of a field: an ⓘ next to its label (console/_field_help.html: in .field-head with the label, not inside
+   it), opened under the label over the field, as
    wide as it; the fields side by side in a row open it under the row, as wide as the row (a narrow field would give
    a narrow box, a wider one would run over the edge of a narrow drawer) */
-.field > label, .field > .field-label, fieldset.field > legend { position: relative; }
-fieldset.field > legend { display: block; width: 100%; }
+.field > label, .field > .field-label, .field > .field-head { position: relative; }
 .field-row, .process-fields, .package-suggestion-fields { position: relative; }
-:is(.field-row, .process-fields, .package-suggestion-fields) .field > :is(label, .field-label) { position: static; }
+:is(.field-row, .process-fields, .package-suggestion-fields) .field > :is(label, .field-label, .field-head) {
+  position: static; }
 /* one line high, the icon centered on it: vertical-align: middle puts it on the x-height, above the capitals */
 .field-help { position: static; display: inline-flex; align-items: center; height: 1lh; margin-left: .3rem;
               vertical-align: top; font-weight: 400; }
@@ -486,6 +487,8 @@ fieldset.field > legend { display: block; width: 100%; }
 .field.check { grid-template-columns: auto 1fr; column-gap: .6rem; align-items: start; }
 .field.check > label { font-weight: 500; display: flex; gap: .45rem; align-items: center; min-height: 1.4rem; grid-column: 1 / -1; }
 .field.check > input + label, .field.check > input ~ .help, .field.check > input ~ .error { grid-column: 2; }
+.field.check > .field-head { display: flex; align-items: center; min-height: 1.4rem; grid-column: 2; }
+.field.check > .field-head > label { font-weight: 500; }
 .field input:not([type="checkbox"]):not([type="radio"]), .field select, .field textarea { width: 100%; }
 .field select[multiple] { min-height: 5rem; }
 /* how long (UntilField): the choice, and next to it the date when one is chosen; one under the other on phones */

@@ -2593,8 +2593,9 @@ def _refresh_current_dependencies(session, source, identifier, release):
     if source.kind != ReleaseSource.Kind.HOMEBREW_FORMULA or not release.version:
         return set()
     version = source.versions.filter(identifier=identifier, version=release.version).first()
-    if version is None or not version.dependencies:
-        # none resolved yet (or cleaned up): _add_dependencies resolves them as before
+    if version is None or (not version.dependencies and not version.dependencies_resolved):
+        # none resolved yet (or cleaned up): _add_dependencies resolves them as before. Resolved without any is
+        # compared too: the formula can get a dependency without a new version of its own
         return set()
     if version.dependencies_resolved:
         warnings = Errors()

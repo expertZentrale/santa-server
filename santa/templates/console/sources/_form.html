@@ -11,7 +11,7 @@
     {% include "console/_field.html" with field=form.kind %}
     {# the identifiers: "List" for a download list, the help of the chosen catalog only #}
     {% with field=form.identifier %}<div class="field{% if field.errors %} has-error{% endif %}" data-field="identifier">
-      <label for="{{ field.id_for_label }}"><span data-show-when="kind=URL_LIST">{% translate "List" %}</span><span data-show-when="kind=GITHUB_RELEASE|HOMEBREW_FORMULA|HOMEBREW_CASK|URL|NPM_PACKAGE|VSCODE_EXTENSION|JETBRAINS_PLUGIN|">{{ field.label }}</span><details class="help-tip field-help" data-picker><summary class="icon-button small" title="{% translate 'Help' %}" aria-label="{% translate 'Help' %}">{% include "console/icons/info.svg" %}</summary><div class="help-pop" role="note">
+      <div class="field-head"><label for="{{ field.id_for_label }}"><span data-show-when="kind=URL_LIST">{% translate "List" %}</span><span data-show-when="kind=GITHUB_RELEASE|HOMEBREW_FORMULA|HOMEBREW_CASK|URL|NPM_PACKAGE|VSCODE_EXTENSION|JETBRAINS_PLUGIN|">{{ field.label }}</span></label><details class="help-tip field-help" data-picker><summary class="icon-button small" title="{% translate 'Help' %}" aria-label="{% translate 'Help' %}">{% include "console/icons/info.svg" %}</summary><div class="help-pop" role="note">
         <span class="help-line" data-show-when="kind=GITHUB_RELEASE|HOMEBREW_FORMULA|HOMEBREW_CASK|URL|NPM_PACKAGE|VSCODE_EXTENSION|JETBRAINS_PLUGIN|">{% translate "One per line, each one is checked on its own and keeps its own versions." %}</span>
         <span class="help-line" data-show-when="kind=GITHUB_RELEASE">{% translate "GitHub: owner/repo (e.g. abiosoft/colima)." %}</span>
         <span class="help-line" data-show-when="kind=HOMEBREW_FORMULA|HOMEBREW_CASK">{% translate "Homebrew: the name of the formula or cask, from a tap with its full name (e.g. hashicorp/tap/terraform)." %}</span>
@@ -19,7 +19,7 @@
         <span class="help-line" data-show-when="kind=URL_LIST">{% translate "The https URL of the JSON list, one per line: each one is checked on its own and keeps its own versions." %}</span>
         <span class="help-line" data-show-when="kind=NPM_PACKAGE">{% translate "npm: the package name (e.g. @esbuild/darwin-arm64)." %}</span>
         <span class="help-line" data-show-when="kind=VSCODE_EXTENSION">{% translate "VS Code: publisher.name (e.g. rust-lang.rust-analyzer)." %}</span>
-        <span class="help-line" data-show-when="kind=JETBRAINS_PLUGIN">{% translate "JetBrains: the plugin ID (e.g. com.intellij.plugins.watcher)." %}</span></div></details></label>
+        <span class="help-line" data-show-when="kind=JETBRAINS_PLUGIN">{% translate "JetBrains: the plugin ID (e.g. com.intellij.plugins.watcher)." %}</span></div></details></div>
       {{ field|form_widget }}
       {% for error in field.errors %}<small class="error">{{ error }}</small>{% endfor %}
     </div>{% endwith %}
@@ -35,7 +35,7 @@
       <div data-show-when="list_one_version">{% include "console/_field.html" with field=form.list_name_key %}</div>
       {% with formset=form.downloads %}<div class="field" data-formset="{{ formset.prefix }}">
         {% translate "One row per download. Rows with “Only for the entries with” give their download only to those entries." as downloads_help %}
-        <span class="field-label">{% translate "Downloads" %}{% include "console/_field_help.html" with text=downloads_help %}</span>
+        <div class="field-head"><span class="field-label">{% translate "Downloads" %}</span>{% include "console/_field_help.html" with text=downloads_help %}</div>
         {{ formset.management_form }}
         {% for error in formset.non_form_errors %}<div class="error">{{ error }}</div>{% endfor %}
         <div class="process-rows" data-formset-rows>

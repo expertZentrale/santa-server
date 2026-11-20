@@ -810,6 +810,22 @@ class DependenciesTestCase(ReleaseSourceBase):
         self.assertFalse([url for url in urls if url.startswith("https://ghcr.example/")])
         self.assertEqual(self.dependency_labels("0.10.3"), ["", "lima@2.0", "lima@2.1"])
 
+    def test_the_current_version_gets_its_first_dependency(self):
+        routes = self.homebrew_routes(colima={"0.10.3": ("2026-09-20T08:00:00Z", None)},
+                                      lima={"2.0": ("2026-09-10T08:00:00Z", {})})
+        colima = routes["https://formulae.brew.sh/api/formula/colima.json"]
+        colima._json["dependencies"] = []
+        source = self.colima_source(auto_approve=True)
+        [version] = sync_release_source(source, fake_session(routes))
+        self.assertEqual((version.dependencies, version.dependencies_resolved), ([], True))
+        self.assertEqual(self.dependency_labels("0.10.3"), [""])
+        # the same version of the formula needs lima now: it is allowed with it
+        colima._json["dependencies"] = ["lima"]
+        self.assertEqual(sync_release_source(source, fake_session(routes)), [])
+        version.refresh_from_db()
+        self.assertEqual((version.dependencies, version.dependencies_resolved), (["lima@2.0"], True))
+        self.assertEqual(self.dependency_labels("0.10.3"), ["", "lima@2.0"])
+
     def test_a_new_dependency_version_follows_the_approval_of_the_version(self):
         routes = self.homebrew_routes(colima={"0.10.3": ("2026-09-20T08:00:00Z", None)},
                                       lima={"2.0": ("2026-09-10T08:00:00Z", {})})
