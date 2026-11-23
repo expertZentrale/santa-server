@@ -320,6 +320,15 @@ class ConsoleSourcesTestCase(ConsoleBase):
             "policy": Policy.ALLOWLIST, "groups": [self.dev.pk], "auto_approve": "on", "is_enabled": "on",
             "auto_approve_delay_days": 0, "keep_versions": 3, **data})
 
+    def test_keep_at_least_with_a_time_range(self):
+        self.post_source(identifier="rust-lang.rust-analyzer", keep_unit="WEEKS", keep_minimum=5)
+        source = ReleaseSource.objects.get()
+        self.assertEqual((source.keep_unit, source.keep_minimum), ("WEEKS", 5))
+        self.assertContains(self.client.get(reverse("console:source", args=(source.pk,))), "at least 5 versions")
+        # with a number of versions it means nothing: dropped, not an error
+        self.post_source(name="other", identifier="rust-lang.rust-analyzer", keep_unit="VERSIONS", keep_minimum=5)
+        self.assertEqual(ReleaseSource.objects.get(name="other").keep_minimum, 0)
+
     def test_the_comment_with_the_tags(self):
         html = self.client.get(reverse("console:source_add")).content.decode()
         tags_section = html[html.index("Tags and comment"):]

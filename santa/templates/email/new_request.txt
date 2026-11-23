@@ -3,6 +3,17 @@
 {{ access_request.title }} ({{ access_request.get_kind_display }})
 {% for package in access_request.packages.all %}- {{ package.get_kind_display }}: {{ package.identifier }}
 {% endfor %}{% if access_request.file_sha256 %}SHA-256: {{ access_request.file_sha256 }}
+{% endif %}{% with event=access_request.event machine=access_request.machine %}{% if machine %}{% translate "Mac:" %} {{ machine.hostname|default:machine.serial_number }}{% if machine.hostname and machine.serial_number %} ({{ machine.serial_number }}){% endif %}
+{% endif %}{% if event %}{% if event.executing_user %}{% translate "User:" %} {{ event.executing_user }}
+{% endif %}{% if event.file_path %}{% translate "Path:" %} {{ event.file_path }}
+{% endif %}{% if event.decision %}{% translate "Decision:" %} {{ event.decision }}
+{% endif %}{% translate "Signing ID:" %} {{ event.signing_id|default:_("– (unsigned)") }}
+{% if event.team_id %}{% translate "Team ID:" %} {{ event.team_id }}
+{% endif %}{% if event.cert_cn %}{% translate "Certificate:" %} {{ event.cert_cn }}
+{% endif %}{% if event.cdhash %}CDHash: {{ event.cdhash }}
+{% endif %}{% if event.bundle_id %}{% translate "Bundle:" %} {{ event.bundle_id }}{% if event.bundle_version %} {{ event.bundle_version }}{% endif %}
+{% endif %}{% if event.parent_name %}{% translate "Parent process:" %} {{ event.parent_name }}
+{% endif %}{% endif %}{% endwith %}{% if blocked_macs %}{% blocktranslate count count=blocked_macs %}Blocked on {{ count }} Mac{% plural %}Blocked on {{ count }} Macs{% endblocktranslate %}
 {% endif %}{% if access_request.link %}{{ access_request.link }}
 {% endif %}
 {% translate "Why:" %}

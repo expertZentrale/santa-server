@@ -203,6 +203,24 @@
     table.style.width = `${visible.reduce((sum, th) => sum + parseFloat(th.style.width), 0)}rem`;
   }
 
+  // a column as wide as its widest cell needs (the paths and texts without their ellipsis), at most the window;
+  // stored like a width set by hand. Applied with applyWidths.
+  function fitColumn(table, settings, key) {
+    if (cardLayout.matches) return;
+    const cells = [...table.tHead.rows[0].cells];
+    const th = cells.find((cell) => cell.dataset.col === key);
+    if (!th?.getClientRects().length) return;
+    table.classList.remove("fixed");
+    table.classList.add("measuring");
+    table.style.width = "max-content";
+    cells.forEach((cell) => { cell.style.width = ""; });
+    // one pixel to spare for the subpixel widths of the text
+    const width = Math.min((th.getBoundingClientRect().width + 1) / rem(), window.innerWidth / rem() - 4);
+    table.classList.remove("measuring");
+    // rounded up: a cell a fraction of a pixel too narrow shows "…"
+    settings.widths = { ...(settings.widths || {}), [key]: Math.max(3, Math.ceil(width * 10) / 10) };
+  }
+
   // optional columns added after a browser stored its choice (it knew the others): hidden there too, as by default
   const LATER_OPTIONAL = new Set(["expires", "name"]);
 
@@ -517,16 +535,10 @@
         applyWidths(table, settings);
         updateFits(table);
       };
-      // as wide as the widest cell needs (the paths without their ellipsis), at most the window
       const fit = () => {
-        table.classList.remove("fixed");
-        table.classList.add("measuring");
-        table.style.width = "max-content";
-        [...table.tHead.rows[0].cells].forEach((cell) => { cell.style.width = ""; });
-        // one pixel to spare for the subpixel widths of the text
-        const width = (th.getBoundingClientRect().width + 1) / rem();
-        table.classList.remove("measuring");
-        setWidth(Math.min(width, window.innerWidth / rem() - 4));
+        fitColumn(table, settings, key);
+        applyWidths(table, settings);
+        updateFits(table);
         saveTableSettings(table, settings);
       };
       handle.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); });
@@ -616,8 +628,10 @@
       }
     });
     picker.append(summary, panel);
-    // a new order or merge (chooser, dragged header, × of a merged one): stored, and the chooser follows it
-    const changeLayout = (layout, focusKey = null, focusControl = null) => {
+    // a new order or merge (chooser, dragged header, × of a merged one): stored, and the chooser follows it.
+    // The moved column fits its content at its new place (or the one it was merged into): a column of texts
+    // (name, comment) is otherwise only as wide as its title
+    const changeLayout = (layout, movedKey = null, focusControl = null) => {
       settings.order = layout.order;
       settings.merged = layout.merged;
       settings.hidden = [...hiddenColumns(table, settings)];
@@ -625,18 +639,19 @@
       columns.apply(table, layout, texts);
       applyHidden(table, settings);
       labelTables(table);
+      if (movedKey) fitColumn(table, settings, layout.merged[movedKey] || movedKey);
       applyWidths(table, settings);
       updateFits(table);
       saveTableSettings(table, settings);
       renderList();
       // the focus stays on the button or field that was used, now at the place of its column
-      if (focusKey && focusControl) {
-        const option = list.querySelector(`[data-column-option="${focusKey}"]`);
+      if (movedKey && focusControl) {
+        const option = list.querySelector(`[data-column-option="${movedKey}"]`);
         const control = option?.querySelector(focusControl);
         (control && !control.disabled ? control : option?.querySelector("input"))?.focus();
       }
     };
-    columns.enableDrag(table, (layout) => changeLayout(layout));
+    columns.enableDrag(table, (layout, key) => changeLayout(layout, key));
     panel.addEventListener("change", (event) => {
       const parent = event.target.closest("[data-column-parent]");
       if (parent) {
@@ -651,6 +666,9 @@
       settings.known = columns.keys(table);
       applyHidden(table, settings);
       labelTables(table);
+      // a column shown again fits its content, as one that is moved
+      const shown = box.dataset.columnKey;
+      if (box.checked) fitColumn(table, settings, table._layout.merged[shown] || shown);
       applyWidths(table, settings);
       updateFits(table);
       saveTableSettings(table, settings);

@@ -54,8 +54,8 @@ logger = logging.getLogger(__name__)
 SKIPPED_ASSET_SUFFIXES = (".sha256", ".sha256sum", ".sha512", ".md5", ".txt", ".sig", ".asc", ".pem",
                           ".sbom", ".json", ".spdx", ".intoto.jsonl", ".bundle", ".deb", ".rpm", ".apk", ".exe",
                           ".msi")
-# read inside an archive, package or disk image: the .pkg in a .dmg, …
-NESTED_SUFFIXES = (".pkg", ".dmg", ".zip", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz", ".tar.xz", ".txz")
+# read inside an archive, package or disk image: the .pkg in a .dmg, the .jar in a plugin, …
+NESTED_SUFFIXES = (".pkg", ".dmg", ".zip", ".jar", ".tar", ".tar.gz", ".tgz", ".tar.bz2", ".tbz", ".tar.xz", ".txz")
 # anonymous token accepted by ghcr.io for the Homebrew bottles
 HOMEBREW_BOTTLE_TOKEN = "QQ=="
 MAX_ARCHIVE_MEMBERS = 20000
@@ -686,12 +686,12 @@ def homebrew_formula_releases(session, source, identifier, limit, known=None):
         version = tag if not known or tag in known else re.sub(r"-\d+$", "", tag)
         if known and version in known:
             published_at = known[version]
-            if cutoff and published_at and published_at < cutoff:
+            if cutoff and published_at and published_at < cutoff and len(releases) >= source.keep_minimum:
                 break
             releases.setdefault(version, Release(version=version, assets=[], published_at=published_at))
             continue
         release = _ghcr_release(source, identifier, tag, _ghcr_index(session, identifier, tag))
-        if cutoff and release.published_at and release.published_at < cutoff:
+        if cutoff and release.published_at and release.published_at < cutoff and len(releases) >= source.keep_minimum:
             break
         # an older build of a version already found is skipped
         releases.setdefault(release.version, release)
@@ -1104,7 +1104,8 @@ def homebrew_tap_releases(session, source, identifier, limit, known=None, in_ran
             # an older commit of the same version (a new bottle, a fix): the version came with the oldest one
             releases[release.version].published_at = date or releases[release.version].published_at
             continue
-        if len(releases) >= limit or (cutoff and date and date < cutoff and releases):
+        if len(releases) >= limit or (cutoff and date and date < cutoff
+                                      and len(releases) >= max(1, source.keep_minimum)):
             break
         releases[release.version] = release
     result = list(releases.values())
@@ -1518,6 +1519,11 @@ def _vscode_releases(session, source, identifier, flags):
     return list(releases.values())
 
 
+JETBRAINS_MAC_OS = ("macos", "mac", "darwin")
+JETBRAINS_PLATFORM_SUFFIX = re.compile(
+    r"[-_+](macos|mac|darwin|osx)([-_](arm64|aarch64|x86_64|x64|amd64|universal))?$", re.IGNORECASE)
+
+
 def latest_jetbrains_plugin(session, source, identifier):
     releases = jetbrains_releases(session, source, identifier, 20)
     if not releases:
@@ -1539,20 +1545,30 @@ def jetbrains_releases(session, source, identifier, limit):
     response = session.get(f"{base}/{plugin_id}/updates?{urlencode(params)}", timeout=settings.RELEASE_HTTP_TIMEOUT)
     response.raise_for_status()
     regex = _asset_regex(source)
-    releases = []
+    releases = {}
     for update in response.json():
         if not update.get("approve", True) or update.get("hidden"):
             continue
-        products = tuple(update.get("compatibleVersions") or {})
-        if not asset_matches(regex, products):
+        # plugins with native parts publish one update per platform (263.8311.30-mac-arm64, …-linux-arm64)
+        target_os = update.get("targetOS") or ""
+        if target_os and target_os.lower() not in JETBRAINS_MAC_OS:
+            continue
+        version = update["version"]
+        if target_os:
+            version = JETBRAINS_PLATFORM_SUFFIX.sub("", version) or version
+        name = update["file"].rsplit("/", 1)[-1]
+        match = (*(update.get("compatibleVersions") or {}), name,
+                 *filter(None, (target_os, update.get("targetArch"))))
+        if not asset_matches(regex, match):
             continue
         published_at = None
         if update.get("cdate"):
             published_at = datetime.fromtimestamp(int(update["cdate"]) / 1000, tz=UTC)
-        asset = Asset(name=update["file"].rsplit("/", 1)[-1],
-                      url=f"https://downloads.marketplace.jetbrains.com/files/{update['file']}", match=products)
-        releases.append(Release(version=update["version"], assets=[asset], published_at=published_at))
-    return releases
+        release = releases.setdefault(version, Release(version=version, assets=[], published_at=published_at))
+        url = f"https://downloads.marketplace.jetbrains.com/files/{update['file']}"
+        release.assets.append(Asset(name=name, url=url, match=match))
+        release.published_at = max(filter(None, [release.published_at, published_at]), default=None)
+    return list(releases.values())
 
 
 # Most packages of these catalogs are scripts (JavaScript, Python, Java), and many formulae only libraries, headers
@@ -2109,7 +2125,9 @@ def stale_versions(source, now=None, check_filters=False):
             if cutoff is None:
                 stale += versions[source.keep_versions:]
             else:
-                stale += [version for version in versions[1:] if _version_date(version) < cutoff]
+                # the newest one, and at least keep_minimum, whatever their age
+                stale += [version for version in versions[max(1, source.keep_minimum):]
+                          if _version_date(version) < cutoff]
     return stale
 
 
@@ -2490,7 +2508,8 @@ def kept_releases(source, releases, now=None):
     cutoff = source.keep_cutoff(now)
     if cutoff is None:
         return releases[:source.keep_versions]
-    return [release for release in releases if release.published_at and release.published_at >= cutoff]
+    return [release for index, release in enumerate(releases)
+            if index < source.keep_minimum or (release.published_at and release.published_at >= cutoff)]
 
 
 def _sync_kept_versions(session, source, identifier, errors, latest, progress=None):

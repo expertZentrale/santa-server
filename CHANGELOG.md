@@ -6,6 +6,30 @@
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-11-23
+
+### Added
+
+- **Keep at least a number of versions.** A package rule that keeps the versions of the last weeks or months can also
+  keep at least a number of the newest versions (*At least (versions)*), so that a package released rarely still
+  keeps a few versions on the Macs and does not shrink to only the newest one.
+- **Details of the blocked binary in the request e-mail.** A *Blocked on my Mac* request e-mail names the Mac, the
+  user, the path, the decision, the signing ID (or that it is unsigned), team ID, certificate, CDHash, bundle and
+  parent process, and on how many Macs the same binary was blocked: enough to choose the rule without opening the
+  console.
+- **Executables inside `.jar` files.** Package rules read the `.jar` files inside a download (one level deep, like
+  the other nested archives), e.g. the native helpers of a JetBrains plugin.
+
+### Fixed
+
+- **A moved or added column fits its content.** A column of texts such as *Name* or *Comment* was only as wide as its
+  title after it was added or moved in a list, and its texts were cut off. It now gets the width of its content (at
+  most the window), as with a double click on its edge.
+- **JetBrains plugins with one file per platform.** Some plugins publish a separate update per platform
+  (`…-mac-arm64`, `…-linux-x86_64`, …). The package rule took the newest of them, often the Linux one, and found no
+  executables. It now only takes the macOS files and merges them into one version; the asset pattern also matches
+  the file names, so `mac-arm64` picks one platform.
+
 ## [0.17.0] - 2026-11-20
 
 ### Added
@@ -717,7 +741,8 @@
   docker/setup-buildx-action 4, docker/metadata-action 6.
 - Python packages: hiredis 3.4.2, tzdata 2026.4.
 
-[Unreleased]: https://github.com/expertZentrale/santa-server/compare/v0.17.0...HEAD
+[Unreleased]: https://github.com/expertZentrale/santa-server/compare/v0.17.1...HEAD
+[0.17.1]: https://github.com/expertZentrale/santa-server/compare/v0.17.0...v0.17.1
 [0.17.0]: https://github.com/expertZentrale/santa-server/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/expertZentrale/santa-server/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/expertZentrale/santa-server/compare/v0.14.0...v0.15.0

@@ -341,7 +341,7 @@
       const layout = table._layout;
       const key = th.dataset.col;
       onChange(target.kind === "merge" ? merge(table, layout, key, target.key)
-        : move(table, layout, key, target.key, target.kind === "after"));
+        : move(table, layout, key, target.key, target.kind === "after"), key);
     }
 
     function onMove(event) {

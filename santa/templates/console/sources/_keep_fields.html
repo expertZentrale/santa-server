@@ -1,9 +1,18 @@
-{% load i18n %}{% comment %}The versions to keep, and what else a package rule allows: keep, unit, approve_kept, dependencies, kind (the name of the catalog field, if there is one){% endcomment %}
+{% load i18n %}{% comment %}The versions to keep, and what else a package rule allows: keep, unit, minimum, approve_kept, dependencies, kind (the name of the catalog field, if there is one){% endcomment %}
 <div class="field-row">
   {% translate "The last versions, or the versions of the last weeks or months, keep their rules; the rules of older versions are deleted. The newest version always stays. 0 = keep all." as keep_help %}
   {% include "console/_field.html" with field=keep field_help=keep_help %}
   {# a download list has no dates: only a number of versions #}
   <div{% if kind %} data-show-when="{{ kind }}=GITHUB_RELEASE|HOMEBREW_FORMULA|HOMEBREW_CASK|URL|NPM_PACKAGE|VSCODE_EXTENSION|JETBRAINS_PLUGIN"{% endif %}>{% include "console/_field.html" with field=unit %}</div>
+  {% if minimum %}
+  {# with a time range: a package that has not been released for a while keeps some versions #}
+  <div{% if kind %} data-show-when="{{ kind }}=GITHUB_RELEASE|HOMEBREW_FORMULA|HOMEBREW_CASK|URL|NPM_PACKAGE|VSCODE_EXTENSION|JETBRAINS_PLUGIN"{% endif %}>
+    <div data-show-when="{{ unit.html_name }}=WEEKS|MONTHS" data-disable-when="{{ keep.html_name }}=0|">
+      {% translate "With weeks or months: at least this many of the newest versions keep their rules, also when they are older. 0 = only the time range." as minimum_help %}
+      {% include "console/_field.html" with field=minimum field_help=minimum_help %}
+    </div>
+  </div>
+  {% endif %}
 </div>
 <div data-disable-when="{{ keep.html_name }}=0|"{% if kind %} data-show-when="{{ kind }}=GITHUB_RELEASE|HOMEBREW_FORMULA|NPM_PACKAGE|VSCODE_EXTENSION|JETBRAINS_PLUGIN|URL_LIST"{% endif %}>
   {% include "console/_field.html" with field=approve_kept %}

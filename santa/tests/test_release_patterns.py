@@ -482,6 +482,19 @@ class TapTestCase(SimpleTestCase):
         self.assertEqual(homebrew_formula_at(session, source, "example/tap/tool", version="1.0.0").version, "1.0.0")
 
     @override_settings(GITHUB_TOKEN="token")
+    def test_the_history_goes_past_the_range_for_the_minimum(self):
+        recent = (timezone.now() - timedelta(days=5)).isoformat()
+        old = (timezone.now() - timedelta(days=400)).isoformat()
+        older = (timezone.now() - timedelta(days=500)).isoformat()
+        session = self.tap_history_session(
+            [("c3", recent, "tool 1.2.0"), ("c2", old, "tool 1.1.0"), ("c1", older, "tool 1.0.0")],
+            {"c3": "1.2.0", "c2": "1.1.0", "c1": "1.0.0"})
+        source = ReleaseSource(kind=ReleaseSource.Kind.HOMEBREW_FORMULA, keep_versions=1,
+                               keep_unit=ReleaseSource.KeepUnit.MONTHS, keep_minimum=2)
+        self.assertEqual([r.version for r in homebrew_formula_releases(session, source, "example/tap/tool", 5)],
+                         ["1.2.0", "1.1.0"])
+
+    @override_settings(GITHUB_TOKEN="token")
     def test_the_history_of_one_lookup_is_not_given_to_another(self):
         session = self.tap_history_session(
             [("c3", "2026-10-10T10:00:00Z", "tool 1.2.0"), ("c1", "2026-09-30T10:00:00Z", "tool 1.1.0")],

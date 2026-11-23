@@ -47,6 +47,34 @@ class NotificationsTestCase(ConsoleBase):
         self.assertIn(f"http://localhost:8000/console/requests/{access_request.pk}/", message.body)
         self.assertIn("http://localhost:8000/profile/", message.body)
 
+    def test_blocked_event_request_names_the_binary(self):
+        event = self.make_event(file_name="air-session-b7dc", executing_user="jdoe", signing_id="ZMCG7MLDV9:air",
+                                team_id="ZMCG7MLDV9", cert_cn="Developer ID Application: Example",
+                                parent_name="idea")
+        self.make_event(machine=self.other_machine, file_name="air-session-b7dc")
+        self.make_event(machine=self.other_machine, file_name="air-session-b7dc", minutes_ago=5)
+        self.client.force_login(self.user)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(reverse("requests:new"), {"kind": "EVENT", "event": event.pk, "justification": "IDE"})
+        body = mail.outbox[0].body
+        for line in ["Mac: jdoe-mbp (C02TEST)", "User: jdoe", "Path: /opt/bin/air-session-b7dc",
+                     "Decision: BLOCK_UNKNOWN", "Signing ID: ZMCG7MLDV9:air", "Team ID: ZMCG7MLDV9",
+                     "Certificate: Developer ID Application: Example", "Parent process: idea", "Blocked on 2 Macs"]:
+            self.assertIn(line, body)
+
+    def test_blocked_event_request_in_german(self):
+        profile = profile_for(self.admin)
+        profile.language = "de"
+        profile.save()
+        event = self.make_event(file_name="tool")
+        self.client.force_login(self.user)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(reverse("requests:new"), {"kind": "EVENT", "event": event.pk, "justification": "x"})
+        body = next(message.body for message in mail.outbox if message.to == ["admin@example.com"])
+        self.assertIn("Pfad: /opt/bin/tool", body)
+        self.assertIn("Signing ID: – (unsigniert)", body)
+        self.assertIn("Auf 1 Mac blockiert", body)
+
     def test_choices_off_and_daily_are_not_sent_right_away(self):
         self.choose(self.admin, new_requests=notifications.OFF)
         self.choose(self.approver, new_requests=notifications.DAILY)

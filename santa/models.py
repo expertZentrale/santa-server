@@ -658,7 +658,8 @@ class ReleaseSource(models.Model):
                   "Homebrew formula: matched against the bottle tags (e.g. ^arm64_). "
                   "Homebrew cask: matched against the download URLs. "
                   "VS Code: matched against the target platforms (darwin-arm64, darwin-x64, universal). "
-                  "JetBrains: matched against the compatible products (e.g. ^PHPSTORM$). Empty = everything."),
+                  "JetBrains: matched against the compatible products (e.g. ^PHPSTORM$) and the file names "
+                  "(e.g. mac-arm64; only the macOS files of plugins with one file per platform). Empty = everything."),
     )
     version_pattern = models.TextField(
         blank=True,
@@ -745,6 +746,11 @@ class ReleaseSource(models.Model):
                     "of older versions are deleted, the newest version always stays. 0 = keep all."),
     )
     keep_unit = models.CharField(max_length=8, choices=KeepUnit.choices, default=KeepUnit.VERSIONS)
+    keep_minimum = models.PositiveIntegerField(
+        _("keep at least"), default=0,
+        help_text=_("With weeks or months: at least this many of the newest versions keep their rules, also when "
+                    "they are older. 0 = only the time range."),
+    )
     approve_kept_versions = models.BooleanField(
         _("also allow the older kept versions"), default=False,
         help_text=_("Also add the rules of the older versions inside the kept range, not only of the new ones "
@@ -821,6 +827,8 @@ class ReleaseSource(models.Model):
             errors["cel_expr"] = gettext("Required for the CEL policy.")
         if self.policy != Policy.CEL and self.cel_expr:
             errors["cel_expr"] = gettext("Only used with the CEL policy.")
+        if self.keep_minimum and (not self.keep_versions or self.keep_unit == self.KeepUnit.VERSIONS):
+            errors["keep_minimum"] = gettext("Only with a number of weeks or months.")
         if self.approve_kept_versions and not self.keep_versions:
             errors["approve_kept_versions"] = gettext("Only with a limit: 0 keeps every version ever published.")
         elif self.approve_kept_versions and self.kind not in HISTORY_KINDS:
