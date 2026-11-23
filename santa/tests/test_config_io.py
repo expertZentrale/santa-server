@@ -36,7 +36,7 @@ class ConfigIOTestCase(TestCase):
                                               macos_minimum="sequoia", macos_nearest=False,
                                               policy=Policy.CEL, cel_expr=CEL_EXPR, custom_msg="Ask the IT",
                                               keep_versions=2, keep_unit=ReleaseSource.KeepUnit.MONTHS,
-                                              approve_kept_versions=True)
+                                              keep_minimum=4, approve_kept_versions=True)
         source.groups.add(self.dev)
         version = ReleaseVersion.objects.create(source=source, version="v1")
         Rule.objects.create(rule_type=RuleType.BINARY, identifier="c" * 64, release_source=source,
@@ -95,8 +95,8 @@ class ConfigIOTestCase(TestCase):
                          ("^v1\\.\n^v2\\.", RuleType.SIGNINGID, Policy.CEL, CEL_EXPR, "Ask the IT"))
         self.assertEqual((source.description, source.binary_pattern, source.macos_minimum, source.macos_nearest),
                          ("Container runtime", "*/colima\n*/lima", "sequoia", False))
-        self.assertEqual((source.keep_versions, source.keep_unit, source.approve_kept_versions,
-                          source.include_dependencies), (2, ReleaseSource.KeepUnit.MONTHS, True, False))
+        self.assertEqual((source.keep_versions, source.keep_unit, source.keep_minimum, source.approve_kept_versions,
+                          source.include_dependencies), (2, ReleaseSource.KeepUnit.MONTHS, 4, True, False))
 
     def test_the_expiry_of_a_rule(self):
         expires = timezone.now() + timedelta(days=7)

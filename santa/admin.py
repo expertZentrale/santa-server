@@ -566,7 +566,8 @@ class ReleaseSourceAdmin(admin.ModelAdmin):
                                                  "macos_nearest", "include_prereleases", "include_dependencies")}),
         ("Rules", {"fields": ("rule_type", "policy", "custom_msg", "custom_url", "cel_expr")}),
         ("Scope", {"fields": ("is_global", "groups", "machines", "auto_approve", "auto_approve_delay_days",
-                              "keep_versions", "keep_unit", "approve_kept_versions", "tags", "description")}),
+                              "keep_versions", "keep_unit", "keep_minimum", "approve_kept_versions", "tags",
+                              "description")}),
         ("Status", {"fields": ("last_checked_at", "last_error", "created_at", "updated_at")}),
     )
 

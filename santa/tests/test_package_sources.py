@@ -252,3 +252,41 @@ class JetBrainsTestCase(ReleaseSourceBase):
         self.assertEqual(version.version, "1.9")
         self.assertEqual(version.published_at.year, 2026)
         self.assertEqual(Rule.objects.get(release_source=source).identifier, hashlib.sha256(binary).hexdigest())
+
+    def platform_routes(self):
+        updates = [
+            {"version": f"3.1-{platform}", "file": f"7178/{n}/air-3.1-{platform}.zip", "cdate": "1795126058000",
+             "compatibleVersions": {"IDEA": "2026.3"}, "targetOS": target_os, "targetArch": arch}
+            for n, (platform, target_os, arch) in enumerate([("linux-arm64", "Linux", "ARM64"),
+                                                             ("windows-x86_64", "Windows", "X86_64"),
+                                                             ("mac-x86_64", "MacOS", "X86_64"),
+                                                             ("mac-arm64", "MacOS", "ARM64")])]
+        self.binaries = {"mac-x86_64": unsigned("air-x64"), "mac-arm64": unsigned("air-arm64")}
+        return {
+            "https://plugins.jetbrains.com/api/plugins/intellij/com.example.air": FakeResponse({"id": 7178}),
+            "https://plugins.jetbrains.com/api/plugins/7178/updates?size=20&channel=": FakeResponse(updates),
+            **{f"https://downloads.marketplace.jetbrains.com/files/7178/{n}/air-3.1-{platform}.zip": FakeResponse(
+                content=zip_file({"air/lib/native.jar": zip_file({f"{platform}/air-session": binary,
+                                                                  "pad": b"x" * 5000})}))
+               for n, platform in ((2, "mac-x86_64"), (3, "mac-arm64")) for binary in [self.binaries[platform]]},
+        }
+
+    def test_one_update_per_platform_is_one_version_of_the_mac_files(self):
+        source = ReleaseSource.objects.create(name="air", kind=ReleaseSource.Kind.JETBRAINS_PLUGIN,
+                                              identifier="com.example.air", is_global=True)
+        # the Linux and Windows files are never downloaded: fake_session has no route for them
+        [version] = sync_release_source(source, fake_session(self.platform_routes()))
+        self.assertEqual(version.version, "3.1")
+        self.assertEqual(set(Rule.objects.filter(release_source=source).values_list("identifier", flat=True)),
+                         {hashlib.sha256(binary).hexdigest() for binary in self.binaries.values()})
+        self.assertIn("air/lib/native.jar/mac-arm64/air-session",
+                      {f["path"] for rule in Rule.objects.filter(release_source=source) for f in rule.release_files})
+
+    def test_asset_pattern_picks_the_platform_by_file_name(self):
+        source = ReleaseSource.objects.create(name="air", kind=ReleaseSource.Kind.JETBRAINS_PLUGIN,
+                                              identifier="com.example.air", asset_pattern=".*mac-arm64.*",
+                                              is_global=True)
+        [version] = sync_release_source(source, fake_session(self.platform_routes()))
+        self.assertEqual(version.version, "3.1")
+        self.assertEqual(Rule.objects.get(release_source=source).identifier,
+                         hashlib.sha256(self.binaries["mac-arm64"]).hexdigest())

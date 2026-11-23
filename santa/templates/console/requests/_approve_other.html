@@ -35,7 +35,7 @@
     {% include "console/_field.html" with field=form.package_auto_approve %}
     {% include "console/_field.html" with field=form.package_is_global %}
     <div data-hide-when="package_is_global">{% include "console/_field.html" with field=form.package_groups %}</div>
-    {% include "console/sources/_keep_fields.html" with keep=form.package_keep_versions unit=form.package_keep_unit approve_kept=form.package_approve_kept_versions dependencies=form.package_include_dependencies kind="package_kind" %}
+    {% include "console/sources/_keep_fields.html" with keep=form.package_keep_versions unit=form.package_keep_unit minimum=form.package_keep_minimum approve_kept=form.package_approve_kept_versions dependencies=form.package_include_dependencies kind="package_kind" %}
   </div>
   {% else %}<p class="muted">{% translate "Creating package rules needs the permission to add package rules." %}</p>{% endif %}
 </div>

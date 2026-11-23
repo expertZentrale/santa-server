@@ -77,6 +77,12 @@ class PackageTestCase(TestCase):
                          "Tool/README": b"x" * 5000})
         self.assertEqual(paths(find_binaries(io.BytesIO(data), "tool.zip")), ["Tool/Tool.pkg/Payload/bin/tool"])
 
+    def test_executable_inside_a_jar(self):
+        jar = zip_file({"darwin-aarch64/tool": build_macho(identifier="tool"), "pad": b"x" * 5000})
+        data = zip_file({"plugin/lib/native.jar": jar})
+        self.assertEqual(paths(find_binaries(io.BytesIO(data), "plugin.zip")),
+                         ["plugin/lib/native.jar/darwin-aarch64/tool"])
+
     def test_archives_are_read_one_level_deep(self):
         inner = tar_gz({"bin/tool": build_macho(identifier="tool")})
         data = tar_gz({"outer.zip": zip_file({"inner.tar.gz": inner, "pad": b"x" * 5000})})

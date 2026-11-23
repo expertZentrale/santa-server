@@ -604,7 +604,7 @@ class ReleaseSourceForm(TagsMixin, forms.ModelForm):
                   "version_pattern", "asset_pattern", "binary_pattern", "macos_minimum", "macos_nearest",
                   "include_prereleases", "rule_type", "policy", "cel_expr", "custom_msg", "custom_url", "is_global",
                   "groups", "machines", "auto_approve",
-                  "auto_approve_delay_days", "keep_versions", "keep_unit", "approve_kept_versions",
+                  "auto_approve_delay_days", "keep_versions", "keep_unit", "keep_minimum", "approve_kept_versions",
                   "include_dependencies", "tags")
         widgets = {
             "description": forms.Textarea(attrs={"rows": 2}),
@@ -622,7 +622,7 @@ class ReleaseSourceForm(TagsMixin, forms.ModelForm):
             "macos_minimum": _("Minimum macOS"), "macos_nearest": _("Take the nearest bottle"),
             "include_prereleases": _("Include prereleases"), "rule_type": _("Preferred rule type"),
             "auto_approve": _("Auto approve"), "auto_approve_delay_days": _("Auto approve delay (days)"),
-            "keep_versions": _("Keep"), "keep_unit": _("Unit"),
+            "keep_versions": _("Keep"), "keep_unit": _("Unit"), "keep_minimum": _("At least (versions)"),
             "approve_kept_versions": _("Also allow the older kept versions"),
             "include_dependencies": _("Allow the dependencies"),
             "list_format": _("Format"), "list_entries": _("Versions in the list"),
@@ -650,6 +650,8 @@ class ReleaseSourceForm(TagsMixin, forms.ModelForm):
         self.fields["kind"].label = _("Catalog")
         self.fields["keep_versions"].help_text = ""
         self.fields["keep_unit"].required = False
+        self.fields["keep_minimum"].required = False
+        self.fields["keep_minimum"].help_text = ""
         self.fields["cel_expr"].widget.attrs["data-cel-suggestions"] = cel_suggestions_json()
         self.fields["rule_type"].choices = rule_type_choices()
         self.fields["is_global"].label = _("All Macs (global)")
@@ -669,6 +671,9 @@ class ReleaseSourceForm(TagsMixin, forms.ModelForm):
 
     def clean_keep_unit(self):
         return self.cleaned_data["keep_unit"] or ReleaseSource.KeepUnit.VERSIONS
+
+    def clean_keep_minimum(self):
+        return self.cleaned_data["keep_minimum"] or 0
 
     def clean(self):
         cleaned_data = super().clean()
@@ -690,6 +695,9 @@ class ReleaseSourceForm(TagsMixin, forms.ModelForm):
                 self.instance.list_sources = self.downloads.rows()
             else:
                 self.add_error(None, gettext("Correct the downloads."))
+        if cleaned_data.get("keep_unit") == ReleaseSource.KeepUnit.VERSIONS or not cleaned_data.get("keep_versions"):
+            cleaned_data["keep_minimum"] = 0
+            self.instance.keep_minimum = 0
         return cleaned_data
 
     def add_error(self, field, error):
@@ -954,16 +962,23 @@ def keep_unit_field():
                              required=False, label=_("Unit"))
 
 
+def keep_minimum_field():
+    return forms.IntegerField(min_value=0, initial=0, required=False, label=_("At least (versions)"))
+
+
 def new_source_options(data, kind, prefix=""):
     """The fields of a new ReleaseSource from an approval form. The options a catalog can't use are dropped
     instead of failing the approval (the form offers them for every catalog)."""
     keep = data.get(f"{prefix}keep_versions")
     keep = 3 if keep is None else keep
+    unit = data.get(f"{prefix}keep_unit") or ReleaseSource.KeepUnit.VERSIONS
     return {
         "policy": data.get(f"{prefix}policy") or Policy.ALLOWLIST,
         "cel_expr": data.get(f"{prefix}cel_expr", ""),
         "keep_versions": keep,
-        "keep_unit": data.get(f"{prefix}keep_unit") or ReleaseSource.KeepUnit.VERSIONS,
+        "keep_unit": unit,
+        "keep_minimum": (data.get(f"{prefix}keep_minimum") or 0) if keep and unit != ReleaseSource.KeepUnit.VERSIONS
+        else 0,
         "approve_kept_versions": bool(data.get(f"{prefix}approve_kept_versions") and keep and kind in HISTORY_KINDS),
         "include_dependencies": bool(data.get(f"{prefix}include_dependencies") and kind in DEPENDENCY_KINDS),
     }
@@ -1173,6 +1188,7 @@ class ApprovePackagesForm(DecisionNotesMixin):
                                             widget=forms.CheckboxSelectMultiple)
     keep_versions = keep_versions_field()
     keep_unit = keep_unit_field()
+    keep_minimum = keep_minimum_field()
     approve_kept_versions = forms.BooleanField(required=False, label=_("Also allow the older kept versions"))
     include_dependencies = forms.BooleanField(required=False, label=_("Allow the dependencies"))
 
@@ -1401,6 +1417,7 @@ class ApproveOtherForm(DecisionNotesMixin, CelPolicyMixin, TagsMixin):
                                               help_text=_("Enable the rules of new releases automatically."))
     package_keep_versions = keep_versions_field()
     package_keep_unit = keep_unit_field()
+    package_keep_minimum = keep_minimum_field()
     package_approve_kept_versions = forms.BooleanField(required=False, label=_("Also allow the older kept versions"))
     package_include_dependencies = forms.BooleanField(required=False, label=_("Allow the dependencies"))
     package_is_global = forms.BooleanField(required=False, label=_("All Macs (global)"))
@@ -1420,8 +1437,9 @@ class ApproveOtherForm(DecisionNotesMixin, CelPolicyMixin, TagsMixin):
                    "cel_expr", "scope", "groups", "tags", "new_tags", "package_target", "package_kind",
                    "package_identifiers", "package_picked", "package_name", "package_rule_type", "package_policy",
                    "package_cel_expr", "package_auto_approve", "package_keep_versions", "package_keep_unit",
-                   "package_approve_kept_versions", "package_include_dependencies", "package_is_global",
-                   "package_groups", "rule_identifier", "rule", "tell_user", "note", "review_note"]
+                   "package_keep_minimum", "package_approve_kept_versions", "package_include_dependencies",
+                   "package_is_global", "package_groups", "rule_identifier", "rule", "tell_user", "note",
+                   "review_note"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

@@ -149,6 +149,37 @@ class KeepVersionsTestCase(ReleaseSourceBase):
         # 2 weeks: v4 and v3
         self.assertEqual([version.version for version in new_versions], ["v4", "v3"])
 
+    def test_at_least_some_versions_with_a_time_range(self):
+        now = timezone.now()
+        source = self.github_source(keep_versions=2, keep_unit=ReleaseSource.KeepUnit.WEEKS, keep_minimum=3,
+                                    approve_kept_versions=True, asset_pattern="")
+        releases = [github_release(f"v{n}", (now - timedelta(days=days)).isoformat())
+                    for n, days in ((4, 1), (3, 30), (2, 60), (1, 90))]
+        new_versions = sync_release_source(source, fake_session(self.github_routes(releases)))
+        # 2 weeks would only be v4: at least 3 versions
+        self.assertEqual([version.version for version in new_versions], ["v4", "v3", "v2"])
+
+    def test_cleanup_keeps_at_least_some_versions(self):
+        source = self.github_source(keep_versions=1, keep_unit=ReleaseSource.KeepUnit.MONTHS, keep_minimum=2)
+        old = timezone.now() - timedelta(days=100)
+        for days, version in enumerate(("v3", "v2", "v1")):
+            ReleaseVersion.objects.create(source=source, identifier="abiosoft/colima", version=version,
+                                          published_at=old - timedelta(days=days))
+        self.assertEqual(prune_old_versions(source), 1)
+        self.assertEqual(sorted(source.versions.values_list("version", flat=True)), ["v2", "v3"])
+        # a recent version counts too: the range keeps it, and with it at least 2
+        ReleaseVersion.objects.create(source=source, identifier="abiosoft/colima", version="v4",
+                                      published_at=timezone.now())
+        self.assertEqual(prune_old_versions(source), 1)
+        self.assertEqual(sorted(source.versions.values_list("version", flat=True)), ["v3", "v4"])
+
+    def test_at_least_only_with_a_time_range(self):
+        source = ReleaseSource(name="x", kind=ReleaseSource.Kind.GITHUB_RELEASE, identifier="a/b", keep_versions=3,
+                               keep_minimum=2)
+        with self.assertRaises(ValidationError) as caught:
+            source.full_clean()
+        self.assertIn("keep_minimum", caught.exception.error_dict)
+
     def test_the_newest_version_stays_when_it_is_older_than_the_range(self):
         source = self.github_source(keep_versions=1, keep_unit=ReleaseSource.KeepUnit.MONTHS)
         old = timezone.now() - timedelta(days=100)

@@ -494,7 +494,7 @@ die Macs sehen dann einen anderen Hash als den des Downloads.
 | Download-Liste (JSON) | https-URL der Liste | (Downloads, siehe unten) | Glob im Archiv |
 | npm-Paket | `@esbuild/darwin-arm64` | | |
 | VS-Code-Erweiterung | `rust-lang.rust-analyzer` | `^darwin-arm64$` (Zielplattform) | |
-| JetBrains-Plugin | `com.intellij.plugins.watcher` | `^PHPSTORM$` (kompatibles Produkt) | |
+| JetBrains-Plugin | `com.intellij.plugins.watcher` | `^PHPSTORM$` (kompatibles Produkt), `mac-arm64` (Dateiname) | |
 
 **Download-Liste (JSON)**: für Software, die ihre Versionen als JSON-Liste veröffentlicht. Der Bezeichner ist die
 https-URL der Liste. Die Vorschau zeigt die ersten Einträge mit ihren Feldern; daraus füllt man das Formular:
@@ -566,7 +566,9 @@ Paketregel legt außerdem fest, wie die Regeln aussehen:
 - **Automatisch freigeben** und eine **Verzögerung** (z. B. 2 Tage nach der Veröffentlichung), um von einem
   kompromittierten Release zu erfahren, bevor es auf den Macs läuft.
 - **Behalten**: die letzten *n* Versionen, oder die Versionen der letzten *n* Wochen bzw. Monate; die Regeln älterer
-  Versionen werden gelöscht, die neueste Version bleibt immer. `0` behält alle.
+  Versionen werden gelöscht, die neueste Version bleibt immer. `0` behält alle. Mit Wochen oder Monaten behält
+  **Mindestens (Versionen)** außerdem immer so viele der neuesten Versionen, auch wenn sie älter sind (für Pakete,
+  die selten erscheinen).
 - **Auch die älteren behaltenen Versionen erlauben** (alle Kataloge außer Homebrew-Cask und direkter URL, die nur
   auf den aktuellen Download zeigen; Homebrew-Formulae aus der Bottle-Registry `ghcr.io`, Tap-Formeln aus der Git-Historie des
   Taps): legt die Regeln für die älteren
@@ -632,7 +634,10 @@ Hinweise:
 - `.pkg`-Dateien liest der Server selbst (Payload und Scripts, gzip, bzip2 oder pbzx). `.dmg`-Dateien entpackt
   7-Zip (`7zz`, im Image enthalten), nur die ausführbaren Dateien und die Pakete und Archive darin; eine Ebene tief,
   in den Grenzen von `RELEASE_MAX_UNPACKED_BYTES` und `RELEASE_UNPACK_TIMEOUT`. So funktionieren auch
-  Homebrew-Casks, deren Download ein Disk-Image oder Paket ist.
+  Homebrew-Casks, deren Download ein Disk-Image oder Paket ist. Archive in einem Archiv (auch die `.jar`-Dateien
+  eines JetBrains-Plugins) werden ebenfalls eine Ebene tief gelesen.
+- JetBrains-Plugins mit einer Datei pro Plattform (Versionen wie `1.2.3-mac-arm64`): Der Server nimmt nur die
+  macOS-Dateien und fasst sie zu einer Version (`1.2.3`) zusammen; das Asset-Muster `mac-arm64` wählt eine davon.
 
 **Anfragen**: Benutzer öffnen `/request/`, melden sich an und wählen *Auf meinem Mac blockiert* (die offenen
 Blockierungen der letzten 30 Tage auf ihren Macs), *Paket* (ein oder mehrere Pakete aus den Katalogen) oder
@@ -1258,7 +1263,7 @@ installing it (`codesign`), the version says so: the Macs then see another hash 
 | Download list (JSON) | https URL of the list | (downloads, see below) | glob inside the archive |
 | npm package | `@esbuild/darwin-arm64` | | |
 | VS Code extension | `rust-lang.rust-analyzer` | `^darwin-arm64$` (target platform) | |
-| JetBrains plugin | `com.intellij.plugins.watcher` | `^PHPSTORM$` (compatible product) | |
+| JetBrains plugin | `com.intellij.plugins.watcher` | `^PHPSTORM$` (compatible product), `mac-arm64` (file name) | |
 
 **Download list (JSON)**: for software that publishes its versions as a JSON list. The identifier is the https URL of
 the list. The preview shows its first entries with their fields; fill in the form from them:
@@ -1328,7 +1333,8 @@ chooses what the rules look like:
 - **Auto approve** and a **delay** (e.g. 2 days after the publication), to hear about a compromised release before it
   runs on the Macs.
 - **Keep**: the last *n* versions, or the versions of the last *n* weeks or months; the rules of older versions are
-  deleted, the newest version always stays. `0` keeps all.
+  deleted, the newest version always stays. `0` keeps all. With weeks or months, **At least (versions)** also always
+  keeps that many of the newest versions, even when they are older (for packages that are rarely released).
 - **Also allow the older kept versions** (every catalog except Homebrew casks and direct URLs, which only point to the
   current download; Homebrew formulae from the bottle registry `ghcr.io`, tap formulae from the Git history of the
   tap): adds the rules of the older versions
@@ -1389,7 +1395,10 @@ Notes:
 - The server reads `.pkg` files itself (Payload and Scripts, gzip, bzip2 or pbzx). `.dmg` files are unpacked by
   7-Zip (`7zz`, part of the image), only the executables and the packages and archives inside; one level deep, within
   `RELEASE_MAX_UNPACKED_BYTES` and `RELEASE_UNPACK_TIMEOUT`. That way Homebrew casks whose download is a disk image or
-  a package work too.
+  a package work too. Archives inside an archive (also the `.jar` files of a JetBrains plugin) are read one level
+  deep as well.
+- JetBrains plugins with one file per platform (versions like `1.2.3-mac-arm64`): the server only takes the macOS
+  files and merges them into one version (`1.2.3`); the asset pattern `mac-arm64` picks one of them.
 
 **Access requests**: users open `/request/`, sign in and choose *Blocked on my Mac* (the open blocks of the last
 30 days on their Macs), *Package* (one or more packages from the catalogs) or *Other*. Their roles decide which kinds

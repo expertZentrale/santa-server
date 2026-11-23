@@ -6,5 +6,5 @@
   <div data-show-when="policy=CEL">{% include "console/rules/_cel_help.html" with field=form.cel_expr %}</div>
   {% include "console/_field.html" with field=form.is_global %}
   <div data-hide-when="is_global">{% include "console/_field.html" with field=form.groups %}</div>
-  {% include "console/sources/_keep_fields.html" with keep=form.keep_versions unit=form.keep_unit approve_kept=form.approve_kept_versions dependencies=form.include_dependencies %}
+  {% include "console/sources/_keep_fields.html" with keep=form.keep_versions unit=form.keep_unit minimum=form.keep_minimum approve_kept=form.approve_kept_versions dependencies=form.include_dependencies %}
 </div>

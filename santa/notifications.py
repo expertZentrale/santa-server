@@ -21,7 +21,7 @@ from django.urls import reverse
 from django.utils import translation
 from django.utils.translation import gettext_lazy as _
 
-from .models import AccessRequest, SignInGroup, UserProfile
+from .models import AccessRequest, Event, SignInGroup, UserProfile
 from .seasonal import christmas_active
 from .users import profile_for
 
@@ -220,9 +220,13 @@ def notify(key, users, subject, template, context, exclude=None):
 
 
 def request_created(access_request):
+    context = {"access_request": access_request, "url": absolute_url("console:request", access_request.pk)}
+    if access_request.kind == AccessRequest.Kind.EVENT and access_request.file_sha256:
+        # the same binary on other Macs: one rule may help them all
+        blocked = Event.objects.filter(file_sha256=access_request.file_sha256, decision__startswith="BLOCK_")
+        context["blocked_macs"] = blocked.values("machine").distinct().count()
     notify("new_requests", lambda: users_for("new_requests"),
-           (_("New request: %(title)s"), {"title": access_request.title}), "new_request",
-           {"access_request": access_request, "url": absolute_url("console:request", access_request.pk)},
+           (_("New request: %(title)s"), {"title": access_request.title}), "new_request", context,
            exclude=access_request.requester)
 
 

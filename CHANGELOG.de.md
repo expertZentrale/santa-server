@@ -6,6 +6,29 @@
 
 ## [Unreleased]
 
+### Hinzugefügt
+
+- **Mindestens eine Anzahl Versionen behalten.** Eine Paketregel, die die Versionen der letzten Wochen oder Monate
+  behält, kann zusätzlich mindestens eine Anzahl der neuesten Versionen behalten (*Mindestens (Versionen)*), damit
+  ein selten veröffentlichtes Paket ein paar Versionen auf den Macs behält und nicht auf die neueste schrumpft.
+- **Details des blockierten Programms in der Anfrage-E-Mail.** Die E-Mail einer Anfrage *Auf meinem Mac blockiert*
+  nennt den Mac, den Benutzer, den Pfad, die Entscheidung, die Signing-ID (oder dass es unsigniert ist), Team-ID,
+  Zertifikat, CDHash, Bundle und übergeordneten Prozess und auf wie vielen Macs dasselbe Programm blockiert wurde:
+  genug, um die Regel ohne Blick in die Konsole zu wählen.
+- **Ausführbare Dateien in `.jar`-Dateien.** Paketregeln lesen die `.jar`-Dateien in einem Download (eine Ebene tief,
+  wie die anderen verschachtelten Archive), z. B. die nativen Hilfsprogramme eines JetBrains-Plugins.
+
+### Behoben
+
+- **Eine verschobene oder hinzugefügte Spalte passt sich ihrem Inhalt an.** Eine Textspalte wie *Name* oder
+  *Kommentar* war nach dem Hinzufügen oder Verschieben in einer Liste nur so breit wie ihre Überschrift, die Texte
+  wurden abgeschnitten. Jetzt bekommt sie die Breite ihres Inhalts (höchstens das Fenster), wie bei einem
+  Doppelklick auf ihren Rand.
+- **JetBrains-Plugins mit einer Datei pro Plattform.** Manche Plugins veröffentlichen pro Plattform ein eigenes
+  Update (`…-mac-arm64`, `…-linux-x86_64`, …). Die Paketregel nahm das neueste davon, oft das für Linux, und fand
+  keine ausführbaren Dateien. Jetzt nimmt sie nur die macOS-Dateien und fasst sie zu einer Version zusammen; das
+  Asset-Muster prüft auch die Dateinamen, sodass `mac-arm64` eine Plattform wählt.
+
 ## [0.17.0] - 2026-11-20
 
 ### Hinzugefügt
